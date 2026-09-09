@@ -102,6 +102,73 @@ export function headerSubset(headers: HeaderLike | null | undefined, names: read
 }
 
 /* ------------------------------------------------------------------ *
+ * Body size cap — the webhooks refuse anything over it with 413, before storing anything
+ * ------------------------------------------------------------------ */
+
+/** The largest webhook body accepted: 1 MB. A Fathom delivery with a transcript is far under it. */
+export const MAX_WEBHOOK_BODY_BYTES = 1_048_576;
+
+/** `Content-Length` as a non-negative integer; null when absent or not a plain number. */
+export function declaredContentLength(headers: HeaderLike | null | undefined): number | null {
+  let v: string | null | undefined = null;
+  try {
+    v = headers && typeof headers.get === "function" ? headers.get("content-length") : null;
+  } catch {
+    v = null;
+  }
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** True when a declared length is known and over the cap — the handler answers 413 before reading. */
+export function exceedsCap(declared: number | null, cap = MAX_WEBHOOK_BODY_BYTES): boolean {
+  return declared !== null && declared > cap;
+}
+
+export type CappedBody =
+  | { ok: true; text: string; bytes: number }
+  | { ok: false; reason: "body too large"; bytes: number };
+
+/**
+ * Read a body stream up to `cap` bytes. Reading stops — and the stream is cancelled — the moment
+ * the running total passes the cap, so an oversize delivery is never held whole. The text is
+ * the UTF-8 decode of the bytes exactly as received (a signature is over those bytes; nothing
+ * is re-serialised). `bytes` is the length read: the full body when ok, the count at the cut
+ * when not.
+ */
+export async function readBodyCapped(body: ReadableStream<Uint8Array> | null | undefined, cap = MAX_WEBHOOK_BODY_BYTES): Promise<CappedBody> {
+  if (!body) return { ok: true, text: "", bytes: 0 };
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value || value.byteLength === 0) continue;
+    total += value.byteLength;
+    if (total > cap) {
+      try {
+        await reader.cancel();
+      } catch {
+        /* the stream is abandoned either way */
+      }
+      return { ok: false, reason: "body too large", bytes: total };
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return { ok: true, text: new TextDecoder("utf-8").decode(all), bytes: total };
+}
+
+/* ------------------------------------------------------------------ *
  * JSON, hashing, batching, dates
  * ------------------------------------------------------------------ */
 

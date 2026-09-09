@@ -11,6 +11,7 @@
  */
 
 import type { SignalInput, SignalTask, SignalTrace, Timing, Urgency } from "./prospect_types.ts";
+import { reqArr, reqBool, reqNum, reqNumIn, reqObj, reqStrIn, RubricError } from "./classify.ts";
 
 // deno-lint-ignore no-explicit-any
 type Rubric = any;
@@ -76,10 +77,7 @@ function byWeightNowDesc(a: SignalTrace, b: SignalTrace): number {
 export interface DecayedSignals {
   /** Sum of weight_now over every signal, negatives included. */
   total: number;
-  /**
-   * Live positive signals, strongest first. Cut to `rubric.signals.top_n` when the rubric
-   * sets one; with no such key every live positive signal is listed (no number lives here).
-   */
+  /** Live positive signals, strongest first, cut to `rubric.signals.top_n` (display only; the total counts every signal). */
   top: SignalTrace[];
   /** Every negative-weight signal with its current weight (0 once its lifespan has passed). */
   negatives: SignalTrace[];
@@ -92,7 +90,8 @@ export interface DecayedSignals {
 }
 
 export function decaySignals(signals: SignalInput[], asOf: string, rubric: Rubric): DecayedSignals {
-  const topN: number | null = typeof rubric?.signals?.top_n === "number" ? rubric.signals.top_n : null;
+  const topN = reqNum(rubric, "signals.top_n");
+  if (!Number.isInteger(topN) || topN < 0) throw new RubricError(rubric, "signals.top_n", "a whole number of signals to list (0 or more)", topN);
   const notes: string[] = [];
   const traces = (signals ?? []).map((s) => {
     const t = traceOf(s, asOf);
@@ -101,7 +100,7 @@ export function decaySignals(signals: SignalInput[], asOf: string, rubric: Rubri
   });
   const total = round4(traces.reduce((acc, t) => acc + t.weight_now, 0));
   const live = traces.filter((t) => t.weight_now > 0).sort(byWeightNowDesc);
-  const top = topN === null ? live : live.slice(0, topN);
+  const top = live.slice(0, topN);
   const negatives = traces
     .filter((t) => t.weight < 0)
     .sort((a, b) => a.weight_now - b.weight_now || (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
@@ -117,13 +116,20 @@ export function computeUrgency(
   decayed: { total: number; has_live: boolean },
   rubric: Rubric,
 ): { urgency: Urgency; basis: "stated_timing" | "computed" | "none" } {
-  const u = rubric?.signals?.urgency ?? {};
-  if (timing && u.stated_timing_wins !== false && u.from_timing?.[timing]) {
-    return { urgency: u.from_timing[timing] as Urgency, basis: "stated_timing" };
+  const statedWins = reqBool(rubric, "signals.urgency.stated_timing_wins");
+  const fromTiming = reqObj(rubric, "signals.urgency.from_timing");
+  const ladder = reqArr<Record<string, unknown>>(rubric, "signals.urgency.from_decayed_total");
+  if (timing && statedWins) {
+    const word = fromTiming[timing];
+    if (typeof word !== "string") throw new RubricError(rubric, `signals.urgency.from_timing.${timing}`, "an urgency word for this stated timing", word);
+    return { urgency: word as Urgency, basis: "stated_timing" };
   }
-  if (decayed.has_live && Array.isArray(u.from_decayed_total)) {
-    for (const band of u.from_decayed_total) {
-      if (decayed.total >= band.min) return { urgency: band.label as Urgency, basis: "computed" };
+  if (decayed.has_live) {
+    for (let i = 0; i < ladder.length; i++) {
+      const band = ladder[i];
+      const min = reqNumIn(rubric, band, "min", `signals.urgency.from_decayed_total[${i}]`);
+      const label = reqStrIn(rubric, band, "label", `signals.urgency.from_decayed_total[${i}]`);
+      if (decayed.total >= min) return { urgency: label as Urgency, basis: "computed" };
     }
   }
   return { urgency: "Cold", basis: "none" };
@@ -137,12 +143,12 @@ export function computeUrgency(
  * expired and undatable (unparseable observed_at) signals never route.
  */
 export function routeTasks(signals: SignalInput[], asOf: string, rubric: Rubric): SignalTask[] {
-  const r = rubric?.signals?.routing ?? {};
-  const catalog = rubric?.signals?.catalog ?? {};
-  const window = typeof r.window_days === "number" ? r.window_days : 30;
-  const strongMin = typeof r.strong_min_weight === "number" ? r.strong_min_weight : 8;
-  const mediumMin = typeof r.medium_min_weight === "number" ? r.medium_min_weight : 4;
-  const defaultSla = typeof r.default_sla_hours === "number" ? r.default_sla_hours : 120;
+  // deno-lint-ignore no-explicit-any
+  const catalog = reqObj(rubric, "signals.catalog") as Record<string, any>;
+  const window = reqNum(rubric, "signals.routing.window_days");
+  const strongMin = reqNum(rubric, "signals.routing.strong_min_weight");
+  const mediumMin = reqNum(rubric, "signals.routing.medium_min_weight");
+  const defaultSla = reqNum(rubric, "signals.routing.default_sla_hours");
 
   const inWindow = (signals ?? [])
     .map((s) => ({ s, age: daysBetween(s.observed_at, asOf) }))

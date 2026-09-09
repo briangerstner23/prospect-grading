@@ -303,6 +303,13 @@ const baseDeal = (o: Record<string, unknown> = {}): Record<string, unknown> => (
   eq("org: no website anywhere → domain null", noDomain.account?.domain, null);
   const generic = parsePipedriveEvent(evt("create", "organization", { id: 1003, name: "Quarry Lane Studio", website: "gmail.com" }), FIELD_MAP, KNOWN, NOW);
   eq("org: a generic mail domain never becomes the domain", generic.account?.domain, null);
+  // the address is never a domain source: "Ste.100" would pass normalizeDomain and become a HIGH join key
+  const dottedAddress = parsePipedriveEvent(evt("create", "organization", { id: 1004, name: "Quarry Lane Studio", address: "Ste.100" }), FIELD_MAP, KNOWN, NOW);
+  eq("org: a dotted address token ('Ste.100') yields no domain", dottedAddress.account?.domain, null);
+  const dottedAddressObj = parsePipedriveEvent(evt("create", "organization", { id: 1005, name: "Quarry Lane Studio", address: { value: "Ste.100", country: "US" } }), FIELD_MAP, KNOWN, NOW);
+  eq("org: a dotted v2 address object yields no domain either", dottedAddressObj.account?.domain, null);
+  const addressPlusSite = parsePipedriveEvent(evt("create", "organization", { id: 1006, name: "Quarry Lane Studio", address: "Ste.100", website: "quarrylane.example" }), FIELD_MAP, KNOWN, NOW);
+  eq("org: the website still wins when present beside such an address", addressPlusSite.account?.domain, "quarrylane.example");
 }
 
 {

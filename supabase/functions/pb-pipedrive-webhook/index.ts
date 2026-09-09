@@ -6,17 +6,27 @@
  *   POST  → a Webhooks v2 delivery {meta, data, previous}
  *
  * Order of work:
+ *   0. Body cap, 1 MB (MAX_WEBHOOK_BODY_BYTES). A Content-Length over the cap is answered 413
+ *      before the body is read; without one the body is read up to the cap and cut off there —
+ *      also 413. Nothing over the cap is stored.
  *   1. Raw body → JSON (or {raw}).
  *   2. verifyBasicAuth(Authorization, PB_PIPEDRIVE_WEBHOOK_BASIC) — the Vault value is
  *      `user:pass`. Unset secret → never verified.
  *   3. ALWAYS inbox {source 'pipedrive', headers (content-type, user-agent, has-authorization —
- *      never the credential), body, verified, error}.
+ *      never the credential), body, verified, error}. What `body` holds (webhook_pure.inboxRow):
+ *        verified                 the parsed JSON (or {raw})
+ *        secret not configured    the parsed JSON (or {raw}), kept whole for replay
+ *        verification failed      a digest only — {stored:'digest', body_sha256, body_bytes,
+ *                                 reason}. A caller without the credential does not fill the inbox.
  *   4. Status codes, and why:
- *        200  verified, or NO Authorization header at all, or secret unset — the payload is
- *             stored for replay and Pipedrive is not told to retry / auto-disable the hook
+ *        200  verified, or NO Authorization header at all, or secret unset — the payload (or its
+ *             digest) is stored and Pipedrive is not told to retry / auto-disable the hook
  *        401  an Authorization header IS present and is WRONG — a misconfigured credential
- *             must surface in Pipedrive's webhook log so the operator sees it; the payload is
- *             still in the inbox, nothing is lost
+ *             must surface in Pipedrive's webhook log so the operator sees it; a digest of the
+ *             delivery is in the inbox
+ *        413  over the body cap; nothing stored
+ *        500  the inbox insert failed, or the secret could not be READ from Vault (a fault on
+ *             our side; only a digest was kept, so Pipedrive's retry is wanted)
  *   5. If verified: field map from Vault (PB_PIPEDRIVE_FIELD_MAP, JSON written by the
  *      collector; empty map when absent — hash keys are never hard-coded), active rubric for
  *      signal weights, known accounts and the deal → account map; parsePipedriveEvent; then
@@ -35,7 +45,7 @@ import { serviceClient, insertBatches } from "../_shared/db.ts";
 import { getSecret } from "../_shared/auth.ts";
 import { finishRun, runStatus, startRun } from "../_shared/log.ts";
 import { loadRubric } from "../_shared/rubric.ts";
-import { errorMessage, inboxBody, json, safeJsonParse } from "../_shared/helpers.ts";
+import { declaredContentLength, errorMessage, exceedsCap, json, MAX_WEBHOOK_BODY_BYTES, readBodyCapped, safeJsonParse } from "../_shared/helpers.ts";
 import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
   accountAttachPatch,
@@ -44,6 +54,7 @@ import {
   candidateRows,
   contactRow,
   dealAccountsMap,
+  inboxRow,
   mergeDealUpsert,
   parseFieldMap,
   pipedriveInboxHeaders,
@@ -56,6 +67,10 @@ import type { KnownAccount } from "../_shared/ingest/identity.ts";
 const SERVICE = "pb-pipedrive-webhook";
 const KNOWN_COLS = "id,key,name,domain,pipedrive_org_id,orbit_client_id";
 
+function tooLarge(bytes: number | null): Response {
+  return json({ ok: false, error: "payload too large", max_bytes: MAX_WEBHOOK_BODY_BYTES, bytes }, 413);
+}
+
 async function markInbox(db: DbLike, inboxId: string, error: string | null): Promise<void> {
   await db.from("pb_webhook_inbox").update({ processed_at: new Date().toISOString(), error }).eq("id", inboxId);
 }
@@ -64,6 +79,10 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET") return json({ ok: true, service: SERVICE });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
+  /* ---- 0. cap: a declared length over it is refused before anything is read ---- */
+  const declared = declaredContentLength(req.headers);
+  if (exceedsCap(declared)) return tooLarge(declared);
+
   let db: DbLike;
   try {
     db = serviceClient();
@@ -71,42 +90,46 @@ Deno.serve(async (req: Request) => {
     return json({ error: errorMessage(e) }, 500);
   }
 
-  /* ---- 1. body ---- */
-  const rawBody = await req.text();
+  /* ---- 1. body, read up to the cap ---- */
+  const read = await readBodyCapped(req.body, MAX_WEBHOOK_BODY_BYTES);
+  if (!read.ok) return tooLarge(read.bytes);
+  const rawBody = read.text;
   const parsed = safeJsonParse(rawBody);
 
   /* ---- 2. verify ---- */
   const authHeader = req.headers.get("authorization");
   let verified = false;
-  let reason = "";
-  let secretSet = false;
+  let reason: string | null = null;
+  let secretConfigured: boolean | null = null;
   try {
     const secret = await getSecret(db, "PB_PIPEDRIVE_WEBHOOK_BASIC");
     if (secret === null) {
+      secretConfigured = false;
       reason = "secret not configured (PB_PIPEDRIVE_WEBHOOK_BASIC); stored unverified for replay";
     } else {
-      secretSet = true;
+      secretConfigured = true;
       verified = verifyBasicAuth(authHeader, secret);
       if (!verified) reason = authHeader ? "basic auth mismatch" : "missing Authorization header";
     }
   } catch (e) {
+    secretConfigured = null;
     reason = `verification error: ${errorMessage(e)}`;
   }
 
-  /* ---- 3. inbox, always ---- */
+  /* ---- 3. inbox, always — the whole body only when verified or when no secret is set ---- */
+  const inbox = await inboxRow({
+    source: "pipedrive",
+    headers: pipedriveInboxHeaders(req.headers),
+    rawBody,
+    parsed,
+    bodyBytes: read.bytes,
+    verified,
+    secretConfigured,
+    reason,
+  });
   let inboxId: string;
   try {
-    const { data, error } = await db
-      .from("pb_webhook_inbox")
-      .insert({
-        source: "pipedrive",
-        headers: pipedriveInboxHeaders(req.headers),
-        body: inboxBody(rawBody, parsed),
-        verified,
-        error: verified ? (parsed.ok ? null : `body is not JSON: ${parsed.error}`) : reason,
-      })
-      .select("id")
-      .single();
+    const { data, error } = await db.from("pb_webhook_inbox").insert(inbox.row).select("id").single();
     if (error) throw new Error(error.message);
     inboxId = String(data.id);
   } catch (e) {
@@ -115,9 +138,11 @@ Deno.serve(async (req: Request) => {
 
   /* ---- 4. status for the unverified cases ---- */
   if (!verified) {
-    console.log(`${SERVICE}: unverified delivery inboxed (${inboxId}): ${reason}`);
-    const wrongCredential = secretSet && authHeader !== null && authHeader.length > 0;
-    return json({ ok: !wrongCredential, inbox_id: inboxId, verified: false, reason }, wrongCredential ? 401 : 200);
+    console.log(`${SERVICE}: unverified delivery inboxed (${inboxId}, ${inbox.storage}): ${reason}`);
+    // The secret could not be read — our fault, and only a digest was kept: ask Pipedrive to retry.
+    if (secretConfigured === null) return json({ ok: false, inbox_id: inboxId, verified: false, stored: inbox.storage, reason }, 500);
+    const wrongCredential = secretConfigured === true && authHeader !== null && authHeader.length > 0;
+    return json({ ok: !wrongCredential, inbox_id: inboxId, verified: false, stored: inbox.storage, reason }, wrongCredential ? 401 : 200);
   }
   if (!parsed.ok) {
     await markInbox(db, inboxId, `body is not JSON: ${parsed.error}`);

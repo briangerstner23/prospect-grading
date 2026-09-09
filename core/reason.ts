@@ -20,6 +20,7 @@ import type {
   Tier,
   Urgency,
 } from "./prospect_types.ts";
+import { reqObj, reqStr } from "./classify.ts";
 
 // deno-lint-ignore no-explicit-any
 type Rubric = any;
@@ -62,12 +63,11 @@ export function qualificationWords(q: Pick<QualificationRead, "label" | "present
   return `${q.label} (${q.present_count} of 4 facts)`;
 }
 
-const DEFAULT_SHAPE =
-  "Anticipated {tier} ({confidence}): {icp_class} {agency_type_words}, {qualification words}; ceiling {ceiling} on {headroom_band or 'unknown headroom'}, year one likely {year1_band}; {urgency} — {top signal or 'no live signal'}.";
-
+/** The sentence shape is rubric text (reason_sentence.shape); there is no default shape in code. */
 export function buildReason(p: ReasonParts, rubric: Rubric): string {
-  const shape: string = typeof rubric?.reason_sentence?.shape === "string" ? rubric.reason_sentence.shape : DEFAULT_SHAPE;
-  const catalog = rubric?.signals?.catalog ?? {};
+  const shape = reqStr(rubric, "reason_sentence.shape");
+  // deno-lint-ignore no-explicit-any
+  const catalog = reqObj(rubric, "signals.catalog") as Record<string, any>;
   const topSignal = p.top_signal ? (catalog[p.top_signal.type]?.label ?? p.top_signal.type) : null;
 
   const fill: Record<string, string> = {

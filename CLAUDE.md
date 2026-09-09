@@ -21,13 +21,19 @@ core/       prospect_types.ts (types, do not change) · rubric.prospect.v0.1.jso
             engine.ts (pure grade()) · classify.ts · decay.ts · reason.ts · engine_test.ts
 fixtures/   golden.json — synthetic accounts with expected scorecards per rubric version
 ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes.ts
-            pipedrive_webhook.ts · fathom_webhook.ts (+ *_test.ts)
-supabase/   migrations/ (pb_* schema, RLS, cron) · functions/pb-sync, pb-score,
-            pb-fathom-webhook, pb-pipedrive-webhook, _shared/
+            pipedrive_seed.ts (the certified roster from the read-only pull; PipedriveKeys =
+            the seed's inferred field keys) · pipedrive_webhook.ts · fathom_webhook.ts ·
+            webhook_signatures.ts (+ *_test.ts)
+supabase/   migrations/ — five, in order: 20260909120000 schema + RLS · 120100 cron ·
+            120200 merge · 120300 fixes · 120400 candidate review (all applied)
+            functions/pb-sync, pb-score, pb-fathom-webhook, pb-pipedrive-webhook, _shared/
+            (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
+            never edit them by hand) · functions/README.md (deploy file lists)
 web/        index.html — the page, one file, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
-scripts/    test_all.sh
+scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_README.md) ·
+            sync_shared.sh · test_all.sh
 ```
 
 ## Conventions
@@ -74,7 +80,10 @@ scripts/    test_all.sh
 - Deploy through the Supabase MCP (`apply_migration`, `deploy_edge_function`,
   `execute_sql`); the build container has no direct route to `*.supabase.co`.
 - Secrets in Vault, read by `pb_secret()` (service role only): `PB_SYNC_TOKEN`,
-  `PB_FATHOM_WEBHOOK_SECRET`, `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_API_TOKEN`.
+  `PB_FATHOM_WEBHOOK_SECRET`, `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP`,
+  `PB_PIPEDRIVE_API_TOKEN`.
+- All four edge functions deploy with `verify_jwt = false`: pb-sync / pb-score carry the
+  Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
 - RLS is default-deny. Any authenticated `@whitelabeliq.com` address reads (PRO-7); writes
   by lane via `pb_members.role` (owner / rater / viewer). `pb_webhook_inbox` is service-role only.
 - Operator steps: `docs/RUNBOOK.md`. Access status: `docs/PHASE0.md`.
@@ -94,10 +103,15 @@ scripts/    test_all.sh
 ## Tests
 
 ```bash
-npm test                                    # bash scripts/test_all.sh — every *_test.ts
+npm test                                    # bash scripts/test_all.sh — every *_test.ts + the sync check
 node --experimental-strip-types core/engine_test.ts
 node --experimental-strip-types explain/method_test.ts   # regenerate docs/METHOD.md if it fails
+bash scripts/sync_shared.sh                 # after editing core/ or ingest/: refresh the _shared copies
 ```
 
-Node 22+; Deno is not installed in the build container. Run the tests before finishing any
-change to `core/`, `ingest/` or `explain/`; a fixture drift is a real failure, not noise.
+`npm test` runs every `*_test.ts` under `core/`, `ingest/`, `explain/`, `scripts/` and
+`supabase/functions/` (the `_shared/core` and `_shared/ingest` copies excluded), then
+`bash scripts/sync_shared.sh --check`, which fails the run when a `_shared/` copy differs from
+its original. Node 22+; Deno is not installed in the build container. Run the tests before
+finishing any change to `core/`, `ingest/`, `explain/` or `supabase/functions/`; a fixture
+drift or a stale copy is a real failure, not noise.

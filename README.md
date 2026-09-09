@@ -28,8 +28,8 @@ Each record also carries a `status` (Parked / Unclassified / Overridden / Ranked
 ## Architecture in five lines
 
 1. **`core/`** — a pure, deterministic engine: `grade(features, rubric, options) → scorecard`. No clock, no I/O; `as_of` is an input. Every threshold, weight and lifespan lives in `core/rubric.prospect.v0.1.json`, never in code.
-2. **`ingest/`** — pure mappers from each source (Notion master, Orbit quotes, Pipedrive webhooks, Fathom webhooks) to `pb_*` rows, plus identity matching that proposes and never auto-merges below `high` confidence.
-3. **`supabase/`** — the `pb_*` schema with default-deny RLS, Supabase Edge Functions (`pb-sync`, `pb-score`, `pb-fathom-webhook`, `pb-pipedrive-webhook`) and a `pg_cron` nightly score. Secrets live in Vault.
+2. **`ingest/`** — pure mappers from each source (the Pipedrive roster pull and webhooks, Notion master, Orbit quotes, Fathom webhooks) to `pb_*` rows, plus identity matching that proposes and never auto-merges below `high` confidence. `scripts/seed.ts` composes them once into SQL files (`scripts/seed_README.md`).
+3. **`supabase/`** — the `pb_*` schema with default-deny RLS (five migrations, all applied), Supabase Edge Functions (`pb-sync`, `pb-score`, `pb-fathom-webhook`, `pb-pipedrive-webhook`, all deployed with `verify_jwt = false` because none of their callers presents a Supabase JWT) and a `pg_cron` nightly score. Secrets live in Vault.
 4. **`web/index.html`** — one file, no build step, magic-link sign-in, published to GitHub Pages; it reads through RLS with the publishable key and never changes a read by hand.
 5. **`explain/`** — generates `docs/METHOD.md` from the rubric; a test fails when the document drifts from the JSON.
 
@@ -42,23 +42,33 @@ node --experimental-strip-types core/engine_test.ts        # one file
 
 Node 22+ is required (`--experimental-strip-types`). The same files run under Deno
 unchanged: relative imports carry `.ts` extensions and `core/`, `ingest/` and `explain/`
-have no npm dependencies. `core/engine_test.ts` replays every fixture in
-`fixtures/golden.json` and fails on any drift.
+have no npm dependencies. `npm test` runs every `*_test.ts` under `core/`, `ingest/`,
+`explain/`, `scripts/` and `supabase/functions/`, then checks that the functions' `_shared/`
+copies match their originals (`bash scripts/sync_shared.sh --check`). `core/engine_test.ts`
+replays every fixture in `fixtures/golden.json` and fails on any drift.
 
 ## Deploying
 
 Everything deploys through the Supabase MCP from a session (project `sgagrmapuovnjwvgsxbp`);
 the CLI equivalents are shown for a machine with network access. Step-by-step operator
-instructions, including the Vault secrets and the webhook registrations, are in
-[`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+instructions, including the Vault secrets, the webhook registrations, the merge queue and
+the seed, are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md); the access status is in
+[`docs/PHASE0.md`](docs/PHASE0.md). As of 9 September: Pipedrive is connected (the ruled
+roster source, PRO-6, is readable and the certified roster is derived from its Client
+Journey cards), the five migrations are applied, rubric `0.1.0` is active, and the four
+functions deploy with `verify_jwt = false` — `pb-sync` and `pb-score` are called with the
+Book's own bearer (by a session and by pg_cron), the webhooks with their own signature or
+HTTP Basic check, and the gateway would reject all of those under `verify_jwt = true`.
 
 ```bash
-# Migrations (MCP: apply_migration, one call per file)
+# Migrations (MCP: apply_migration, one call per file, in order):
+#   20260909120000 schema + RLS · 20260909120100 cron · 20260909120200 merge ·
+#   20260909120300 fixes · 20260909120400 candidate review
 supabase db push --project-ref sgagrmapuovnjwvgsxbp
 
-# Edge functions (MCP: deploy_edge_function, one call per function)
-supabase functions deploy pb-sync               --project-ref sgagrmapuovnjwvgsxbp
-supabase functions deploy pb-score              --project-ref sgagrmapuovnjwvgsxbp
+# Edge functions (MCP: deploy_edge_function, one call per function, verify_jwt = false)
+supabase functions deploy pb-sync               --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
+supabase functions deploy pb-score              --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 supabase functions deploy pb-fathom-webhook     --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 supabase functions deploy pb-pipedrive-webhook  --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 

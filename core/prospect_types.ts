@@ -103,6 +103,15 @@ export interface DealInput {
   last_buyer_touch_at?: string | null;
   buyer_email_velocity_7d?: number | null;
   next_meeting_at?: string | null;
+  /**
+   * The KNOWN state of the next meeting. `next_meeting_at` alone cannot separate "none is
+   * booked" from "the activities were never read" (the ingest maps a missing Pipedrive
+   * activity to null either way), so the resolver sets this only when the activities were
+   * read: true = booked, false = known absent, null / omitted = unknown. Under
+   * `unknown_never_warns` the next-meeting rules (DH-NO-NEXT, DH-DARK, DH-INDECISION) fire
+   * only on a known absence.
+   */
+  has_next_meeting?: boolean | null;
   decision_maker_engaged?: boolean | null;
   buyer_contacts_30d?: number | null;
   price_discussed?: boolean | null;

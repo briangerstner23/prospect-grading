@@ -612,12 +612,14 @@ function parseDeal(
 
 const WEBSITE_LABEL = /web\s*site|domain|\burl\b|homepage/i;
 
-/** The organisation's domain from any field that could carry one: website-like keys, a custom field labelled website, the address. */
+/**
+ * The organisation's domain from a field that carries one: the website-like keys and any custom
+ * field whose label matches WEBSITE_LABEL. The postal address is NOT a source — a dotted token
+ * in it ("Ste.100") passes normalizeDomain and would become a HIGH join key.
+ */
 function orgDomain(data: Rec, labelled: Record<string, unknown>): string | null {
   const tries: unknown[] = [data.website, data.web, data.url, data.domain, data.homepage];
   for (const [label, value] of Object.entries(labelled)) if (WEBSITE_LABEL.test(label)) tries.push(value);
-  const address = data.address;
-  tries.push(isRec(address) ? address.value : address);
   for (const t of tries) {
     const s = toStr(isRec(t) ? t.value : t);
     if (s === null) continue;

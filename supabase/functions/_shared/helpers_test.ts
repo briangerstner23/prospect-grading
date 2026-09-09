@@ -17,12 +17,16 @@ import {
   bearerMatches,
   bearerToken,
   chunk,
+  declaredContentLength,
   errorMessage,
+  exceedsCap,
   headerSubset,
   inboxBody,
   isoDate,
   json,
+  MAX_WEBHOOK_BODY_BYTES,
   queryParams,
+  readBodyCapped,
   safeJsonParse,
   sha256Hex,
   tally,
@@ -51,13 +55,13 @@ import {
   accountAttachPatch,
   accountCreateRow,
   accountIdForOrg,
-  actionItemCount,
+  callRowForUpsert,
   candidateRows,
   contactRow,
   dealAccountsMap,
   fathomInboxHeaders,
-  fathomNextStepSignal,
-  hasNonEmptyActionItems,
+  inboxRow,
+  inboxStorage,
   mergeDealUpsert,
   parseFieldMap,
   pipedriveInboxHeaders,
@@ -399,7 +403,7 @@ check("grade: a scorecard came back", SC.account_id === ACCOUNT.id && SC.anticip
 
 {
   const h = fathomInboxHeaders(new FakeHeaders({ "webhook-id": "msg_1", "webhook-timestamp": "1757400000", "webhook-signature": "v1,abc", "content-type": "application/json" }));
-  eq("fathomInboxHeaders: subset + has-signature, never the signature", h, { "webhook-id": "msg_1", "webhook-timestamp": "1757400000", "content-type": "application/json", "user-agent": null, "has-signature": true });
+  eq("fathomInboxHeaders: subset + has-signature, never the signature", h, { "webhook-id": "msg_1", "webhook-timestamp": "1757400000", "content-type": "application/json", "content-length": null, "user-agent": null, "has-signature": true });
   check("fathomInboxHeaders: no signature", fathomInboxHeaders(new FakeHeaders({}))["has-signature"] === false);
   const p = pipedriveInboxHeaders(new FakeHeaders({ Authorization: "Basic dXNlcjpwYXNz", "user-agent": "Pipedrive-Webhooks" }));
   check("pipedriveInboxHeaders: has-authorization, credential absent", p["has-authorization"] === true && !JSON.stringify(p).includes("dXNlcjpwYXNz"));

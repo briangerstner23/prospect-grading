@@ -14,8 +14,10 @@ import {
   base64Encode,
   basicAuthHeader,
   hmacSha256Hex,
+  REASON_SECRET_NOT_BASE64,
   signStandardWebhook,
   standardWebhookKey,
+  standardWebhookSecretProblem,
   timingSafeEqual,
   verifyBasicAuth,
   verifyStandardWebhook,
@@ -163,6 +165,28 @@ async function main() {
     now,
   )).ok, true);
 
+  /* the stored secret is trimmed once, at the boundary */
+  eq("a secret with a trailing newline verifies", (await verifyStandardWebhook(body, H({ "webhook-id": id, "webhook-timestamp": ts, "webhook-signature": good }), secret + "\n", now)).ok, true);
+  eq("a secret with surrounding whitespace verifies", (await verifyStandardWebhook(body, H({ "webhook-id": id, "webhook-timestamp": ts, "webhook-signature": good }), `  ${secret}\r\n`, now)).ok, true);
+  eq("standardWebhookKey trims before decoding", Array.from(standardWebhookKey(secret + "\n")), Array.from(rawKey));
+  eq("a plain secret with a trailing newline is trimmed too", (await verifyStandardWebhook(
+    body,
+    H({ "webhook-id": id, "webhook-timestamp": ts, "webhook-signature": "v1," + (await refHmacBase64(enc.encode("plain secret with spaces!"), `${id}.${ts}.${body}`)) }),
+    "plain secret with spaces!\n",
+    now,
+  )).ok, true);
+  eq("a whitespace-only secret is 'secret not configured'", (await verifyStandardWebhook(body, H({ "webhook-id": id, "webhook-timestamp": ts, "webhook-signature": good }), " \n", now)).reason, "secret not configured");
+
+  /* a whsec_ prefix promises base64 */
+  eq("whsec_ with a non-base64 remainder is refused with its own reason", (await verifyStandardWebhook(body, H({ "webhook-id": id, "webhook-timestamp": ts, "webhook-signature": good }), "whsec_not*base64", now)).reason, REASON_SECRET_NOT_BASE64);
+  eq("a bare 'whsec_' is refused the same way", (await verifyStandardWebhook(body, H({ "webhook-id": id, "webhook-timestamp": ts, "webhook-signature": good }), "whsec_", now)).reason, REASON_SECRET_NOT_BASE64);
+  eq("the not-base64 reason is distinct from a mismatch and from unconfigured", [REASON_SECRET_NOT_BASE64 !== "signature mismatch", REASON_SECRET_NOT_BASE64 !== "secret not configured"], [true, true]);
+  eq(
+    "standardWebhookSecretProblem: good whsec_ / good plain / empty / bad whsec_ / trimmed whsec_",
+    [standardWebhookSecretProblem(secret), standardWebhookSecretProblem("plain secret with spaces!"), standardWebhookSecretProblem("   "), standardWebhookSecretProblem("whsec_%%%"), standardWebhookSecretProblem(secret + "\n")],
+    [null, null, "secret not configured", REASON_SECRET_NOT_BASE64, null],
+  );
+
   /* ------------------------------------------------------------------ *
    * 5 · HTTP Basic
    * ------------------------------------------------------------------ */
@@ -182,7 +206,11 @@ async function main() {
   check("empty header fails", !verifyBasicAuth("", pair));
   check("undecodable credential fails", !verifyBasicAuth("Basic not*base64", pair));
   check("empty expected refuses everything", !verifyBasicAuth(basicAuthHeader(""), ""));
+  check("whitespace-only expected refuses everything", !verifyBasicAuth(basicAuthHeader(" "), " \n"));
   check("password with a colon works", verifyBasicAuth(basicAuthHeader("u:p:q"), "u:p:q"));
+  check("expected value with a trailing newline is trimmed", verifyBasicAuth(header, pair + "\n"));
+  check("expected value with surrounding whitespace is trimmed", verifyBasicAuth(header, `  ${pair}\r\n`));
+  check("the presented credential is NOT trimmed (a newline inside it is a mismatch)", !verifyBasicAuth(basicAuthHeader(pair + "\n"), pair));
 
   /* ------------------------------------------------------------------ *
    * report

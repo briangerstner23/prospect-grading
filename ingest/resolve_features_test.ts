@@ -92,6 +92,11 @@ function dealRow(id: number, o: Partial<DealRow> = {}): DealRow {
   };
 }
 
+/** The engine's optional deal-health flag, read without depending on DealInput carrying it yet. */
+function hnm(d: unknown): boolean | null | undefined {
+  return (d as { has_next_meeting?: boolean | null } | undefined)?.has_next_meeting;
+}
+
 function overrideRow(o: Partial<RegisterRow> & { payload?: Record<string, unknown> | null } = {}): RegisterRow {
   return {
     kind: o.kind ?? "override",
@@ -367,12 +372,39 @@ function run(partial: Partial<ResolveInput> = {}) {
   eq("fields pb_deals does not carry are null, never guessed", [d.critical_event_captured, d.indecision_level, d.risk_words_present, d.competitor_named_late], [null, null, null, null]);
   const d5 = r.features.deals.find((x) => x.deal_id === "5")!;
   eq("a deal with no pushes has 0 pushes and null largest", [d5.close_date_pushes, d5.largest_push_days], [0, null]);
-  eq("unknown deal fields stay null", [d5.decision_maker_engaged, d5.calls_held, d5.next_meeting_at], [null, null, null]);
+  eq("unknown deal fields stay null", [d5.decision_maker_engaged, d5.calls_held, d5.next_meeting_at, hnm(d5)], [null, null, null, null]);
 }
 {
   const r = run({ deals: [dealRow(1, { close_date_pushes: 3, indecision_level: "high", critical_event_captured: false })] });
   eq("a plain numeric push count is accepted defensively", [r.features.deals[0].close_date_pushes, r.features.deals[0].largest_push_days], [3, null]);
   eq("Fathom-derived fields pass through when a row carries them", [r.features.deals[0].indecision_level, r.features.deals[0].critical_event_captured], ["high", false]);
+}
+{
+  /* has_next_meeting — the deal-health flag: true booked, false known absent, null unknown (unknown never warns) */
+  const r = run({
+    deals: [
+      dealRow(1, { next_meeting_at: "2026-09-20T10:00:00Z" }),
+      dealRow(2),
+      dealRow(3, { activities_read: true }),
+      dealRow(4, { raw: { activities_read: true } }),
+      dealRow(5, { raw: { activities_read: "yes" } }),
+      dealRow(6, { activities_read: false }),
+      dealRow(7, { next_meeting_at: "2026-09-20T10:00:00Z", activities_read: true }),
+      dealRow(8, { raw: [true] }),
+      dealRow(9, { next_meeting_at: "" }),
+    ],
+  });
+  const by = (id: number) => hnm(r.features.deals.find((d) => d.deal_id === String(id)));
+  eq("next_meeting_at set → has_next_meeting true", by(1), true);
+  eq("no next_meeting_at and no marker → null (a missing activity is not evidence)", by(2), null);
+  eq("activities_read column true → false (known: none booked)", by(3), false);
+  eq("raw.activities_read true → false", by(4), false);
+  eq("raw.activities_read as a non-boolean → null (only an explicit true counts)", by(5), null);
+  eq("activities_read false → null (nothing was read)", by(6), null);
+  eq("a booked meeting wins over the marker", by(7), true);
+  eq("a raw that is not an object carries no marker → null", by(8), null);
+  eq("an empty next_meeting_at is null, not booked", [r.features.deals.find((d) => d.deal_id === "9")?.next_meeting_at, by(9)], [null, null]);
+  check("has_next_meeting is never undefined on a resolved deal", r.features.deals.every((d) => hnm(d) !== undefined));
 }
 
 /* ------------------------------------------------------------------ *

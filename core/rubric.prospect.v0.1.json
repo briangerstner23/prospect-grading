@@ -62,6 +62,7 @@
         "input": "broker_character",
         "fail_when": "flag",
         "mode": "flag",
+        "flag": "Broker character flag",
         "basis": "reasoned",
         "ruling_note": "PRO-2r (2026-09-07): character is NOT a grading input. PRO-2r-a is open: does it survive as a safety gate that never scores? Until ruled it is a FLAG only — visible, never scoring, never parking. Switch mode to 'park' if Brian rules the safety valve in."
       },
@@ -71,8 +72,9 @@
         "input": "geography_ok",
         "fail_when": false,
         "mode": "off",
+        "flag": "Geography flag",
         "basis": "reasoned",
-        "note": "Added by the 9 Sep research brief; no ruling. Off until a territory list exists."
+        "note": "Added by the 9 Sep research brief; no ruling. Off until a territory list exists. `flag` is the text raised should the mode be switched to flag."
       }
     }
   },
@@ -214,10 +216,11 @@
     "confidence": {
       "rules": [
         { "label": "High", "when": "headcount_label == evidence AND wl_signal != null" },
+        { "label": "Medium", "when": "headcount_label == evidence" },
         { "label": "Medium", "when": "headcount_label == inferred OR (headcount == null AND stated_ceiling != null)" },
         { "label": "Low", "otherwise": true }
       ],
-      "basis": "locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch), Medium if inferred, Low if guessed"
+      "basis": "locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch) and the WL signal is known, Medium if the headcount is evidence but the WL signal is unknown or the headcount is inferred, Low if guessed"
     },
     "snapshot_at_signing": {
       "fields": ["p10_12m", "p50_12m", "p90_12m", "p10_24m", "p50_24m", "p90_24m", "p_35k_12m", "p_100k_24m"],
@@ -228,11 +231,16 @@
   "signals": {
     "ruling": "Research §7 catalog; computed, not stamped by hand. Decay on behaviour only (MadKudu: weight * max(0, 1 - age_days / lifespan_days)). Fit never decays.",
     "decay_formula": "weight_now = decays ? weight * max(0, 1 - age_days / lifespan_days) : (age_days <= lifespan_days ? weight : 0)",
+    "top_n": 5,
+    "top_n_note": "How many live positive signals the scorecard lists, strongest first. Display only; the decayed total counts every signal.",
     "catalog": {
       "referral_warm_intro": { "label": "Warm intro or referral", "weight": 10, "lifespan_days": 90, "decays": true, "strength": "strong", "sla_hours": 48 },
       "champion_job_change": { "label": "Past champion or contact moved to a new agency", "weight": 9, "lifespan_days": 90, "decays": true, "strength": "strong", "sla_hours": 72 },
       "quote_requested": { "label": "Quote requested", "weight": 9, "lifespan_days": 14, "decays": true, "strength": "strong", "sla_hours": 8 },
       "quote_sent": { "label": "Quote sent", "weight": 8, "lifespan_days": 30, "decays": true, "strength": "strong" },
+      "verbally_accepted": { "label": "Quote verbally accepted", "weight": 8, "lifespan_days": 30, "decays": true, "strength": "strong" },
+      "pa_sent": { "label": "Project agreement sent", "weight": 8, "lifespan_days": 30, "decays": true, "strength": "strong" },
+      "quote_lost": { "label": "Quote lost", "weight": -4, "lifespan_days": 180, "decays": true, "strength": "negative", "note": "outcome of a quote; a reason to re-qualify, not a gate" },
       "orbit_verbally_accepted": { "label": "Quote verbally accepted (Orbit)", "weight": 8, "lifespan_days": 30, "decays": true, "strength": "strong" },
       "orbit_pa_sent": { "label": "Project agreement sent (Orbit)", "weight": 8, "lifespan_days": 30, "decays": true, "strength": "strong" },
       "orbit_pa_signed": { "label": "Project agreement signed (Orbit) — promotion pending", "weight": 8, "lifespan_days": 60, "decays": false, "strength": "strong", "flag": "PA signed — promotion pending (PRO-18)" },
@@ -280,23 +288,25 @@
   "deal_health": {
     "ruling": "Research §Read 4: rules, not a model. Gong-style warnings with thresholds from WLIQ's own stage medians once Pipedrive is readable; defaults below until then.",
     "default_stage_median_days": 21,
+    "params_note": "Every threshold a rule uses sits in its `params`, by name; the `test` is the same rule in prose. The engine reads `params` and nothing else — a number typed only into the prose does not move the behaviour.",
     "red_when_any": [
-      { "id": "DH-DARK", "test": "days since last buyer-initiated touch >= 21 AND no next meeting booked", "message": "21+ days without a buyer touch and nothing scheduled" },
-      { "id": "DH-PUSHES", "test": "close_date_pushes >= 3 OR largest_push_days > 21", "message": "Close date pushed three times or once by more than three weeks" },
-      { "id": "DH-STALLED", "test": "days in stage > 2 * stage median", "message": "Stalled in stage at more than twice WLIQ's median" },
-      { "id": "DH-NO-DM", "test": "decision_maker_engaged == false AND calls_held >= 2", "message": "Two or more calls and no decision-maker has attended or replied" },
-      { "id": "DH-INDECISION", "test": "indecision_level == high OR (risk_words_present == true AND next_meeting_at == null)", "message": "High indecision language with no next step" }
+      { "id": "DH-DARK", "test": "days since last buyer-initiated touch >= 21 AND no next meeting booked", "params": { "min_days_dark": 21 }, "message": "21+ days without a buyer touch and nothing scheduled" },
+      { "id": "DH-PUSHES", "test": "close_date_pushes >= 3 OR largest_push_days > 21", "params": { "min_pushes": 3, "max_push_days": 21 }, "message": "Close date pushed three times or once by more than three weeks" },
+      { "id": "DH-STALLED", "test": "days in stage > 2 * stage median", "params": { "median_multiple": 2 }, "message": "Stalled in stage at more than twice WLIQ's median" },
+      { "id": "DH-NO-DM", "test": "decision_maker_engaged == false AND calls_held >= 2", "params": { "min_calls": 2 }, "message": "Two or more calls and no decision-maker has attended or replied" },
+      { "id": "DH-INDECISION", "test": "indecision_level == high OR (risk_words_present == true AND no next meeting booked)", "params": {}, "message": "High indecision language with no next step" }
     ],
     "yellow_when_any": [
-      { "id": "DH-QUIET", "test": "days since last buyer-initiated touch between 14 and 20", "message": "Two weeks quiet" },
-      { "id": "DH-PUSHED", "test": "close_date_pushes between 1 and 2", "message": "Close date has moved" },
-      { "id": "DH-NO-NEXT", "test": "next_meeting_at == null", "message": "No next meeting booked" },
-      { "id": "DH-NO-PRICE", "test": "price_discussed == false AND calls_held >= 2", "message": "Price not discussed by the second call" },
-      { "id": "DH-THIN", "test": "buyer_contacts_30d < 2", "message": "Fewer than two buyer contacts engaged" },
-      { "id": "DH-VELOCITY", "test": "buyer_email_velocity_7d == 0", "message": "No buyer email this week" },
-      { "id": "DH-NO-CRITICAL", "test": "critical_event_captured == false AND calls_held >= 2", "message": "No critical event captured (SPICED)" }
+      { "id": "DH-QUIET", "test": "days since last buyer-initiated touch between 14 and 20", "params": { "min_days": 14, "max_days": 20 }, "message": "Two weeks quiet" },
+      { "id": "DH-PUSHED", "test": "close_date_pushes between 1 and 2", "params": { "min_pushes": 1, "max_pushes": 2 }, "message": "Close date has moved" },
+      { "id": "DH-NO-NEXT", "test": "no next meeting booked", "params": {}, "message": "No next meeting booked" },
+      { "id": "DH-NO-PRICE", "test": "price_discussed == false AND calls_held >= 2", "params": { "min_calls": 2 }, "message": "Price not discussed by the second call" },
+      { "id": "DH-THIN", "test": "buyer_contacts_30d < 2", "params": { "min_contacts": 2 }, "message": "Fewer than two buyer contacts engaged" },
+      { "id": "DH-VELOCITY", "test": "buyer_email_velocity_7d == 0", "params": { "max_emails": 0 }, "message": "No buyer email this week" },
+      { "id": "DH-NO-CRITICAL", "test": "critical_event_captured == false AND calls_held >= 2", "params": { "min_calls": 2 }, "message": "No critical event captured (SPICED)" }
     ],
     "unknown_never_warns": true,
+    "next_meeting_note": "'No next meeting booked' is a KNOWN absence: has_next_meeting is false (the CRM activities were read and none is booked), or a booked next_meeting_at has already passed and has_next_meeting is not null. A null next_meeting_at with has_next_meeting null is unknown, and unknown never warns.",
     "stage_exit_criteria_note": "Enforced both in Pipedrive required fields and here, because API writes bypass Pipedrive's checks (R6). Phase 3."
   },
   "override": {
@@ -305,7 +315,9 @@
     "max_tiers_moved": 1,
     "reason_code_required": true,
     "reason_codes": ["data_wrong", "relationship_known", "timing_known", "conflict", "other"],
+    "written_reason_required": true,
     "expiry_default_days": 90,
+    "expires_soon_days": 14,
     "beyond_cap": "refused — the engine rejects an override more than one tier from the computed tier rather than applying it",
     "into_register": true
   },
@@ -334,12 +346,14 @@
       "Service shape unknown",
       "Economics unknown",
       "Broker character flag",
+      "Geography flag",
       "ICP disagrees with derivation",
       "Headcount unknown",
       "Ceiling capped: no climb evidence",
       "PA signed — promotion pending (PRO-18)",
       "Prior grade differs",
       "Stand-in entry",
+      "Override refused: beyond one-tier cap",
       "Override expires soon",
       "Conversation only"
     ],

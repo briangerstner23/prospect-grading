@@ -50,14 +50,17 @@ published page first and open the local copy afterwards, since the session lives
 
 ## How RLS decides what a signer can do
 
-All policies live in `supabase/migrations/20260909120000_prospect_book_schema.sql`. The page
-only shows a form when `pb_members` says the lane exists; the database is the authority and
-refuses anything else, and the page prints the refusal verbatim.
+All policies live in `supabase/migrations/20260909120000_prospect_book_schema.sql`, corrected
+by `20260909120300_prospect_book_fixes.sql`; the two procedures the page calls are
+`pb_merge_accounts` (`20260909120200` / re-issued in `20260909120300`) and
+`pb_review_candidate` (`20260909120400_prospect_book_candidate_review.sql`). The page only
+shows a form when `pb_members` says the lane exists; the database is the authority and refuses
+anything else, and the page prints the refusal verbatim.
 
 | Who | Reads | May write |
 |---|---|---|
 | Any signed-in `@whitelabeliq.com` address (PRO-7) | every `pb_*` table and the two views, except `pb_webhook_inbox` (service role only — raw payloads and transcripts never reach a browser) | `pb_register` rows of kind `dispute`, `proposal`, `note`, under their own email |
-| `pb_members.role = rater` | as above | `pb_facts` inserts with `entered_by` = their own email (append-only: no update, no delete); review `pb_identity_candidates` (status, note, `reviewed_by` = own email — a trigger refuses any other column) |
+| `pb_members.role = rater` | as above | `pb_facts` inserts and `pb_signals` inserts with source `manual`, both with `entered_by` = their own email (append-only: no update, no delete; a trigger re-weights every hand signal from the active rubric's catalog); call `pb_review_candidate` and `pb_merge_accounts` (both check the lane again inside the database) |
 | `pb_members.role = owner` | as above, plus every `pb_members` row | everything a rater may, plus `pb_register` kinds `override`, `decision`, `approval`, `promotion`, and `pb_promotions` |
 | `pb_members.role = viewer`, or no row | as any signer | as any signer (dispute / proposal / note only) |
 | An address outside `whitelabeliq.com` | nothing — every select returns empty | nothing |
@@ -76,14 +79,62 @@ What the page writes, and what happens next:
 - **Set override** (owner) → one `pb_register` row of kind `override` with
   `payload = {tier, expires_at}`, a reason code and a written reason. The engine applies it at
   the next run — or refuses it beyond the one-tier cap and flags the row.
-- **Review match** (owner / rater) → updates `status`, `note`, `reviewed_by` on a
-  `pb_identity_candidates` row. The attachment itself happens in the next ingest; nothing on the
-  page merges accounts (PRO-18).
+- **Add a hand signal** (owner / rater) → one `pb_signals` row with `source = 'manual'` and
+  `entered_by` = the signer. The type is chosen from the **active** rubric's `signals.catalog`
+  (the select shows each entry's label and weight; `pb_rubric_versions where status = 'active'`
+  is read once at boot). The page copies `weight`, `lifespan_days` and `decays` from the
+  catalog entry, and says so in a hint — the database trigger `pb_signals_catalog_guard`
+  overwrites all three (and `expires_at`) from the same catalog anyway, so a weight never comes
+  from a hand. The observed date is recorded as the start of that day; the note travels as
+  `payload.text`. Without a readable active rubric the form is replaced by a notice, because the
+  trigger would refuse the insert for the same reason.
+- **Review match** (owner / rater) → `rpc('pb_review_candidate', { p_candidate, p_decision:
+  'merged' | 'rejected', p_note })`. The procedure carries the decision through and the page
+  prints what it reports: *Orbit client id attached*, *Pipedrive organisation attached; roster
+  certified (PRO-6)*, *merged into <name>* with the moved counts, *Notion client id attached*,
+  *calls attached: n*, or *recorded only*; a refusal is printed verbatim. When a Pipedrive review
+  merges the account into the row that already carries that organisation, the page reloads the
+  roster and opens the surviving row. Every decision is a `pb_register` row of kind `decision`.
+- **Merge into…** (owner / rater) → `rpc('pb_merge_accounts', { p_source: this row, p_target,
+  p_note })`, after a confirm dialog: *This moves every fact, signal, contact, call and deal
+  onto <target> and records the decision under your name. Reads are not moved. Continue?* The
+  survivor is picked by name or domain search over the loaded roster (rows already merged are
+  never offered). On success the page reloads the roster and opens the survivor, with the moved
+  counts in a notice. Reads are never moved: they were computed for the row as it was, and the
+  next scoring run reads the merged row.
+
+Every successful write re-renders the sheet, so the confirmation appears as a one-shot notice at
+the top of the sheet rather than inside the form that submitted it.
+
+## Merged rows
+
+`pb_accounts.book` is `prospect`, `parked`, `promoted` or `merged`. The roster loads only the
+first three: a merged row is history, never a ranked row, and never a merge target. On the
+survivor's sheet a **Merged rows** group (and a line in *Sources*) lists every account whose
+`merged_into` points at it — name, domain, roster source and when — read from `pb_accounts where
+merged_into = <id>`. A `promoted` row stays on the roster and carries a *promoted* chip and its
+promotion date. Following an old link to a merged row (`#account=<id>`) shows a note naming the
+row it was merged into, with a link, instead of an empty sheet.
 
 ## Editing
 
 There is nothing to build. Edit `index.html`, open it, run the workflow. The vocabulary the page
-needs at runtime (tier words, signal labels, year-one bands, reason codes, the flags list) comes
-from the active `pb_rubric_versions` row when one is readable and falls back to the constants at
-the top of the script, which mirror `core/prospect_types.ts` and `core/rubric.prospect.v0.1.json`.
-All text reaches the DOM through `textContent`; the page never sets `innerHTML` from data.
+needs at runtime (tier words, signal labels and the hand-signal catalog, year-one bands, reason
+codes, the flags list) comes from the **active** `pb_rubric_versions` row when one is readable
+and falls back to the constants at the top of the script, which mirror `core/prospect_types.ts`
+and `core/rubric.prospect.v0.1.json`. All text reaches the DOM through `textContent`; the page
+never sets `innerHTML` from data. Potential is shown as `headroom_band`, `year1_band`, `ceiling`
+and `confidence` only; `wallet`, `headroom` and `winnable_share` stay on the scorecard for audit
+and are never rendered.
+
+The pure helpers (sorting by `chase_rank_key`, band lookup, fact-value coercion, the override
+cap warning, the words for what a review or merge reported) sit between the `@pure-start` and
+`@pure-end` markers in the script and touch no DOM, clock, network or page state. A sanity
+script slices that block out of the HTML and runs it under Node in an empty context:
+
+```bash
+node --experimental-strip-types scripts/page_pure_test.ts   # prints "page_pure: N checks, F failed"
+```
+
+Keep new helpers that need no DOM inside the block, and anything they need declared there too —
+a reference to a page global is a failure in that script before it is a bug in a browser.

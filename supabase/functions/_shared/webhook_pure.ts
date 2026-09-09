@@ -1,27 +1,30 @@
 /**
  * WLIQ Prospect Book — the webhook handlers' logic, pure.
  *
- * pb-fathom-webhook and pb-pipedrive-webhook are parse → verify → pure module → write rows.
- * The parsing is in ./ingest/fathom_webhook.ts and ./ingest/pipedrive_webhook.ts; the
- * verification in ./ingest/webhook_signatures.ts. What is left — which headers the inbox
- * keeps, the one approximated Fathom signal, the deal merge, the field map from Vault, the
- * account attach patch — is here and tested under Node.
+ * pb-fathom-webhook and pb-pipedrive-webhook are cap → read → verify → inbox → pure module →
+ * write rows. The parsing is in ./ingest/fathom_webhook.ts and ./ingest/pipedrive_webhook.ts;
+ * the verification in ./ingest/webhook_signatures.ts; the body cap in ./helpers.ts. What is
+ * left — which headers the inbox keeps, what the inbox row holds when verification failed, the
+ * deal merge, the field map from Vault, the account attach patch — is here and tested under Node.
+ *
+ * No signal is raised from an inbound call in Phase 1. The pb_calls row is the record; the
+ * seven-field extraction (a later step, confirmed by a person) is what may read it. An earlier
+ * helper that inferred a "next step agreed" signal from a delivery's action items was removed:
+ * the design does not sanction that inference.
  */
 
-import type { Rubric } from "./core/prospect_types.ts";
 import type { CallRow, FathomIdentityCandidate } from "./ingest/fathom_webhook.ts";
 import type { AccountUpsert, ContactUpsert, FieldMap, IdentityCandidateRow } from "./ingest/pipedrive_webhook.ts";
-import type { HeaderLike, Rec } from "./helpers.ts";
-import { headerSubset, isRec, safeJsonParse, toStr } from "./helpers.ts";
-import { catalogEntry } from "./rubric.ts";
+import type { HeaderLike, ParsedJson, Rec } from "./helpers.ts";
+import { headerSubset, inboxBody, isRec, safeJsonParse, sha256Hex, toStr } from "./helpers.ts";
 import { dealRowForUpsert } from "./sync_pure.ts";
 
 /* ------------------------------------------------------------------ *
  * Inbox headers — a subset, never the whole set (no credentials in the inbox)
  * ------------------------------------------------------------------ */
 
-export const FATHOM_INBOX_HEADERS = ["webhook-id", "webhook-timestamp", "content-type", "user-agent"] as const;
-export const PIPEDRIVE_INBOX_HEADERS = ["content-type", "user-agent", "x-pipedrive-webhook-id"] as const;
+export const FATHOM_INBOX_HEADERS = ["webhook-id", "webhook-timestamp", "content-type", "content-length", "user-agent"] as const;
+export const PIPEDRIVE_INBOX_HEADERS = ["content-type", "content-length", "user-agent", "x-pipedrive-webhook-id"] as const;
 
 /** Fathom: webhook-id, webhook-timestamp and whether a signature header was present — never the signature value. */
 export function fathomInboxHeaders(headers: HeaderLike | null | undefined): Rec {
@@ -48,74 +51,72 @@ export function pipedriveInboxHeaders(headers: HeaderLike | null | undefined): R
 }
 
 /* ------------------------------------------------------------------ *
- * Fathom
+ * The inbox row — the full body only when it is safe to keep
  * ------------------------------------------------------------------ */
 
-/**
- * The payload's action_items exist and are non-empty. Fathom's shape varies (an array, or a
- * string of bullet lines, or an object with `items`); anything else — including an empty
- * array or a blank string — is "no action items". Unknown is never evidence.
- */
-export function hasNonEmptyActionItems(payload: unknown): boolean {
-  if (!isRec(payload)) return false;
-  const v = payload.action_items;
-  if (Array.isArray(v)) return v.some((x) => x !== null && x !== undefined && (typeof x !== "string" || x.trim().length > 0));
-  if (typeof v === "string") return v.trim().length > 0;
-  if (isRec(v)) {
-    const items = v.items ?? v.action_items;
-    return Array.isArray(items) ? items.length > 0 : false;
-  }
-  return false;
-}
-
-export function actionItemCount(payload: unknown): number | null {
-  if (!isRec(payload)) return null;
-  const v = payload.action_items;
-  if (Array.isArray(v)) return v.length;
-  if (typeof v === "string") return v.trim().length ? v.split(/\r?\n/).filter((l) => l.trim().length).length : 0;
-  if (isRec(v)) {
-    const items = v.items ?? v.action_items;
-    return Array.isArray(items) ? items.length : null;
-  }
-  return null;
-}
+export type InboxStorage = "full" | "digest";
 
 /**
- * The one signal a Fathom delivery may raise in Phase 1: `next_step_agreed`, ONLY when the
- * call attached to an account (high domain match) AND the payload carries non-empty
- * action_items. This is a documented approximation — an action item is not proof a next step
- * was agreed; the seven-field extraction (later step) will supersede it. Weight, lifespan and
- * decay come from the rubric catalog; no catalog entry → no signal.
+ * What pb_webhook_inbox keeps of a delivery.
+ *
+ *   full    a verified delivery; or one that arrived while the secret was NOT configured — the
+ *           replay case: the operator sets the secret, then processes the stored body.
+ *   digest  the secret IS configured (or could not be read) and verification failed. An
+ *           unauthenticated sender does not get to fill the inbox with bodies: only the header
+ *           subset, a sha256 of the body, its byte length and the refusal reason are kept.
  */
-export function fathomNextStepSignal(call: CallRow, accountId: string | null, payload: unknown, rubric: Rubric): Rec | null {
-  if (accountId === null) return null;
-  if (!hasNonEmptyActionItems(payload)) return null;
-  const cat = catalogEntry(rubric, "next_step_agreed");
-  if (cat === null) return null;
-  const observed = call.held_at;
-  if (observed === null) return null;
-  const expires = cat.lifespan_days !== null && cat.lifespan_days > 0 ? new Date(Date.parse(observed) + cat.lifespan_days * 86_400_000) : null;
-  if (expires !== null && Number.isNaN(expires.getTime())) return null;
+export function inboxStorage(verified: boolean, secretConfigured: boolean | null): InboxStorage {
+  if (verified) return "full";
+  return secretConfigured === false ? "full" : "digest";
+}
+
+export interface InboxRowInput {
+  source: "fathom" | "pipedrive";
+  /** The header subset (fathomInboxHeaders / pipedriveInboxHeaders). */
+  headers: Rec;
+  rawBody: string;
+  parsed: ParsedJson;
+  /** Bytes read, from readBodyCapped. */
+  bodyBytes: number;
+  verified: boolean;
+  /** true = a secret is set; false = not configured; null = the Vault lookup itself failed. */
+  secretConfigured: boolean | null;
+  /** The refusal reason when not verified; ignored when verified. */
+  reason: string | null;
+}
+
+/** The pb_webhook_inbox insert row and which storage it got. Async only for the digest. */
+export async function inboxRow(input: InboxRowInput): Promise<{ row: Rec; storage: InboxStorage }> {
+  const storage = inboxStorage(input.verified, input.secretConfigured);
+  const reason = input.reason !== null && input.reason.length > 0 ? input.reason : "not verified";
+  if (storage === "full") {
+    const notJson = input.parsed.ok ? null : `body is not JSON: ${input.parsed.error}`;
+    return {
+      storage,
+      row: {
+        source: input.source,
+        headers: input.headers,
+        body: inboxBody(input.rawBody, input.parsed),
+        verified: input.verified,
+        error: input.verified ? notJson : reason,
+      },
+    };
+  }
   return {
-    account_id: accountId,
-    contact_id: null,
-    source: "fathom",
-    type: "next_step_agreed",
-    observed_at: observed,
-    payload: {
-      recording_id: call.fathom_recording_id,
-      title: call.title,
-      action_item_count: actionItemCount(payload),
-      approximation: "action_items present on the Fathom delivery; superseded by the extraction step (R5)",
+    storage,
+    row: {
+      source: input.source,
+      headers: input.headers,
+      body: { stored: "digest", body_sha256: await sha256Hex(input.rawBody), body_bytes: input.bodyBytes, reason },
+      verified: false,
+      error: reason,
     },
-    evidence_url: call.url,
-    weight: cat.weight,
-    lifespan_days: cat.lifespan_days,
-    decays: cat.decays,
-    entered_by: "system:fathom",
-    expires_at: expires === null ? null : expires.toISOString(),
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Fathom
+ * ------------------------------------------------------------------ */
 
 /** A pb_calls upsert row: the parser's CallRow with the attached account (when any). */
 export function callRowForUpsert(call: CallRow, accountId: string | null): Rec {

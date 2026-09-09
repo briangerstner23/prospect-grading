@@ -56,34 +56,46 @@ Chase order: tier ↓, facts present ↓, urgency ↓, year-1 band ↓, name.
 
 ```
 core/
-  prospect_types.ts              the complete input/output types (written)
-  rubric.prospect.v0.1.json      the versioned spec as data (written)
+  prospect_types.ts              the complete input/output types (do not change)
+  rubric.prospect.v0.1.json      the versioned spec as data
   engine.ts                      PURE: grade(features, rubric, options) → scorecard; fingerprint()
+  classify.ts                    ICP flow, gates — imported by engine.ts
+  decay.ts                       decayed weights, urgency, routing tasks (pure; imported by engine.ts)
+  reason.ts                      the one-sentence reason builder (pure; imported by engine.ts)
   engine_test.ts                 unit tests + golden replay
-  classify.ts                    (optional split) ICP flow, gates — imported by engine.ts
 fixtures/
-  golden.json                    ~12 SYNTHETIC accounts, {id, description, features, expected: {"0.1.0": {...}}}
+  golden.json                    SYNTHETIC accounts, {id, description, features, expected: {"0.1.0": {...}}}
 ingest/
   identity.ts                    norm(), normalizeDomain(), proposeMatches() → merge-queue rows. Never auto-merges.
   resolve_features.ts            pb_current_facts rows + signals + deals + prior grades → ProspectFeatures
   notion_seed.ts                 Notion master row (verbatim property names) → accounts + facts + prior_grade signals
   orbit_quotes.ts                Orbit project rows (status Quote, life_cycle_status, payment details) → signals + identity candidates
+  pipedrive_seed.ts              the read-only Pipedrive pull (orgs, CJ cards, open deals, persons, activities, stages) → the CERTIFIED roster (§4d)
   pipedrive_webhook.ts           webhooks v2 payload → deals / accounts / contacts upserts (field map passed in, never hard-coded)
   fathom_webhook.ts              webhook payload → pb_calls row; external-domain join; seven-field extraction SCHEMA (extraction itself is a later step)
-  decay.ts                       decayed weights, urgency, routing tasks (shared with engine via a pure module)
-  reason.ts                      the one-sentence reason builder (shared with engine)
+  webhook_signatures.ts          Standard Webhooks HMAC and HTTP Basic checks, constant time
+  *_test.ts                      one per module
 supabase/
-  migrations/20260909120000_prospect_book_schema.sql   (written)
-  migrations/20260909120100_prospect_book_cron.sql     pg_cron + pg_net nightly score (written)
-  functions/pb-sync/index.ts             bearer-token bulk ingest of packs: accounts, facts, signals, contacts, deals, calls, identity_candidates
-  functions/pb-score/index.ts            score every account (or ?account=) under the active rubric → pb_reads; refreshes pb_accounts listing columns; writes pb_runs
+  migrations/20260909120000_prospect_book_schema.sql            pb_* tables, default-deny RLS, views, pb_secret()
+  migrations/20260909120100_prospect_book_cron.sql              pg_cron + pg_net nightly score
+  migrations/20260909120200_prospect_book_merge.sql             book 'merged', merged_into; pb_merge_accounts (first version)
+  migrations/20260909120300_prospect_book_fixes.sql             pb_role() SECURITY DEFINER; identity-review guard; hand-signal catalog trigger; views deny anon; pb_merge_accounts(p_source, p_target, p_note)
+  migrations/20260909120400_prospect_book_candidate_review.sql  pb_review_candidate(p_candidate, p_decision, p_note)
+  functions/pb-sync/index.ts             bearer-token bulk ingest of packs: accounts, facts, signals, contacts, deals, calls, identity_candidates (+ rubric upsert)
+  functions/pb-score/index.ts            score every account (or ?account=) under the active rubric → pb_reads; refreshes pb_accounts listing columns; writes pb_runs; preview a draft
   functions/pb-fathom-webhook/index.ts   Standard-Webhooks signature check → pb_webhook_inbox → pb_calls
   functions/pb-pipedrive-webhook/index.ts  HTTP Basic check → pb_webhook_inbox → pb_deals / pb_accounts / pb_contacts
-  functions/_shared/                     db client, secrets (pb_secret RPC), engine import shim
+  functions/_shared/                     db client, secrets (pb_secret RPC), pure helpers (+ helpers_test.ts); core/ and ingest/ are byte-identical COPIES kept by scripts/sync_shared.sh
+  functions/README.md                    per-function deploy file lists; all four deploy with verify_jwt = false
 web/
-  index.html                     the Prospect Book page (single file, no build step; sign-in with Supabase magic link)
+  index.html                     the Prospect Book page (single file, no build step; sign-in with Supabase magic link) · README.md
 explain/
   generate_method.ts             rubric JSON → docs/METHOD.md; method_test.ts fails if stale
+scripts/
+  seed.ts                        the one-time seed composer: collected pulls (scratch dir) → ≤ 150 KB SQL files (§4i; scripts/seed_README.md)
+  sync_shared.sh                 writes / checks the _shared copies
+  test_all.sh                    every *_test.ts (core, ingest, explain, scripts, supabase/functions) + the sync check
+  page_pure_test.ts              the page's pure rendering helpers under Node
 docs/
   DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md (access status) · RUNBOOK.md
 .github/workflows/deploy-pages.yml   publishes web/ to GitHub Pages (manual dispatch; Pages must be enabled once)
@@ -118,8 +130,10 @@ Rules the implementation must honour:
   it produces a flag ("Headcount unknown", "Service shape unknown") where the rubric names one.
 - **Every fired rule is in the trace** with its inputs, its rule text and its basis
   (`ruled` / `unruled_default` / `reasoned`). A reader can re-derive the tier by hand.
-- **Bands are labels.** `year1_band` and `headroom_band` are strings from the rubric; the raw
-  headroom number lives in the trace for audit only and is never shown on the page.
+- **Bands are labels.** `year1_band` and `headroom_band` are strings from the rubric. The raw
+  potential numbers — `wallet`, `headroom`, `winnable_share` — are present on the scorecard's
+  potential block and in the trace for audit and **must never be rendered**; the page shows
+  bands only.
 - **Decay** uses `as_of`, never `Date.now()`. Negative signals with `decays: false` count at
   full weight until `lifespan_days` then drop to zero.
 - **Urgency**: a stated `timing` fact wins; else the decayed-total ladder; else Cold with
@@ -201,30 +215,60 @@ listed in the run's `errors` as "already an Agency Partner — stale prospect ro
 
 ### 4c · Orbit quotes (`ingest/orbit_quotes.ts`)
 
-Input: `list_projects` rows with status Quote (211 open) plus `life_cycle_status` and, where
-readable, `get_project_payment_details.payment_details.project_payment_cost`. Map:
+Input: `list_projects` rows with status Quote (212 open on 9 Sep; one carries a dollar value)
+plus `life_cycle_status` and, where readable,
+`get_project_payment_details.payment_details.project_payment_cost`. Map:
 `quoted` → quote_sent, `refine` → quote_sent, `verbally_accepted` → orbit_verbally_accepted,
 `pa_sent` → orbit_pa_sent, `pa_signed` → orbit_pa_signed; `not_set` / missing → quote_requested.
 `observed_at` = project `created_at`; payload carries project id, url slug, title,
 `quoted_hours`, `project_payment_cost`. Where the cost is > 0 also write fact `quote_amount`
 (evidence). Join on `client_name` → norm(name) against pb_accounts; misses go to
 `pb_identity_candidates` (source orbit, matched_on none) so the acceptance test can list
-"attached or unmatched". Orbit client id is attached when the client list has been loaded.
+"attached or unmatched". Orbit client ids come from the seed's per-prospect `list_clients`
+lookup and attach on `high` (domain) only — on 9 Sep, 19 of the 62 Notion prospects; 19 more
+matched on name alone and sit in the merge queue; 22 have no Orbit record.
 
-### 4d · Pipedrive (`ingest/pipedrive_webhook.ts`, `functions/pb-pipedrive-webhook`)
+### 4d · Pipedrive (`ingest/pipedrive_seed.ts`, `ingest/pipedrive_webhook.ts`, `functions/pb-pipedrive-webhook`)
 
-Webhooks v2 payload: `{ meta: { action: create|change|delete, entity: deal|organization|
-person|activity|note, entity_id, company_id, user_id, timestamp, version: "2.0", webhook_id,
-is_bulk_edit, change_source, attempt }, data: {...}, previous: {...} }`. Field map for custom
-fields is loaded at runtime from `/v2/dealFields` and `/v1/organizationFields` **and passed
-in**; hash keys are never hard-coded (the Grade field `79d0a04a…` with options 414/415/416 is
-recorded in config once readable). Deals whose title starts with `CJ` are `is_cj = true`.
-Close-date changes append to `close_date_pushes`. Organizations upsert pb_accounts by
-`pipedrive_org_id` (attach by domain / norm(name) through identity.ts, otherwise create with
-`roster_source = pipedrive`, `roster_certified = true`). Endpoint auth: HTTP Basic against
-the vault secret `PB_PIPEDRIVE_WEBHOOK_BASIC` (`user:pass`). Every delivery lands in
-`pb_webhook_inbox` first; only verified rows are processed. **Cannot be tested live until the
-token is fixed (PRO-6 blocker).**
+Pipedrive is **connected** (9 Sep, ~17:15 UTC, through a new Pipedrive MCP server; the old
+one is gone). Two pipelines matter: **pipeline 1 = deals** (stages 11 Discovery, 12 Quoted,
+1 Refine/Discussion, 72 Verbally Accepted, 4 PA sent, 68 Unresponsive (30 Days), 46 On Hold)
+and **pipeline 9 = Client Journey cards**, one per company, titled `CJ - <name>` (57 New,
+58 Schedule Sales Call, 59 Sales Call Done, 70 Quoting, 71 Quote Lost, 66 Unqualified/DNC,
+63 Active Client, 64 Inactive, 65 Past, 67 Lost Client, 69 Friends of WLIQ).
+
+**The certified roster (PRO-6)** is defined from the Client Journey cards: every organisation
+whose most recently updated open card is in a prospect stage — 57 / 58 / 59 / 70 / 71 / 66,
+the last of which lands in the `parked` book — plus every organisation on an open pipeline-1
+deal with no card at all (flagged "No CJ card"). Organisations whose card is in a client
+stage (63 / 64 / 65 / 67) are Agency Partners under PRO-10 and never enter the book, even
+with an open deal; Friends of WLIQ is not a sales relationship. On 9 Sep that is 664 open
+prospect-stage cards → **665 roster organisations** (495 prospect, 170 parked). Everything
+`ingest/pipedrive_seed.ts` emits is `roster_source = pipedrive`, `roster_certified = true`;
+Pipedrive's Grade field (High / Medium / Low) becomes a `prior_grade` signal, lead temperature
+is Dimension A's timing fact, stated budget is money, services of interest is specification
+and service shape, organisation type is agency vs direct. Custom fields are keyed by 40-hex
+hash and the new MCP has **no field-definitions endpoint**, so the labels were inferred from
+their values; **`PipedriveKeys` in `ingest/pipedrive_seed.ts` is the configured place for the
+seed's inferred keys** — one object, overridable per run through `opts.keys` — and the Grade
+key `79d0a04a…` (options 414 / 415 / 416) is confirmed live on the cards.
+
+The **webhook** path is separate. Webhooks v2 payload: `{ meta: { action:
+create|change|delete, entity: deal|organization|person|activity|note, entity_id, company_id,
+user_id, timestamp, version: "2.0", webhook_id, is_bulk_edit, change_source, attempt }, data:
+{...}, previous: {...} }`. The parser still takes a **passed-in** field map — read at runtime
+from the Vault secret `PB_PIPEDRIVE_FIELD_MAP`, which a collector writes from
+`/v2/dealFields`, `/v1/organizationFields` and `/v1/personFields` once an API token exists;
+until then custom fields pass through unlabelled. No hash is hard-coded in the parser. Deals
+whose title starts with `CJ` are `is_cj = true`. Close-date changes append to
+`close_date_pushes`. Organizations upsert pb_accounts by `pipedrive_org_id` (attach by
+domain through identity.ts; a name-only resemblance is a review, not a new row; otherwise
+create with `roster_source = pipedrive`, `roster_certified = true`). Endpoint auth: HTTP
+Basic against the vault secret `PB_PIPEDRIVE_WEBHOOK_BASIC` (`user:pass`). Every delivery
+lands in `pb_webhook_inbox` first; only verified rows are processed. **Webhooks cannot be
+created through the MCP**: an operator creates them in Pipedrive (Settings → Tools and apps →
+Webhooks, v2, `deal.*` / `organization.*` / `person.*` / `activity.*`, URL
+`…/functions/v1/pb-pipedrive-webhook`, HTTP Basic = the Vault value) — RUNBOOK §5.
 
 ### 4e · Fathom (`ingest/fathom_webhook.ts`, `functions/pb-fathom-webhook`)
 
@@ -239,7 +283,17 @@ become a call. Parser is defensive about field names (`recording_id` | `id`, `ti
 `external_domains` = normalized domains of external invitees; join to pb_accounts by domain
 (high) else identity candidate. Internal-only calls are skipped, counted in pb_runs. The
 seven-field extraction schema is defined here (`CallFields` type) and left `pending`;
-extraction is a later step and nothing writes to Pipedrive before `confirmed_by`.
+extraction is a later step and nothing writes to Pipedrive before `confirmed_by`. **No signal
+is raised from an inbound call in Phase 1** — not from attendance, not from action items; a
+call is evidence for the extraction step, never a signal by itself. The 9 Sep back-fill
+(12 external calls across 7 prospect domains since 1 Jun 2026) went through the same parser;
+the Briang-account MCP ignores `calendar_invitees_domains`, so the back-fill paged the whole
+team's meetings and matched client-side.
+
+**Both webhook handlers** cap the request body at 1 MB and, once their secret is configured,
+store only a hash of a body that fails verification; while the secret is unset the full body
+is kept so it can be replayed after the secret is set. The signature and the Basic credential
+themselves are never stored.
 
 ### 4f · Sync (`functions/pb-sync`)
 
@@ -264,6 +318,20 @@ returns the tier diff against the current reads (the preview-before-activate pat
 `20260909120100_prospect_book_cron.sql` enables `pg_cron` and `pg_net` and schedules
 `pb-score` nightly (06:15 UTC) with the bearer read from vault. Decay is inside scoring, so
 one job covers both.
+
+### 4i · The one-time seed (`scripts/seed.ts`)
+
+Generate only. The composer reads the collected pulls from a scratch directory (never the
+repository), runs them through the mappers above, and writes numbered SQL files of ≤ 150 KB,
+one transaction each, that the orchestrator applies through `execute_sql`, one file per call,
+in order. Its rules: the **PRO-10 cross-check** drops any Pipedrive organisation, Notion row or
+Orbit quote whose name is a Client Book key (read-only reference pull; nothing is imported);
+Notion rows attach to Pipedrive organisations **on domain only** — a name-only match is a
+separate row plus a merge-queue entry; Orbit client ids attach on `high` only; **fact
+precedence**: Pipedrive wins where both speak, Notion fills what Pipedrive lacks (`wl_signal`,
+`stated_ceiling`, `climb_signals` always from Notion; `headcount` and `service_shape` only when
+Pipedrive has none), expressed as `created_at` order so `pb_current_facts` is deterministic;
+nothing is ever merged. Details and the input catalogue: `scripts/seed_README.md`.
 
 ---
 
@@ -308,15 +376,17 @@ replaced by Supabase Edge Functions + pg_cron — the same single-system pattern
 uses. Secrets live in Supabase Vault (`pb_secret()` RPC, service role only) because the MCP
 has no secrets-set tool.
 
-| Access | State on 9 Sep | Who fixes it |
+| Access | State on 9 Sep (evening) | What remains, and who |
 |---|---|---|
-| Pipedrive API | **Auth fails** (MCP `get_pipelines` → "authentication failed"); roster source of truth (PRO-6) is unreadable | Brian / admin: regenerate the token or complete the OAuth grant |
-| Fathom webhook | Creatable via the Briang-account MCP once the endpoint is deployed | this build |
-| Fathom REST back-fill | Per-user key; MCP `list_meetings` with `calendar_invitees_domains` and `include_transcript` covers the back-fill in-session | this build (in-session), Brian for an admin key |
-| Orbit | MCP only (Orbit 1.0 API not ready); reads happen in-session and post to pb-sync or SQL | this build |
-| Apollo | MCP available; **no credits spent without a fresh confirmation** (2,573 lead credits left; direct-dial at 0 until 3 Oct) | Brian confirms a budget |
+| Pipedrive API | **Connected** (~17:15 UTC, new MCP server). Read-only pull done; roster of 665 organisations derived (§4d); Grade field confirmed live | Webhooks: an operator creates them in the Pipedrive UI (RUNBOOK §5). The MCP is an OAuth grant the app cannot reuse, so `PB_PIPEDRIVE_API_TOKEN` (field-map collector, later write-back) still needs Brian; nothing in Phase 0/1 waits on it |
+| Fathom webhook | Creatable via the Briang-account MCP once `pb-fathom-webhook` is deployed | this build (deploy, then `create_webhook`, then the `whsec_…` into Vault) |
+| Fathom back-fill | **Done in-session**: 12 external calls across 7 prospect domains since 1 Jun 2026 (the MCP ignores `calendar_invitees_domains`; paged the whole team, matched client-side) | — |
+| Orbit | **Done in-session**: 19 of 62 Notion prospects matched an Orbit client on domain, 19 on name only (merge queue), 22 none; 212 open quotes, 1 with a dollar value | — (Orbit 1.0 API still not ready for a function) |
+| Apollo | MCP available; **no credits spent** | Brian confirms a budget; not needed for Phase 0/1 |
 | Gmail inbound counts | MCP only; a collector job, not an edge function | later phase |
-| GitHub Pages | Needs enabling once on the repo (Settings → Pages → GitHub Actions); repo is **public** | Brian |
+| GitHub Pages | Not yet enabled | Brian: Settings → Pages → GitHub Actions, once; then the Pages URL into Supabase Auth |
+| Repository visibility | **Public**; no prospect data enters it | Brian decides; until then the no-data rule stands |
+| Supabase | Five migrations applied; `pb_rubric_versions` 0.1.0 active; `PB_SYNC_TOKEN` in Vault; `pb_members` owner rows in | Deploy the four functions with `verify_jwt = false` (this build); rater emails (Brian); the seed run (orchestrator) |
 
 ---
 

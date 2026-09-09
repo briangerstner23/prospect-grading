@@ -243,7 +243,7 @@ footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;fle
 
   <footer>
     <div>Reads change only when the nightly run scores; this page never grades.</div>
-    <div>Not public: anyone at WLIQ who signs in reads the book (PRO-7). Facts, disputes, overrides and match reviews are recorded under the signer's own name and enter the book at the next run.</div>
+    <div>Not public: anyone at WLIQ who signs in reads the book (PRO-7). Facts, hand signals, disputes, overrides, match reviews and merges are recorded under the signer's own name; reads change only at the next run.</div>
   </footer>
 </div>
 
@@ -263,8 +263,6 @@ const REASON_CODES = ["data_wrong", "relationship_known", "timing_known", "confl
 const EVIDENCE_LABELS = ["evidence", "inferred", "unknown"];
 const FACT_SOURCES = ["rater", "fathom", "pipedrive", "orbit", "apollo", "gmail", "notion_master", "sheet", "skill", "viq", "client_book"];
 const CLIMB_FALLBACK = ["2nd person engaged", "Strategy question asked", "2nd project scoped", "Referred someone", "Structural break"];
-const MONEY_KEYS = new Set(["deal_size_estimate", "avg_project_size", "quote_amount", "trailing_12m_revenue"]);
-const RATIO_KEYS = new Set(["recurring_revenue_share", "serviceable_share"]);
 
 /** ProspectFeatures keys a person may enter as a pb_facts row (labels come from evidence_label, not from a key). */
 const FACT_KEYS = [
@@ -311,9 +309,14 @@ const FACT_KEYS = [
 ];
 
 /* @pure-start ------------------------------------------------------ *
- * Pure helpers: no DOM, no clock, no network. The sanity script extracts
- * this block and runs it under Node.
+ * Pure helpers: no DOM, no clock, no network, no page state. Everything
+ * they need is declared inside this block. scripts/page_pure_test.ts
+ * slices the block out of this file and runs it under Node in an empty
+ * context, so a reference to anything outside it fails there first.
  * ------------------------------------------------------------------ */
+const MONEY_KEYS = new Set(["deal_size_estimate", "avg_project_size", "quote_amount", "trailing_12m_revenue"]);
+const RATIO_KEYS = new Set(["recurring_revenue_share", "serviceable_share"]);
+
 function compareKey(a, b) {
   const n = Math.max(a.length, b.length);
   for (let i = 0; i < n; i++) {
@@ -465,6 +468,57 @@ function overrideCapWarning(tier, computedTier, order) {
   if (d > 1) return `More than one tier from the computed anticipated ${computedTier}. The engine will refuse it at the next run and flag the row "Override refused: beyond one-tier cap".`;
   return null;
 }
+
+/** The active rubric's signal catalog as [type, entry] pairs a person may enter. An entry without a numeric weight cannot be weighted and is left out. */
+function catalogEntries(catalog) {
+  if (!catalog || typeof catalog !== "object") return [];
+  return Object.entries(catalog).filter(([, v]) => v && typeof v === "object" && typeof v.weight === "number");
+}
+
+/** A catalog entry's weight, lifespan and decay, in words. */
+function signalCatalogWords(entry) {
+  if (!entry || typeof entry.weight !== "number") return "not in the catalog";
+  const sign = entry.weight < 0 ? `negative, weight ${entry.weight} — a downgrade, counted at full weight` : entry.weight === 0 ? "weight 0 — informational, never scores" : `weight ${entry.weight}`;
+  const life = typeof entry.lifespan_days === "number" && entry.lifespan_days > 0 ? `expires after ${entry.lifespan_days} days` : "never expires";
+  const decay = entry.decays === false ? "does not decay" : "decays over its lifespan";
+  return `${sign}; ${life}; ${decay}.`;
+}
+
+/** Rows another row may be merged into: every other roster row whose name or domain contains the query, in name order, at most `limit`. */
+function mergeTargets(accounts, selfId, query, limit = 25) {
+  const q = String(query ?? "").trim().toLowerCase();
+  return (accounts ?? [])
+    .filter((x) => x && x.id !== selfId && x.book !== "merged" && (!q || [x.name, x.domain].filter(Boolean).join(" ").toLowerCase().includes(q)))
+    .sort((x, y) => String(x.name ?? "").localeCompare(String(y.name ?? ""), "en", { sensitivity: "base" }))
+    .slice(0, limit);
+}
+
+/** pb_merge_accounts' `moved` counts as one line: "3 facts, 2 signals, …". */
+function movedWords(moved) {
+  if (!moved || typeof moved !== "object") return "nothing counted";
+  const parts = Object.entries(moved).filter(([, n]) => typeof n === "number").map(([k, n]) => `${n} ${k}`);
+  return parts.length ? parts.join(", ") : "nothing counted";
+}
+
+/** What pb_review_candidate reports it did, as short clauses. nameOf(id) → a roster name, or null. */
+function reviewEffectWords(result, nameOf) {
+  if (!result || typeof result !== "object") return ["recorded"];
+  if (result.decision === "rejected") return ["rejected; nothing moved"];
+  const e = result.effect && typeof result.effect === "object" ? result.effect : {};
+  const out = [];
+  if (e.merged_into) {
+    const nm = typeof nameOf === "function" ? nameOf(e.merged_into) : null;
+    out.push(`merged into ${nm ?? "the row that already carries this Pipedrive organisation"}`);
+    out.push(`moved ${movedWords(e.moved)}`);
+  } else if (e.pipedrive_org_id_set) out.push("Pipedrive organisation attached; roster certified (PRO-6)");
+  if (e.orbit_client_id_set === true) out.push("Orbit client id attached");
+  else if (e.orbit_client_id_set === false) out.push("Orbit client id left as it was (the row already had one)");
+  if (e.notion_client_id_set === true) out.push("Notion client id attached");
+  else if (e.notion_client_id_set === false) out.push("Notion client id left as it was (the row already had one)");
+  if (typeof e.calls_attached === "number") out.push(`calls attached: ${e.calls_attached}`);
+  if (e.recorded_only) out.push("recorded only — this source attaches nothing");
+  return out.length ? out : ["recorded"];
+}
 /* @pure-end -------------------------------------------------------- */
 
 /* ------------------------------------------------------------------ *
@@ -492,6 +546,8 @@ function setNotice(el, kind, text, detail) {
   el.replaceChildren(text, detail ? h("pre", null, detail) : null);
   show(el, true);
 }
+/** A one-shot notice shown at the top of the sheet on its next render. Every write re-renders the sheet, so an in-form notice would vanish with the form. */
+function flash(kind, text, detail) { state.flash = { kind, text, detail: detail || null }; }
 function linkOrText(url, label) {
   const u = safeUrl(url);
   return u ? h("a", { href: u, target: "_blank", rel: "noopener noreferrer" }, label ?? u) : (url ? String(url) : null);
@@ -511,9 +567,9 @@ function plusDaysIso(days) { const d = new Date(); d.setUTCDate(d.getUTCDate() +
  * ------------------------------------------------------------------ */
 const state = {
   db: null, session: null, email: null, member: null, role: null, wliq: false,
-  rubric: null, accounts: [], reads: new Map(), lastRun: null,
+  rubric: null, rubricVersion: null, accounts: [], reads: new Map(), lastRun: null,
   filters: { q: "", tier: "", status: "", flag: "", source: "" },
-  booted: false, current: null,
+  booted: false, current: null, flash: null,
 };
 const tiersBestFirst = () => (state.rubric?.vocabulary?.tiers ?? TIER_ORDER).slice().reverse();
 const tierOrder = () => state.rubric?.vocabulary?.tiers ?? TIER_ORDER;
@@ -603,23 +659,25 @@ async function loadMember() {
   const mine = (data ?? []).find((m) => String(m.email).toLowerCase() === state.email && m.active !== false) ?? null;
   state.member = mine;
   state.role = mine?.role ?? null;
-  const lane = state.role === "owner" ? "owner lane — enters facts, sets overrides, reviews matches"
-    : state.role === "rater" ? "rater lane — enters facts and reviews matches"
+  const lane = state.role === "owner" ? "owner lane — enters facts and hand signals, sets overrides, reviews matches, merges rows"
+    : state.role === "rater" ? "rater lane — enters facts and hand signals, reviews matches, merges rows"
     : state.role === "viewer" ? "viewer — reads; may raise a dispute or a note"
     : "no write lane on record — reads; may raise a dispute or a note";
   $("lane").textContent = "· " + lane;
 }
 
+/** The active rubric, read once. Its vocabulary wins over the constants above, and its signals.catalog is the only source of hand-signal types (the database checks the same row). */
 async function loadRubric() {
-  const { data, error } = await state.db.from("pb_rubric_versions").select("version,status,spec,activated_at,created_at").order("created_at", { ascending: false });
+  const { data, error } = await state.db.from("pb_rubric_versions").select("version,status,spec,activated_at,created_at").eq("status", "active").order("created_at", { ascending: false }).limit(1);
   if (error) return; // the page works without it: vocab falls back to the constants above
-  const active = (data ?? []).find((r) => r.status === "active") ?? (data ?? [])[0] ?? null;
+  const active = data?.[0] ?? null;
   state.rubric = active?.spec ?? null;
+  state.rubricVersion = active?.version ?? null;
 }
 
 async function loadBook() {
   const [acc, reads, runs] = await Promise.all([
-    state.db.from("pb_accounts").select("*").order("name"),
+    state.db.from("pb_accounts").select("*").in("book", ["prospect", "parked", "promoted"]).order("name"), // 'merged' rows are history, read only from a survivor's sheet
     state.db.from("pb_current_reads").select("*"),
     state.db.from("pb_runs").select("kind,status,started_at,finished_at,source").eq("kind", "score").order("started_at", { ascending: false }).limit(1),
   ]);
@@ -726,7 +784,17 @@ async function openSheet(id) {
   const sheet = $("sheet");
   show(sheet, true);
   if (!account) {
-    sheet.replaceChildren(h("a", { class: "back", href: "#" }, "← Roster"), h("div", { class: "notice warn" }, "No account with that id is readable for you."));
+    // Not on the roster: a row merged into another (an old link or bookmark), or nothing readable for this signer.
+    const { data: gone } = await state.db.from("pb_accounts").select("id,name,book,merged_into,updated_at").eq("id", id).maybeSingle();
+    if (window.location.hash !== "#account=" + encodeURIComponent(id)) return;
+    if (gone?.book === "merged" && gone.merged_into) {
+      const into = state.accounts.find((a) => a.id === gone.merged_into);
+      sheet.replaceChildren(h("a", { class: "back", href: "#" }, "← Roster"),
+        h("div", { class: "notice info" }, `${gone.name ?? "This row"} was merged into `, h("a", { href: "#account=" + encodeURIComponent(gone.merged_into) }, into?.name ?? "another row"),
+          ` on ${fmtDate(gone.updated_at)}. Its facts, signals, contacts, calls and deals live there now; its reads stay with it as history.`));
+    } else {
+      sheet.replaceChildren(h("a", { class: "back", href: "#" }, "← Roster"), h("div", { class: "notice warn" }, "No account with that id is readable for you."));
+    }
     return;
   }
   sheet.replaceChildren(h("a", { class: "back", href: "#" }, "← Roster"), h("div", { class: "sub" }, `Loading ${account.name}…`));
@@ -736,7 +804,7 @@ async function openSheet(id) {
     if (order) s = s.order(order.col, { ascending: !!order.asc, nullsFirst: false });
     return s;
   };
-  const [facts, factSources, signals, calls, deals, register, candidates] = await Promise.all([
+  const [facts, factSources, signals, calls, deals, register, candidates, merged] = await Promise.all([
     q("pb_current_facts", "*", { col: "key", asc: true }),
     q("pb_facts", "source,observed_at,created_at,entered_by,stand_in"),
     q("pb_signals", "*", { col: "observed_at" }),
@@ -744,10 +812,11 @@ async function openSheet(id) {
     q("pb_deals", "pipedrive_deal_id,title,stage_name,stage_entered_at,value,currency,close_date,close_date_pushes,status,won_time,lost_time,is_cj,last_buyer_touch_at,next_meeting_at,decision_maker_engaged,price_discussed,calls_held,health,health_reasons,updated_at", { col: "updated_at" }),
     q("pb_register", "*", { col: "created_at" }),
     q("pb_identity_candidates", "*", { col: "created_at" }),
+    db.from("pb_accounts").select("id,name,domain,roster_source,updated_at").eq("merged_into", id).order("updated_at", { ascending: false }),
   ]);
   if (window.location.hash !== "#account=" + encodeURIComponent(id)) return; // the reader moved on
-  const data = { facts: facts.data ?? [], factSources: factSources.data ?? [], signals: signals.data ?? [], calls: calls.data ?? [], deals: deals.data ?? [], register: register.data ?? [], candidates: candidates.data ?? [] };
-  const errors = [["pb_current_facts", facts.error], ["pb_facts", factSources.error], ["pb_signals", signals.error], ["pb_calls", calls.error], ["pb_deals", deals.error], ["pb_register", register.error], ["pb_identity_candidates", candidates.error]].filter(([, e]) => e);
+  const data = { facts: facts.data ?? [], factSources: factSources.data ?? [], signals: signals.data ?? [], calls: calls.data ?? [], deals: deals.data ?? [], register: register.data ?? [], candidates: candidates.data ?? [], merged: merged.data ?? [] };
+  const errors = [["pb_current_facts", facts.error], ["pb_facts", factSources.error], ["pb_signals", signals.error], ["pb_calls", calls.error], ["pb_deals", deals.error], ["pb_register", register.error], ["pb_identity_candidates", candidates.error], ["pb_accounts (merged rows)", merged.error]].filter(([, e]) => e);
   state.current = { account, read: state.reads.get(id) ?? null, data };
   renderSheet(errors);
 }
@@ -772,11 +841,15 @@ function renderSheet(errors) {
   const sheet = $("sheet");
   const parts = [h("a", { class: "back", href: "#" }, "← Roster")];
 
+  if (state.flash) {
+    parts.push(h("div", { class: "notice " + state.flash.kind, role: "status" }, state.flash.text, state.flash.detail ? h("pre", null, state.flash.detail) : null));
+    state.flash = null;
+  }
   if (errors.length) parts.push(h("div", { class: "notice bad" }, "Some tables could not be read:", h("pre", null, errors.map(([t, e]) => `${t}: ${e.message}`).join("\n"))));
 
   /* header */
   parts.push(h("div", { class: "sheet-head" },
-    h("div", { class: "title" }, h("h2", null, a.name ?? "(unnamed)"), tierChip(read), sc ? statusChip(sc.status) : null, sc ? urgencyChip(sc.signals?.urgency) : null),
+    h("div", { class: "title" }, h("h2", null, a.name ?? "(unnamed)"), tierChip(read), a.book === "promoted" ? chip("promoted", "c-good") : null, sc ? statusChip(sc.status) : null, sc ? urgencyChip(sc.signals?.urgency) : null),
     sc?.validation === "UNVALIDATED" ? h("div", { class: "notice warn" }, h("b", null, "UNVALIDATED (PRO-8)"), " — this anticipated tier is labelled, not withheld; it may not be the sole basis for a decision.") : null,
     sc ? h("p", { style: "max-width:80ch" }, sc.reason) : h("p", null, "Not yet scored. The nightly run will grade this account from the facts on record; nothing on this page grades."),
     sc ? h("div", { class: "chips" }, ...(sc.flags ?? []).map(flagChip)) : null,
@@ -786,6 +859,7 @@ function renderSheet(errors) {
       metaItem("Roster source", a.roster_source ? `${a.roster_source} · ${a.roster_certified ? "certified (Pipedrive carries it)" : "uncertified (PRO-6)"}` : "—"),
       metaItem("Relationship", a.relationship_type ?? "unknown"),
       metaItem("Book", a.book ?? "—"),
+      a.book === "promoted" && a.promoted_at ? metaItem("Promoted", fmtDate(a.promoted_at)) : null,
       a.lineage ? metaItem("Lineage", a.lineage) : null,
       metaItem("Last scored", read ? `${fmtDateTime(read.run_at)} · rubric ${read.rubric_version}` : "never"),
       read ? metaItem("Rubric fingerprint", h("span", { class: "mono" }, read.rubric_fingerprint)) : null,
@@ -808,14 +882,16 @@ function renderSheet(errors) {
   parts.push(dealsList(data.deals, sc));
   parts.push(registerList(data.register));
   parts.push(mergeQueue(data.candidates));
+  if (data.merged.length) parts.push(mergedRows(data.merged));
 
-  /* write paths, shown by lane; RLS is the authority */
+  /* write paths, shown by lane; RLS and the two procedures are the authority */
   const forms = [];
-  if (canEnterFacts()) forms.push(factForm(a));
+  if (canEnterFacts()) forms.push(factForm(a), signalForm(a));
   forms.push(registerForm(a));
   if (canOverride()) forms.push(overrideForm(a, sc));
+  if (canReview()) forms.push(mergeForm(a));
   parts.push(group("Act", null,
-    canEnterFacts() ? "Everything here is recorded under your name and enters the book at the next nightly run. A refused write shows the database's own reason." : "Any signer may raise a dispute, a proposal or a note under their own name. Facts and overrides need a rater or owner lane in pb_members.",
+    canEnterFacts() ? "Everything here is recorded under your name. Facts, signals and overrides enter the book at the next nightly run; a merge moves rows at once. A refused write shows the database's own reason." : "Any signer may raise a dispute, a proposal or a note under their own name. Facts, hand signals, overrides and merges need a rater or owner lane in pb_members.",
     h("div", { class: "grid2" }, ...forms)));
 
   sheet.replaceChildren(...parts);
@@ -845,6 +921,7 @@ function sourcesPanel(a, data) {
   rows.push(["Deals (Pipedrive)", data.deals.length ? `${data.deals.length} deal${data.deals.length === 1 ? "" : "s"} · ${openDeals} open · latest change ${fmtDate(latestOf(data.deals.map((d) => d.updated_at)))}` : "none mirrored"]);
   rows.push(["Register", data.register.length ? `${data.register.length} entr${data.register.length === 1 ? "y" : "ies"} · latest ${fmtDate(latestOf(data.register.map((r) => r.created_at)))}` : "none"]);
   rows.push(["Merge queue", data.candidates.length ? `${data.candidates.filter((c) => c.status === "proposed").length} awaiting review of ${data.candidates.length}` : "none"]);
+  rows.push(["Merged rows", data.merged.length ? `${data.merged.length} row${data.merged.length === 1 ? "" : "s"} folded into this one` : "none"]);
   const ids = [
     ["Pipedrive", a.pipedrive_org_id != null], ["Orbit", a.orbit_client_id != null], ["Notion master", a.notion_client_id != null || a.notion_page_id != null], ["Apollo", a.apollo_org_id != null],
   ];
@@ -1053,19 +1130,32 @@ function mergeQueue(cands) {
   return group("Merge queue", `${cands.length}`, "Proposed matches from other systems. A person confirms; nothing merges on its own (PRO-18).", list(items, "No proposed match for this account."));
 }
 
+/** The database carries a review through (pb_review_candidate): an Orbit id attached, a Pipedrive row merged, calls attached. The page only shows what it reports. */
 function reviewControls(c) {
   const note = h("input", { type: "text", placeholder: "Note (optional)", "aria-label": "Review note" });
   const msg = h("div", { class: "notice hidden" });
-  const act = async (status) => {
+  const act = async (decision) => {
     for (const b of buttons) b.disabled = true;
-    const { data, error } = await state.db.from("pb_identity_candidates").update({ status, note: note.value.trim() || null, reviewed_by: state.email }).eq("id", c.id).select("id");
-    if (error) { setNotice(msg, "bad", "Refused: " + error.message, [error.code && `code ${error.code}`, error.details, error.hint].filter(Boolean).join("\n")); for (const b of buttons) b.disabled = false; return; }
-    if (!data || !data.length) { setNotice(msg, "warn", "No row was changed. Row Level Security may have refused the update without an error — your lane in pb_members decides."); for (const b of buttons) b.disabled = false; return; }
-    setNotice(msg, "ok", `Recorded as ${status} under ${state.email}. The attachment itself happens in the next ingest; nothing on this page merges rows.`);
-    await refreshSheet();
+    const { data, error } = await state.db.rpc("pb_review_candidate", { p_candidate: c.id, p_decision: decision, p_note: note.value.trim() || null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); for (const b of buttons) b.disabled = false; return; }
+    const nameOf = (id) => state.accounts.find((x) => x.id === id)?.name ?? null;
+    const words = reviewEffectWords(data, nameOf);
+    flash("ok", `${decision === "merged" ? "Confirmed" : "Rejected"} the ${c.source} match "${c.source_name ?? c.source_id ?? "(no name)"}" under ${state.email} — ${words.join("; ")}. The decision is in the register.`);
+    await loadBook(); // identifiers, certification or the roster itself changed
+    const into = data?.effect?.merged_into;
+    if (into && into !== state.current?.account.id) window.location.hash = "#account=" + encodeURIComponent(into); // this row was merged into the certified one
+    else await refreshSheet();
   };
   const buttons = [h("button", { type: "button", class: "primary", onclick: () => act("merged") }, "Confirm match"), h("button", { type: "button", class: "danger", onclick: () => act("rejected") }, "Reject")];
   return h("div", { class: "form", style: "margin-top:.5rem" }, h("div", { class: "inline" }, note, ...buttons), msg);
+}
+
+/* ---- rows merged into this one (pb_accounts.merged_into) ---- */
+function mergedRows(rows) {
+  const items = rows.map((m) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, m.name ?? "(unnamed)"), chip("merged", "c-info"), m.roster_source ? chip(`roster: ${m.roster_source}`) : null),
+    h("div", { class: "sub" }, [m.domain ? `domain ${m.domain}` : null, `merged ${fmtDateTime(m.updated_at)}`].filter(Boolean).join(" · "))));
+  return group("Merged rows", `${rows.length}`, "Rows folded into this one. Their facts, signals, contacts, calls and deals now belong here; their reads stay with them as history, and the register records who decided.", list(items, "No row has been merged into this one."));
 }
 
 async function refreshSheet() { if (state.current) await openSheet(state.current.account.id); }
@@ -1136,7 +1226,7 @@ function factForm(a) {
     const { error } = await state.db.from("pb_facts").insert(row);
     submit.disabled = false;
     if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
-    setNotice(msg, "ok", `Recorded ${def.key} under ${state.email}. The read on this page has not changed; the nightly run scores it.`);
+    flash("ok", `Recorded ${def.key} under ${state.email}. The read on this page has not changed; the nightly run scores it.`);
     form.reset(); renderValue(); observed.value = todayIso();
     await refreshSheet();
   });
@@ -1162,7 +1252,7 @@ function registerForm(a) {
     const { error } = await state.db.from("pb_register").insert(row);
     submit.disabled = false;
     if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
-    setNotice(msg, "ok", `Recorded a ${row.kind} under ${state.email}. It changes no read on its own.`);
+    flash("ok", `Recorded a ${row.kind} under ${state.email}. It changes no read on its own.`);
     form.reset();
     await refreshSheet();
   });
@@ -1196,11 +1286,99 @@ function overrideForm(a, sc) {
     const { error } = await state.db.from("pb_register").insert(row);
     submit.disabled = false;
     if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
-    setNotice(msg, "ok", `Override to anticipated ${tier.value} recorded under ${state.email}. The nightly run applies it — or refuses it beyond the one-tier cap — and the row shows as Overridden only then.`);
+    flash("ok", `Override to anticipated ${tier.value} recorded under ${state.email}. The nightly run applies it — or refuses it beyond the one-tier cap — and the row shows as Overridden only then.`);
     form.reset(); show(capNote, false);
     await refreshSheet();
   });
   return group("Set override", null, null, h("div", { class: "card pad" }, form));
+}
+
+/** A hand signal (source manual). Types come from the active rubric's catalog; so do weight, lifespan and decay — copied here, and taken from the catalog again by the database trigger. */
+function signalForm(a) {
+  const entries = catalogEntries(state.rubric?.signals?.catalog);
+  if (!entries.length) {
+    return group("Add a hand signal", null, null, h("div", { class: "card pad" },
+      h("div", { class: "notice warn" }, "No active rubric with a signal catalog is readable, so a hand signal cannot be weighted here — and the database refuses the insert for the same reason.")));
+  }
+  const type = h("select", { "aria-label": "Signal type" }, ...entries.map(([k, v]) => option(k, `${v.label ?? k} · weight ${v.weight}`)));
+  const typeHint = h("div", { class: "hint" });
+  const entryOf = () => entries.find(([k]) => k === type.value)?.[1] ?? entries[0][1];
+  const renderHint = () => {
+    typeHint.textContent = `${signalCatalogWords(entryOf())} Copied from the active rubric's catalog${state.rubricVersion ? ` (${state.rubricVersion})` : ""}; the database takes weight, lifespan and decay from that catalog again on insert, so nothing sent from here can differ from it.`;
+  };
+  type.addEventListener("change", renderHint);
+  renderHint();
+  const observed = h("input", { type: "date", value: todayIso(), required: true });
+  const url = h("input", { type: "url", placeholder: "https://…" });
+  const note = h("input", { type: "text", placeholder: "What was seen or heard, in a few words" });
+  const msg = h("div", { class: "notice hidden" });
+  const submit = h("button", { type: "submit", class: "primary" }, "Add signal");
+  const form = h("form", { class: "form" },
+    h("div", { class: "fields" },
+      h("div", { class: "field" }, h("label", null, "Type"), type, typeHint),
+      field("Observed on", observed, "The day it was observed; recorded as the start of that day. Decay counts from here."),
+      field("Evidence URL", url),
+    ),
+    field("Note", note, "Kept with the signal as its text."),
+    h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `source manual · entered_by ${state.email}`)),
+    msg);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const entry = entryOf();
+    const observedAt = observed.value ? new Date(observed.value + "T00:00:00").toISOString() : null;
+    if (!observedAt) { setNotice(msg, "warn", "An observed date is required."); return; }
+    const noteText = note.value.trim();
+    const row = {
+      account_id: a.id, source: "manual", type: type.value, observed_at: observedAt,
+      payload: noteText ? { text: noteText } : null, evidence_url: url.value.trim() || null,
+      weight: entry.weight,
+      lifespan_days: typeof entry.lifespan_days === "number" && Number.isFinite(entry.lifespan_days) ? Math.round(entry.lifespan_days) : null,
+      decays: typeof entry.decays === "boolean" ? entry.decays : true,
+      entered_by: state.email,
+    };
+    submit.disabled = true;
+    const { error } = await state.db.from("pb_signals").insert(row);
+    submit.disabled = false;
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
+    flash("ok", `Recorded the signal "${entry.label ?? type.value}" under ${state.email}, weighted from the active rubric's catalog. The read on this page has not changed; the nightly run scores it.`);
+    form.reset(); observed.value = todayIso(); renderHint();
+    await refreshSheet();
+  });
+  return group("Add a hand signal", null, null, h("div", { class: "card pad" }, form));
+}
+
+/** Fold this row into another (pb_merge_accounts). Owner and rater lanes; the procedure checks the lane again. */
+function mergeForm(a) {
+  const search = h("input", { type: "search", placeholder: "Search the roster by name or domain", "aria-label": "Search for the surviving row" });
+  const target = h("select", { "aria-label": "The row that survives" });
+  const note = h("input", { type: "text", placeholder: "Why these are one company (optional)" });
+  const msg = h("div", { class: "notice hidden" });
+  const submit = h("button", { type: "button", class: "danger", disabled: true }, "Merge into…");
+  const fill = () => {
+    const found = mergeTargets(state.accounts, a.id, search.value);
+    target.replaceChildren(option("", found.length ? `choose the row that survives (${found.length} shown)` : "no other row matches"), ...found.map((x) => option(x.id, `${x.name ?? "(unnamed)"}${x.domain ? " · " + x.domain : ""}`)));
+    submit.disabled = true;
+  };
+  search.addEventListener("input", fill);
+  target.addEventListener("change", () => { submit.disabled = !target.value; });
+  fill();
+  submit.addEventListener("click", async () => {
+    const tgt = state.accounts.find((x) => x.id === target.value);
+    if (!tgt) return;
+    if (!window.confirm(`This moves every fact, signal, contact, call and deal onto ${tgt.name} and records the decision under your name. Reads are not moved. Continue?`)) return;
+    submit.disabled = true;
+    const { data, error } = await state.db.rpc("pb_merge_accounts", { p_source: a.id, p_target: tgt.id, p_note: note.value.trim() || null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); submit.disabled = false; return; }
+    flash("ok", `Merged "${a.name}" into "${tgt.name}" under ${state.email}: moved ${movedWords(data?.moved)}. Reads were not moved; the next scoring run reads the merged row. The decision is in the register.`);
+    await loadBook(); // this row has left the roster
+    window.location.hash = "#account=" + encodeURIComponent(tgt.id);
+  });
+  return group("Merge into another row", null, null, h("div", { class: "card pad" },
+    h("div", { class: "form" },
+      h("div", { class: "sub" }, "When this row and another turn out to be one company, this row is folded into the other. It leaves the roster and keeps its reads as history; the decision is recorded in the register under your name."),
+      h("div", { class: "fields" }, field("Find the surviving row", search), field("Survivor", target, "From the loaded roster; rows already merged are not offered."), field("Note", note)),
+      h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `made_by ${state.email} · owner or rater lane`)),
+      msg)));
 }
 
 boot();

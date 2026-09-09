@@ -12,9 +12,14 @@
  *                `${id}.${timestamp}.${body}`; HMAC-SHA256 with the secret; the header holds
  *                space-separated `v1,<base64>` entries (any one matching passes). The secret
  *                Fathom returns is `whsec_<base64>`; the prefix is stripped and the remainder
- *                base64-decoded into the key. If the remainder is not base64 the raw UTF-8
- *                bytes of the secret as given are the key — a plain-string secret still works.
+ *                base64-decoded into the key. A `whsec_` prefix promises base64: a remainder
+ *                that is not base64 is refused with its own reason, never silently used as
+ *                text. A secret WITHOUT the prefix is base64-decoded when it is base64 and
+ *                otherwise used as raw UTF-8 — a plain-string secret still works.
  *   Pipedrive  → HTTP Basic against a stored `user:pass` pair.
+ *
+ * The stored secret is trimmed once, at this boundary: a Vault value pasted with a trailing
+ * newline is the same secret. The presented credential is never trimmed.
  *
  * Every comparison is constant-time. Every refusal carries a reason the handler writes to
  * `pb_webhook_inbox.error`; an unverified delivery is stored and never processed.
@@ -137,12 +142,39 @@ export async function hmacSha256Hex(secret: string, body: string): Promise<strin
 
 export const STANDARD_WEBHOOK_SECRET_PREFIX = "whsec_";
 
+/** The refusal reason for a `whsec_`-prefixed secret whose remainder is not base64. */
+export const REASON_SECRET_NOT_BASE64 = "secret has the whsec_ prefix but is not base64";
+
+/** The stored secret as this module reads it: trimmed once, here, and nowhere else. */
+function trimSecret(secret: unknown): string {
+  return String(secret ?? "").trim();
+}
+
 /**
- * The HMAC key for a Standard Webhooks secret: strip `whsec_`, base64-decode the remainder;
- * when the remainder is not base64, the raw UTF-8 bytes of the secret exactly as given.
+ * Why a Standard Webhooks secret cannot be used, or null when it can:
+ *   empty after trimming                              → "secret not configured"
+ *   `whsec_` prefix, remainder not (non-empty) base64 → REASON_SECRET_NOT_BASE64
+ * A secret without the prefix is always usable (base64 when it decodes, raw UTF-8 otherwise).
+ */
+export function standardWebhookSecretProblem(secret: string): string | null {
+  const s = trimSecret(secret);
+  if (s.length === 0) return "secret not configured";
+  if (s.startsWith(STANDARD_WEBHOOK_SECRET_PREFIX)) {
+    const decoded = base64Decode(s.slice(STANDARD_WEBHOOK_SECRET_PREFIX.length));
+    if (decoded === null || decoded.length === 0) return REASON_SECRET_NOT_BASE64;
+  }
+  return null;
+}
+
+/**
+ * The HMAC key for a Standard Webhooks secret (trimmed): strip `whsec_`, base64-decode the
+ * remainder; when there is no prefix and the secret is not base64, its raw UTF-8 bytes.
+ * verifyStandardWebhook refuses a `whsec_` secret that is not base64 before reaching here
+ * (standardWebhookSecretProblem); for such a secret this function still answers with the raw
+ * bytes so a caller that skipped that check gets a deterministic key, never a throw.
  */
 export function standardWebhookKey(secret: string): Uint8Array {
-  const s = String(secret ?? "");
+  const s = trimSecret(secret);
   const stripped = s.startsWith(STANDARD_WEBHOOK_SECRET_PREFIX) ? s.slice(STANDARD_WEBHOOK_SECRET_PREFIX.length) : s;
   const decoded = base64Decode(stripped);
   if (decoded !== null && decoded.length > 0) return decoded;
@@ -184,7 +216,9 @@ function headerValue(headers: HeaderReader, name: string): string | null {
  *
  *   rawBody           the request body EXACTLY as received (re-serialising JSON breaks the MAC)
  *   headers           anything with get(name) — a fetch Headers object or a plain adapter
- *   secret            the stored `whsec_…` (or plain) secret; an empty secret refuses everything
+ *   secret            the stored `whsec_…` (or plain) secret, trimmed here; an empty secret
+ *                     refuses everything, a `whsec_` secret that is not base64 refuses with
+ *                     REASON_SECRET_NOT_BASE64
  *   nowSeconds        the receiver's clock, unix seconds, passed in
  *   toleranceSeconds  |now − webhook-timestamp| beyond this is refused (default 300)
  */
@@ -195,7 +229,8 @@ export async function verifyStandardWebhook(
   nowSeconds: number,
   toleranceSeconds = 300,
 ): Promise<VerifyResult> {
-  if (typeof secret !== "string" || secret.trim().length === 0) return { ok: false, reason: "secret not configured" };
+  const secretProblem = typeof secret === "string" ? standardWebhookSecretProblem(secret) : "secret not configured";
+  if (secretProblem !== null) return { ok: false, reason: secretProblem };
   if (typeof rawBody !== "string") return { ok: false, reason: "body is not a string" };
 
   const id = headerValue(headers, "webhook-id");
@@ -237,17 +272,21 @@ export async function verifyStandardWebhook(
  * ------------------------------------------------------------------ */
 
 /**
- * `Authorization: Basic <base64(user:pass)>` against the stored `user:pass`. Constant-time on
- * the credential bytes. An empty expected value refuses everything (secret not configured).
+ * `Authorization: Basic <base64(user:pass)>` against the stored `user:pass`, which is trimmed
+ * once here (a Vault value with a trailing newline is the same pair; the presented credential
+ * is compared byte for byte). Constant-time on the credential bytes. An empty expected value
+ * refuses everything (secret not configured).
  */
 export function verifyBasicAuth(header: string | null | undefined, expectedUserColonPass: string): boolean {
-  if (typeof expectedUserColonPass !== "string" || expectedUserColonPass.length === 0) return false;
+  if (typeof expectedUserColonPass !== "string") return false;
+  const expected = trimSecret(expectedUserColonPass);
+  if (expected.length === 0) return false;
   if (header === null || header === undefined) return false;
   const m = String(header).trim().match(/^basic\s+(\S+)\s*$/i);
   if (!m) return false;
   const decoded = base64Decode(m[1]);
   if (decoded === null) return false;
-  return timingSafeEqual(decoded, utf8Bytes(expectedUserColonPass));
+  return timingSafeEqual(decoded, utf8Bytes(expected));
 }
 
 /** The header value a client sends for `user:pass` — for tests and for documentation. */

@@ -256,6 +256,12 @@ const factsBy = (facts: SeedFact[], key: string): SeedFact[] => facts.filter((f)
   eq("a canonical ceiling word passes through", factBy(mapNotionProspect(row({ Ceiling: "Embedded" }), OPTS).facts, "stated_ceiling")?.value, "Embedded");
   eq("ICP class spelled 'icp 3' → ICP-3", factBy(mapNotionProspect(row({ "ICP class": "icp 3" }), OPTS).facts, "icp_class")?.value, "ICP-3");
   eq("ICP class as a number → ICP-6", factBy(mapNotionProspect(row({ "ICP class": 6 }), OPTS).facts, "icp_class")?.value, "ICP-6");
+  {
+    const labelled = factBy(mapNotionProspect(row({ "ICP class": "ICP-6: Direct End-Client" }), OPTS).facts, "icp_class");
+    eq("ICP class with a label 'ICP-6: Direct End-Client' → ICP-6", labelled?.value, "ICP-6");
+    check("...and the verbatim text stays in the note", /ICP-6: Direct End-Client/.test(labelled?.note ?? ""), labelled?.note);
+    eq("ICP class 'ICP-12' is not a class (no digit may follow)", factBy(mapNotionProspect(row({ "ICP class": "ICP-12" }), OPTS).facts, "icp_class")?.value, null);
+  }
   eq("WL signal 'very high' → Very High", factBy(mapNotionProspect(row({ "WL signal": "very high" }), OPTS).facts, "wl_signal")?.value, "Very High");
   eq("headcount as a numeric string", factBy(mapNotionProspect(row({ Headcount: "12" }), OPTS).facts, "headcount")?.value, 12);
   eq("Proof of growth as a comma-separated export string", factBy(mapNotionProspect(row({ "Proof of growth": "Referred someone, Structural break" }), OPTS).facts, "climb_signals")?.value, ["Referred someone", "Structural break"]);
@@ -279,6 +285,8 @@ const factsBy = (facts: SeedFact[], key: string): SeedFact[] => facts.filter((f)
   eq("'referral' → true", ref("Client referral"), true);
   eq("'referred' → true", ref("Referred by a former client"), true);
   eq("'family' does not contain the word AMI", ref("Family friend"), null);
+  eq("'Reference call' is not a referral", ref("Reference call with vendor"), null);
+  eq("'referring' → true", ref("Referring partner in Denver"), true);
   eq("inbound form → null, note only", ref("Website inbound form"), null);
   check("...and the text is kept in the note", /Website inbound form/.test(factBy(mapNotionProspect(row({ "Referral source": "Website inbound form" }), OPTS).facts, "referral_from_network")?.note ?? ""));
 
