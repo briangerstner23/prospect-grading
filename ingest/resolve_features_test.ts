@@ -142,8 +142,9 @@ function run(partial: Partial<ResolveInput> = {}) {
     "recurring_revenue_share", "niche_positioning", "am_pm_separated", "platform_partner_badge", "peer_network_member",
     "ai_posture", "avg_project_size", "already_outsources", "owner_does_everything", "inhouse_dev_team", "dev_archetype",
     "shrinking", "archetype", "serviceable_share", "n_vendors", "our_rank", "quote_amount", "stated_ceiling"] as const;
-  check("every optional feature is null when no fact exists", nullKeys.every((k) => (f as Record<string, unknown>)[k] === null),
-    nullKeys.filter((k) => (f as Record<string, unknown>)[k] !== null).join(","));
+  const bag = f as unknown as Record<string, unknown>;
+  check("every optional feature is null when no fact exists", nullKeys.every((k) => bag[k] === null),
+    nullKeys.filter((k) => bag[k] !== null).join(","));
 }
 
 /* ------------------------------------------------------------------ *

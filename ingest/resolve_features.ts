@@ -159,25 +159,41 @@ export interface ResolveResult {
  * Runtime vocabularies (mirrors of the string unions in core/prospect_types.ts)
  * ------------------------------------------------------------------ */
 
+type AgencyType = NonNullable<ProspectFeatures["agency_type"]>;
+type RevenueBand = NonNullable<ProspectFeatures["revenue_band"]>;
+type VerticalDepth = NonNullable<ProspectFeatures["vertical_depth"]>;
+type Economics = NonNullable<ProspectFeatures["economics"]>;
+type BrokerCharacter = NonNullable<ProspectFeatures["broker_character"]>;
+type AiPosture = NonNullable<ProspectFeatures["ai_posture"]>;
+type Lineage = NonNullable<ProspectFeatures["lineage"]>;
+
 const EVIDENCE_LABELS: readonly EvidenceLabel[] = ["evidence", "inferred", "unknown"];
 const FACT_STATES: readonly FactState[] = ["present", "absent", "unknown"];
 const ICP_CLASSES: readonly IcpClass[] = ["ICP-1", "ICP-2", "ICP-3", "ICP-4", "ICP-5", "ICP-6"];
-const AGENCY_TYPES = ["full_service", "boutique", "digital_only", "niche_vertical", "consultancy", "direct_end_client"] as const;
-const REVENUE_BANDS = ["<1M", "1-5M", "5-10M", "10-25M", ">25M"] as const;
-const VERTICAL_DEPTHS = ["deep_single_vertical", "generalist"] as const;
+const AGENCY_TYPES: readonly AgencyType[] = ["full_service", "boutique", "digital_only", "niche_vertical", "consultancy", "direct_end_client"];
+const REVENUE_BANDS: readonly RevenueBand[] = ["<1M", "1-5M", "5-10M", "10-25M", ">25M"];
+const VERTICAL_DEPTHS: readonly VerticalDepth[] = ["deep_single_vertical", "generalist"];
 const WL_SIGNALS: readonly WlSignal[] = ["Very High", "High", "Medium", "Low"];
 const SERVICE_SHAPES: readonly ServiceShape[] = ["Core", "Complement", "Off"];
-const ECONOMICS = ["pass", "fail"] as const;
-const BROKER = ["pass", "flag"] as const;
-const AI_POSTURES = ["positive", "neutral", "negative"] as const;
+const ECONOMICS: readonly Economics[] = ["pass", "fail"];
+const BROKER: readonly BrokerCharacter[] = ["pass", "flag"];
+const AI_POSTURES: readonly AiPosture[] = ["positive", "neutral", "negative"];
 const TIMINGS: readonly Timing[] = ["within_1_week", "within_1_month", "within_3_months", "no_timeline"];
 const ARCHETYPES: readonly Archetype[] = ["production", "blended", "strategy"];
 const CEILINGS: readonly Ceiling[] = ["Project", "Embedded", "Partner"];
 const RELATIONSHIP_TYPES: readonly RelationshipType[] = ["agency", "direct"];
+const LINEAGES: readonly Lineage[] = ["lapsed_client"];
 const ROSTER_SOURCES: readonly RosterSource[] = [
   "pipedrive", "notion_master", "sales_sheet", "tier1_book", "gotham", "brian_trip", "client_book_lapsed", "manual",
 ];
-const OVERRIDE_REASON_CODES = ["data_wrong", "relationship_known", "timing_known", "conflict", "other"] as const;
+const OVERRIDE_REASON_CODES: readonly string[] = ["data_wrong", "relationship_known", "timing_known", "conflict", "other"];
+
+/** Spellings other systems use for the same value. Alias → canonical; null = "this word means unknown". */
+const RELATIONSHIP_ALIASES: Record<string, RelationshipType | null> = { "agency partner": "agency", "direct-to-client": "direct" };
+const AGENCY_TYPE_ALIASES: Record<string, AgencyType | null> = {
+  digital: "digital_only", niche: "niche_vertical", direct: "direct_end_client", "full-service agency": "full_service",
+};
+const TIMING_STATE_ALIASES: Record<string, FactState | null> = { true: "present", false: "absent", yes: "present", no: "absent" };
 
 /* ------------------------------------------------------------------ *
  * Coercion helpers. INVALID means "a value was stated and it is not usable";
@@ -487,15 +503,18 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
 
   /* ---- account ---- */
   const acct = input.account;
-  let relationship_type = toEnum(acct.relationship_type, RELATIONSHIP_TYPES, { "agency partner": "agency", "direct-to-client": "direct" });
-  if (relationship_type === INVALID) {
-    notes.push(`account relationship_type ${describe(acct.relationship_type)} is not in the vocabulary; treated as unknown`);
-    relationship_type = null;
-  }
-  if (relationship_type === null) {
-    relationship_type = fact("relationship_type", (v) => toEnum(v, RELATIONSHIP_TYPES, { "agency partner": "agency", "direct-to-client": "direct" }));
-  } else {
-    consumed.add("relationship_type");
+  let relationship_type: RelationshipType | null = null;
+  {
+    const fromAccount = toEnum<RelationshipType>(acct.relationship_type, RELATIONSHIP_TYPES, RELATIONSHIP_ALIASES);
+    if (fromAccount === INVALID) {
+      notes.push(`account relationship_type ${describe(acct.relationship_type)} is not in the vocabulary; treated as unknown`);
+    } else if (fromAccount !== null) {
+      relationship_type = fromAccount;
+      consumed.add("relationship_type");
+    }
+    if (relationship_type === null) {
+      relationship_type = fact<RelationshipType>("relationship_type", (v) => toEnum<RelationshipType>(v, RELATIONSHIP_TYPES, RELATIONSHIP_ALIASES));
+    }
   }
 
   let roster_source = toEnum(acct.roster_source, ROSTER_SOURCES);
@@ -508,9 +527,9 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const roster_certified = certified === true;
   if (certified === INVALID) notes.push(`account roster_certified ${describe(acct.roster_certified)} is not a boolean; treated as false`);
 
-  let lineage: "lapsed_client" | null = null;
+  let lineage: Lineage | null = null;
   if (acct.lineage !== null && acct.lineage !== undefined) {
-    const l = toEnum(acct.lineage, ["lapsed_client"] as const);
+    const l = toEnum<Lineage>(acct.lineage, LINEAGES);
     if (l === INVALID) notes.push(`account lineage ${describe(acct.lineage)} is not in the vocabulary; treated as none`);
     else lineage = l;
   }
@@ -521,16 +540,15 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const headcount = fact("headcount", (v) => toInt(v, 0));
   const headcount_label = labelOf("headcount", headcount);
 
-  const agency_type = fact("agency_type", (v) =>
-    toEnum(v, AGENCY_TYPES, { digital: "digital_only", niche: "niche_vertical", direct: "direct_end_client", "full-service agency": "full_service" }));
+  const agency_type = fact<AgencyType>("agency_type", (v) => toEnum<AgencyType>(v, AGENCY_TYPES, AGENCY_TYPE_ALIASES));
   const service_shape = fact("service_shape", (v) => toEnum(v, SERVICE_SHAPES, V.serviceShapeAliases));
 
   /* ---- Dimension A ---- */
-  const money = fact("money", (v) => toEnum(v, FACT_STATES, V.factStateAliases.money)) ?? "unknown";
-  const authority = fact("authority", (v) => toEnum(v, FACT_STATES, V.factStateAliases.authority)) ?? "unknown";
-  const specification = fact("specification", (v) => toEnum(v, FACT_STATES, V.factStateAliases.specification)) ?? "unknown";
-  const timing = fact("timing", (v) => toEnum(v, V.timings, V.timingAliases));
-  const explicitTimingState = fact("timing_state", (v) => toEnum(v, FACT_STATES, { true: "present", false: "absent", yes: "present", no: "absent" }));
+  const money: FactState = fact<FactState>("money", (v) => toEnum<FactState>(v, FACT_STATES, V.factStateAliases.money)) ?? "unknown";
+  const authority: FactState = fact<FactState>("authority", (v) => toEnum<FactState>(v, FACT_STATES, V.factStateAliases.authority)) ?? "unknown";
+  const specification: FactState = fact<FactState>("specification", (v) => toEnum<FactState>(v, FACT_STATES, V.factStateAliases.specification)) ?? "unknown";
+  const timing = fact<Timing>("timing", (v) => toEnum<Timing>(v, V.timings, V.timingAliases));
+  const explicitTimingState = fact<FactState>("timing_state", (v) => toEnum<FactState>(v, FACT_STATES, TIMING_STATE_ALIASES));
   const timing_state: FactState = explicitTimingState ?? (timing === null ? "unknown" : timing === "no_timeline" ? "absent" : "present");
 
   /* ---- potential ---- */

@@ -1,0 +1,20 @@
+# Dependencies (there are none in core/, ingest/ or explain/ by rule; this covers tooling)
+node_modules/
+
+# Local secrets and environment. Secrets live in Supabase Vault, never in a file here.
+.env
+.env.*
+*.local
+
+# Scratch and data. No prospect data enters this public repo (DECISIONS.md §4):
+# no seed exports, no gate reports, no raw pulls, no build-kit documents.
+scratch/
+data/
+
+# Supabase CLI working state
+supabase/.temp/
+supabase/.branches/
+
+# OS
+.DS_Store
+Thumbs.db

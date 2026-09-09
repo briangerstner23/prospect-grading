@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>WLIQ Prospect Book</title>
+<!--
+  The Prospect Book page (DESIGN.md §5). One self-contained file: no build step, no framework,
+  no fonts fetched. It reads pb_* tables through supabase-js under the signer's own session, so
+  Row Level Security decides what a signer sees and may write — this page enforces nothing on
+  its own and never grades. Reads change only when the nightly run scores.
+
+  Independent from the Client Book (PRO-17): the same sign-in pattern, none of its code or data.
+-->
+<style>
+:root{
+  --ground:#F5F5F7; --surface:#FFFFFF; --sunk:#F5F5F7;
+  --ink:#1D1D1F; --muted:#5E5E63; --faint:#6E6E73;
+  --sep:rgba(0,0,0,.10);
+  --accent:#0071E3; --accent-fill:#0060C4; --accent-ink:#0064CC; --accent-soft:rgba(0,113,227,.10);
+  --good:#166B3A; --good-soft:rgba(52,199,89,.14);
+  --warn:#B25000; --warn-soft:rgba(255,149,0,.15);
+  --bad:#C00013;  --bad-soft:rgba(255,59,48,.12);
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.08);
+  --shadow:0 1px 3px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.04);
+  --r-card:18px; --r-ctl:8px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#000000; --surface:#1C1C1E; --sunk:#2C2C2E;
+  --ink:#F5F5F7; --muted:#A2A2A7; --faint:#98989D;
+  --sep:rgba(255,255,255,.12);
+  --accent:#0A84FF; --accent-fill:#0B6FD6; --accent-ink:#3FA3FF; --accent-soft:rgba(10,132,255,.18);
+  --good:#30D158; --good-soft:rgba(48,209,88,.18);
+  --warn:#FF9F0A; --warn-soft:rgba(255,159,10,.18);
+  --bad:#FF8A85;  --bad-soft:rgba(255,69,58,.18);
+  --fill:rgba(120,120,128,.24); --fill-2:rgba(120,120,128,.16);
+  --shadow:0 1px 3px rgba(0,0,0,.5);
+}}
+*{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  font-size:17px;line-height:1.47059;letter-spacing:-.022em;
+  padding:clamp(1.5rem,4vw,3rem) max(clamp(1rem,4vw,1.5rem),env(safe-area-inset-left)) calc(6rem + env(safe-area-inset-bottom)) max(clamp(1rem,4vw,1.5rem),env(safe-area-inset-right))}
+.page{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:1.6rem}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+h1{font-size:clamp(1.9rem,6vw,3rem);line-height:1.05;letter-spacing:-.028em}
+h2{font-size:1.25rem;line-height:1.2;letter-spacing:-.021em}
+h3{font-size:1.0625rem;line-height:1.3;letter-spacing:-.021em}
+p{margin:0;max-width:68ch}
+.lede{font-size:clamp(1.0625rem,3vw,1.25rem);line-height:1.38;color:var(--muted);max-width:40em}
+.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.055em;text-transform:uppercase;color:var(--faint)}
+.mast{display:flex;flex-direction:column;gap:.5rem}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem;letter-spacing:0}
+.hidden{display:none!important}
+a{color:var(--accent-ink)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:var(--r-ctl)}
+
+/* cards, notices */
+.card{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow)}
+.pad{padding:1.3rem 1.5rem;display:flex;flex-direction:column;gap:.9rem}
+.notice{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:.85rem 1.1rem;font-size:.9375rem;letter-spacing:-.016em}
+.notice.warn{background:var(--warn-soft);box-shadow:none}
+.notice.bad{background:var(--bad-soft);box-shadow:none}
+.notice.ok{background:var(--good-soft);box-shadow:none}
+.notice.info{background:var(--accent-soft);box-shadow:none}
+.notice pre{margin:.4rem 0 0;white-space:pre-wrap;word-break:break-word;font-size:.8125rem}
+
+/* controls */
+input,select,textarea{font:inherit;font-size:.9375rem;letter-spacing:-.016em;color:var(--ink);background:var(--surface);
+  border:1px solid var(--sep);border-radius:var(--r-ctl);padding:.5rem .75rem;-webkit-appearance:none;appearance:none;max-width:100%}
+input[type=checkbox]{-webkit-appearance:checkbox;appearance:checkbox;width:1.1rem;height:1.1rem;padding:0;margin:0 .45rem 0 0;vertical-align:-.15rem}
+input[type=search]{flex:1 1 15rem;min-width:0}
+select{padding-right:1.7rem;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+select[multiple]{background-image:none;min-height:7rem;padding-right:.75rem}
+textarea{width:100%;min-height:5rem;resize:vertical}
+button{font:inherit;font-size:.9375rem;font-weight:500;letter-spacing:-.016em;cursor:pointer;border-radius:var(--r-ctl);
+  border:1px solid var(--sep);background:var(--surface);color:var(--accent-ink);padding:.48rem .9rem;transition:background .15s ease,opacity .15s ease}
+button:hover{background:var(--fill-2)}
+button.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:#fff}
+button.primary:hover{opacity:.85;background:var(--accent-fill)}
+button.ghost{border-color:transparent;background:transparent;padding:.3rem .55rem;font-size:.875rem}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.inline{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+.inline input[type=email]{flex:1 1 16rem}
+@media (pointer:coarse){button,select,input:not([type=checkbox]),textarea,summary{min-height:44px}}
+
+.topbar{display:flex;gap:.6rem 1rem;align-items:center;flex-wrap:wrap;font-size:.875rem;color:var(--muted);padding-bottom:.6rem;border-bottom:1px solid var(--sep)}
+.topbar .spacer{flex:1}
+.lane{color:var(--faint)}
+
+/* filter bar */
+.bar{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center;position:sticky;top:0;z-index:20;
+  background:color-mix(in srgb,var(--ground) 84%,transparent);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);padding:.75rem 0}
+@supports not (background:color-mix(in srgb,red 50%,blue)){.bar{background:var(--ground)}}
+.bar select{flex:0 1 auto;min-width:9rem}
+@media (max-width:640px){.bar input[type=search]{flex:1 1 100%}.bar select{flex:1 1 calc(50% - .3rem);min-width:0}.bar button{flex:1 1 100%}}
+.count{font-size:.875rem;color:var(--muted);padding:.1rem .25rem .5rem}
+
+/* roster rows */
+.rows{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.rowhead,.row{display:grid;grid-template-columns:minmax(0,2.2fr) 12.5rem 9.5rem 6rem 7rem 6.5rem 9.5rem minmax(9rem,2fr);gap:.3rem 1rem;padding:.9rem 1.25rem;align-items:start}
+.rowhead{font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);padding-bottom:.5rem;border-bottom:1px solid var(--sep)}
+.row{position:relative;color:inherit;text-decoration:none;transition:background .12s ease}
+.row:hover{background:var(--fill-2)}
+.row+.row::before{content:"";position:absolute;top:0;left:1.25rem;right:0;height:1px;background:var(--sep)}
+.row .nm{font-weight:600;font-size:1.0625rem;letter-spacing:-.021em;min-width:0;overflow-wrap:anywhere}
+.row .nm small{display:block;font-weight:400;font-size:.8125rem;color:var(--faint);letter-spacing:0}
+.row .c{font-size:.9375rem;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.row .c .lab{display:none}
+.row .reason{grid-column:1/-1;font-size:.875rem;color:var(--muted);line-height:1.45;max-width:none}
+.row .flags{display:flex;flex-wrap:wrap;gap:.3rem}
+.empty{padding:1.5rem 1.25rem;color:var(--muted);font-size:.9375rem}
+@media (max-width:1100px){
+  .rowhead{display:none}
+  .row{grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem 1rem}
+  .row .nm{grid-column:1/-1}
+  .row .c .lab{display:block;font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:.1rem}
+  .row .flags{grid-column:1/-1}
+}
+@media (max-width:600px){.row{grid-template-columns:repeat(2,minmax(0,1fr));padding:.9rem 1rem}.row+.row::before{left:1rem}}
+
+/* chips */
+.chip{display:inline-block;font-size:.75rem;font-weight:500;letter-spacing:-.01em;padding:.15rem .6rem;border-radius:980px;white-space:nowrap;background:var(--fill);color:var(--muted);vertical-align:middle}
+.chip.tier{font-weight:600;white-space:normal}
+.t-Platinum{background:var(--accent-soft);color:var(--accent-ink)}
+.t-Gold{background:var(--warn-soft);color:var(--warn)}
+.t-Silver{background:var(--fill);color:var(--muted)}
+.t-Bronze{background:var(--bad-soft);color:var(--bad)}
+.t-none{background:transparent;color:var(--faint);box-shadow:inset 0 0 0 1px var(--sep);font-style:italic}
+.c-warn{background:var(--warn-soft);color:var(--warn)}
+.c-bad{background:var(--bad-soft);color:var(--bad)}
+.c-good{background:var(--good-soft);color:var(--good)}
+.c-info{background:var(--accent-soft);color:var(--accent-ink)}
+.u-Super{background:var(--bad-soft);color:var(--bad)}
+.u-Hot{background:var(--warn-soft);color:var(--warn)}
+.u-Warm{background:var(--accent-soft);color:var(--accent-ink)}
+.u-Cold{background:var(--fill);color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+
+/* sheet */
+.sheet{display:flex;flex-direction:column;gap:1.4rem}
+.sheet-head{display:flex;flex-direction:column;gap:.7rem}
+.sheet-head .title{display:flex;gap:.6rem 1rem;align-items:baseline;flex-wrap:wrap}
+.sheet-head h2{font-size:clamp(1.5rem,4vw,2.1rem);letter-spacing:-.025em}
+.meta{display:flex;flex-wrap:wrap;gap:.25rem 1rem;font-size:.875rem;color:var(--muted)}
+.meta .k{color:var(--faint);margin-right:.3rem}
+.grp{display:flex;flex-direction:column;gap:0}
+.grp-head{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;padding:.4rem .5rem .55rem;color:var(--muted)}
+.grp-head h3{color:var(--ink)}
+.grp-head .n{font-size:.875rem;color:var(--faint)}
+.grp-note{font-size:.875rem;color:var(--muted);padding:0 .5rem .6rem;max-width:70ch}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem}
+.dl{display:grid;grid-template-columns:11rem minmax(0,1fr);gap:.2rem 1rem;padding:.45rem 0;align-items:baseline}
+.dl+.dl{border-top:1px solid var(--sep)}
+.dl i{font-style:normal;color:var(--muted);font-size:.875rem}
+.dl b{font-weight:500;min-width:0;overflow-wrap:anywhere}
+.dl b.strong{font-weight:600}
+@media (max-width:560px){.dl{grid-template-columns:1fr;gap:0}}
+.list{display:flex;flex-direction:column}
+.item{position:relative;padding:.85rem 1.25rem;display:flex;flex-direction:column;gap:.3rem;min-width:0}
+.item+.item::before{content:"";position:absolute;top:0;left:1.25rem;right:0;height:1px;background:var(--sep)}
+.item .top{display:flex;gap:.4rem .8rem;align-items:center;flex-wrap:wrap}
+.item .top b{font-weight:600}
+.item .sub{font-size:.875rem;color:var(--muted);overflow-wrap:anywhere}
+.item .body{font-size:.9375rem;overflow-wrap:anywhere;white-space:pre-wrap}
+.sub{font-size:.875rem;color:var(--muted)}
+details>summary{cursor:pointer;color:var(--accent-ink);font-size:.875rem;font-weight:500;list-style:none;width:fit-content}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸ ";display:inline-block}
+details[open]>summary::before{content:"▾ "}
+.dot{display:inline-block;width:.65rem;height:.65rem;border-radius:50%;vertical-align:middle;margin-right:.35rem}
+.dot.green{background:var(--good)}.dot.yellow{background:var(--warn)}.dot.red{background:var(--bad)}
+.back{align-self:flex-start;text-decoration:none;font-size:.9375rem}
+
+/* forms */
+.form{display:flex;flex-direction:column;gap:.9rem}
+.field{display:flex;flex-direction:column;gap:.3rem;min-width:0}
+.field label{font-size:.8125rem;font-weight:600;color:var(--muted)}
+.field .hint{font-size:.8125rem;color:var(--faint)}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.8rem}
+.form-foot{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.check{display:flex;align-items:center;font-size:.9375rem}
+footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;flex-direction:column;gap:.3rem;border-top:1px solid var(--sep)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<div class="page">
+  <header class="mast">
+    <div class="eyebrow">White Label IQ</div>
+    <h1>Prospect Book</h1>
+    <p class="lede">Who we chase first, and how much it is worth pursuing. Every tier here is <em>anticipated</em> and prints its confidence; every read is a band or a sentence, never a score.</p>
+  </header>
+
+  <section id="signin" class="card pad">
+    <h2>Sign in</h2>
+    <p>Enter your White Label IQ address. A sign-in link arrives by email; there is no password.</p>
+    <form id="signinForm" class="inline">
+      <input id="email" type="email" required placeholder="you@whitelabeliq.com" autocomplete="email">
+      <button class="primary" id="send" type="submit">Send my link</button>
+    </form>
+    <div id="signinMsg" class="notice hidden" role="status"></div>
+  </section>
+
+  <noscript><div class="notice warn">This page needs JavaScript to sign you in and read the book.</div></noscript>
+  <div id="fatal" class="notice warn hidden" role="alert"></div>
+
+  <div id="app" class="hidden">
+    <div class="topbar">
+      <span id="who"></span>
+      <span id="lane" class="lane"></span>
+      <span class="spacer"></span>
+      <button id="out" class="ghost" type="button">Sign out</button>
+    </div>
+    <div id="outside" class="notice warn hidden"></div>
+    <div id="unvalidated" class="notice warn hidden" role="note"></div>
+    <div id="loadErr" class="notice bad hidden" role="alert"></div>
+    <div id="busy" class="sub hidden">Loading the book…</div>
+
+    <section id="roster" class="hidden">
+      <div class="bar">
+        <input id="q" type="search" placeholder="Search name, domain, cell or reason" aria-label="Search">
+        <select id="fTier" aria-label="Filter by anticipated tier"></select>
+        <select id="fStatus" aria-label="Filter by status"></select>
+        <select id="fFlag" aria-label="Filter by flag"></select>
+        <select id="fSource" aria-label="Filter by roster source"></select>
+        <button id="clear" class="ghost" type="button">Clear</button>
+      </div>
+      <div id="count" class="count"></div>
+      <div class="rows">
+        <div class="rowhead" aria-hidden="true">
+          <span>Agency</span><span>Anticipated tier · confidence</span><span>Qualification</span><span>Ceiling</span><span>Year one</span><span>Urgency</span><span>Cell</span><span>Flags</span>
+        </div>
+        <div id="rows"></div>
+      </div>
+    </section>
+
+    <section id="sheet" class="sheet hidden"></section>
+  </div>
+
+  <footer>
+    <div>Reads change only when the nightly run scores; this page never grades.</div>
+    <div>Not public: anyone at WLIQ who signs in reads the book (PRO-7). Facts, disputes, overrides and match reviews are recorded under the signer's own name and enter the book at the next run.</div>
+  </footer>
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const SUPABASE_URL = "https://sgagrmapuovnjwvgsxbp.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Rwx3FbwsjnVFx9MUVQX0EA_wm2F52sC";
+const WLIQ_DOMAIN = "whitelabeliq.com";
+
+/* ------------------------------------------------------------------ *
+ * Vocabulary. Mirrors core/prospect_types.ts; where the active rubric row
+ * (pb_rubric_versions) states a list it wins at runtime.
+ * ------------------------------------------------------------------ */
+const TIER_ORDER = ["Bronze", "Silver", "Gold", "Platinum"];
+const STATUSES = ["Ranked", "Overridden", "Unclassified", "Parked"];
+const REASON_CODES = ["data_wrong", "relationship_known", "timing_known", "conflict", "other"];
+const EVIDENCE_LABELS = ["evidence", "inferred", "unknown"];
+const FACT_SOURCES = ["rater", "fathom", "pipedrive", "orbit", "apollo", "gmail", "notion_master", "sheet", "skill", "viq", "client_book"];
+const CLIMB_FALLBACK = ["2nd person engaged", "Strategy question asked", "2nd project scoped", "Referred someone", "Structural break"];
+const MONEY_KEYS = new Set(["deal_size_estimate", "avg_project_size", "quote_amount", "trailing_12m_revenue"]);
+const RATIO_KEYS = new Set(["recurring_revenue_share", "serviceable_share"]);
+
+/** ProspectFeatures keys a person may enter as a pb_facts row (labels come from evidence_label, not from a key). */
+const FACT_KEYS = [
+  { key: "icp_class", group: "Dimension B · fit", kind: "enum", options: ["ICP-1", "ICP-2", "ICP-3", "ICP-4", "ICP-5", "ICP-6"], hint: "A stated class wins over the derivation." },
+  { key: "relationship_type", group: "Dimension B · fit", kind: "enum", options: ["agency", "direct"] },
+  { key: "is_agency", group: "Dimension B · fit", kind: "bool" },
+  { key: "agency_type", group: "Dimension B · fit", kind: "enum", options: ["full_service", "boutique", "digital_only", "niche_vertical", "consultancy", "direct_end_client"] },
+  { key: "headcount", group: "Dimension B · fit", kind: "int", hint: "People. Label it evidence when it comes from LinkedIn, the site or Clutch." },
+  { key: "revenue_band", group: "Dimension B · fit", kind: "enum", options: ["<1M", "1-5M", "5-10M", "10-25M", ">25M"] },
+  { key: "vertical_depth", group: "Dimension B · fit", kind: "enum", options: ["deep_single_vertical", "generalist"] },
+  { key: "wl_signal", group: "Dimension B · fit", kind: "enum", options: ["Very High", "High", "Medium", "Low"] },
+  { key: "service_shape", group: "Dimension B · fit", kind: "enum", options: ["Core", "Complement", "Off"], hint: "Off parks the row; unknown never does." },
+  { key: "economics", group: "Dimension B · fit", kind: "enum", options: ["pass", "fail"] },
+  { key: "deal_size_estimate", group: "Dimension B · fit", kind: "money" },
+  { key: "hourly_rate_accepted", group: "Dimension B · fit", kind: "bool" },
+  { key: "broker_character", group: "Dimension B · fit", kind: "enum", options: ["pass", "flag"], hint: "Flag only — never a grading input (PRO-2r)." },
+  { key: "referral_from_network", group: "Adjustment inputs", kind: "bool" },
+  { key: "icp4_vertical_proven", group: "Adjustment inputs", kind: "bool" },
+  { key: "recurring_revenue_share", group: "Adjustment inputs", kind: "ratio" },
+  { key: "niche_positioning", group: "Adjustment inputs", kind: "bool" },
+  { key: "am_pm_separated", group: "Adjustment inputs", kind: "bool" },
+  { key: "platform_partner_badge", group: "Adjustment inputs", kind: "bool" },
+  { key: "peer_network_member", group: "Adjustment inputs", kind: "bool" },
+  { key: "ai_posture", group: "Adjustment inputs", kind: "enum", options: ["positive", "neutral", "negative"] },
+  { key: "avg_project_size", group: "Adjustment inputs", kind: "money" },
+  { key: "already_outsources", group: "Adjustment inputs", kind: "bool" },
+  { key: "owner_does_everything", group: "Adjustment inputs", kind: "bool" },
+  { key: "inhouse_dev_team", group: "Adjustment inputs", kind: "bool" },
+  { key: "dev_archetype", group: "Adjustment inputs", kind: "bool" },
+  { key: "shrinking", group: "Adjustment inputs", kind: "bool" },
+  { key: "money", group: "Dimension A · is the deal real", kind: "enum", options: ["present", "absent", "unknown"], hint: "A stated budget, or a quote issued." },
+  { key: "authority", group: "Dimension A · is the deal real", kind: "enum", options: ["present", "absent", "unknown"], hint: "Someone who can say yes, and we have met them." },
+  { key: "timing", group: "Dimension A · is the deal real", kind: "enum", options: ["within_1_week", "within_1_month", "within_3_months", "no_timeline"], hint: "There is a date. A stated timing sets urgency." },
+  { key: "timing_state", group: "Dimension A · is the deal real", kind: "enum", options: ["present", "absent", "unknown"] },
+  { key: "specification", group: "Dimension A · is the deal real", kind: "enum", options: ["present", "absent", "unknown"], hint: "They can say what they need in enough detail to quote it." },
+  { key: "archetype", group: "Potential", kind: "enum", options: ["production", "blended", "strategy"] },
+  { key: "serviceable_share", group: "Potential", kind: "ratio", hint: "The share of their menu that maps to ours." },
+  { key: "n_vendors", group: "Potential", kind: "int", hint: "How many vendors they use for this work." },
+  { key: "our_rank", group: "Potential", kind: "int", hint: "Where we rank among them." },
+  { key: "trailing_12m_revenue", group: "Potential", kind: "money" },
+  { key: "quote_amount", group: "Potential", kind: "money", hint: "Drives the year-one band when present." },
+  { key: "stated_ceiling", group: "Potential", kind: "enum", options: ["Project", "Embedded", "Partner"], hint: "Sales' hand-set ceiling; treated as inferred." },
+  { key: "climb_signals", group: "Potential", kind: "list", hint: "Climb evidence. The ceiling cannot exceed Project without one." },
+];
+
+/* @pure-start ------------------------------------------------------ *
+ * Pure helpers: no DOM, no clock, no network. The sanity script extracts
+ * this block and runs it under Node.
+ * ------------------------------------------------------------------ */
+function compareKey(a, b) {
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const x = a[i], y = b[i];
+    if (x === y) continue;
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (typeof x === "number" && typeof y === "number") return x - y;
+    return String(x).localeCompare(String(y), "en", { sensitivity: "base" });
+  }
+  return 0;
+}
+
+/** Roster order: chase_rank_key ascending; rows without a read last, by name. */
+function orderAccounts(accounts, readsById) {
+  return accounts.slice().sort((a, b) => {
+    const ra = readsById.get(a.id), rb = readsById.get(b.id);
+    if (ra && rb) {
+      const c = compareKey(ra.scorecard?.chase_rank_key ?? [], rb.scorecard?.chase_rank_key ?? []);
+      if (c !== 0) return c;
+    } else if (ra) return -1;
+    else if (rb) return 1;
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""), "en", { sensitivity: "base" });
+  });
+}
+
+/** First band whose [min, max) holds the value; null when none does. */
+function pickBand(value, bands) {
+  for (const b of bands ?? []) {
+    const okMin = b.min === undefined || value >= b.min;
+    const okMax = b.max === undefined || value < b.max;
+    if (okMin && okMax) return b.label;
+  }
+  return null;
+}
+
+/** A scorecard's age_days as words — never a bare number of a score. */
+function ageWords(days) {
+  if (typeof days !== "number" || !Number.isFinite(days)) return "age unknown";
+  if (days < 0) return "dated after the scoring day";
+  if (days === 0) return "same day as scoring";
+  if (days === 1) return "a day old";
+  if (days < 14) return `${days} days old`;
+  if (days < 60) return `${Math.round(days / 7)} weeks old`;
+  if (days < 365) return `${Math.round(days / 30)} months old`;
+  return "over a year old";
+}
+
+/** Signal strength as of scoring, from the routing thresholds; words, not the decayed weight. */
+function strengthWords(weight, weightNow, strongMin = 8, mediumMin = 4) {
+  if (typeof weight !== "number" || typeof weightNow !== "number") return "strength unknown";
+  if (weight < 0) return weightNow < 0 ? "negative — counted at full weight" : "negative — lapsed";
+  if (weightNow <= 0) return "spent";
+  if (weightNow >= strongMin) return "strong now";
+  if (weightNow >= mediumMin) return "medium now";
+  return "weak now";
+}
+
+/** Headcount as the ICP definition bands. */
+function headcountWords(n) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "unknown";
+  if (n <= 10) return "1–10 people";
+  if (n <= 50) return "11–50 people";
+  if (n <= 100) return "51–100 people";
+  return "over 100 people";
+}
+
+function ratioWords(r) {
+  if (typeof r !== "number" || !Number.isFinite(r)) return "unknown";
+  if (r < 0.25) return "under a quarter";
+  if (r < 0.5) return "a quarter to a half";
+  if (r < 0.75) return "a half to three quarters";
+  return "three quarters or more";
+}
+
+/** A fact value in words. Money becomes the rubric's year-one band; ratios and headcount become bands. */
+function factValueWords(key, value, bands) {
+  if (value === null || value === undefined) return "unknown (recorded as checked, not known)";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (Array.isArray(value)) return value.length ? value.map(String).join("; ") : "none";
+  if (typeof value === "number") {
+    if (MONEY_KEYS.has(key)) {
+      if (value === 0) return "none";
+      const band = pickBand(value, bands ?? []);
+      return band ? `in the ${band} band` : "a figure is on record (no band table loaded)";
+    }
+    if (RATIO_KEYS.has(key)) return ratioWords(value);
+    if (key === "headcount") return headcountWords(value);
+    if (key === "our_rank") return `ranked #${value}`;
+    if (key === "n_vendors") return `${value} vendors`;
+    return "a figure is on record";
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function safeUrl(u) {
+  if (typeof u !== "string") return null;
+  const s = u.trim();
+  return /^https?:\/\/[^\s]+$/i.test(s) ? s : null;
+}
+
+function rowMatches(account, read, f) {
+  const sc = read?.scorecard ?? null;
+  if (f.tier) {
+    if (f.tier === "unscored") { if (read) return false; }
+    else if (f.tier === "none") { if (!read || sc?.effective_tier) return false; }
+    else if (!read || sc?.effective_tier !== f.tier) return false;
+  }
+  if (f.status) {
+    if (f.status === "unscored") { if (read) return false; }
+    else if (!read || sc?.status !== f.status) return false;
+  }
+  if (f.flag && !(sc?.flags ?? []).includes(f.flag)) return false;
+  if (f.source && (account.roster_source ?? "") !== f.source) return false;
+  if (f.q) {
+    const hay = [account.name, account.domain, sc?.cell, sc?.reason, sc?.status, sc?.effective_tier].filter(Boolean).join(" ").toLowerCase();
+    if (!hay.includes(f.q.toLowerCase())) return false;
+  }
+  return true;
+}
+
+/** Build the pb_facts.value for a form entry; INVALID when the text cannot be coerced. */
+const INVALID = Symbol("invalid");
+function coerceFactValue(kind, raw) {
+  if (raw === null || raw === undefined) return null;
+  if (kind === "bool") return raw === "true" ? true : raw === "false" ? false : raw === "" ? null : INVALID;
+  if (kind === "enum") return raw === "" ? null : String(raw);
+  if (kind === "list") return Array.isArray(raw) ? raw.filter((s) => typeof s === "string" && s.length) : INVALID;
+  if (kind === "int" || kind === "money" || kind === "ratio") {
+    const s = String(raw).trim();
+    if (s === "") return null;
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return INVALID;
+    if (kind === "int" && !Number.isInteger(n)) return INVALID;
+    if (kind === "ratio" && n > 1) return INVALID;
+    return n;
+  }
+  const s = String(raw).trim();
+  return s === "" ? null : s;
+}
+
+/** Owner override: the engine refuses more than one tier from the computed tier. */
+function overrideCapWarning(tier, computedTier, order) {
+  if (!tier) return null;
+  if (!computedTier) return "There is no computed tier on the last read, so the engine cannot check the one-tier cap; it will refuse the override until a tier is computed.";
+  const d = Math.abs(order.indexOf(tier) - order.indexOf(computedTier));
+  if (d === 0) return `That is the computed tier already (anticipated ${computedTier}); the row would show as Overridden with no change of tier.`;
+  if (d > 1) return `More than one tier from the computed anticipated ${computedTier}. The engine will refuse it at the next run and flag the row "Override refused: beyond one-tier cap".`;
+  return null;
+}
+/* @pure-end -------------------------------------------------------- */
+
+/* ------------------------------------------------------------------ *
+ * DOM helpers. Text always goes through textContent — no innerHTML with data.
+ * ------------------------------------------------------------------ */
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs ?? {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? "" : String(v));
+  }
+  for (const c of children.flat(Infinity)) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+const chip = (text, cls) => h("span", { class: "chip" + (cls ? " " + cls : "") }, text);
+function show(el, on = true) { el.classList.toggle("hidden", !on); }
+function setNotice(el, kind, text, detail) {
+  el.className = "notice " + kind;
+  el.replaceChildren(text, detail ? h("pre", null, detail) : null);
+  show(el, true);
+}
+function linkOrText(url, label) {
+  const u = safeUrl(url);
+  return u ? h("a", { href: u, target: "_blank", rel: "noopener noreferrer" }, label ?? u) : (url ? String(url) : null);
+}
+function option(value, label, selected) { return h("option", { value, selected: !!selected }, label ?? value); }
+
+const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+function fmtDate(iso) { if (!iso) return "—"; const d = new Date(iso); return isNaN(d) ? String(iso) : dateFmt.format(d); }
+function fmtDateTime(iso) { if (!iso) return "—"; const d = new Date(iso); return isNaN(d) ? String(iso) : dateTimeFmt.format(d); }
+function latestOf(dates) { let best = null; for (const d of dates) { if (!d) continue; const t = Date.parse(d); if (!isNaN(t) && (best === null || t > best)) best = t; } return best === null ? null : new Date(best).toISOString(); }
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+function plusDaysIso(days) { const d = new Date(); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+
+/* ------------------------------------------------------------------ *
+ * State
+ * ------------------------------------------------------------------ */
+const state = {
+  db: null, session: null, email: null, member: null, role: null, wliq: false,
+  rubric: null, accounts: [], reads: new Map(), lastRun: null,
+  filters: { q: "", tier: "", status: "", flag: "", source: "" },
+  booted: false, current: null,
+};
+const tiersBestFirst = () => (state.rubric?.vocabulary?.tiers ?? TIER_ORDER).slice().reverse();
+const tierOrder = () => state.rubric?.vocabulary?.tiers ?? TIER_ORDER;
+const reasonCodes = () => state.rubric?.override?.reason_codes ?? REASON_CODES;
+const year1Bands = () => state.rubric?.potential?.year1_bands ?? [];
+const climbList = () => state.rubric?.potential?.climb_evidence?.signals ?? CLIMB_FALLBACK;
+const signalLabel = (type) => state.rubric?.signals?.catalog?.[type]?.label ?? type;
+const routing = () => ({ strong: state.rubric?.signals?.routing?.strong_min_weight ?? 8, medium: state.rubric?.signals?.routing?.medium_min_weight ?? 4 });
+const canEnterFacts = () => state.role === "owner" || state.role === "rater";
+const canOverride = () => state.role === "owner";
+const canReview = () => state.role === "owner" || state.role === "rater";
+
+/* ------------------------------------------------------------------ *
+ * Sign-in (the Client Book pattern)
+ * ------------------------------------------------------------------ */
+let createClient = null;
+for (const src of ["https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm", "https://esm.sh/@supabase/supabase-js@2"]) {
+  try { ({ createClient } = await import(src)); break; } catch (_) { /* try the next one */ }
+}
+if (!createClient) {
+  setNotice($("fatal"), "warn", "Could not load the sign-in library from the internet. If you are on a VPN or a network that blocks CDNs, try again on another connection.");
+  $("send").disabled = true;
+} else {
+  state.db = createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+
+$("signinForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!state.db) return;
+  const email = $("email").value.trim();
+  if (!email) return;
+  $("send").disabled = true;
+  const { error } = await state.db.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+  setNotice($("signinMsg"), error ? "warn" : "ok", error ? error.message : "Check your email for the sign-in link. It opens this page signed in.");
+  $("send").disabled = false;
+});
+$("out").addEventListener("click", async () => { if (state.db) await state.db.auth.signOut(); window.location.replace(window.location.pathname); });
+
+if (state.db) {
+  state.db.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_IN" && session && !state.booted) {
+      if (/access_token=|refresh_token=|type=magiclink/.test(window.location.hash)) history.replaceState(null, "", window.location.pathname + window.location.search);
+      boot();
+    }
+    if (event === "SIGNED_OUT") window.location.replace(window.location.pathname);
+  });
+}
+
+async function boot() {
+  if (!state.db || state.booted) return;
+  const { data: { session } } = await state.db.auth.getSession();
+  if (!session) return;
+  state.booted = true;
+  state.session = session;
+  state.email = String(session.user?.email ?? "").toLowerCase();
+  state.wliq = state.email.endsWith("@" + WLIQ_DOMAIN);
+  show($("signin"), false);
+  show($("app"), true);
+  $("who").textContent = state.email;
+  if (!state.wliq) {
+    setNotice($("outside"), "warn", `Signed in as ${state.email}. The book is readable by White Label IQ addresses only (PRO-7), so every list below will be empty for this address.`);
+  }
+  show($("busy"), true);
+  await loadMember();
+  await loadRubric();
+  await loadBook();
+  show($("busy"), false);
+  window.addEventListener("hashchange", route);
+  route();
+}
+
+/* ------------------------------------------------------------------ *
+ * Loading
+ * ------------------------------------------------------------------ */
+function loadError(where, error) {
+  const el = $("loadErr");
+  const line = `${where}: ${error.message ?? String(error)}`;
+  const detail = [error.code && `code ${error.code}`, error.details, error.hint].filter(Boolean).join("\n");
+  el.replaceChildren(h("div", null, line), detail ? h("pre", null, detail) : null);
+  el.className = "notice bad";
+  show(el, true);
+}
+
+async function loadMember() {
+  const { data, error } = await state.db.from("pb_members").select("email,display_name,role,active");
+  if (error) { loadError("pb_members", error); }
+  const mine = (data ?? []).find((m) => String(m.email).toLowerCase() === state.email && m.active !== false) ?? null;
+  state.member = mine;
+  state.role = mine?.role ?? null;
+  const lane = state.role === "owner" ? "owner lane — enters facts, sets overrides, reviews matches"
+    : state.role === "rater" ? "rater lane — enters facts and reviews matches"
+    : state.role === "viewer" ? "viewer — reads; may raise a dispute or a note"
+    : "no write lane on record — reads; may raise a dispute or a note";
+  $("lane").textContent = "· " + lane;
+}
+
+async function loadRubric() {
+  const { data, error } = await state.db.from("pb_rubric_versions").select("version,status,spec,activated_at,created_at").order("created_at", { ascending: false });
+  if (error) return; // the page works without it: vocab falls back to the constants above
+  const active = (data ?? []).find((r) => r.status === "active") ?? (data ?? [])[0] ?? null;
+  state.rubric = active?.spec ?? null;
+}
+
+async function loadBook() {
+  const [acc, reads, runs] = await Promise.all([
+    state.db.from("pb_accounts").select("*").order("name"),
+    state.db.from("pb_current_reads").select("*"),
+    state.db.from("pb_runs").select("kind,status,started_at,finished_at,source").eq("kind", "score").order("started_at", { ascending: false }).limit(1),
+  ]);
+  if (acc.error) loadError("pb_accounts", acc.error);
+  if (reads.error) loadError("pb_current_reads", reads.error);
+  state.accounts = acc.data ?? [];
+  state.reads = new Map((reads.data ?? []).map((r) => [r.account_id, r]));
+  state.lastRun = { readAt: latestOf((reads.data ?? []).map((r) => r.run_at)), run: runs.data?.[0] ?? null };
+  const anyUnvalidated = [...state.reads.values()].some((r) => r.scorecard?.validation === "UNVALIDATED");
+  if (anyUnvalidated) {
+    $("unvalidated").replaceChildren(
+      h("b", null, "UNVALIDATED (PRO-8)"),
+      " — the rubric's rank agreement has not been measured on the retrodiction cohort. Every anticipated tier below is labelled, not withheld, and may not be the sole basis for a decision.",
+    );
+    show($("unvalidated"), true);
+  } else show($("unvalidated"), false);
+  buildFilters();
+}
+
+/* ------------------------------------------------------------------ *
+ * Routing: #account=<id> opens a sheet; anything else is the roster
+ * ------------------------------------------------------------------ */
+function route() {
+  const m = /^#account=([A-Za-z0-9-]+)$/.exec(window.location.hash);
+  if (m) openSheet(m[1]);
+  else { state.current = null; show($("sheet"), false); show($("roster"), true); renderRoster(); }
+}
+
+/* ------------------------------------------------------------------ *
+ * Roster
+ * ------------------------------------------------------------------ */
+function buildFilters() {
+  const f = state.filters;
+  const tierSel = $("fTier");
+  tierSel.replaceChildren(option("", "Any anticipated tier"), ...tiersBestFirst().map((t) => option(t, "anticipated " + t)), option("none", "No anticipated tier"), option("unscored", "Not yet scored"));
+  const statusSel = $("fStatus");
+  statusSel.replaceChildren(option("", "Any status"), ...STATUSES.map((s) => option(s)), option("unscored", "Not yet scored"));
+  const flags = new Set(state.rubric?.flags?.vocabulary ?? []);
+  for (const r of state.reads.values()) for (const fl of r.scorecard?.flags ?? []) flags.add(fl);
+  flags.delete("Anticipated");
+  $("fFlag").replaceChildren(option("", "Any flag"), ...[...flags].sort().map((x) => option(x)));
+  const sources = [...new Set(state.accounts.map((a) => a.roster_source).filter(Boolean))].sort();
+  $("fSource").replaceChildren(option("", "Any roster source"), ...sources.map((s) => option(s)));
+  tierSel.value = f.tier; statusSel.value = f.status; $("fFlag").value = f.flag; $("fSource").value = f.source; $("q").value = f.q;
+}
+for (const [id, key] of [["fTier", "tier"], ["fStatus", "status"], ["fFlag", "flag"], ["fSource", "source"]]) {
+  $(id).addEventListener("change", () => { state.filters[key] = $(id).value; renderRoster(); });
+}
+$("q").addEventListener("input", () => { state.filters.q = $("q").value.trim(); renderRoster(); });
+$("clear").addEventListener("click", () => { state.filters = { q: "", tier: "", status: "", flag: "", source: "" }; buildFilters(); renderRoster(); });
+
+function tierChip(read) {
+  if (!read) return chip("not yet scored", "tier t-none");
+  const sc = read.scorecard ?? {};
+  if (sc.effective_tier) return chip(`anticipated ${sc.effective_tier} · ${sc.fit?.confidence ?? "confidence not set"}`, "tier t-" + sc.effective_tier);
+  return chip(sc.status === "Unclassified" ? "no anticipated tier · Unclassified" : "no anticipated tier", "tier t-none");
+}
+const urgencyChip = (u) => u ? chip(u, "u-" + String(u).split(" ")[0]) : null;
+const statusChip = (s) => s ? chip(s, s === "Parked" ? "c-warn" : s === "Overridden" ? "c-info" : s === "Ranked" ? "c-good" : "") : null;
+const flagChip = (fl) => chip(fl, /UNVALIDATED|refused|uncertified/i.test(fl) ? "c-warn" : /Direct-to-client|Lapsed|promotion pending/i.test(fl) ? "c-info" : "");
+const qualWords = (q) => q ? `${q.label} · ${q.present_count} of 4 facts` : "—";
+
+function renderRoster() {
+  const ordered = orderAccounts(state.accounts, state.reads);
+  const shown = ordered.filter((a) => rowMatches(a, state.reads.get(a.id) ?? null, state.filters));
+  const total = state.accounts.length;
+  const when = state.lastRun?.readAt ? fmtDateTime(state.lastRun.readAt)
+    : state.lastRun?.run ? `no reads yet; last score run ${fmtDateTime(state.lastRun.run.started_at)} (${state.lastRun.run.status})`
+    : "no scoring run yet";
+  $("count").textContent = `${shown.length === total ? total : shown.length + " of " + total} account${total === 1 ? "" : "s"} · last scored ${when}`;
+
+  const rows = $("rows");
+  if (!shown.length) {
+    rows.replaceChildren(h("div", { class: "empty" }, total ? "No account matches these filters." : (state.wliq ? "No accounts in the book yet. Seeding runs write them; nothing on this page creates one." : "Nothing is readable for this address.")));
+    return;
+  }
+  rows.replaceChildren(...shown.map((a) => rosterRow(a, state.reads.get(a.id) ?? null)));
+}
+
+function cellOf(label, ...content) { return h("div", { class: "c" }, h("span", { class: "lab" }, label), ...content); }
+
+function rosterRow(a, read) {
+  const sc = read?.scorecard ?? null;
+  const sub = [a.domain, a.roster_source ? `roster: ${a.roster_source}${a.roster_certified ? "" : " (uncertified)"}` : null].filter(Boolean).join(" · ");
+  return h("a", { class: "row", href: "#account=" + encodeURIComponent(a.id) },
+    h("div", { class: "nm" }, a.name ?? "(unnamed)", sub ? h("small", null, sub) : null),
+    cellOf("Anticipated tier", tierChip(read)),
+    cellOf("Qualification", sc ? qualWords(sc.qualification) : "—"),
+    cellOf("Ceiling", sc?.potential?.ceiling ?? "—"),
+    cellOf("Year one", sc?.potential?.year1_band ?? "—"),
+    cellOf("Urgency", sc ? urgencyChip(sc.signals?.urgency) ?? "—" : "—"),
+    cellOf("Cell", sc?.cell ?? (sc ? statusChip(sc.status) : "—")),
+    h("div", { class: "c flags" }, h("span", { class: "lab" }, "Flags"), ...(sc?.flags ?? []).map(flagChip)),
+    h("div", { class: "reason" }, sc ? sc.reason : "Not yet scored — this account has no read; the nightly run will grade it from the facts on record."),
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Sheet
+ * ------------------------------------------------------------------ */
+async function openSheet(id) {
+  const account = state.accounts.find((a) => a.id === id);
+  show($("roster"), false);
+  const sheet = $("sheet");
+  show(sheet, true);
+  if (!account) {
+    sheet.replaceChildren(h("a", { class: "back", href: "#" }, "← Roster"), h("div", { class: "notice warn" }, "No account with that id is readable for you."));
+    return;
+  }
+  sheet.replaceChildren(h("a", { class: "back", href: "#" }, "← Roster"), h("div", { class: "sub" }, `Loading ${account.name}…`));
+  const db = state.db;
+  const q = (table, select, order) => {
+    let s = db.from(table).select(select).eq("account_id", id);
+    if (order) s = s.order(order.col, { ascending: !!order.asc, nullsFirst: false });
+    return s;
+  };
+  const [facts, factSources, signals, calls, deals, register, candidates] = await Promise.all([
+    q("pb_current_facts", "*", { col: "key", asc: true }),
+    q("pb_facts", "source,observed_at,created_at,entered_by,stand_in"),
+    q("pb_signals", "*", { col: "observed_at" }),
+    q("pb_calls", "id,title,held_at,url,recorded_by,attendees,external_domains,summary,transcript_available,extraction_status,confirmed_by,confirmed_at", { col: "held_at" }),
+    q("pb_deals", "pipedrive_deal_id,title,stage_name,stage_entered_at,value,currency,close_date,close_date_pushes,status,won_time,lost_time,is_cj,last_buyer_touch_at,next_meeting_at,decision_maker_engaged,price_discussed,calls_held,health,health_reasons,updated_at", { col: "updated_at" }),
+    q("pb_register", "*", { col: "created_at" }),
+    q("pb_identity_candidates", "*", { col: "created_at" }),
+  ]);
+  if (window.location.hash !== "#account=" + encodeURIComponent(id)) return; // the reader moved on
+  const data = { facts: facts.data ?? [], factSources: factSources.data ?? [], signals: signals.data ?? [], calls: calls.data ?? [], deals: deals.data ?? [], register: register.data ?? [], candidates: candidates.data ?? [] };
+  const errors = [["pb_current_facts", facts.error], ["pb_facts", factSources.error], ["pb_signals", signals.error], ["pb_calls", calls.error], ["pb_deals", deals.error], ["pb_register", register.error], ["pb_identity_candidates", candidates.error]].filter(([, e]) => e);
+  state.current = { account, read: state.reads.get(id) ?? null, data };
+  renderSheet(errors);
+}
+
+function group(title, count, note, ...children) {
+  return h("section", { class: "grp" },
+    h("div", { class: "grp-head" }, h("h3", null, title), count !== null && count !== undefined ? h("span", { class: "n" }, count) : null),
+    note ? h("div", { class: "grp-note" }, note) : null,
+    ...children);
+}
+function dl(rows) {
+  return h("div", { class: "pad" }, ...rows.filter(Boolean).map(([k, v, strong]) => h("div", { class: "dl" }, h("i", null, k), h("b", { class: strong ? "strong" : null }, ...(Array.isArray(v) ? v : [v])))));
+}
+function list(items, empty) {
+  return h("div", { class: "card list" }, items.length ? items : h("div", { class: "empty" }, empty));
+}
+function basisChip(b) { return b ? chip(b === "ruled" ? "ruled" : b === "unruled_default" ? "unruled default" : "reasoned", b === "ruled" ? "c-good" : b === "reasoned" ? "c-info" : "") : null; }
+
+function renderSheet(errors) {
+  const { account: a, read, data } = state.current;
+  const sc = read?.scorecard ?? null;
+  const sheet = $("sheet");
+  const parts = [h("a", { class: "back", href: "#" }, "← Roster")];
+
+  if (errors.length) parts.push(h("div", { class: "notice bad" }, "Some tables could not be read:", h("pre", null, errors.map(([t, e]) => `${t}: ${e.message}`).join("\n"))));
+
+  /* header */
+  parts.push(h("div", { class: "sheet-head" },
+    h("div", { class: "title" }, h("h2", null, a.name ?? "(unnamed)"), tierChip(read), sc ? statusChip(sc.status) : null, sc ? urgencyChip(sc.signals?.urgency) : null),
+    sc?.validation === "UNVALIDATED" ? h("div", { class: "notice warn" }, h("b", null, "UNVALIDATED (PRO-8)"), " — this anticipated tier is labelled, not withheld; it may not be the sole basis for a decision.") : null,
+    sc ? h("p", { style: "max-width:80ch" }, sc.reason) : h("p", null, "Not yet scored. The nightly run will grade this account from the facts on record; nothing on this page grades."),
+    sc ? h("div", { class: "chips" }, ...(sc.flags ?? []).map(flagChip)) : null,
+    h("div", { class: "meta" },
+      metaItem("Cell", sc?.cell ?? "—"),
+      metaItem("Domain", a.domain ?? "—"),
+      metaItem("Roster source", a.roster_source ? `${a.roster_source} · ${a.roster_certified ? "certified (Pipedrive carries it)" : "uncertified (PRO-6)"}` : "—"),
+      metaItem("Relationship", a.relationship_type ?? "unknown"),
+      metaItem("Book", a.book ?? "—"),
+      a.lineage ? metaItem("Lineage", a.lineage) : null,
+      metaItem("Last scored", read ? `${fmtDateTime(read.run_at)} · rubric ${read.rubric_version}` : "never"),
+      read ? metaItem("Rubric fingerprint", h("span", { class: "mono" }, read.rubric_fingerprint)) : null,
+    ),
+  ));
+
+  parts.push(sourcesPanel(a, data));
+
+  if (sc) {
+    parts.push(h("div", { class: "grid2" }, fitRead(sc), qualificationRead(sc)));
+    parts.push(h("div", { class: "grid2" }, potentialRead(sc), signalsRead(sc)));
+    parts.push(dealHealthRead(sc, data.deals));
+  } else {
+    parts.push(group("The four reads", null, "Fit, qualification, potential and signals appear here once the nightly run has scored this account."));
+  }
+
+  parts.push(factsOnRecord(data.facts));
+  parts.push(signalTimeline(data.signals, sc));
+  parts.push(callsList(data.calls));
+  parts.push(dealsList(data.deals, sc));
+  parts.push(registerList(data.register));
+  parts.push(mergeQueue(data.candidates));
+
+  /* write paths, shown by lane; RLS is the authority */
+  const forms = [];
+  if (canEnterFacts()) forms.push(factForm(a));
+  forms.push(registerForm(a));
+  if (canOverride()) forms.push(overrideForm(a, sc));
+  parts.push(group("Act", null,
+    canEnterFacts() ? "Everything here is recorded under your name and enters the book at the next nightly run. A refused write shows the database's own reason." : "Any signer may raise a dispute, a proposal or a note under their own name. Facts and overrides need a rater or owner lane in pb_members.",
+    h("div", { class: "grid2" }, ...forms)));
+
+  sheet.replaceChildren(...parts);
+  window.scrollTo(0, 0);
+}
+const metaItem = (k, v) => h("span", null, h("span", { class: "k" }, k), v);
+
+/* ---- sources: which systems have touched this account ---- */
+function sourcesPanel(a, data) {
+  const bySource = new Map();
+  for (const f of data.factSources) {
+    const s = f.source ?? "unknown";
+    const cur = bySource.get(s) ?? { facts: 0, latest: [] };
+    cur.facts++; cur.latest.push(f.observed_at ?? f.created_at); bySource.set(s, cur);
+  }
+  const sigBySource = new Map();
+  for (const s of data.signals) {
+    const k = s.source ?? "unknown";
+    const cur = sigBySource.get(k) ?? { n: 0, latest: [] };
+    cur.n++; cur.latest.push(s.observed_at); sigBySource.set(k, cur);
+  }
+  const rows = [];
+  for (const [s, v] of [...bySource].sort()) rows.push([`Facts · ${s}`, `${v.facts} fact${v.facts === 1 ? "" : "s"} · latest ${fmtDate(latestOf(v.latest))}`]);
+  for (const [s, v] of [...sigBySource].sort()) rows.push([`Signals · ${s}`, `${v.n} signal${v.n === 1 ? "" : "s"} · latest ${fmtDate(latestOf(v.latest))}`]);
+  const openDeals = data.deals.filter((d) => d.status === "open" && !d.is_cj).length;
+  rows.push(["Calls (Fathom)", data.calls.length ? `${data.calls.length} call${data.calls.length === 1 ? "" : "s"} · latest ${fmtDate(latestOf(data.calls.map((c) => c.held_at)))}` : "none recorded"]);
+  rows.push(["Deals (Pipedrive)", data.deals.length ? `${data.deals.length} deal${data.deals.length === 1 ? "" : "s"} · ${openDeals} open · latest change ${fmtDate(latestOf(data.deals.map((d) => d.updated_at)))}` : "none mirrored"]);
+  rows.push(["Register", data.register.length ? `${data.register.length} entr${data.register.length === 1 ? "y" : "ies"} · latest ${fmtDate(latestOf(data.register.map((r) => r.created_at)))}` : "none"]);
+  rows.push(["Merge queue", data.candidates.length ? `${data.candidates.filter((c) => c.status === "proposed").length} awaiting review of ${data.candidates.length}` : "none"]);
+  const ids = [
+    ["Pipedrive", a.pipedrive_org_id != null], ["Orbit", a.orbit_client_id != null], ["Notion master", a.notion_client_id != null || a.notion_page_id != null], ["Apollo", a.apollo_org_id != null],
+  ];
+  rows.push(["Identifiers attached", h("div", { class: "chips" }, ...ids.map(([n, on]) => chip(on ? `${n} attached` : `${n} not attached`, on ? "c-good" : "")))]);
+  rows.push(["Row created", `${fmtDate(a.created_at)} · updated ${fmtDate(a.updated_at)}`]);
+  return group("Sources", null, "Which systems have touched this account, and when they last did.", h("div", { class: "card" }, dl(rows)));
+}
+
+/* ---- read 1 · fit ---- */
+function fitRead(sc) {
+  const fit = sc.fit ?? {};
+  const fired = (fit.adjustments ?? []).filter((t) => t.fired);
+  const idle = (fit.adjustments ?? []).filter((t) => !t.fired);
+  const gates = sc.gates ?? [];
+  const rows = [
+    ["Anticipated tier", [tierChip({ scorecard: sc })], true],
+    ["Status", [statusChip(sc.status)]],
+    ["ICP class", fit.icp_class ? `${fit.icp_class} (${fit.icp_derivation})` : `none (${fit.icp_derivation ?? "none"})`],
+    ["Base tier", fit.base_tier ?? "none"],
+    ["Adjustments", fired.length ? `${fired.length} fired · net ${fit.net_adjustment > 0 ? "+" : ""}${fit.net_adjustment} rung${Math.abs(fit.net_adjustment) === 1 ? "" : "s"}` : "none fired"],
+    ["Adjusted tier", fit.adjusted_tier ?? "none"],
+    ["Platinum rule", fit.platinum_rule ? `${fit.platinum_rule.met ? "met" : "not met"}${fit.platinum_rule.reasons?.length ? " — " + fit.platinum_rule.reasons.join("; ") : ""}` : "—"],
+    ["Computed tier", fit.computed_tier ?? "none"],
+    sc.override ? ["Override", `${sc.override.tier} by ${sc.override.approver} (${sc.override.reason_code})${sc.override.expires_at ? " · expires " + fmtDate(sc.override.expires_at) : ""}${sc.override.reason ? " — " + sc.override.reason : ""}`] : null,
+    ["Confidence", `${fit.confidence ?? "not set"} — ${fit.confidence_reason ?? ""}`],
+  ];
+  const gateItems = gates.map((g) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, g.label), chip(g.result, g.result === "fail" ? (g.mode === "park" ? "c-bad" : "c-warn") : g.result === "pass" ? "c-good" : ""), chip(`mode ${g.mode}`), basisChip(g.basis)),
+    h("div", { class: "sub" }, g.reason)));
+  const adjItem = (t) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, t.name), chip(t.direction > 0 ? "+1 rung" : "−1 rung", t.direction > 0 ? "c-good" : "c-bad"), basisChip(t.basis), t.inputs?._skipped ? chip("skipped: " + t.inputs._skipped, "c-info") : null),
+    h("div", { class: "sub mono" }, t.id + " · " + t.rule_text));
+  return group("Read 1 · Fit", "is it work we're good at", null,
+    h("div", { class: "card" }, dl(rows),
+      h("div", { class: "pad", style: "padding-top:0" },
+        h("details", { open: fired.length > 0 }, h("summary", null, `Adjustments that fired (${fired.length})`), h("div", { class: "list" }, ...(fired.length ? fired.map(adjItem) : [h("div", { class: "empty" }, "No named adjustment fired.")]))),
+        h("details", null, h("summary", null, `Rules that did not fire (${idle.length})`), h("div", { class: "list" }, ...idle.map(adjItem))),
+        h("details", null, h("summary", null, `Gates (${gates.length})`), h("div", { class: "list" }, ...gateItems)),
+        sc.trace?.tier_reasoning ? h("details", null, h("summary", null, "How the tier was derived"), h("div", { class: "sub", style: "padding:.5rem 0" }, sc.trace.tier_reasoning)) : null,
+      )));
+}
+
+/* ---- read 2 · qualification ---- */
+function qualificationRead(sc) {
+  const q = sc.qualification ?? {};
+  const f = q.facts ?? {};
+  const stateChip = (s) => chip(s ?? "unknown", s === "present" ? "c-good" : s === "absent" ? "c-bad" : "");
+  return group("Read 2 · Qualification", "is the deal real", null,
+    h("div", { class: "card" }, dl([
+      ["Label", [q.label ?? "—", " · ", `${q.present_count ?? 0} of 4 facts present`], true],
+      ["Money", [stateChip(f.money), " ", h("span", { class: "sub" }, "a stated budget, or a quote issued")]],
+      ["Authority", [stateChip(f.authority), " ", h("span", { class: "sub" }, "someone who can say yes, and we have met them")]],
+      ["Timing", [stateChip(f.timing), " ", h("span", { class: "sub" }, q.timing ? q.timing.replaceAll("_", " ") : "no stated timing")]],
+      ["Specification", [stateChip(f.specification), " ", h("span", { class: "sub" }, "they can say what they need in enough detail to quote it")]],
+    ])));
+}
+
+/* ---- read 3 · potential ---- */
+function potentialRead(sc) {
+  const p = sc.potential ?? {};
+  const inp = p.inputs ?? {};
+  const bands = year1Bands();
+  const vendor = inp.n_vendors != null && inp.our_rank != null ? `#${inp.our_rank} of ${inp.n_vendors} vendors (wallet allocation rule)` : `unknown — default winnable share (${p.winnable_basis ?? "default"})`;
+  return group("Read 3 · Potential", "how big could it get", null,
+    h("div", { class: "card" }, dl([
+      ["Ceiling", [p.ceiling ?? "—", p.ceiling_capped_reason ? h("span", { class: "sub" }, ` · capped: ${p.ceiling_capped_reason}${p.ceiling_proposed ? ` (proposed ${p.ceiling_proposed})` : ""}`) : (p.ceiling_proposed && p.ceiling_proposed !== p.ceiling ? h("span", { class: "sub" }, ` · proposed ${p.ceiling_proposed}`) : null)], true],
+      ["Headroom band", p.headroom_band ?? "unknown headroom"],
+      ["Year one", [p.year1_band ?? "unknown", h("span", { class: "sub" }, ` · from ${p.year1_basis === "quote" ? "a quote on file" : p.year1_basis === "icp_prior" ? "the ICP prior band (reasoned, unfitted)" : "nothing — unknown"}`)], true],
+      ["Confidence", p.confidence ?? "—"],
+      ["Climb evidence", (p.climb_evidence ?? []).length ? h("div", { class: "chips" }, ...p.climb_evidence.map((c) => chip(c, "c-good"))) : "none observed"],
+      ["Headcount", `${headcountWords(inp.headcount)}${inp.headcount == null ? "" : ""}`],
+      ["Archetype", inp.archetype ?? "unknown (default)"],
+      ["WL signal", inp.wl_signal ?? "unknown (default outsourceable share)"],
+      ["Serviceable share", inp.serviceable_share == null ? "unknown" : ratioWords(inp.serviceable_share)],
+      ["Vendor rank", vendor],
+      ["Quote on file", inp.quote_amount ? `yes — ${factValueWords("quote_amount", inp.quote_amount, bands)}` : "no"],
+      ["Trailing revenue", inp.trailing_12m_revenue ? factValueWords("trailing_12m_revenue", inp.trailing_12m_revenue, bands) : "none (prospect)"],
+      ["Stated ceiling", inp.stated_ceiling ?? "none"],
+    ])));
+}
+
+/* ---- read 4 · signals ---- */
+function signalsRead(sc) {
+  const s = sc.signals ?? {};
+  const r = routing();
+  const sigItem = (t) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, signalLabel(t.type)), chip(strengthWords(t.weight, t.weight_now, r.strong, r.medium), t.weight < 0 ? "c-bad" : t.weight_now >= r.strong ? "c-good" : "")),
+    h("div", { class: "sub" }, `${t.source} · observed ${fmtDate(t.observed_at)} · ${ageWords(t.age_days)}`));
+  const tasks = (s.tasks ?? []).map((t) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, signalLabel(t.signal)), chip(`due ${fmtDateTime(t.due_by)}`, "c-warn")),
+    h("div", { class: "sub" }, t.reason)));
+  return group("Read 4 · Signals", "are they moving now", null,
+    h("div", { class: "card" },
+      dl([
+        ["Urgency", [urgencyChip(s.urgency) ?? "—", h("span", { class: "sub" }, ` · ${s.urgency_basis === "stated_timing" ? "a stated timing fact wins" : s.urgency_basis === "computed" ? "computed from live signals" : "no live signal and no stated timing"}`)], true],
+        ["Live signals", `${(s.top ?? []).length} counted · ${(s.negatives ?? []).length} negative`],
+      ]),
+      h("div", { class: "pad", style: "padding-top:0" },
+        h("details", { open: tasks.length > 0 }, h("summary", null, `Tasks with an SLA (${tasks.length})`), h("div", { class: "list" }, ...(tasks.length ? tasks : [h("div", { class: "empty" }, "No routing task: no strong signal or pair of medium signals inside the window.")]))),
+        h("details", { open: (s.top ?? []).length > 0 }, h("summary", null, `Top signals at scoring (${(s.top ?? []).length})`), h("div", { class: "list" }, ...((s.top ?? []).length ? s.top.map(sigItem) : [h("div", { class: "empty" }, "No live signal.")]))),
+        (s.negatives ?? []).length ? h("details", { open: true }, h("summary", null, `Negatives (${s.negatives.length})`), h("div", { class: "list" }, ...s.negatives.map(sigItem))) : null,
+      )));
+}
+
+/* ---- deal health ---- */
+function dealHealthRead(sc, deals) {
+  const dh = sc.deal_health ?? [];
+  const titleOf = (d) => d.title ?? deals.find((x) => String(x.pipedrive_deal_id) === String(d.deal_id))?.title ?? "Untitled deal";
+  const items = dh.map((d) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("span", { class: "dot " + d.color }), h("b", null, titleOf(d)), chip(d.color, d.color === "red" ? "c-bad" : d.color === "yellow" ? "c-warn" : "c-good")),
+    ...(d.warnings ?? []).map((w) => h("div", { class: "sub" }, chip(w.severity, w.severity === "red" ? "c-bad" : "c-warn"), " ", w.message)),
+    (d.warnings ?? []).length ? null : h("div", { class: "sub" }, "No warning fired. Unknown inputs never warn."),
+  ));
+  return group("Deal health", dh.length ? `${dh.length} open deal${dh.length === 1 ? "" : "s"}` : null, "Rules, not a model: red / yellow / green per open deal, computed at the last scoring.",
+    list(items, "No open deal at the last scoring, so the reason sentence omits deal health."));
+}
+
+/* ---- facts on record (pb_current_facts) ---- */
+function factsOnRecord(facts) {
+  const bands = year1Bands();
+  const items = facts.map((f) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", { class: "mono" }, f.key), chip(factValueWords(f.key, f.value, bands), f.value === null ? "" : "c-info"), chip(f.evidence_label, f.evidence_label === "evidence" ? "c-good" : f.evidence_label === "inferred" ? "c-warn" : ""), f.stand_in ? chip("stand-in entry", "c-info") : null),
+    h("div", { class: "sub" }, `${f.source} · observed ${fmtDate(f.observed_at)} · entered ${fmtDate(f.created_at)} by ${f.entered_by ?? "—"}`, f.evidence_url ? [" · ", linkOrText(f.evidence_url, "evidence")] : null),
+    f.note ? h("div", { class: "sub" }, f.note) : null,
+  ));
+  return group("Facts on record", `${facts.length} current`, "The latest value per key. Facts are append-only: a change is a new row, never an edit.", list(items, "No fact on record for this account."));
+}
+
+/* ---- signal timeline (pb_signals) ---- */
+function signalTimeline(signals, sc) {
+  const asOf = sc?.as_of ? Date.parse(sc.as_of) : null;
+  const items = signals.map((s) => {
+    const expired = s.expires_at && asOf !== null && Date.parse(s.expires_at) < asOf;
+    const text = s.payload && typeof s.payload === "object" ? (s.payload.text ?? s.payload.title ?? s.payload.value ?? null) : null;
+    return h("div", { class: "item" },
+      h("div", { class: "top" }, h("b", null, signalLabel(s.type)), chip(s.source), s.decays === false ? chip("does not decay") : null, expired ? chip("expired at last scoring", "c-warn") : null, s.weight < 0 ? chip("negative", "c-bad") : null),
+      h("div", { class: "sub" }, `observed ${fmtDateTime(s.observed_at)} · entered by ${s.entered_by ?? "—"}`, s.evidence_url ? [" · ", linkOrText(s.evidence_url, "evidence")] : null),
+      text != null ? h("div", { class: "body" }, String(text)) : null,
+    );
+  });
+  return group("Signal timeline", `${signals.length}`, "Every signal ever recorded, newest first; signals expire, they are never deleted.", list(items, "No signal recorded."));
+}
+
+/* ---- calls (pb_calls) ---- */
+function callsList(calls) {
+  const items = calls.map((c) => {
+    const ext = (Array.isArray(c.attendees) ? c.attendees : []).filter((x) => x && x.is_external).map((x) => x.name || x.email).filter(Boolean);
+    return h("div", { class: "item" },
+      h("div", { class: "top" }, h("b", null, c.title ?? "Untitled call"), chip(`extraction ${c.extraction_status ?? "pending"}`, c.extraction_status === "confirmed" ? "c-good" : ""), c.transcript_available ? chip("transcript") : null),
+      h("div", { class: "sub" }, `held ${fmtDateTime(c.held_at)} · recorded by ${c.recorded_by ?? "—"}`, c.url ? [" · ", linkOrText(c.url, "open in Fathom")] : null),
+      ext.length ? h("div", { class: "sub" }, "External attendees: " + ext.join(", ")) : ((c.external_domains ?? []).length ? h("div", { class: "sub" }, "External domains: " + c.external_domains.join(", ")) : null),
+      c.confirmed_by ? h("div", { class: "sub" }, `fields confirmed by ${c.confirmed_by} on ${fmtDate(c.confirmed_at)}`) : null,
+      c.summary ? h("details", null, h("summary", null, "Summary"), h("div", { class: "body" }, c.summary)) : null,
+    );
+  });
+  return group("Calls", `${calls.length}`, null, list(items, "No Fathom call touches this account's domain."));
+}
+
+/* ---- deals (pb_deals) ---- */
+function dealsList(deals, sc) {
+  const bands = year1Bands();
+  const items = deals.map((d) => {
+    const pushes = Array.isArray(d.close_date_pushes) ? d.close_date_pushes.length : 0;
+    const health = (sc?.deal_health ?? []).find((x) => String(x.deal_id) === String(d.pipedrive_deal_id))?.color ?? d.health ?? null;
+    const valueBand = typeof d.value === "number" || (typeof d.value === "string" && d.value !== "") ? pickBand(Number(d.value), bands) : null;
+    return h("div", { class: "item" },
+      h("div", { class: "top" }, health ? h("span", { class: "dot " + health }) : null, h("b", null, d.title ?? "Untitled deal"), chip(d.status ?? "—", d.status === "won" ? "c-good" : d.status === "lost" ? "c-bad" : ""), d.is_cj ? chip("Client Journey card — not a prospect deal", "c-info") : null),
+      h("div", { class: "sub" }, [
+        d.stage_name ? `stage ${d.stage_name}${d.stage_entered_at ? " since " + fmtDate(d.stage_entered_at) : ""}` : "stage unknown",
+        d.close_date ? `close ${fmtDate(d.close_date)}` : "no close date",
+        pushes ? `close date moved ${pushes === 1 ? "once" : pushes === 2 ? "twice" : "three or more times"}` : "close date never moved",
+        valueBand ? `value in the ${valueBand} band` : null,
+      ].filter(Boolean).join(" · ")),
+      h("div", { class: "sub" }, [
+        d.last_buyer_touch_at ? `last buyer touch ${fmtDate(d.last_buyer_touch_at)}` : "buyer touch unknown",
+        d.next_meeting_at ? `next meeting ${fmtDateTime(d.next_meeting_at)}` : "no next meeting booked",
+        d.decision_maker_engaged === true ? "decision-maker engaged" : d.decision_maker_engaged === false ? "no decision-maker engaged" : null,
+        d.price_discussed === true ? "price discussed" : d.price_discussed === false ? "price not discussed" : null,
+      ].filter(Boolean).join(" · ")),
+    );
+  });
+  return group("Deals", `${deals.length}`, "A mirror of Pipedrive, never the record.", list(items, "No Pipedrive deal is mirrored for this account."));
+}
+
+/* ---- register (pb_register) ---- */
+function registerList(entries) {
+  const items = entries.map((r) => h("div", { class: "item" },
+    h("div", { class: "top" }, chip(r.kind, r.kind === "override" ? "c-warn" : r.kind === "dispute" ? "c-bad" : r.kind === "promotion" ? "c-good" : "c-info"), h("b", null, r.made_by), h("span", { class: "sub" }, fmtDateTime(r.created_at)), r.reason_code ? chip(r.reason_code) : null),
+    r.payload?.tier ? h("div", { class: "sub" }, `override to anticipated ${r.payload.tier}${r.expires_at || r.payload.expires_at ? " · expires " + fmtDate(r.expires_at ?? r.payload.expires_at) : ""}`) : (r.expires_at ? h("div", { class: "sub" }, "expires " + fmtDate(r.expires_at)) : null),
+    h("div", { class: "body" }, r.text ?? ""),
+  ));
+  return group("Register", `${entries.length}`, "Every decision that touches a grade lives here, never in a read.", list(items, "No register entry for this account."));
+}
+
+/* ---- merge queue (pb_identity_candidates) ---- */
+function mergeQueue(cands) {
+  const items = cands.map((c) => {
+    const item = h("div", { class: "item" },
+      h("div", { class: "top" }, chip(c.status, c.status === "merged" ? "c-good" : c.status === "rejected" ? "c-bad" : "c-warn"), h("b", null, c.source_name ?? "(no name)"), chip(`from ${c.source}`), c.matched_on ? chip(`matched on ${c.matched_on}`) : null, c.confidence ? chip(`${c.confidence} confidence`, c.confidence === "high" ? "c-good" : "") : null),
+      h("div", { class: "sub" }, [c.source_domain ? `domain ${c.source_domain}` : null, `proposed ${fmtDate(c.created_at)}`, c.reviewed_by ? `reviewed by ${c.reviewed_by} on ${fmtDate(c.reviewed_at)}` : null].filter(Boolean).join(" · ")),
+      c.note ? h("div", { class: "sub" }, c.note) : null,
+    );
+    if (c.status === "proposed" && canReview()) item.append(reviewControls(c));
+    return item;
+  });
+  return group("Merge queue", `${cands.length}`, "Proposed matches from other systems. A person confirms; nothing merges on its own (PRO-18).", list(items, "No proposed match for this account."));
+}
+
+function reviewControls(c) {
+  const note = h("input", { type: "text", placeholder: "Note (optional)", "aria-label": "Review note" });
+  const msg = h("div", { class: "notice hidden" });
+  const act = async (status) => {
+    for (const b of buttons) b.disabled = true;
+    const { data, error } = await state.db.from("pb_identity_candidates").update({ status, note: note.value.trim() || null, reviewed_by: state.email }).eq("id", c.id).select("id");
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, [error.code && `code ${error.code}`, error.details, error.hint].filter(Boolean).join("\n")); for (const b of buttons) b.disabled = false; return; }
+    if (!data || !data.length) { setNotice(msg, "warn", "No row was changed. Row Level Security may have refused the update without an error — your lane in pb_members decides."); for (const b of buttons) b.disabled = false; return; }
+    setNotice(msg, "ok", `Recorded as ${status} under ${state.email}. The attachment itself happens in the next ingest; nothing on this page merges rows.`);
+    await refreshSheet();
+  };
+  const buttons = [h("button", { type: "button", class: "primary", onclick: () => act("merged") }, "Confirm match"), h("button", { type: "button", class: "danger", onclick: () => act("rejected") }, "Reject")];
+  return h("div", { class: "form", style: "margin-top:.5rem" }, h("div", { class: "inline" }, note, ...buttons), msg);
+}
+
+async function refreshSheet() { if (state.current) await openSheet(state.current.account.id); }
+
+/* ------------------------------------------------------------------ *
+ * Write forms. RLS decides; the page only shows the lane it was told.
+ * ------------------------------------------------------------------ */
+function field(labelText, control, hint) { return h("div", { class: "field" }, h("label", null, labelText), control, hint ? h("div", { class: "hint" }, hint) : null); }
+function errorDetail(error) { return [error.code && `code ${error.code}`, error.details, error.hint].filter(Boolean).join("\n"); }
+
+function factForm(a) {
+  const keySel = h("select", { "aria-label": "Fact key" });
+  const groups = new Map();
+  for (const k of FACT_KEYS) { if (!groups.has(k.group)) groups.set(k.group, []); groups.get(k.group).push(k); }
+  for (const [g, ks] of groups) keySel.append(h("optgroup", { label: g }, ...ks.map((k) => option(k.key))));
+  const valueWrap = h("div", { class: "field" });
+  const hintEl = h("div", { class: "hint" });
+  let valueCtl = null, def = FACT_KEYS[0];
+  const renderValue = () => {
+    def = FACT_KEYS.find((k) => k.key === keySel.value) ?? FACT_KEYS[0];
+    if (def.kind === "enum") valueCtl = h("select", null, option("", "unknown — record that we checked"), ...def.options.map((o) => option(o)));
+    else if (def.kind === "bool") valueCtl = h("select", null, option("", "unknown — record that we checked"), option("true", "yes"), option("false", "no"));
+    else if (def.kind === "list") valueCtl = h("select", { multiple: true }, ...climbList().map((o) => option(o)));
+    else if (def.kind === "int") valueCtl = h("input", { type: "number", min: "0", step: "1", placeholder: "whole number" });
+    else if (def.kind === "money") valueCtl = h("input", { type: "number", min: "0", step: "1", placeholder: "dollars" });
+    else if (def.kind === "ratio") valueCtl = h("input", { type: "number", min: "0", max: "1", step: "0.01", placeholder: "0 to 1" });
+    else valueCtl = h("input", { type: "text" });
+    hintEl.textContent = [def.hint, def.kind === "money" ? "Entered in dollars; the page shows it as a band." : def.kind === "ratio" ? "A share between 0 and 1." : def.kind === "list" ? "Hold ⌘ / Ctrl to pick more than one." : ""].filter(Boolean).join(" ");
+    valueWrap.replaceChildren(h("label", null, "Value"), valueCtl, hintEl);
+  };
+  keySel.addEventListener("change", renderValue);
+  renderValue();
+
+  const label = h("select", null, ...EVIDENCE_LABELS.map((l, i) => option(l, l, i === 0)));
+  const source = h("select", null, ...FACT_SOURCES.map((s, i) => option(s, s, i === 0)));
+  const url = h("input", { type: "url", placeholder: "https://…" });
+  const observed = h("input", { type: "date", value: todayIso() });
+  const standIn = h("input", { type: "checkbox" });
+  const note = h("input", { type: "text", placeholder: "Where it was seen, in a few words" });
+  const msg = h("div", { class: "notice hidden" });
+  const submit = h("button", { type: "submit", class: "primary" }, "Add fact");
+
+  const form = h("form", { class: "form" },
+    h("div", { class: "fields" },
+      field("Key", keySel, "A ProspectFeatures key. The latest row per key is the value the engine reads."),
+      valueWrap,
+      field("Evidence label", label, "evidence = seen in a primary record · inferred = stated without one · unknown = absent, reason noted"),
+      field("Source", source, "Which system the fact comes from. Your own observation is rater."),
+      field("Evidence URL", url),
+      field("Observed on", observed, "When the fact was true or observed, not today's date by default."),
+    ),
+    field("Note", note),
+    h("label", { class: "check" }, standIn, "I am standing in for this row's rater (recorded as a stand-in, PRO-5)"),
+    h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `entered_by ${state.email}`)),
+    msg,
+  );
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const raw = def.kind === "list" ? [...valueCtl.selectedOptions].map((o) => o.value) : valueCtl.value;
+    const value = coerceFactValue(def.kind, raw);
+    if (value === INVALID) { setNotice(msg, "warn", `That value does not fit ${def.key} (${def.kind}).`); return; }
+    const row = {
+      account_id: a.id, key: def.key, value, evidence_label: label.value, source: source.value,
+      evidence_url: url.value.trim() || null, observed_at: observed.value || null,
+      entered_by: state.email, stand_in: standIn.checked, note: note.value.trim() || null,
+    };
+    submit.disabled = true;
+    const { error } = await state.db.from("pb_facts").insert(row);
+    submit.disabled = false;
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
+    setNotice(msg, "ok", `Recorded ${def.key} under ${state.email}. The read on this page has not changed; the nightly run scores it.`);
+    form.reset(); renderValue(); observed.value = todayIso();
+    await refreshSheet();
+  });
+  return group("Add a fact", null, null, h("div", { class: "card pad" }, form));
+}
+
+function registerForm(a) {
+  const kind = h("select", null, option("dispute", "Dispute — this read is wrong because…"), option("proposal", "Proposal — a change to a fact or rule"), option("note", "Note"));
+  const code = h("select", null, option("", "no reason code"), ...reasonCodes().map((c) => option(c)));
+  const text = h("textarea", { placeholder: "What, and why. Plain words a reader can act on.", required: true });
+  const msg = h("div", { class: "notice hidden" });
+  const submit = h("button", { type: "submit", class: "primary" }, "Raise it");
+  const form = h("form", { class: "form" },
+    h("div", { class: "fields" }, field("Kind", kind), field("Reason code", code, "Optional; the override codes double as dispute reasons.")),
+    field("Text", text),
+    h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `made_by ${state.email}`)),
+    msg);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const row = { kind: kind.value, account_id: a.id, made_by: state.email, reason_code: code.value || null, text: text.value.trim() };
+    if (!row.text) return;
+    submit.disabled = true;
+    const { error } = await state.db.from("pb_register").insert(row);
+    submit.disabled = false;
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
+    setNotice(msg, "ok", `Recorded a ${row.kind} under ${state.email}. It changes no read on its own.`);
+    form.reset();
+    await refreshSheet();
+  });
+  return group("Raise a dispute, proposal or note", null, null, h("div", { class: "card pad" }, form));
+}
+
+function overrideForm(a, sc) {
+  const computed = sc?.fit?.computed_tier ?? null;
+  const tier = h("select", null, option("", "choose a tier"), ...tiersBestFirst().map((t) => option(t, "anticipated " + t)));
+  const code = h("select", null, ...reasonCodes().map((c) => option(c)));
+  const reason = h("textarea", { placeholder: "Written reason (required by the July ruling).", required: true });
+  const expiryDays = state.rubric?.override?.expiry_default_days;
+  const expires = h("input", { type: "date", value: typeof expiryDays === "number" ? plusDaysIso(expiryDays) : "" });
+  const capNote = h("div", { class: "notice hidden" });
+  const msg = h("div", { class: "notice hidden" });
+  const submit = h("button", { type: "submit", class: "primary" }, "Set override");
+  tier.addEventListener("change", () => { const w = overrideCapWarning(tier.value, computed, tierOrder()); if (w) setNotice(capNote, "warn", w); else show(capNote, false); });
+  const form = h("form", { class: "form" },
+    h("div", { class: "sub" }, computed ? `Computed anticipated tier on the last read: ${computed}. One tier up or down at most; the engine refuses more and keeps the computed tier.` : "No computed tier on the last read."),
+    h("div", { class: "fields" }, field("Tier", tier), field("Reason code", code), field("Expires", expires, typeof expiryDays === "number" ? `Default from the rubric: ${expiryDays} days.` : "Leave empty for no expiry.")),
+    field("Reason", reason),
+    capNote,
+    h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `made_by ${state.email} · owner lane`)),
+    msg);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!tier.value || !reason.value.trim()) { setNotice(msg, "warn", "A tier and a written reason are both required."); return; }
+    const expiresAt = expires.value ? new Date(expires.value + "T00:00:00Z").toISOString() : null;
+    const row = { kind: "override", account_id: a.id, made_by: state.email, reason_code: code.value, text: reason.value.trim(), payload: { tier: tier.value, expires_at: expiresAt }, expires_at: expiresAt };
+    submit.disabled = true;
+    const { error } = await state.db.from("pb_register").insert(row);
+    submit.disabled = false;
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
+    setNotice(msg, "ok", `Override to anticipated ${tier.value} recorded under ${state.email}. The nightly run applies it — or refuses it beyond the one-tier cap — and the row shows as Overridden only then.`);
+    form.reset(); show(capNote, false);
+    await refreshSheet();
+  });
+  return group("Set override", null, null, h("div", { class: "card pad" }, form));
+}
+
+boot();
+</script></body></html>

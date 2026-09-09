@@ -1,0 +1,66 @@
+# Publishes web/ — and only web/ — to GitHub Pages.
+#
+# Why a workflow rather than a direct deploy: the build session that authors this repo has
+# no network path to a hosting API and no tool with a deploy verb. It can push a file. So
+# the deploy runs where the push lands — on GitHub's own runner — and this file is the
+# instruction it follows. The page cannot be served from *.supabase.co (HTML is downgraded
+# to text/plain there), which is why Pages is the host at all.
+#
+# Only web/ is published. The rest of the repo — the rubric, the migrations, the fixtures,
+# the docs — is never uploaded: `upload-pages-artifact` takes that one path and nothing
+# else. The page itself carries only the publishable key; every read is behind RLS.
+#
+# Pages must be enabled ONCE by hand: Settings → Pages → Build and deployment → Source →
+# "GitHub Actions". The token that runs a workflow cannot switch Pages on by itself — a
+# `permissions:` block can only narrow what a token already holds, never widen it — so the
+# `configure-pages` step with `enablement: true` succeeds only after that one-time step
+# (in the sister repo the first unattended run failed with "Create Pages site failed.
+# Error: Resource not accessible by integration" for exactly this reason).
+#
+# Why manual only: until Pages is enabled, a push-triggered workflow would fail on every
+# push and bury real failures in noise. Once enabled, the page changes rarely and a person
+# dispatching it is the right cadence. If the deploy step still comes back "not accessible
+# by integration" after Pages is enabled, the token lacks Pages entirely and this route is
+# closed — publish from a branch instead, which needs only `contents`.
+#
+# After the first successful deploy, add the Pages URL to Supabase Auth → URL Configuration
+# (Site URL and Redirect URLs), or the magic-link sign-in will not return to the page.
+# See docs/RUNBOOK.md.
+
+name: Deploy Prospect Book page
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Turn Pages on if it is not already
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Take only the page directory
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v4

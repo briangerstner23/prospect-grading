@@ -33,7 +33,6 @@ import {
 } from "./engine.ts";
 import { evalWhen } from "./classify.ts";
 import type { ProspectFeatures, ProspectScorecard, SignalInput, Tier } from "./prospect_types.ts";
-import { TIER_ORDER } from "./prospect_types.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const load = (p: string) => JSON.parse(readFileSync(join(here, p), "utf8"));
