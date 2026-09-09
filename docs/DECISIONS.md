@@ -54,7 +54,12 @@ build proceeds on. Nothing here is a new ruling.
   prospect names, dollar bands, seed exports, gate reports or the build-kit documents (which
   carry Notion URLs, credit balances and staff names) are committed here. Code, schema, the
   rubric and synthetic fixtures only.
-- **Pipedrive is unreadable**, and it is the ruled source of truth for the roster and the
-  source of the qualification facts Brian named first. One person, once: a working API token
-  in the Supabase Vault (`PB_PIPEDRIVE_API_TOKEN`) or an OAuth grant on the MCP. Everything
-  about method proceeds; the certified roster does not.
+- **Pipedrive was unreadable until 9 Sep, 17:15 UTC, and is now connected.** It is the ruled
+  source of truth for the roster and the source of the qualification facts Brian named first.
+  The certified roster is derived from the Client Journey cards: an organisation with a card
+  in New, Schedule Sales Call, Sales Call Done, Quoting, Quote Lost or Unqualified/DNC (the
+  last parked), plus organisations on open pipeline-1 deals with no card. Client-stage cards
+  are Agency Partners (PRO-10) and never enter the book. On 9 Sep that is 665 organisations,
+  against 62 Notion rows. What still needs a person: the webhook (created in Pipedrive's
+  settings against a Basic-auth secret in Vault) and, for write-back later, an API token
+  (`PB_PIPEDRIVE_API_TOKEN`); the MCP itself is an OAuth grant the app cannot reuse.

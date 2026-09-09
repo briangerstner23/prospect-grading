@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   buildReason,
+  canonicalJson,
   classifyIcp,
   computeUrgency,
   dealHealth,
@@ -31,6 +32,7 @@ import {
   pickBand,
   routeTasks,
 } from "./engine.ts";
+import type { DealHealthInput } from "./engine.ts";
 import { evalWhen } from "./classify.ts";
 import type { ProspectFeatures, ProspectScorecard, SignalInput, Tier } from "./prospect_types.ts";
 
@@ -102,6 +104,22 @@ check("fingerprint: 8 hex chars", /^[0-9a-f]{8}$/.test(fingerprint(R)));
 check("fingerprint: sensitive to a one-byte change", fingerprint({ a: 1 }) !== fingerprint({ a: 2 }));
 eq("fingerprint: scorecard carries the rubric fingerprint", grade(base(), R).rubric_fingerprint, fingerprint(R));
 eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1cfea (checked in Python)", fingerprint("a"), "61a1cfea");
+// Key order must not matter: tests read the rubric from a file, pb-score reads it from a jsonb
+// column, and jsonb does not keep object key order. The hash runs over canonical JSON.
+{
+  const keySorted = (v: unknown): unknown => Array.isArray(v) ? v.map(keySorted) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, keySorted((v as Record<string, unknown>)[k])])) : v;
+  const keyReversed = (v: unknown): unknown => Array.isArray(v) ? v.map(keyReversed) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as object).sort().reverse().map((k) => [k, keyReversed((v as Record<string, unknown>)[k])])) : v;
+  check("fingerprint: the reversed-key rubric is a different byte string", JSON.stringify(keyReversed(R)) !== JSON.stringify(R));
+  eq("fingerprint: independent of object key order (sorted)", fingerprint(keySorted(R)), fingerprint(R));
+  eq("fingerprint: independent of object key order (reversed)", fingerprint(keyReversed(R)), fingerprint(R));
+  eq("fingerprint: a jsonb-style round trip of the rubric scores with the same fingerprint", grade(base(), JSON.parse(JSON.stringify(keyReversed(R)))).rubric_fingerprint, grade(base(), R).rubric_fingerprint);
+  eq("fingerprint: canonical JSON sorts keys recursively, keeps array order, drops undefined",
+    canonicalJson({ b: 1, a: [1, { d: 2, c: 3 }], "≥": "x", z: null, n: 0.5, u: undefined }),
+    "{\"a\":[1,{\"c\":3,\"d\":2}],\"b\":1,\"n\":0.5,\"z\":null,\"≥\":\"x\"}");
+  eq("fingerprint: independent vector over canonical JSON (FNV-1a in Python: ffddc74b)", fingerprint({ b: 1, a: [1, { d: 2, c: 3 }], "≥": "x", z: null, n: 0.5 }), "ffddc74b");
+  check("fingerprint: array order still matters", fingerprint([1, 2]) !== fingerprint([2, 1]));
+  check("fingerprint: a changed value still changes the hash", fingerprint(keySorted({ ...R, version: "0.1.1" })) !== fingerprint(R));
+}
 
 /* gates */
 {
@@ -130,6 +148,21 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   const strict = structuredClone(R);
   strict.gates.items.broker_character.mode = "park";
   eq("gate: mode is read from the rubric (broker → park)", grade(base({ broker_character: "flag" }), strict).status, "Parked");
+  // any gate in mode flag flags on failure; the text is the item's `flag` or "<label> flag"
+  const geoFlag = structuredClone(R);
+  geoFlag.gates.items.geography.mode = "flag";
+  const geoRow = { ...base(), geography_ok: false } as unknown as ProspectFeatures;
+  const geo = grade(geoRow, geoFlag);
+  eq("gate: a geography gate in mode flag stays Ranked", geo.status, "Ranked");
+  check("gate: a geography gate in mode flag flags with '<label> flag'", geo.flags.includes("Geography flag"), geo.flags.join(" | "));
+  check("gate: unknown geography never flags", !grade(base(), geoFlag).flags.includes("Geography flag"));
+  geoFlag.gates.items.geography.flag = "Outside territory";
+  check("gate: the rubric's own flag text wins over the label", grade(geoRow, geoFlag).flags.includes("Outside territory") && !grade(geoRow, geoFlag).flags.includes("Geography flag"));
+  const renamed = structuredClone(R);
+  renamed.gates.items.character = renamed.gates.items.broker_character;
+  delete renamed.gates.items.broker_character;
+  renamed.gates.evaluation_order = renamed.gates.evaluation_order.map((id: string) => (id === "broker_character" ? "character" : id));
+  check("gate: the broker flag does not depend on the gate's id", grade(base({ broker_character: "flag" }), renamed).flags.includes("Broker character flag"));
 }
 
 /* ICP */
@@ -305,6 +338,23 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("decay: negatives are traced", decaySignals([sig("neg_champion_left", 91)], AS_OF, R).negatives.map((n) => n.weight_now), [0]);
   eq("decay: top excludes negatives and expired", decaySignals([sig("neg_champion_left", 10), sig("quote_sent", 40), sig("inbound_reply", 2)], AS_OF, R).top.map((t) => t.type), ["inbound_reply"]);
   eq("decay: future-dated signal has age 0", decaySignals([sig("quote_sent", -3)], AS_OF, R).total, 8);
+  // an unparseable observed_at is unknown, and unknown is not evidence: it counts for nothing
+  const garbage = decaySignals([sig("quote_requested", 0, { observed_at: "not a date" })], AS_OF, R);
+  eq("decay: unparseable observed_at counts for nothing", [garbage.total, garbage.top.length, garbage.has_live], [0, 0, false]);
+  eq("decay: unparseable observed_at has an unknown age", garbage.traces[0].age_days as unknown, null);
+  check("decay: unparseable observed_at is noted", garbage.notes.some((n) => n.includes("not a date") && n.includes("not counted")), garbage.notes.join(" | "));
+  eq("decay: unparseable observed_at never routes", routeTasks([sig("quote_requested", 0, { observed_at: "garbage" })], AS_OF, R), []);
+  const gg = grade(base({ signals: [sig("quote_requested", 0, { observed_at: "garbage" })] }), R);
+  check("decay: engine trace carries the not-counted note", gg.trace.notes.some((n) => n.includes("not counted")));
+  eq("decay: a garbage-only signal set is Cold with basis none", [gg.signals.urgency, gg.signals.urgency_basis, gg.signals.tasks.length], ["Cold", "none", 0]);
+  // top_n is the rubric's or nothing: with no key every live positive signal is listed
+  const six = ["referral_warm_intro", "quote_sent", "inbound_reply", "meeting_accepted", "cluster_hiring", "manual_note"].map((t) => sig(t, 1));
+  const noTop = structuredClone(R);
+  delete noTop.signals.top_n;
+  eq("decay: without signals.top_n every live positive signal is listed", decaySignals(six, AS_OF, noTop).top.length, 6);
+  const topTwo = structuredClone(R);
+  topTwo.signals.top_n = 2;
+  eq("decay: signals.top_n caps the list", decaySignals(six, AS_OF, topTwo).top.map((t) => t.type), ["referral_warm_intro", "quote_sent"]);
   // urgency
   eq("urg: stated timing wins", computeUrgency("within_1_week", { total: 0, has_live: false }, R), { urgency: "Super Hot", basis: "stated_timing" });
   eq("urg: ladder Hot at 8", computeUrgency(null, { total: 8, has_live: true }, R), { urgency: "Hot", basis: "computed" });
@@ -331,17 +381,19 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
 
 /* deal health */
 {
-  const deal = (o: Partial<ProspectFeatures["deals"][number]> = {}) => ({
+  const deal = (o: Partial<DealHealthInput> = {}): DealHealthInput => ({
     deal_id: "d", title: "Site build", stage_name: "Proposal", stage_entered_at: daysAgo(5), stage_median_days: null, close_date: "2026-10-01",
     close_date_pushes: 0, largest_push_days: null, last_buyer_touch_at: daysAgo(2), buyer_email_velocity_7d: 3, next_meeting_at: "2026-09-12T15:00:00Z",
     decision_maker_engaged: true, buyer_contacts_30d: 2, price_discussed: true, calls_held: 2, critical_event_captured: true, indecision_level: "low" as const, risk_words_present: false, competitor_named_late: false, ...o,
   });
-  const dh = (o: Partial<ProspectFeatures["deals"][number]>) => dealHealth([deal(o)], AS_OF, R)[0];
+  const dh = (o: Partial<DealHealthInput>) => dealHealth([deal(o)], AS_OF, R)[0];
+  // "no next meeting" is a KNOWN state (has_next_meeting false); a null date alone is unknown
+  const noMeeting = { next_meeting_at: null, has_next_meeting: false };
   eq("deal: healthy is green", dh({}).color, "green");
   eq("deal: three pushes → red DH-PUSHES", dh({ close_date_pushes: 3 }).warnings.map((w) => w.id), ["DH-PUSHES"]);
   eq("deal: one big push → red", dh({ close_date_pushes: 1, largest_push_days: 22 }).color, "red");
   eq("deal: one small push → yellow DH-PUSHED", dh({ close_date_pushes: 1 }).warnings.map((w) => w.id), ["DH-PUSHED"]);
-  eq("deal: dark 21 days with no meeting → red", dh({ last_buyer_touch_at: daysAgo(21), next_meeting_at: null }).warnings.map((w) => w.id), ["DH-DARK", "DH-NO-NEXT"]);
+  eq("deal: dark 21 days with no meeting → red", dh({ last_buyer_touch_at: daysAgo(21), ...noMeeting }).warnings.map((w) => w.id), ["DH-DARK", "DH-NO-NEXT"]);
   eq("deal: dark 21 days with a meeting is not dark", dh({ last_buyer_touch_at: daysAgo(21) }).color, "green");
   eq("deal: quiet 14–20 → yellow", dh({ last_buyer_touch_at: daysAgo(14) }).warnings.map((w) => w.id), ["DH-QUIET"]);
   eq("deal: stalled > 2× default median (21)", dh({ stage_entered_at: daysAgo(43) }).warnings.map((w) => w.id), ["DH-STALLED"]);
@@ -349,7 +401,7 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("deal: own stage median overrides the default", dh({ stage_entered_at: daysAgo(15), stage_median_days: 7 }).color, "red");
   eq("deal: no DM after two calls → red", dh({ decision_maker_engaged: false }).warnings[0].id, "DH-NO-DM");
   eq("deal: high indecision → red", dh({ indecision_level: "high" }).warnings[0].id, "DH-INDECISION");
-  eq("deal: risk words with no next step → red", dh({ risk_words_present: true, next_meeting_at: null }).color, "red");
+  eq("deal: risk words with no next step → red", dh({ risk_words_present: true, ...noMeeting }).color, "red");
   eq("deal: no price by call two → yellow", dh({ price_discussed: false }).warnings.map((w) => w.id), ["DH-NO-PRICE"]);
   eq("deal: thin buyer side → yellow", dh({ buyer_contacts_30d: 1 }).warnings.map((w) => w.id), ["DH-THIN"]);
   eq("deal: zero email velocity → yellow", dh({ buyer_email_velocity_7d: 0 }).warnings.map((w) => w.id), ["DH-VELOCITY"]);
@@ -361,6 +413,79 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("deal: no deals → empty array", grade(base(), R).deal_health, []);
   check("deal: reason omits deals when there are none", !grade(base(), R).reason.includes("open deal"));
   check("deal: reason carries the worst deal", grade(base({ deals: [deal({ close_date_pushes: 3 })] }), R).reason.includes("worst red"));
+
+  // unknown_never_warns for the next meeting: the ingest maps a missing Pipedrive activity to
+  // null, so null alone is UNKNOWN; only has_next_meeting === false is "known not booked".
+  const nullDeal: DealHealthInput = { deal_id: "d1", close_date_pushes: 0 };
+  eq("deal: a deal with nothing known is green", dealHealth([nullDeal], AS_OF, R)[0], { deal_id: "d1", title: null, color: "green", warnings: [] });
+  eq("deal: every optional field explicitly null is green", dh({
+    stage_entered_at: null, last_buyer_touch_at: null, largest_push_days: null, buyer_email_velocity_7d: null, next_meeting_at: null, decision_maker_engaged: null,
+    buyer_contacts_30d: null, price_discussed: null, calls_held: null, critical_event_captured: null, indecision_level: null, risk_words_present: null, competitor_named_late: null,
+  }).color, "green");
+  eq("deal: next meeting unknown → DH-NO-NEXT does not fire", dh({ next_meeting_at: null }).warnings.map((w) => w.id), []);
+  eq("deal: known no next meeting → yellow DH-NO-NEXT", dh(noMeeting).warnings.map((w) => w.id), ["DH-NO-NEXT"]);
+  eq("deal: dark 21 days with the next meeting unknown is not DH-DARK", dh({ last_buyer_touch_at: daysAgo(21), next_meeting_at: null }).color, "green");
+  eq("deal: risk words with the next meeting unknown is not DH-INDECISION", dh({ risk_words_present: true, next_meeting_at: null }).color, "green");
+  eq("deal: a booked meeting date wins over has_next_meeting false", dh({ next_meeting_at: "2026-09-12T15:00:00Z", has_next_meeting: false }).color, "green");
+  eq("deal: has_next_meeting true with no date counts as booked", dh({ next_meeting_at: null, has_next_meeting: true }).color, "green");
+  check("deal: the reason for an unknown-only deal carries no warning text", grade(base({ deals: [nullDeal] }), R).reason.endsWith("1 open deal, worst green."));
+  eq("deal: unparseable touch date never warns", dh({ last_buyer_touch_at: "not a date" }).color, "green");
+
+  // thresholds come from the rubric: structured `params` when a rule carries them, else the
+  // numbers in the rule's own `test` prose — editing the JSON moves the behaviour either way
+  const dhWith = (rubric: Rubric, o: Partial<DealHealthInput>, notes?: string[]) => dealHealth([deal(o)], AS_OF, rubric, notes)[0];
+  const ruleOf = (rubric: Rubric, id: string) => [...rubric.deal_health.red_when_any, ...rubric.deal_health.yellow_when_any].find((r: { id: string }) => r.id === id);
+  const dark21 = { last_buyer_touch_at: daysAgo(21), ...noMeeting };
+  {
+    const wider = structuredClone(R);
+    ruleOf(wider, "DH-DARK").params = { min_days_dark: 28 };
+    ruleOf(wider, "DH-QUIET").params = { min_days: 21, max_days: 27 };
+    eq("deal: params in the rubric move DH-DARK (21 days is quiet, not dark, at min 28)", dhWith(wider, dark21).warnings.map((w) => w.id), ["DH-QUIET", "DH-NO-NEXT"]);
+    eq("deal: params in the rubric move DH-DARK (28 days is dark)", dhWith(wider, { ...dark21, last_buyer_touch_at: daysAgo(28) }).warnings.map((w) => w.id), ["DH-DARK", "DH-NO-NEXT"]);
+    check("deal: the edited rubric has a different fingerprint", fingerprint(wider) !== fingerprint(R));
+    const prose = structuredClone(R);
+    ruleOf(prose, "DH-DARK").test = "days since last buyer-initiated touch >= 28 AND no next meeting booked";
+    ruleOf(prose, "DH-QUIET").test = "days since last buyer-initiated touch between 21 and 27";
+    eq("deal: editing the prose test alone moves the threshold too", dhWith(prose, dark21).warnings.map((w) => w.id), ["DH-QUIET", "DH-NO-NEXT"]);
+    const pushes = structuredClone(R);
+    ruleOf(pushes, "DH-PUSHES").params = { min_pushes: 5, max_push_days: 40 };
+    eq("deal: DH-PUSHES params (min 5 pushes, 40 days) → three pushes and a 22-day push are no longer red", dhWith(pushes, { close_date_pushes: 3, largest_push_days: 22 }).color, "green");
+    const stalled = structuredClone(R);
+    ruleOf(stalled, "DH-STALLED").params = { median_multiple: 3 };
+    eq("deal: DH-STALLED median_multiple 3 → 43 days is not > 63", dhWith(stalled, { stage_entered_at: daysAgo(43) }).color, "green");
+    const thin = structuredClone(R);
+    ruleOf(thin, "DH-THIN").params = { min_contacts: 3 };
+    eq("deal: DH-THIN min_contacts 3 → two contacts is thin", dhWith(thin, {}).warnings.map((w) => w.id), ["DH-THIN"]);
+    const calls = structuredClone(R);
+    ruleOf(calls, "DH-NO-PRICE").params = { min_calls: 3 };
+    eq("deal: DH-NO-PRICE min_calls 3 → no price by call two is not yet a warning", dhWith(calls, { price_discussed: false }).color, "green");
+    const velocity = structuredClone(R);
+    ruleOf(velocity, "DH-VELOCITY").params = { max_emails: 1 };
+    eq("deal: DH-VELOCITY max_emails 1 → one email this week is a warning", dhWith(velocity, { buyer_email_velocity_7d: 1 }).warnings.map((w) => w.id), ["DH-VELOCITY"]);
+    // a rule whose threshold cannot be found is not evaluated, and the trace says so
+    const broken = structuredClone(R);
+    ruleOf(broken, "DH-DARK").test = "buyer has gone dark with nothing scheduled";
+    const notes: string[] = [];
+    eq("deal: unfindable threshold → rule not evaluated", dhWith(broken, dark21, notes).warnings.map((w) => w.id), ["DH-NO-NEXT"]);
+    check("deal: unfindable threshold is noted", notes.some((n) => n.includes("DH-DARK") && n.includes("min_days_dark") && n.includes("not evaluated")), notes.join(" | "));
+    const used: string[] = [];
+    dhWith(R, {}, used);
+    check("deal: the thresholds used are in the notes with their source", used.some((n) => n.startsWith("Deal-health thresholds from the rubric") && n.includes("DH-DARK min_days_dark=21 (test)") && n.includes("DH-PUSHES min_pushes=3, max_push_days=21 (test)")), used.join(" | "));
+    check("deal: engine trace carries the deal-health thresholds", grade(base({ deals: [deal()] }), R).trace.notes.some((n) => n.startsWith("Deal-health thresholds from the rubric")));
+    check("deal: no deals → no deal-health notes", !grade(base(), R).trace.notes.some((n) => n.startsWith("Deal-health")));
+    for (const r of [...R.deal_health.red_when_any, ...R.deal_health.yellow_when_any]) {
+      check(`deal: ${r.id} is evaluable under the shipped rubric`, !used.some((n) => n.includes(`Deal-health rule ${r.id}`)));
+    }
+    const unknownRule = structuredClone(R);
+    unknownRule.deal_health.yellow_when_any.push({ id: "DH-NEW", test: "x > 1", message: "new" });
+    const skipped: string[] = [];
+    eq("deal: a rule id with no evaluator is skipped", dhWith(unknownRule, {}, skipped).color, "green");
+    check("deal: a rule id with no evaluator is noted", skipped.some((n) => n.includes("DH-NEW") && n.includes("no evaluator")), skipped.join(" | "));
+    const noMedian = structuredClone(R);
+    delete noMedian.deal_health.default_stage_median_days;
+    eq("deal: no default median in the rubric → DH-STALLED not evaluated", dhWith(noMedian, { stage_entered_at: daysAgo(400) }).color, "green");
+    eq("deal: a deal's own stage median still works without a rubric default", dhWith(noMedian, { stage_entered_at: daysAgo(15), stage_median_days: 7 }).color, "red");
+  }
 }
 
 /* override */
@@ -383,10 +508,50 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("ovr: missing approver → ignored", grade(gold, R, ov("Silver", { approver: "" })).status, "Ranked");
   eq("ovr: missing reason code → ignored", grade(gold, R, { override: { tier: "Silver", reason: "x", approver: "owner@example.test" } as never }).status, "Ranked");
   eq("ovr: expired override → ignored", grade(gold, R, ov("Silver", { expires_at: "2026-09-01" })).status, "Ranked");
-  check("ovr: expiring within 14 days flags", grade(gold, R, ov("Silver", { expires_at: "2026-09-20" })).flags.includes("Override expires soon"));
-  check("ovr: expiring later does not flag", !grade(gold, R, ov("Silver", { expires_at: "2026-12-01" })).flags.includes("Override expires soon"));
   eq("ovr: parked beats overridden", grade(base({ service_shape: "Off" }), R, ov("Silver")).status, "Parked");
   eq("ovr: unclassified has nothing to override", grade(base({ icp_class: null, is_agency: null, agency_type: null }), R, ov("Silver")).status, "Unclassified");
+
+  // July (ruled): "one grade max, written reason required" — quoted in rubric.override.ruling
+  const noReason = grade(gold, R, ov("Silver", { reason: "" }));
+  eq("ovr: missing written reason → ignored", noReason.status, "Ranked");
+  eq("ovr: missing written reason keeps the computed tier", noReason.effective_tier, "Gold");
+  eq("ovr: refused-for-reason override is not recorded", noReason.override, null);
+  check("ovr: missing written reason is noted with the ruling", noReason.trace.notes.some((n) => n.includes("written reason is required") && n.includes("July")), noReason.trace.notes.join(" | "));
+  eq("ovr: whitespace is not a written reason", grade(gold, R, ov("Silver", { reason: "   " })).status, "Ranked");
+  eq("ovr: undefined reason → ignored", grade(gold, R, ov("Silver", { reason: undefined })).status, "Ranked");
+  const lax = structuredClone(R);
+  lax.override.written_reason_required = false;
+  eq("ovr: written_reason_required false in the rubric lets a reasonless override apply", grade(gold, lax, ov("Silver", { reason: "" })).status, "Overridden");
+
+  // "expires soon" is rubric.override.expires_soon_days and nothing else
+  const soon = structuredClone(R);
+  soon.override.expires_soon_days = 14;
+  check("ovr: expiring within the rubric window flags", grade(gold, soon, ov("Silver", { expires_at: "2026-09-20" })).flags.includes("Override expires soon"));
+  check("ovr: expiring on the window's last day flags", grade(gold, soon, ov("Silver", { expires_at: "2026-09-23" })).flags.includes("Override expires soon"));
+  check("ovr: expiring a day beyond the window does not flag", !grade(gold, soon, ov("Silver", { expires_at: "2026-09-24" })).flags.includes("Override expires soon"));
+  check("ovr: expiring later does not flag", !grade(gold, soon, ov("Silver", { expires_at: "2026-12-01" })).flags.includes("Override expires soon"));
+  soon.override.expires_soon_days = 30;
+  check("ovr: the window moves with the rubric", grade(gold, soon, ov("Silver", { expires_at: "2026-10-01" })).flags.includes("Override expires soon"));
+  const noWindow = grade(gold, R, ov("Silver", { expires_at: "2026-09-10" }));
+  check("ovr: without expires_soon_days in the rubric nothing flags and the trace says why", !noWindow.flags.includes("Override expires soon") && noWindow.trace.notes.some((n) => n.includes("expires_soon_days is not set")), noWindow.trace.notes.join(" | "));
+
+  // rubric.override.expiry_default_days applies when expires_at is absent
+  const old = grade(gold, R, ov("Silver", { expires_at: undefined, set_at: "2026-01-01" }));
+  eq("ovr: set_at + expiry_default_days in the past → expired, computed tier stands", [old.status, old.effective_tier], ["Ranked", "Gold"]);
+  check("ovr: the derived expiry is noted", old.trace.notes.some((n) => n.includes("Override expired") && n.includes(`set_at 2026-01-01 + ${R.override.expiry_default_days} days`)), old.trace.notes.join(" | "));
+  const live = grade(gold, R, ov("Silver", { expires_at: undefined, set_at: "2026-09-01" }));
+  eq("ovr: set_at + expiry_default_days still ahead → applied", live.status, "Overridden");
+  eq("ovr: the applied override carries the derived expiry", live.override?.expires_at, new Date(Date.parse("2026-09-01") + R.override.expiry_default_days * 86_400_000).toISOString());
+  check("ovr: derivation is noted", live.trace.notes.some((n) => n.startsWith("Override expiry derived")));
+  eq("ovr: exactly expiry_default_days old is not yet expired", grade(gold, R, ov("Silver", { expires_at: undefined, set_at: daysAgo(R.override.expiry_default_days).slice(0, 10) })).status, "Overridden");
+  const shorter = structuredClone(R);
+  shorter.override.expiry_default_days = 5;
+  eq("ovr: expiry_default_days is read from the rubric", grade(gold, shorter, ov("Silver", { expires_at: undefined, set_at: "2026-09-01" })).status, "Ranked");
+  const none = grade(gold, R, ov("Silver", { expires_at: undefined, set_at: undefined }));
+  eq("ovr: no expires_at and no set_at → applied and noted as having no expiry", [none.status, none.trace.notes.some((n) => n.includes("Override has no expiry"))], ["Overridden", true]);
+  const bad = grade(gold, R, ov("Silver", { expires_at: "someday" }));
+  eq("ovr: unparseable expires_at → applied as no expiry, noted", [bad.status, bad.trace.notes.some((n) => n.includes("'someday' is not a date"))], ["Overridden", true]);
+  eq("ovr: a stated expires_at is kept as given", grade(gold, R, ov("Silver", { set_at: "2026-09-01", expires_at: "2026-12-01" })).override?.expires_at, "2026-12-01");
 }
 
 /* flags, status precedence, chase key */
@@ -507,6 +672,11 @@ const need: Array<[string, (g: ProspectScorecard, fx: (typeof FIXTURES)[number])
   ["non-decaying negative", (g) => g.signals.negatives.some((n) => n.weight_now < 0)],
   ["Super Hot stated over Cold computed", (g) => g.signals.urgency === "Super Hot" && g.signals.urgency_basis === "stated_timing" && g.signals.decayed_total < 3],
   ["red deal on three pushes", (g) => g.deal_health.some((d) => d.color === "red" && d.warnings.some((w) => w.id === "DH-PUSHES"))],
+  ["deal with the next meeting unknown stays green while known-absent is yellow", (g, fx) =>
+    g.deal_health.length === 2 &&
+    fx.features.deals.every((d) => d.next_meeting_at === null) &&
+    g.deal_health.some((d) => d.color === "green" && d.warnings.length === 0) &&
+    g.deal_health.some((d) => d.color === "yellow" && d.warnings.map((w) => w.id).join() === "DH-NO-NEXT")],
 ];
 for (const [label, test] of need) {
   check(`golden covers: ${label}`, FIXTURES.some((fx) => test(grade(fx.features, R, (fx.options ?? {}) as never), fx)));

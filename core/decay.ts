@@ -17,11 +17,15 @@ type Rubric = any;
 
 const DAY_MS = 86_400_000;
 
-/** Whole days from `fromIso` to `toIso`, floored, never negative. NaN dates → 0 (unknown is not evidence). */
-export function daysBetween(fromIso: string, toIso: string): number {
+/**
+ * Whole days from `fromIso` to `toIso`, floored, never negative. An unparseable date on
+ * either side → null: an age that cannot be computed is unknown, and unknown is not
+ * evidence — the caller must treat null as "do not count", never as "brand new".
+ */
+export function daysBetween(fromIso: string, toIso: string): number | null {
   const a = Date.parse(fromIso);
   const b = Date.parse(toIso);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return Math.max(0, Math.floor((b - a) / DAY_MS));
 }
 
@@ -32,8 +36,9 @@ export function addHours(iso: string, hours: number): string {
   return new Date(t + hours * 3_600_000).toISOString();
 }
 
-/** The rubric's decay formula for one signal. */
-export function weightNow(s: SignalInput, ageDays: number): number {
+/** The rubric's decay formula for one signal. A null age (unparseable observed_at) is worth 0. */
+export function weightNow(s: SignalInput, ageDays: number | null): number {
+  if (ageDays === null) return 0;
   if (s.lifespan_days === null || s.lifespan_days === undefined) return s.weight;
   if (s.lifespan_days <= 0) return 0;
   if (s.decays) {
@@ -55,7 +60,10 @@ function traceOf(s: SignalInput, asOf: string): SignalTrace {
     observed_at: s.observed_at,
     weight: s.weight,
     weight_now: weightNow(s, age),
-    age_days: age,
+    // null when observed_at is unparseable: the age is unknown and the signal counts for
+    // nothing. SignalTrace.age_days is declared `number`; it should widen to `number | null`
+    // in prospect_types.ts (reported) — the cast keeps the honest value in the meantime.
+    age_days: (age === null ? null : age) as unknown as number,
   };
 }
 
@@ -68,7 +76,10 @@ function byWeightNowDesc(a: SignalTrace, b: SignalTrace): number {
 export interface DecayedSignals {
   /** Sum of weight_now over every signal, negatives included. */
   total: number;
-  /** Live positive signals, strongest first (at most `top_n`, default 5). */
+  /**
+   * Live positive signals, strongest first. Cut to `rubric.signals.top_n` when the rubric
+   * sets one; with no such key every live positive signal is listed (no number lives here).
+   */
   top: SignalTrace[];
   /** Every negative-weight signal with its current weight (0 once its lifespan has passed). */
   negatives: SignalTrace[];
@@ -76,17 +87,25 @@ export interface DecayedSignals {
   traces: SignalTrace[];
   /** True when at least one signal still carries a non-zero weight. */
   has_live: boolean;
+  /** Audit notes for the trace: signals that could not be counted, and why. */
+  notes: string[];
 }
 
 export function decaySignals(signals: SignalInput[], asOf: string, rubric: Rubric): DecayedSignals {
-  const topN = typeof rubric?.signals?.top_n === "number" ? rubric.signals.top_n : 5;
-  const traces = (signals ?? []).map((s) => traceOf(s, asOf));
+  const topN: number | null = typeof rubric?.signals?.top_n === "number" ? rubric.signals.top_n : null;
+  const notes: string[] = [];
+  const traces = (signals ?? []).map((s) => {
+    const t = traceOf(s, asOf);
+    if ((t.age_days as unknown) === null) notes.push(`Signal ${s.type} (${s.source}): observed_at '${s.observed_at}' is not a date; signal not counted.`);
+    return t;
+  });
   const total = round4(traces.reduce((acc, t) => acc + t.weight_now, 0));
-  const top = traces.filter((t) => t.weight_now > 0).sort(byWeightNowDesc).slice(0, topN);
+  const live = traces.filter((t) => t.weight_now > 0).sort(byWeightNowDesc);
+  const top = topN === null ? live : live.slice(0, topN);
   const negatives = traces
     .filter((t) => t.weight < 0)
     .sort((a, b) => a.weight_now - b.weight_now || (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
-  return { total, top, negatives, traces, has_live: traces.some((t) => t.weight_now !== 0) };
+  return { total, top, negatives, traces, has_live: traces.some((t) => t.weight_now !== 0), notes };
 }
 
 /**
@@ -114,8 +133,8 @@ export function computeUrgency(
  * Routing (rubric.signals.routing): inside the window, one strong signal (weight ≥ strong_min)
  * makes a task with the signal's catalog sla_hours (or the default), due from observed_at; two
  * or more medium signals (≥ medium_min, < strong_min) make one task, due from the latest of
- * them. A single medium signal is a note; weak signals only update the profile. Negative and
- * expired signals never route.
+ * them. A single medium signal is a note; weak signals only update the profile. Negative,
+ * expired and undatable (unparseable observed_at) signals never route.
  */
 export function routeTasks(signals: SignalInput[], asOf: string, rubric: Rubric): SignalTask[] {
   const r = rubric?.signals?.routing ?? {};
@@ -127,6 +146,7 @@ export function routeTasks(signals: SignalInput[], asOf: string, rubric: Rubric)
 
   const inWindow = (signals ?? [])
     .map((s) => ({ s, age: daysBetween(s.observed_at, asOf) }))
+    .filter((x): x is { s: SignalInput; age: number } => x.age !== null)
     .filter(({ s, age }) => s.weight > 0 && age <= window && weightNow(s, age) > 0);
 
   const tasks: SignalTask[] = [];

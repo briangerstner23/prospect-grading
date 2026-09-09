@@ -9,7 +9,9 @@
  * exclusion) → qualification → potential → platinum rule → signals → deal health → override
  * → status → effective tier, cell, chase key → flags → reason → trace.
  *
- * Every threshold lives in rubric.prospect.v0.1.json. This file holds control flow only.
+ * Every threshold lives in rubric.prospect.v0.1.json. This file holds control flow only:
+ * where the rubric has no value for a number the engine needs, the rule is not evaluated and
+ * the trace says so — a fallback constant here would be a threshold the rubric cannot move.
  * Independent from the Client Book (PRO-17): the same discipline, none of its code.
  */
 
@@ -51,12 +53,31 @@ export { buildReason } from "./reason.ts";
  * ------------------------------------------------------------------ */
 
 /**
- * Non-cryptographic content fingerprint (FNV-1a, 32-bit, hex). The same helper the Client
- * Book uses, so the two systems' fingerprints are comparable in FORM and never in value.
- * Synchronous so the engine stays pure.
+ * Canonical JSON: the same bytes for the same value whatever order its object keys arrive
+ * in. Object keys are sorted recursively; arrays keep their order; undefined-valued keys are
+ * dropped (as JSON.stringify drops them). The rubric is read from a file in tests and from a
+ * jsonb column in production, and jsonb does not preserve key order — so the fingerprint
+ * must not depend on it.
+ */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return "[" + value.map((x) => (x === undefined || typeof x === "function" ? "null" : canonicalJson(x))).join(",") + "]";
+  }
+  if (value !== null && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    const keys = Object.keys(o).filter((k) => o[k] !== undefined && typeof o[k] !== "function").sort();
+    return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(o[k])).join(",") + "}";
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Non-cryptographic content fingerprint (FNV-1a, 32-bit, hex) over the CANONICAL JSON of
+ * the value. The same hash the Client Book uses, so the two systems' fingerprints are
+ * comparable in FORM and never in value. Synchronous so the engine stays pure.
  */
 export function fingerprint(value: unknown): string {
-  const s = JSON.stringify(value);
+  const s = canonicalJson(value);
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -313,52 +334,153 @@ function potentialOf(
  * deal health
  * ------------------------------------------------------------------ */
 
+/**
+ * A deal as deal health reads it. `next_meeting_at` alone cannot separate "no meeting is
+ * booked" from "we have not read the activities": the ingest maps a missing Pipedrive
+ * activity to null either way. `has_next_meeting` carries the KNOWN state — false only when
+ * the activities were actually read and none is booked. Absent or null → unknown → no rule
+ * about the next meeting fires (`unknown_never_warns`). This widening is local to the
+ * engine; DealInput itself is unchanged (an optional `has_next_meeting` belongs there).
+ */
+export type DealHealthInput = DealInput & { has_next_meeting?: boolean | null };
+
+/** true = a next meeting is booked; false = known not booked; null = unknown. */
+function nextMeetingBooked(d: DealHealthInput): boolean | null {
+  if (typeof d.next_meeting_at === "string" && d.next_meeting_at.trim().length > 0) return true;
+  if (d.has_next_meeting === true || d.has_next_meeting === false) return d.has_next_meeting;
+  return null;
+}
+
 type DealCtx = {
-  d: DealInput;
+  d: DealHealthInput;
   days_since_touch: number | null;
   days_in_stage: number | null;
   median: number;
+  next_meeting: boolean | null;
+};
+
+type DealParams = Record<string, number>;
+
+/**
+ * The thresholds each deal-health rule needs, by name, in the order they appear in the
+ * rule's prose `test`. A rule may carry them structured as `params: { name: number }`; when
+ * it does not, the numbers are read out of its `test` string in the rubric (the tokens that
+ * follow a comparison operator or `between … and …`). Either way the value lives in the JSON:
+ * editing the rubric moves the behaviour and the fingerprint together, and nothing numeric
+ * lives here.
+ */
+const DEAL_PARAM_NAMES: Record<string, string[]> = {
+  "DH-DARK": ["min_days_dark"],
+  "DH-PUSHES": ["min_pushes", "max_push_days"],
+  "DH-STALLED": ["median_multiple"],
+  "DH-NO-DM": ["min_calls"],
+  "DH-INDECISION": [],
+  "DH-QUIET": ["min_days", "max_days"],
+  "DH-PUSHED": ["min_pushes", "max_pushes"],
+  "DH-NO-NEXT": [],
+  "DH-NO-PRICE": ["min_calls"],
+  "DH-THIN": ["min_contacts"],
+  "DH-VELOCITY": ["max_emails"],
+  "DH-NO-CRITICAL": ["min_calls"],
+};
+
+/** Numbers in a rule's prose test that sit after an operator or in `between a and b`. */
+function numbersInTest(test: string): number[] {
+  const out: number[] = [];
+  const re = /(?:>=|<=|==|>|<|\bbetween|\band)\s*(-?\d+(?:\.\d+)?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(test)) !== null) out.push(Number(m[1]));
+  return out;
+}
+
+/**
+ * Resolve one rule's parameters from the rubric. Returns the params and where each came
+ * from, or the names that could not be found (the rule is then not evaluated).
+ */
+function dealRuleParams(rule: Record<string, unknown>): { params: DealParams; source: "params" | "test" | "mixed" | "none"; missing: string[] } {
+  const id = String(rule.id);
+  const names = DEAL_PARAM_NAMES[id] ?? [];
+  const structured = rule.params && typeof rule.params === "object" ? (rule.params as Record<string, unknown>) : {};
+  const fromTest = numbersInTest(typeof rule.test === "string" ? rule.test : "");
+  const params: DealParams = {};
+  const missing: string[] = [];
+  let nParams = 0, nTest = 0;
+  names.forEach((name, i) => {
+    if (isNum(structured[name])) { params[name] = structured[name] as number; nParams++; }
+    else if (isNum(fromTest[i])) { params[name] = fromTest[i]; nTest++; }
+    else missing.push(name);
+  });
+  const source = names.length === 0 ? "none" : nTest === 0 ? "params" : nParams === 0 ? "test" : "mixed";
+  return { params, source, missing };
+}
+
+/**
+ * Rule evaluators keyed by rubric id; every threshold arrives in `p` from the rubric.
+ * `unknown_never_warns`: every evaluator returns false when an input it needs is null.
+ */
+const DEAL_RULES: Record<string, (c: DealCtx, p: DealParams) => boolean> = {
+  "DH-DARK": (c, p) => c.days_since_touch !== null && c.days_since_touch >= p.min_days_dark && c.next_meeting === false,
+  "DH-PUSHES": (c, p) => (isNum(c.d.close_date_pushes) && c.d.close_date_pushes >= p.min_pushes) || (isNum(c.d.largest_push_days) && c.d.largest_push_days > p.max_push_days),
+  "DH-STALLED": (c, p) => c.days_in_stage !== null && c.days_in_stage > p.median_multiple * c.median,
+  "DH-NO-DM": (c, p) => c.d.decision_maker_engaged === false && isNum(c.d.calls_held) && c.d.calls_held >= p.min_calls,
+  "DH-INDECISION": (c) => c.d.indecision_level === "high" || (c.d.risk_words_present === true && c.next_meeting === false),
+  "DH-QUIET": (c, p) => c.days_since_touch !== null && c.days_since_touch >= p.min_days && c.days_since_touch <= p.max_days,
+  "DH-PUSHED": (c, p) => isNum(c.d.close_date_pushes) && c.d.close_date_pushes >= p.min_pushes && c.d.close_date_pushes <= p.max_pushes,
+  "DH-NO-NEXT": (c) => c.next_meeting === false,
+  "DH-NO-PRICE": (c, p) => c.d.price_discussed === false && isNum(c.d.calls_held) && c.d.calls_held >= p.min_calls,
+  "DH-THIN": (c, p) => isNum(c.d.buyer_contacts_30d) && c.d.buyer_contacts_30d < p.min_contacts,
+  "DH-VELOCITY": (c, p) => isNum(c.d.buyer_email_velocity_7d) && c.d.buyer_email_velocity_7d <= p.max_emails,
+  "DH-NO-CRITICAL": (c, p) => c.d.critical_event_captured === false && isNum(c.d.calls_held) && c.d.calls_held >= p.min_calls,
 };
 
 /**
- * Rule evaluators keyed by rubric id. The rubric carries each rule's id, prose test and
- * message; the thresholds in the prose are mirrored here. `unknown_never_warns`: every
- * evaluator returns false when an input it needs is null.
+ * Deal health per open deal. `notes`, when given, receives the audit trail: which thresholds
+ * were used and where in the rubric they came from, and any rule that could not be
+ * evaluated (no evaluator for its id, or a threshold missing from both `params` and `test`).
  */
-const DEAL_RULES: Record<string, (c: DealCtx) => boolean> = {
-  "DH-DARK": (c) => c.days_since_touch !== null && c.days_since_touch >= 21 && c.d.next_meeting_at == null,
-  "DH-PUSHES": (c) => (isNum(c.d.close_date_pushes) && c.d.close_date_pushes >= 3) || (isNum(c.d.largest_push_days) && c.d.largest_push_days > 21),
-  "DH-STALLED": (c) => c.days_in_stage !== null && c.days_in_stage > 2 * c.median,
-  "DH-NO-DM": (c) => c.d.decision_maker_engaged === false && isNum(c.d.calls_held) && c.d.calls_held >= 2,
-  "DH-INDECISION": (c) => c.d.indecision_level === "high" || (c.d.risk_words_present === true && c.d.next_meeting_at == null),
-  "DH-QUIET": (c) => c.days_since_touch !== null && c.days_since_touch >= 14 && c.days_since_touch <= 20,
-  "DH-PUSHED": (c) => isNum(c.d.close_date_pushes) && c.d.close_date_pushes >= 1 && c.d.close_date_pushes <= 2,
-  "DH-NO-NEXT": (c) => c.d.next_meeting_at == null,
-  "DH-NO-PRICE": (c) => c.d.price_discussed === false && isNum(c.d.calls_held) && c.d.calls_held >= 2,
-  "DH-THIN": (c) => isNum(c.d.buyer_contacts_30d) && c.d.buyer_contacts_30d < 2,
-  "DH-VELOCITY": (c) => c.d.buyer_email_velocity_7d === 0,
-  "DH-NO-CRITICAL": (c) => c.d.critical_event_captured === false && isNum(c.d.calls_held) && c.d.calls_held >= 2,
-};
-
-export function dealHealth(deals: DealInput[], asOf: string, rubric: Rubric): DealHealthRead[] {
+export function dealHealth(deals: DealHealthInput[], asOf: string, rubric: Rubric, notes?: string[]): DealHealthRead[] {
   const dh = rubric?.deal_health ?? {};
-  const defaultMedian = isNum(dh.default_stage_median_days) ? dh.default_stage_median_days : 21;
+  const defaultMedian: number | null = isNum(dh.default_stage_median_days) ? dh.default_stage_median_days : null;
+  const list = deals ?? [];
   const out: DealHealthRead[] = [];
-  for (const d of deals ?? []) {
+
+  // Resolve every rule once: id, severity, message, evaluator, params.
+  type Resolved = { id: string; severity: "red" | "yellow"; message: string; ev: ((c: DealCtx, p: DealParams) => boolean) | null; params: DealParams; usable: boolean };
+  const resolved: Resolved[] = [];
+  const paramNotes: string[] = [];
+  const skipped: string[] = [];
+  for (const [severity, rules] of [["red", dh.red_when_any], ["yellow", dh.yellow_when_any]] as Array<["red" | "yellow", unknown]>) {
+    for (const r of Array.isArray(rules) ? (rules as Array<Record<string, unknown>>) : []) {
+      const id = String(r.id);
+      const ev = DEAL_RULES[id] ?? null;
+      const { params, source, missing } = dealRuleParams(r);
+      const usable = ev !== null && missing.length === 0;
+      if (ev === null) skipped.push(`${id}: no evaluator for this rule id`);
+      else if (missing.length) skipped.push(`${id}: threshold ${missing.join(", ")} not found in the rubric (params or test)`);
+      else if (source !== "none") paramNotes.push(`${id} ${Object.entries(params).map(([k, v]) => `${k}=${fmt(v)}`).join(", ")} (${source})`);
+      resolved.push({ id, severity, message: String(r.message ?? id), ev, params, usable });
+    }
+  }
+  if (notes && list.length) {
+    if (paramNotes.length) notes.push(`Deal-health thresholds from the rubric — ${paramNotes.join("; ")}.`);
+    for (const s of skipped) notes.push(`Deal-health rule ${s}; rule not evaluated.`);
+    if (defaultMedian === null && list.some((d) => !isNum(d.stage_median_days))) notes.push("Deal-health: rubric default_stage_median_days is not set and a deal has no stage median; DH-STALLED not evaluated for it.");
+  }
+
+  for (const d of list) {
+    const median = isNum(d.stage_median_days) ? d.stage_median_days : defaultMedian;
     const c: DealCtx = {
       d,
       days_since_touch: d.last_buyer_touch_at ? daysBetween(d.last_buyer_touch_at, asOf) : null,
       days_in_stage: d.stage_entered_at ? daysBetween(d.stage_entered_at, asOf) : null,
-      median: isNum(d.stage_median_days) ? d.stage_median_days : defaultMedian,
+      median: median ?? Number.NaN,
+      next_meeting: nextMeetingBooked(d),
     };
     const warnings: DealHealthRead["warnings"] = [];
-    for (const r of dh.red_when_any ?? []) {
-      const ev = DEAL_RULES[r.id];
-      if (ev && ev(c)) warnings.push({ id: r.id, severity: "red", message: r.message });
-    }
-    for (const r of dh.yellow_when_any ?? []) {
-      const ev = DEAL_RULES[r.id];
-      if (ev && ev(c)) warnings.push({ id: r.id, severity: "yellow", message: r.message });
+    for (const r of resolved) {
+      if (!r.usable || r.ev === null) continue;
+      if (r.id === "DH-STALLED" && median === null) continue; // no median to compare against: unknown never warns
+      if (r.ev(c, r.params)) warnings.push({ id: r.id, severity: r.severity, message: r.message });
     }
     const color: DealHealthRead["color"] = warnings.some((w) => w.severity === "red") ? "red" : warnings.length ? "yellow" : "green";
     out.push({ deal_id: d.deal_id, title: d.title ?? null, color, warnings });
@@ -382,7 +504,12 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   const gates: GateResult[] = evaluateGates(f, rubric);
   const parkedGate = gates.find((g) => g.mode === "park" && g.result === "fail") ?? null;
   for (const g of gates) {
-    if (g.mode === "flag" && g.result === "fail" && g.id === "broker_character") flags.add("Broker character flag");
+    // Any gate toggled to mode `flag` flags on failure. The flag text is the gate item's
+    // `flag` when the rubric names one, else "<label> flag" (broker character → "Broker character flag").
+    if (g.mode === "flag" && g.result === "fail") {
+      const item = rubric?.gates?.items?.[g.id] ?? {};
+      flags.add(typeof item.flag === "string" && item.flag.trim() ? item.flag : `${g.label} flag`);
+    }
   }
   if (f.service_shape === null || f.service_shape === undefined) flags.add("Service shape unknown");
   if (effectiveEconomics(f, rubric).value === null) flags.add("Economics unknown");
@@ -459,6 +586,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     const flag = catalog[t.type]?.flag;
     if (typeof flag === "string" && t.weight_now !== 0) flags.add(flag);
   }
+  for (const n of decayed.notes) notes.push(n);
   const signals: SignalsRead = {
     decayed_total: decayed.total,
     top: decayed.top,
@@ -469,7 +597,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   };
 
   /* 9 · deal health */
-  const deal_health = dealHealth(f.deals ?? [], asOf, rubric);
+  const deal_health = dealHealth(f.deals ?? [], asOf, rubric, notes);
 
   /* 10 · override */
   const ov = options?.override ?? null;
@@ -480,11 +608,33 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     const hasApprover = typeof ov.approver === "string" && ov.approver.trim().length > 0;
     const codes: string[] = Array.isArray(ovRules.reason_codes) ? ovRules.reason_codes : [];
     const hasCode = typeof ov.reason_code === "string" && (codes.length === 0 || codes.includes(ov.reason_code));
-    const expired = typeof ov.expires_at === "string" && Date.parse(ov.expires_at) < Date.parse(asOf);
+    // July (ruled, quoted in rubric.override.ruling): "one grade max, written reason required".
+    // The requirement is on unless the rubric switches it off explicitly.
+    const reasonRequired = ovRules.written_reason_required !== false;
+    const hasReason = typeof ov.reason === "string" && ov.reason.trim().length > 0;
+
+    // Expiry: a stated expires_at; else set_at + rubric.override.expiry_default_days; else none.
+    let expiresAt: string | null = null;
+    let expirySource: "stated" | "derived" | "none" = "none";
+    if (typeof ov.expires_at === "string" && ov.expires_at.trim().length > 0) {
+      if (Number.isFinite(Date.parse(ov.expires_at))) { expiresAt = ov.expires_at; expirySource = "stated"; }
+      else notes.push(`Override expires_at '${ov.expires_at}' is not a date; treated as no expiry.`);
+    } else if (typeof ov.set_at === "string" && isNum(ovRules.expiry_default_days)) {
+      const setMs = Date.parse(ov.set_at);
+      if (Number.isFinite(setMs)) {
+        expiresAt = new Date(setMs + ovRules.expiry_default_days * 86_400_000).toISOString();
+        expirySource = "derived";
+      } else notes.push(`Override set_at '${ov.set_at}' is not a date; no expiry could be derived.`);
+    }
+    const asOfMs = Date.parse(asOf);
+    const expired = expiresAt !== null && Number.isFinite(asOfMs) && Date.parse(expiresAt) < asOfMs;
+
     if (!hasApprover || !hasCode) {
       notes.push("Override ignored: approver and reason_code are both required.");
+    } else if (reasonRequired && !hasReason) {
+      notes.push("Override ignored: a written reason is required (July, ruled).");
     } else if (expired) {
-      notes.push(`Override expired ${ov.expires_at}; computed tier stands.`);
+      notes.push(`Override expired ${expiresAt}${expirySource === "derived" ? ` (set_at ${ov.set_at} + ${ovRules.expiry_default_days} days)` : ""}; computed tier stands.`);
     } else if (computedTier === null) {
       notes.push("Override ignored: no computed tier to move from (Unclassified).");
     } else if (!TIER_ORDER.includes(ov.tier)) {
@@ -493,10 +643,17 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
       flags.add("Override refused: beyond one-tier cap");
       notes.push(`Override to ${ov.tier} refused: more than ${maxMoved} tier from computed ${computedTier}.`);
     } else {
-      applied = ov;
+      applied = expirySource === "derived" ? { ...ov, expires_at: expiresAt } : ov;
       notes.push(`Override applied: ${computedTier} → ${ov.tier} (${ov.reason_code}, ${ov.approver}).`);
-      const soonDays = isNum(ovRules.expires_soon_days) ? ovRules.expires_soon_days : 14;
-      if (typeof ov.expires_at === "string" && daysBetween(asOf, ov.expires_at) <= soonDays) flags.add("Override expires soon");
+      if (expirySource === "derived") notes.push(`Override expiry derived: set_at ${ov.set_at} + ${ovRules.expiry_default_days} days → ${expiresAt}.`);
+      if (expiresAt === null) {
+        notes.push("Override has no expiry: no expires_at, and no set_at to derive one from.");
+      } else if (isNum(ovRules.expires_soon_days)) {
+        const left = daysBetween(asOf, expiresAt);
+        if (left !== null && left <= ovRules.expires_soon_days) flags.add("Override expires soon");
+      } else {
+        notes.push("rubric.override.expires_soon_days is not set; 'Override expires soon' not evaluated.");
+      }
     }
   }
 
