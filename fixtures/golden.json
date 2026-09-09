@@ -1877,7 +1877,7 @@
   },
   {
     "id": "PB24",
-    "description": "Deal health, unknown_never_warns: two open deals with next_meeting_at null. d-24a has no has_next_meeting (Pipedrive activities never read) and is 25 days dark — UNKNOWN, so neither DH-DARK nor DH-NO-NEXT fires and it is green. d-24b carries has_next_meeting false (activities read, none booked) → yellow DH-NO-NEXT only. ICP-2 Gold; headroom 18 × $175K × 20% × 50% × 0.5 = $157,500 → Partner proposed, capped to Project (no climb signal); no signals → Cold; year one from the ICP-2 prior band.",
+    "description": "Deal health, unknown_never_warns: two open deals with next_meeting_at null. d-24a carries has_next_meeting null (Pipedrive activities never read) and is 25 days dark — UNKNOWN, so neither DH-DARK nor DH-NO-NEXT fires and it is green. d-24b carries has_next_meeting false (activities read, none booked) → yellow DH-NO-NEXT only. ICP-2 Gold; headroom 18 × $175K × 20% × 50% × 0.5 = $157,500 → Partner proposed, capped to Project (no climb signal); no signals → Cold; year one from the ICP-2 prior band.",
     "features": {
       "account_id": "pb24",
       "name": "Cobalt Meridian Studio",

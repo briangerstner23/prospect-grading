@@ -179,12 +179,14 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   w();
   const gateOrder = gates.evaluation_order as string[];
   tbl(
-    ["#", "Gate", "Test", "Input", "Fails when", "Mode", "Basis"],
+    ["#", "Gate", "Test", "Input", "Fails when", "Mode", "Basis", "Flag raised on a fail"],
     gateOrder.map((id, i) => {
       const g = gates.items[id] as Obj;
-      return [String(i + 1), `**${cell(g.label)}**`, g.test, code(g.input), code(g.fail_when), `**${cell(g.mode)}**`, code(g.basis)];
+      return [String(i + 1), `**${cell(g.label)}**`, g.test, code(g.input), code(g.fail_when), `**${cell(g.mode)}**`, code(g.basis), typeof g.flag === "string" ? code(g.flag) : "—"];
     }),
   );
+  w(`A gate in mode \`flag\` raises the flag text in the last column when it fails (a gate in mode \`park\` parks instead; a gate in mode \`off\` does nothing). The text is listed in the flag vocabulary (§16) so the page can explain it.`);
+  w();
   for (const id of gateOrder) {
     const g = gates.items[id] as Obj;
     const parts: string[] = [];
@@ -376,6 +378,7 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
       s.flag ? `flag: ${cell(s.flag)}` : s.note ? cell(s.note) : "—",
     ]),
   );
+  para(`The scorecard lists the top **${sig.top_n}** live positive signals, strongest first (display only); the decayed total behind urgency counts every signal, listed or not.`);
   const urg = sig.urgency as Obj;
   w(`### 11b · Urgency`);
   w();
@@ -407,12 +410,18 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
     `Stage medians default to **${dh.default_stage_median_days} days** until WLIQ's own are known.` +
     (dh.unknown_never_warns ? ` **An unknown field never warns.**` : ``));
   w();
+  para(dh.params_note);
+  const params = (r: Obj): string => {
+    const entries = Object.entries((r.params ?? {}) as Obj);
+    return entries.length ? entries.map(([k, v]) => `${k} = ${cell(v)}`).join("; ") : "—";
+  };
   w(`**Red when any of:**`);
   w();
-  tbl(["Rule", "Test", "Warning shown"], (dh.red_when_any as Obj[]).map((r) => [`**${cell(r.id)}**`, code(r.test), r.message]));
+  tbl(["Rule", "Test", "Thresholds (params)", "Warning shown"], (dh.red_when_any as Obj[]).map((r) => [`**${cell(r.id)}**`, code(r.test), params(r), r.message]));
   w(`**Yellow when any of:**`);
   w();
-  tbl(["Rule", "Test", "Warning shown"], (dh.yellow_when_any as Obj[]).map((r) => [`**${cell(r.id)}**`, code(r.test), r.message]));
+  tbl(["Rule", "Test", "Thresholds (params)", "Warning shown"], (dh.yellow_when_any as Obj[]).map((r) => [`**${cell(r.id)}**`, code(r.test), params(r), r.message]));
+  para(`**The next meeting.** ${dh.next_meeting_note ?? ""}`);
   para(dh.stage_exit_criteria_note);
 
   /* ---- 13 · override ---- */
@@ -423,13 +432,15 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   tbl(["Term", "Value"], [
     ["Who may override", `the **${cell(ov.lane)}** lane only`],
     ["How far", `at most **${ov.max_tiers_moved}** tier from the computed tier`],
-    ["Reason code", ov.reason_code_required ? `**required**, one of ${(ov.reason_codes as string[]).map((c) => code(c)).join(", ")}` : "optional"],
-    ["Written reason", "required"],
-    ["Default expiry", `${ov.expiry_default_days} days`],
+    ["Reason code", ov.reason_code_required ? `**required**, one of ${(ov.reason_codes as string[]).map((c) => code(c)).join(", ")}` : `optional; when given, one of ${(ov.reason_codes as string[]).map((c) => code(c)).join(", ")}`],
+    ["Written reason", ov.written_reason_required ? "**required** — an override without one is ignored" : "optional"],
+    ["Default expiry", `${ov.expiry_default_days} days after it was set, when no expiry is stated`],
+    ["Expires-soon warning", `raised when **${ov.expires_soon_days} days** or fewer remain before the expiry`],
     ["Beyond the cap", cell(ov.beyond_cap)],
     ["Recorded in the register", ov.into_register ? "yes" : "no"],
   ]);
-  w(`An override is applied only when the approver and a reason code are both present. A refused override leaves the computed tier standing and raises the flag "Override refused: beyond one-tier cap". An override nearing its expiry raises "Override expires soon".`);
+  w(`An override is applied only when the approver is named${ov.reason_code_required ? ", a reason code from the list is given" : ""}${ov.written_reason_required ? ", a written reason is present" : ""} and it has not expired. ` +
+    `A refused override leaves the computed tier standing and raises the flag "Override refused: beyond one-tier cap". An override within **${ov.expires_soon_days} days** of its expiry raises "Override expires soon".`);
   w();
   const raters = rubric.raters as Obj;
   para(`**Raters.** ${raters.ruling}`);

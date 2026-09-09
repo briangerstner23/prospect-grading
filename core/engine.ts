@@ -248,7 +248,6 @@ function potentialOf(
   notes: string[],
   flags: Set<string>,
 ): PotentialRead {
-  const rph = reqObj(rubric, "potential.revenue_per_head_usd");
   const archetype: string = f.archetype ?? reqStr(rubric, "potential.revenue_per_head_usd.default");
   const revenuePerHead = reqNum(rubric, `potential.revenue_per_head_usd.${archetype}`);
   if (!f.archetype) notes.push(`Archetype unknown → revenue per head from the default archetype '${archetype}'.`);

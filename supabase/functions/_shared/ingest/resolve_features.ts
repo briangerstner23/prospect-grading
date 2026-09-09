@@ -95,6 +95,12 @@ export interface DealRow {
   buyer_contacts_30d: number | null;
   price_discussed: boolean | null;
   calls_held: number | null;
+  /**
+   * Whether the source READ the deal's activities when it wrote the row. Not a pb_deals column
+   * yet; accepted as a column or as `raw.activities_read`. Only an explicit `true` counts, and
+   * it is what lets a missing next_meeting_at mean "known: none booked" rather than "unknown".
+   */
+  activities_read?: boolean | null;
   account_id?: string | null;
   pipeline_id?: number | null;
   stage_id?: number | null;
@@ -454,6 +460,29 @@ function optBool(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
+/**
+ * DealInput plus the deal-health flag the engine reads (`has_next_meeting`, optional). Declared
+ * here as a widening so this module resolves the flag whether or not core/prospect_types.ts
+ * carries the field yet; ProspectFeatures.deals accepts the wider shape either way.
+ */
+type ResolvedDeal = DealInput & { has_next_meeting?: boolean | null };
+
+/**
+ * The known state of the next meeting — never inferred from silence:
+ *   true   next_meeting_at is set (a meeting is booked)
+ *   false  the source read the deal's activities and found none booked — ONLY on an explicit
+ *          marker: `activities_read === true` on the row or in `raw`
+ *   null   unknown; a missing next_meeting_at alone says nothing, so no deal-health rule about
+ *          the next meeting fires (unknown never warns)
+ */
+function hasNextMeeting(row: DealRow): boolean | null {
+  if (optStr(row.next_meeting_at) !== null) return true;
+  if (row.activities_read === true) return false;
+  const raw = row.raw;
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw) && (raw as Record<string, unknown>).activities_read === true) return false;
+  return null;
+}
+
 function optInt(v: unknown): number | null {
   const n = toNumber(v);
   return n === null || n === INVALID ? null : n;
@@ -657,7 +686,7 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   });
 
   /* ---- deals: open, not Client Journey ---- */
-  const deals: DealInput[] = [];
+  const deals: ResolvedDeal[] = [];
   for (const row of input.deals ?? []) {
     if (row.status !== "open") continue;
     if (row.is_cj === true) continue;
@@ -674,6 +703,7 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
       last_buyer_touch_at: optStr(row.last_buyer_touch_at),
       buyer_email_velocity_7d: optInt(row.buyer_email_velocity_7d),
       next_meeting_at: optStr(row.next_meeting_at),
+      has_next_meeting: hasNextMeeting(row),
       decision_maker_engaged: optBool(row.decision_maker_engaged),
       buyer_contacts_30d: optInt(row.buyer_contacts_30d),
       price_discussed: optBool(row.price_discussed),

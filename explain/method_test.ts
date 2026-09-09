@@ -157,6 +157,12 @@ all("signal label", Object.values(rubric.signals.catalog as Obj).map((s: Obj) =>
 all("red deal-health rule", (rubric.deal_health.red_when_any as Obj[]).map((r) => r.id));
 all("yellow deal-health rule", (rubric.deal_health.yellow_when_any as Obj[]).map((r) => r.id));
 all("deal-health message", [...rubric.deal_health.red_when_any, ...rubric.deal_health.yellow_when_any].map((r: Obj) => r.message));
+all("deal-health threshold", [...rubric.deal_health.red_when_any, ...rubric.deal_health.yellow_when_any].flatMap((r: Obj) => Object.entries(r.params as Obj).map(([k, v]) => `${k} = ${v}`)));
+all("gate flag text", Object.values(rubric.gates.items as Obj).map((g: Obj) => g.flag).filter((f: unknown) => typeof f === "string").map((f: string) => `\`${f}\``));
+check("renders the top-n signal count", has(`top **${rubric.signals.top_n}** live positive signals`));
+check("renders the expires-soon window", has(`**${rubric.override.expires_soon_days} days** or fewer remain`));
+check("renders the written-reason requirement", has(rubric.override.written_reason_required ? "| Written reason | **required**" : "| Written reason | optional |"));
+check("renders the Pipedrive-seed catalog rows", ["`verbally_accepted`", "`pa_sent`", "`quote_lost`"].every(has));
 all("override reason code", rubric.override.reason_codes);
 all("status", rubric.status_rules.precedence);
 all("chase key", rubric.chase_rank_key.keys);
@@ -179,7 +185,7 @@ const walk = (v: unknown) => {
 };
 walk(rubric.signals);
 walk(rubric.override);
-walk(rubric.deal_health.default_stage_median_days);
+walk(rubric.deal_health);
 walk(rubric.dimension_b.adjustments.net_cap_up);
 walk(rubric.dimension_b.adjustments.net_cap_down);
 walk(rubric.dimension_a.min_facts_to_publish_tier);
@@ -216,6 +222,13 @@ for (const [label, path, value, expect] of [
   ["default SLA", ["signals", "routing", "default_sla_hours"], 96, "96 hours"],
   ["override expiry", ["override", "expiry_default_days"], 60, "60 days"],
   ["override cap", ["override", "max_tiers_moved"], 2, "at most **2** tier"],
+  ["the expires-soon window", ["override", "expires_soon_days"], 21, "raised when **21 days** or fewer remain"],
+  ["the written-reason toggle", ["override", "written_reason_required"], false, "| Written reason | optional |"],
+  ["the top-n signal count", ["signals", "top_n"], 7, "lists the top **7** live positive signals"],
+  ["a deal-health threshold", ["deal_health", "red_when_any", "0", "params", "min_days_dark"], 28, "min_days_dark = 28"],
+  ["a two-parameter deal-health rule", ["deal_health", "yellow_when_any", "0", "params", "max_days"], 27, "min_days = 14; max_days = 27"],
+  ["a gate flag text", ["gates", "items", "broker_character", "flag"], "Character concern", "| `Character concern` |"],
+  ["a new catalog row's lifespan", ["signals", "catalog", "quote_lost", "lifespan_days"], 200, "| -4 | 200 days | yes | negative |"],
   ["a signal weight", ["signals", "catalog", "quote_requested", "weight"], 11, "| 11 |"],
   ["a signal SLA", ["signals", "catalog", "quote_requested", "sla_hours"], 6, "| 6 h |"],
   ["a signal lifespan", ["signals", "catalog", "quote_requested", "lifespan_days"], 21, "| 21 days |"],

@@ -76,12 +76,14 @@ July Stage 0, kept as the frame under PRO-15 ('keep the structure, test each pie
 
 A gate has one of three **modes**: `park` (a fail sets the row's status to Parked), `flag` (a fail only raises a flag) or `off` (not evaluated). **An unknown input never parks and never flags.** Gates run in this order:
 
-| # | Gate | Test | Input | Fails when | Mode | Basis |
-|---|---|---|---|---|---|---|
-| 1 | **Service shape** | The need is Core or Complement to what WLIQ sells. Off parks. | `service_shape` | `Off` | **park** | `unruled_default` |
-| 2 | **Economic floor** | Accepts real rates, at or above the floor. | `economics` | `fail` | **park** | `unruled_default` |
-| 3 | **Broker character** | Fair in scoping, negotiation and treatment of expertise. | `broker_character` | `flag` | **flag** | `reasoned` |
-| 4 | **Geography** | Inside the territories WLIQ serves. | `geography_ok` | `no` | **off** | `reasoned` |
+| # | Gate | Test | Input | Fails when | Mode | Basis | Flag raised on a fail |
+|---|---|---|---|---|---|---|---|
+| 1 | **Service shape** | The need is Core or Complement to what WLIQ sells. Off parks. | `service_shape` | `Off` | **park** | `unruled_default` | — |
+| 2 | **Economic floor** | Accepts real rates, at or above the floor. | `economics` | `fail` | **park** | `unruled_default` | — |
+| 3 | **Broker character** | Fair in scoping, negotiation and treatment of expertise. | `broker_character` | `flag` | **flag** | `reasoned` | `Broker character flag` |
+| 4 | **Geography** | Inside the territories WLIQ serves. | `geography_ok` | `no` | **off** | `reasoned` | `Geography flag` |
+
+A gate in mode `flag` raises the flag text in the last column when it fails (a gate in mode `park` parks instead; a gate in mode `off` does nothing). The text is listed in the flag vocabulary (§16) so the page can explain it.
 
 **Service shape.** Seed values map as follows:
 
@@ -96,7 +98,7 @@ A gate has one of three **modes**: `park` (a fail sets the row's status to Parke
 
 **Broker character.** PRO-2r (2026-09-07): character is NOT a grading input. PRO-2r-a is open: does it survive as a safety gate that never scores? Until ruled it is a FLAG only — visible, never scoring, never parking. Switch mode to 'park' if the owner rules the safety valve in.
 
-**Geography.** Added by the 9 Sep research brief; no ruling. Off until a territory list exists.
+**Geography.** Added by the 9 Sep research brief; no ruling. Off until a territory list exists. `flag` is the text raised should the mode be switched to flag.
 
 ## 5 · Fit (Dimension B): the ICP class
 
@@ -321,10 +323,11 @@ Basis of the anchors: fitted anchors — retrodiction cohort year-one billings, 
 | Confidence | When |
 |---|---|
 | **High** | `headcount_label == evidence AND wl_signal != null` |
+| **Medium** | `headcount_label == evidence` |
 | **Medium** | `headcount_label == inferred OR (headcount == null AND stated_ceiling != null)` |
 | **Low** | otherwise |
 
-Basis: locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch), Medium if inferred, Low if guessed.
+Basis: locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch) and the WL signal is known, Medium if the headcount is evidence but the WL signal is unknown or the headcount is inferred, Low if guessed.
 
 **Snapshot at signing** (later phase). Fields `p10_12m`, `p50_12m`, `p90_12m`, `p10_24m`, `p50_24m`, `p90_24m`, `p_35k_12m`, `p_100k_24m`, scored at 6, 12, 24 months. Phase 4. Frozen at first SOW, scored against Orbit and QuickBooks actuals; interval hit-rate, median error by estimator and ICP, Brier on the two binaries.
 
@@ -346,6 +349,9 @@ weight_now = decays ? weight * max(0, 1 - age_days / lifespan_days) : (age_days 
 | `champion_job_change` | Past champion or contact moved to a new agency | 9 | 90 days | yes | strong | 72 h | — |
 | `quote_requested` | Quote requested | 9 | 14 days | yes | strong | 8 h | — |
 | `quote_sent` | Quote sent | 8 | 30 days | yes | strong | default | — |
+| `verbally_accepted` | Quote verbally accepted | 8 | 30 days | yes | strong | default | — |
+| `pa_sent` | Project agreement sent | 8 | 30 days | yes | strong | default | — |
+| `quote_lost` | Quote lost | -4 | 180 days | yes | negative | default | outcome of a quote; a reason to re-qualify, not a gate |
 | `orbit_verbally_accepted` | Quote verbally accepted (Orbit) | 8 | 30 days | yes | strong | default | — |
 | `orbit_pa_sent` | Project agreement sent (Orbit) | 8 | 30 days | yes | strong | default | — |
 | `orbit_pa_signed` | Project agreement signed (Orbit) — promotion pending | 8 | 60 days | no | strong | default | flag: PA signed — promotion pending (PRO-18) |
@@ -369,6 +375,8 @@ weight_now = decays ? weight * max(0, 1 - age_days / lifespan_days) : (age_days 
 | `neg_end_client_inhousing` | End client in-housing | -6 | 90 days | no | strong_negative | default | — |
 | `prior_grade` | Prior grade from an earlier list or model | 0 | never expires | no | informational | default | Every letter grade from Gotham, the Tier 1 Book, the July wave, AMIN, Pittsburgh or the Cold Pool is kept as this signal with its source. It never scores. |
 | `manual_note` | Peer-group or conference intel entered by hand | 2 | 90 days | yes | weak | default | — |
+
+The scorecard lists the top **5** live positive signals, strongest first (display only); the decayed total behind urgency counts every signal, listed or not.
 
 ### 11b · Urgency
 
@@ -411,27 +419,31 @@ A task's SLA is the signal's own (catalog column above) or the default; it is du
 
 Computed **per open deal**; a row with no deals has no deal-health read and its reason sentence says nothing about it. A deal is **red** if any red rule fires, else **yellow** if any yellow rule fires, else **green**. Stage medians default to **21 days** until WLIQ's own are known. **An unknown field never warns.**
 
+Every threshold a rule uses sits in its `params`, by name; the `test` is the same rule in prose. The engine reads `params` and nothing else — a number typed only into the prose does not move the behaviour.
+
 **Red when any of:**
 
-| Rule | Test | Warning shown |
-|---|---|---|
-| **DH-DARK** | `days since last buyer-initiated touch >= 21 AND no next meeting booked` | 21+ days without a buyer touch and nothing scheduled |
-| **DH-PUSHES** | `close_date_pushes >= 3 OR largest_push_days > 21` | Close date pushed three times or once by more than three weeks |
-| **DH-STALLED** | `days in stage > 2 * stage median` | Stalled in stage at more than twice WLIQ's median |
-| **DH-NO-DM** | `decision_maker_engaged == false AND calls_held >= 2` | Two or more calls and no decision-maker has attended or replied |
-| **DH-INDECISION** | `indecision_level == high OR (risk_words_present == true AND next_meeting_at == null)` | High indecision language with no next step |
+| Rule | Test | Thresholds (params) | Warning shown |
+|---|---|---|---|
+| **DH-DARK** | `days since last buyer-initiated touch >= 21 AND no next meeting booked` | min_days_dark = 21 | 21+ days without a buyer touch and nothing scheduled |
+| **DH-PUSHES** | `close_date_pushes >= 3 OR largest_push_days > 21` | min_pushes = 3; max_push_days = 21 | Close date pushed three times or once by more than three weeks |
+| **DH-STALLED** | `days in stage > 2 * stage median` | median_multiple = 2 | Stalled in stage at more than twice WLIQ's median |
+| **DH-NO-DM** | `decision_maker_engaged == false AND calls_held >= 2` | min_calls = 2 | Two or more calls and no decision-maker has attended or replied |
+| **DH-INDECISION** | `indecision_level == high OR (risk_words_present == true AND no next meeting booked)` | — | High indecision language with no next step |
 
 **Yellow when any of:**
 
-| Rule | Test | Warning shown |
-|---|---|---|
-| **DH-QUIET** | `days since last buyer-initiated touch between 14 and 20` | Two weeks quiet |
-| **DH-PUSHED** | `close_date_pushes between 1 and 2` | Close date has moved |
-| **DH-NO-NEXT** | `next_meeting_at == null` | No next meeting booked |
-| **DH-NO-PRICE** | `price_discussed == false AND calls_held >= 2` | Price not discussed by the second call |
-| **DH-THIN** | `buyer_contacts_30d < 2` | Fewer than two buyer contacts engaged |
-| **DH-VELOCITY** | `buyer_email_velocity_7d == 0` | No buyer email this week |
-| **DH-NO-CRITICAL** | `critical_event_captured == false AND calls_held >= 2` | No critical event captured (SPICED) |
+| Rule | Test | Thresholds (params) | Warning shown |
+|---|---|---|---|
+| **DH-QUIET** | `days since last buyer-initiated touch between 14 and 20` | min_days = 14; max_days = 20 | Two weeks quiet |
+| **DH-PUSHED** | `close_date_pushes between 1 and 2` | min_pushes = 1; max_pushes = 2 | Close date has moved |
+| **DH-NO-NEXT** | `no next meeting booked` | — | No next meeting booked |
+| **DH-NO-PRICE** | `price_discussed == false AND calls_held >= 2` | min_calls = 2 | Price not discussed by the second call |
+| **DH-THIN** | `buyer_contacts_30d < 2` | min_contacts = 2 | Fewer than two buyer contacts engaged |
+| **DH-VELOCITY** | `buyer_email_velocity_7d == 0` | max_emails = 0 | No buyer email this week |
+| **DH-NO-CRITICAL** | `critical_event_captured == false AND calls_held >= 2` | min_calls = 2 | No critical event captured (SPICED) |
+
+**The next meeting.** 'No next meeting booked' is a KNOWN absence: has_next_meeting is false (the CRM activities were read and none is booked), or a booked next_meeting_at has already passed and has_next_meeting is not null. A null next_meeting_at with has_next_meeting null is unknown, and unknown never warns.
 
 Enforced both in Pipedrive required fields and here, because API writes bypass Pipedrive's checks (R6). Phase 3.
 
@@ -444,12 +456,13 @@ Enforced both in Pipedrive required fields and here, because API writes bypass P
 | Who may override | the **owner** lane only |
 | How far | at most **1** tier from the computed tier |
 | Reason code | **required**, one of `data_wrong`, `relationship_known`, `timing_known`, `conflict`, `other` |
-| Written reason | required |
-| Default expiry | 90 days |
+| Written reason | **required** — an override without one is ignored |
+| Default expiry | 90 days after it was set, when no expiry is stated |
+| Expires-soon warning | raised when **14 days** or fewer remain before the expiry |
 | Beyond the cap | refused — the engine rejects an override more than one tier from the computed tier rather than applying it |
 | Recorded in the register | yes |
 
-An override is applied only when the approver and a reason code are both present. A refused override leaves the computed tier standing and raises the flag "Override refused: beyond one-tier cap". An override nearing its expiry raises "Override expires soon".
+An override is applied only when the approver is named, a reason code from the list is given, a written reason is present and it has not expired. A refused override leaves the computed tier standing and raises the flag "Override refused: beyond one-tier cap". An override within **14 days** of its expiry raises "Override expires soon".
 
 **Raters.** PRO-5: the two sales raters enter facts on their own rows; the owner may stand in, recorded AS a stand-in. Per-rater calibration is a first-class output; for a rater with few rows report an interval and say plainly when history is too thin.
 
@@ -490,12 +503,14 @@ A flag warns and never caps (Client Book principle carried over). Every flag is 
 - Service shape unknown
 - Economics unknown
 - Broker character flag
+- Geography flag
 - ICP disagrees with derivation
 - Headcount unknown
 - Ceiling capped: no climb evidence
 - PA signed — promotion pending (PRO-18)
 - Prior grade differs
 - Stand-in entry
+- Override refused: beyond one-tier cap
 - Override expires soon
 - Conversation only
 

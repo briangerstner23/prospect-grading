@@ -1,9 +1,11 @@
 /**
- * WLIQ Prospect Book — gates, ICP classification, and the rubric's little `when` grammar.
+ * WLIQ Prospect Book — the strict rubric reader, gates, ICP classification, and the rubric's
+ * little `when` grammar.
  *
- * PURE. No clock, no I/O. Imported by ./engine.ts. Every threshold is read from the rubric
- * JSON: this file holds control flow and a small expression evaluator for the rubric's
- * rule strings, so the JSON can change a threshold without a code change.
+ * PURE. No clock, no I/O. Imported by ./engine.ts, ./decay.ts and ./reason.ts. Every
+ * threshold is read from the rubric JSON: this file holds control flow and a small
+ * expression evaluator for the rubric's rule strings, so the JSON can change a threshold
+ * without a code change.
  *
  * Unknown is never evidence: a null input never fails a gate and never fires a clause.
  */
@@ -12,6 +14,110 @@ import type { GateResult, IcpClass, ProspectFeatures } from "./prospect_types.ts
 
 // deno-lint-ignore no-explicit-any
 type Rubric = any;
+
+/* ------------------------------------------------------------------ *
+ * the strict rubric reader
+ * ------------------------------------------------------------------ *
+ * Every threshold, toggle, band and map the engine needs lives in the rubric JSON, and the
+ * engine reads it with these helpers and nothing else. There is NO code fallback: a key that
+ * is missing or of the wrong type throws a RubricError naming the path. A malformed rubric is
+ * a configuration fault, not a data gap — "a grade is labelled, never withheld" is about
+ * facts about a prospect; a rubric that cannot state its own thresholds must fail at preview
+ * (`?rubric=<v>&preview=1`), loudly, before it is ever activated.
+ */
+
+export class RubricError extends Error {
+  path: string;
+  constructor(rubric: Rubric, path: string, expected: string, got: unknown) {
+    const version = typeof rubric?.version === "string" ? rubric.version : "<no version>";
+    super(
+      `Rubric ${version}: '${path}' must be ${expected} (got ${describe(got)}). ` +
+        `Every threshold lives in the rubric JSON and there is no code fallback — fix the rubric, not the engine.`,
+    );
+    this.name = "RubricError";
+    this.path = path;
+  }
+}
+
+function describe(v: unknown): string {
+  if (v === undefined) return "nothing";
+  if (v === null) return "null";
+  if (Array.isArray(v)) return `an array of ${v.length}`;
+  if (typeof v === "object") return "an object";
+  if (typeof v === "string") return JSON.stringify(v);
+  return String(v);
+}
+
+/** Resolve a dotted path against an object; undefined when any segment is missing. */
+export function rubricAt(rubric: Rubric, path: string): unknown {
+  let cur: unknown = rubric;
+  for (const seg of path.split(".")) {
+    if (cur === null || cur === undefined || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[seg];
+  }
+  return cur;
+}
+
+export function reqNum(rubric: Rubric, path: string): number {
+  const v = rubricAt(rubric, path);
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new RubricError(rubric, path, "a finite number", v);
+  return v;
+}
+
+export function reqBool(rubric: Rubric, path: string): boolean {
+  const v = rubricAt(rubric, path);
+  if (typeof v !== "boolean") throw new RubricError(rubric, path, "true or false", v);
+  return v;
+}
+
+export function reqStr(rubric: Rubric, path: string): string {
+  const v = rubricAt(rubric, path);
+  if (typeof v !== "string" || v.trim().length === 0) throw new RubricError(rubric, path, "a non-empty string", v);
+  return v;
+}
+
+export function reqArr<T = unknown>(rubric: Rubric, path: string): T[] {
+  const v = rubricAt(rubric, path);
+  if (!Array.isArray(v)) throw new RubricError(rubric, path, "an array", v);
+  return v as T[];
+}
+
+export function reqObj(rubric: Rubric, path: string): Record<string, unknown> {
+  const v = rubricAt(rubric, path);
+  if (v === null || typeof v !== "object" || Array.isArray(v)) throw new RubricError(rubric, path, "an object", v);
+  return v as Record<string, unknown>;
+}
+
+export function reqOneOf<T extends string>(rubric: Rubric, path: string, options: readonly T[]): T {
+  const v = rubricAt(rubric, path);
+  if (typeof v !== "string" || !(options as readonly string[]).includes(v)) {
+    throw new RubricError(rubric, path, `one of ${options.map((o) => JSON.stringify(o)).join(", ")}`, v);
+  }
+  return v as T;
+}
+
+/** A number found at `path` inside an already-resolved object (for items inside arrays). */
+export function reqNumIn(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string): number {
+  const v = obj[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new RubricError(rubric, `${path}.${key}`, "a finite number", v);
+  return v;
+}
+
+export function reqStrIn(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string): string {
+  const v = obj[key];
+  if (typeof v !== "string" || v.trim().length === 0) throw new RubricError(rubric, `${path}.${key}`, "a non-empty string", v);
+  return v;
+}
+
+export function reqOneOfIn<T extends string>(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string, options: readonly T[]): T {
+  const v = obj[key];
+  if (typeof v !== "string" || !(options as readonly string[]).includes(v)) {
+    throw new RubricError(rubric, `${path}.${key}`, `one of ${options.map((o) => JSON.stringify(o)).join(", ")}`, v);
+  }
+  return v as T;
+}
+
+export const BASES = ["ruled", "unruled_default", "reasoned"] as const;
 
 /* ------------------------------------------------------------------ *
  * the `when` grammar
@@ -116,11 +222,11 @@ export function effectiveEconomics(
   rubric: Rubric,
 ): { value: "pass" | "fail" | null; derived_from: string | null } {
   if (f.economics === "pass" || f.economics === "fail") return { value: f.economics, derived_from: null };
-  const g = rubric?.gates?.items?.economics ?? {};
-  const floor = typeof g.floor_usd === "number" ? g.floor_usd : null;
-  const basis = g.floor_basis ?? "deal_size";
+  const floor = reqNum(rubric, "gates.items.economics.floor_usd");
+  const options = reqArr<string>(rubric, "gates.items.economics.floor_basis_options");
+  const basis = reqOneOf(rubric, "gates.items.economics.floor_basis", options);
   if (f.hourly_rate_accepted === false) return { value: "fail", derived_from: "hourly_rate_accepted == false" };
-  if (basis === "deal_size" && floor !== null && typeof f.deal_size_estimate === "number") {
+  if (basis === "deal_size" && typeof f.deal_size_estimate === "number") {
     if (f.deal_size_estimate < floor) return { value: "fail", derived_from: `deal_size_estimate ${f.deal_size_estimate} < floor ${floor}` };
     return { value: "pass", derived_from: `deal_size_estimate ${f.deal_size_estimate} >= floor ${floor}` };
   }
@@ -130,14 +236,19 @@ export function effectiveEconomics(
 
 /** Run every gate in rubric.gates.evaluation_order. `unknown` never fails. Mode `off` gates are recorded, never acted on. */
 export function evaluateGates(f: ProspectFeatures, rubric: Rubric): GateResult[] {
-  const gates = rubric?.gates ?? {};
-  const order: string[] = Array.isArray(gates.evaluation_order) ? gates.evaluation_order : Object.keys(gates.items ?? {});
+  const order = reqArr<string>(rubric, "gates.evaluation_order");
+  const items = reqObj(rubric, "gates.items");
   const out: GateResult[] = [];
   for (const id of order) {
-    const item = gates.items?.[id];
-    if (!item) continue;
-    const mode: GateResult["mode"] = item.mode === "park" || item.mode === "flag" ? item.mode : "off";
-    const basis: GateResult["basis"] = item.basis ?? "reasoned";
+    const path = `gates.items.${id}`;
+    if (items[id] === null || typeof items[id] !== "object") throw new RubricError(rubric, path, "a gate item named in gates.evaluation_order", items[id]);
+    const item = items[id] as Record<string, unknown>;
+    const mode = reqOneOfIn(rubric, item, "mode", path, ["park", "flag", "off"] as const);
+    const basis = reqOneOfIn(rubric, item, "basis", path, BASES);
+    const label = reqStrIn(rubric, item, "label", path);
+    const input = reqStrIn(rubric, item, "input", path);
+    const test = reqStrIn(rubric, item, "test", path);
+    if (item.fail_when === undefined) throw new RubricError(rubric, `${path}.fail_when`, "the value that fails the gate", item.fail_when);
 
     let value: unknown;
     let note = "";
@@ -146,7 +257,7 @@ export function evaluateGates(f: ProspectFeatures, rubric: Rubric): GateResult[]
       value = e.value;
       if (e.derived_from) note = ` (derived: ${e.derived_from})`;
     } else {
-      value = (f as unknown as Record<string, unknown>)[item.input];
+      value = (f as unknown as Record<string, unknown>)[input];
     }
 
     let result: GateResult["result"];
@@ -155,14 +266,26 @@ export function evaluateGates(f: ProspectFeatures, rubric: Rubric): GateResult[]
     else result = "pass";
 
     let reason: string;
-    if (mode === "off") reason = `${item.label} is switched off (mode off); recorded, not applied.`;
-    else if (result === "unknown") reason = `${item.input} is unknown — unknown never ${mode === "park" ? "parks" : "flags"}.`;
-    else if (result === "fail") reason = `${item.input} = ${String(value)}${note}; ${mode === "park" ? "parks the row" : "flags the row"} (${item.test}).`;
-    else reason = `${item.input} = ${String(value)}${note}; passes (${item.test}).`;
+    if (mode === "off") reason = `${label} is switched off (mode off); recorded, not applied.`;
+    else if (result === "unknown") reason = `${input} is unknown — unknown never ${mode === "park" ? "parks" : "flags"}.`;
+    else if (result === "fail") reason = `${input} = ${String(value)}${note}; ${mode === "park" ? "parks the row" : "flags the row"} (${test}).`;
+    else reason = `${input} = ${String(value)}${note}; passes (${test}).`;
 
-    out.push({ id, label: item.label ?? id, result, mode, reason, basis });
+    out.push({ id, label, result, mode, reason, basis });
   }
   return out;
+}
+
+/**
+ * The flag a gate in mode `flag` raises when it fails: the item's own `flag` text when the
+ * rubric names one (the shipped rubric does, and lists it in flags.vocabulary), else
+ * "<label> flag". The text is display vocabulary, not a threshold, so the label form is an
+ * honest stand-in rather than a silent fallback — and it is still rubric text.
+ */
+export function gateFlagText(rubric: Rubric, id: string): string {
+  const item = reqObj(rubric, `gates.items.${id}`);
+  if (typeof item.flag === "string" && item.flag.trim().length > 0) return item.flag;
+  return `${reqStrIn(rubric, item, "label", `gates.items.${id}`)} flag`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -184,7 +307,11 @@ export interface IcpDerivation {
 
 /** Run the six-step flow on facts alone. null when no step matches (unknown never fires a step). */
 export function deriveIcp(f: ProspectFeatures, rubric: Rubric): IcpDerivation {
-  const flow: Array<{ step: number; test: string; then: IcpClass }> = rubric?.dimension_b?.icp?.classification_flow ?? [];
+  const flow = reqArr<Record<string, unknown>>(rubric, "dimension_b.icp.classification_flow").map((s, i) => ({
+    step: reqNumIn(rubric, s, "step", `dimension_b.icp.classification_flow[${i}]`),
+    test: reqStrIn(rubric, s, "test", `dimension_b.icp.classification_flow[${i}]`),
+    then: reqStrIn(rubric, s, "then", `dimension_b.icp.classification_flow[${i}]`) as IcpClass,
+  }));
   const ctx: WhenContext = {
     is_agency: f.is_agency,
     agency_type: f.agency_type,
@@ -227,7 +354,7 @@ export interface IcpClassification {
 }
 
 export function classifyIcp(f: ProspectFeatures, rubric: Rubric): IcpClassification {
-  const statedWins = rubric?.dimension_b?.icp?.stated_wins !== false;
+  const statedWins = reqBool(rubric, "dimension_b.icp.stated_wins");
   const d = deriveIcp(f, rubric);
   const common = { derived: d.icp, step: d.step, firm: d.firm, unknown_fields: d.unknown_fields };
   if (f.icp_class && statedWins) {

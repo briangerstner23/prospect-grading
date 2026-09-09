@@ -322,14 +322,18 @@ const AGENCY_TYPE_KEYWORDS: Array<[RegExp, string]> = [
   [/direct|end[\s\-]*client/i, "direct_end_client"],
 ];
 
-/** §4b: referral_from_network = true when the referral source mentions any of these. */
+/**
+ * §4b: referral_from_network = true when the referral source mentions any of these. The last
+ * pattern is the referral word itself — referral / referred / referring — and deliberately
+ * not the bare stem "refer": "Reference call with vendor" is not a referral.
+ */
 const REFERRAL_NETWORK_PATTERNS: RegExp[] = [
   /\bbrian\b/i,
   /\bami\b/i,
   /\bbaba\b/i,
   /\bagency\s*builders\b/i,
   /\bamin\b/i,
-  /\brefer/i,
+  /\breferr/i,
 ];
 
 /** "#n of N", "#n/N", "rank n of N", "ranked #n of N". */
@@ -413,9 +417,13 @@ function lookup(raw: string, table: AliasTable): { found: boolean; value: string
   return { found: false, value: null };
 }
 
-/** "ICP-3", "ICP 3", "icp-3", 3 → "ICP-3" when in the vocabulary. */
+/**
+ * "ICP-3", "ICP 3", "icp-3", 3 → "ICP-3" when in the vocabulary. A labelled selection such as
+ * "ICP-6: Direct End-Client" is matched on its prefix; the caller keeps the verbatim text in
+ * the fact's note. "ICP-12" and "ICP-9" are not classes and return null.
+ */
 function canonicalIcp(raw: string, icp: readonly string[]): string | null {
-  const m = raw.trim().match(/^(?:icp)?[\s_\-]*([1-6])$/i);
+  const m = raw.trim().match(/^(?:icp)?[\s_\-]*([1-6])(?![0-9])/i);
   if (!m) return null;
   const c = `ICP-${m[1]}`;
   return icp.includes(c) ? c : null;

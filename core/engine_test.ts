@@ -87,7 +87,7 @@ function without(path: string): Rubric {
  * rubric, re-read the fixtures, then re-record the hash here in the same change. A rubric
  * edit that arrives without this line moving is an accident.
  */
-const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "__PIN__" };
+const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2" };
 
 /* ------------------------------------------------------------------ *
  * a synthetic base record
@@ -199,8 +199,8 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("gate: the broker flag text is the rubric's", R.gates.items.broker_character.flag, "Broker character flag");
   eq("gate: the geography flag text is the rubric's", R.gates.items.geography.flag, "Geography flag");
   for (const [id, item] of Object.entries(R.gates.items as Record<string, { mode: string; flag?: string }>)) {
-    if (item.mode === "off" && !item.flag) continue;
-    check(`gate: ${id} names a flag text that is in flags.vocabulary`, typeof item.flag === "string" && R.flags.vocabulary.includes(item.flag), String(item.flag));
+    if (item.mode === "flag") check(`gate: ${id} is in mode flag and names its flag text`, typeof item.flag === "string", String(item.flag));
+    if (typeof item.flag === "string") check(`gate: ${id}'s flag text is in flags.vocabulary`, R.flags.vocabulary.includes(item.flag), item.flag);
   }
   const derivedFail = grade(base({ economics: null, deal_size_estimate: R.gates.items.economics.floor_usd - 1 }), R);
   eq("gate: economics derived fail from a stated deal size below the floor", derivedFail.status, "Parked");
