@@ -21,7 +21,6 @@ import type {
   DealInput,
   EvidenceLabel,
   FactState,
-  FitRead,
   GateResult,
   GradeOptions,
   IcpClass,
@@ -196,19 +195,20 @@ function potentialOf(
     wallet = f.headcount * revenuePerHead * outsourceable * serviceable;
   }
 
-  let winnable: number;
+  // Full precision drives the math; the reported share is rounded for display only.
+  let winnableRaw: number;
   let winnableBasis: PotentialRead["winnable_basis"];
   if (isNum(f.n_vendors) && f.n_vendors > 0 && isNum(f.our_rank) && f.our_rank > 0) {
-    winnable = (1 - f.our_rank / (f.n_vendors + 1)) * (2 / f.n_vendors);
-    winnable = Math.round(winnable * 10_000) / 10_000;
+    winnableRaw = (1 - f.our_rank / (f.n_vendors + 1)) * (2 / f.n_vendors);
     winnableBasis = "wallet_allocation_rule";
   } else {
-    winnable = isNum(p.winnable_share?.default_when_unknown) ? p.winnable_share.default_when_unknown : 0.5;
+    winnableRaw = isNum(p.winnable_share?.default_when_unknown) ? p.winnable_share.default_when_unknown : 0.5;
     winnableBasis = "default";
   }
+  const winnable = Math.round(winnableRaw * 10_000) / 10_000;
 
   const trailing = isNum(f.trailing_12m_revenue) ? f.trailing_12m_revenue : 0;
-  const headroom: number | null = wallet === null ? null : Math.round(wallet * winnable - trailing);
+  const headroom: number | null = wallet === null ? null : Math.round(wallet * winnableRaw - trailing);
   const headroomBand = headroom === null ? null : pickBand(headroom, p.headroom_bands ?? []);
 
   // Revenue-per-head sanity note (audit only): the band's most generous reading still falls short.
@@ -393,7 +393,12 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     flags.add("ICP disagrees with derivation");
     notes.push(`Stated ${icp.icp_class} stands; the flow derives ${icp.derived} (step ${icp.step}).`);
   }
-  if (icp.derivation === "derived") notes.push(`ICP ${icp.icp_class} derived at step ${icp.step} of the classification flow.`);
+  if (icp.derivation === "stated" && icp.derived && icp.derived !== icp.icp_class && !icp.firm) {
+    notes.push(`Stated ${icp.icp_class} stands; the flow would reach ${icp.derived} only because ${icp.unknown_fields.join(", ")} is unknown — not a disagreement.`);
+  }
+  if (icp.derivation === "derived") {
+    notes.push(`ICP ${icp.icp_class} derived at step ${icp.step} of the classification flow${icp.firm ? "" : ` (tentative: ${icp.unknown_fields.join(", ")} unknown)`}.`);
+  }
   if (icp.derivation === "none") notes.push("No ICP class stated and none derivable from the facts → Unclassified.");
   const icpLabel: EvidenceLabel = icp.derivation === "stated" ? (f.icp_class_label ?? "inferred") : icp.derivation === "derived" ? "inferred" : "unknown";
 
@@ -563,7 +568,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   /* 15 · trace */
   const firedIds = adj.traces.filter((t) => t.fired).map((t) => `${t.id} ${t.direction > 0 ? "+1" : "−1"}`);
   const tierReasoning = [
-    icp.icp_class ? `ICP ${icp.icp_class} (${icp.derivation}) → base ${baseTier}` : "no ICP class → no base tier",
+    icp.icp_class ? `${icp.icp_class} (${icp.derivation}) → base ${baseTier}` : "no ICP class → no base tier",
     baseTier ? `adjustments ${firedIds.length ? firedIds.join(", ") : "none fired"} → net ${adj.net > 0 ? "+" : ""}${adj.net}${adj.net !== adj.net_raw ? ` (raw ${adj.net_raw > 0 ? "+" : ""}${adj.net_raw}, capped)` : ""} → adjusted ${adjustedTier}` : null,
     baseTier ? `platinum rule ${prMet ? "met" : "not met"}${prReasons.length ? ` (${prReasons.join("; ")})` : ""} → computed ${computedTier}` : null,
     applied ? `override → ${applied.tier}` : null,
@@ -596,7 +601,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
       computed_tier: computedTier,
       confidence: fitConfidence,
       confidence_reason: fitConfidenceReason,
-    } as FitRead,
+    },
     qualification,
     potential,
     signals,

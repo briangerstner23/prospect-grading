@@ -78,13 +78,27 @@ export function evalClause(clause: string, ctx: WhenContext): boolean {
 
 /** Evaluate a rubric `when` / `test` string: a conjunction of clauses. Empty → false. */
 export function evalWhen(expr: string, ctx: WhenContext): boolean {
+  return evalWhenDetailed(expr, ctx).result;
+}
+
+/**
+ * Same, and also names the referenced fields that are unknown (null / undefined). A false
+ * result with unknown fields is "false for want of evidence", not "false on the facts".
+ */
+export function evalWhenDetailed(expr: string, ctx: WhenContext): { result: boolean; unknown_fields: string[] } {
   const flat = expr.replace(/[()]/g, " ").trim();
-  if (!flat) return false;
-  const clauses = flat.split(/\s+AND\s+/);
-  for (const c of clauses) {
-    if (!evalClause(c, ctx)) return false;
+  const unknown: string[] = [];
+  if (!flat) return { result: false, unknown_fields: unknown };
+  let result = true;
+  for (const c of flat.split(/\s+AND\s+/)) {
+    const m = CLAUSE.exec(c.trim());
+    if (m) {
+      const v = resolvePath(ctx, m[1]);
+      if ((v === null || v === undefined) && !unknown.includes(m[1])) unknown.push(m[1]);
+    }
+    if (!evalClause(c, ctx)) result = false;
   }
-  return true;
+  return { result, unknown_fields: unknown };
 }
 
 /* ------------------------------------------------------------------ *
@@ -155,8 +169,21 @@ export function evaluateGates(f: ProspectFeatures, rubric: Rubric): GateResult[]
  * ICP class
  * ------------------------------------------------------------------ */
 
+export interface IcpDerivation {
+  icp: IcpClass | null;
+  step: number | null;
+  /**
+   * true when every step rejected before the match was rejected on KNOWN facts. false when a
+   * rejected step failed for want of an input (e.g. full_service with revenue_band unknown
+   * falls to ICP-2 only because step 3 could not be tested): the class is still the flow's
+   * best answer, but it is not evidence against a stated class.
+   */
+  firm: boolean;
+  unknown_fields: string[];
+}
+
 /** Run the six-step flow on facts alone. null when no step matches (unknown never fires a step). */
-export function deriveIcp(f: ProspectFeatures, rubric: Rubric): { icp: IcpClass | null; step: number | null } {
+export function deriveIcp(f: ProspectFeatures, rubric: Rubric): IcpDerivation {
   const flow: Array<{ step: number; test: string; then: IcpClass }> = rubric?.dimension_b?.icp?.classification_flow ?? [];
   const ctx: WhenContext = {
     is_agency: f.is_agency,
@@ -165,36 +192,50 @@ export function deriveIcp(f: ProspectFeatures, rubric: Rubric): { icp: IcpClass 
     revenue_band: f.revenue_band,
     vertical_depth: f.vertical_depth,
   };
+  const unknownSeen: string[] = [];
   for (const s of flow) {
     // The flow's steps 4 and 6 read "(otherwise)": the evaluator ignores that word because it
     // sits outside a clause; ordering carries the "otherwise" (step 3 was tested first).
     const expr = String(s.test).replace(/\(otherwise\)/g, "").replace(/\bOR\b/g, "__OR__");
-    if (expr.includes("__OR__")) {
-      const any = expr.split("__OR__").some((part) => evalWhen(part, ctx));
-      if (any) return { icp: s.then, step: s.step };
-    } else if (evalWhen(expr, ctx)) {
-      return { icp: s.then, step: s.step };
+    const parts = expr.includes("__OR__") ? expr.split("__OR__") : [expr];
+    const results = parts.map((part) => evalWhenDetailed(part, ctx));
+    if (results.some((r) => r.result)) {
+      return { icp: s.then, step: s.step, firm: unknownSeen.length === 0, unknown_fields: unknownSeen };
+    }
+    // For an OR step, a part that fails on the facts is a firm rejection of that part; a part
+    // whose fields are unknown leaves the step untestable.
+    for (const r of results) {
+      for (const u of r.unknown_fields) if (!unknownSeen.includes(u)) unknownSeen.push(u);
     }
   }
-  return { icp: null, step: null };
+  return { icp: null, step: null, firm: unknownSeen.length === 0, unknown_fields: unknownSeen };
 }
 
 /**
  * A stated class wins (rubric.dimension_b.icp.stated_wins). The flow runs when nothing is
  * stated; when both exist and differ, the stated class stands and `disagrees` is true.
  */
-export function classifyIcp(
-  f: ProspectFeatures,
-  rubric: Rubric,
-): { icp_class: IcpClass | null; derivation: "stated" | "derived" | "none"; disagrees: boolean; derived: IcpClass | null; step: number | null } {
+export interface IcpClassification {
+  icp_class: IcpClass | null;
+  derivation: "stated" | "derived" | "none";
+  /** Stated and firmly derived classes both exist and differ. A derivation that leaned on an unknown never disagrees. */
+  disagrees: boolean;
+  derived: IcpClass | null;
+  step: number | null;
+  firm: boolean;
+  unknown_fields: string[];
+}
+
+export function classifyIcp(f: ProspectFeatures, rubric: Rubric): IcpClassification {
   const statedWins = rubric?.dimension_b?.icp?.stated_wins !== false;
   const d = deriveIcp(f, rubric);
+  const common = { derived: d.icp, step: d.step, firm: d.firm, unknown_fields: d.unknown_fields };
   if (f.icp_class && statedWins) {
-    return { icp_class: f.icp_class, derivation: "stated", disagrees: d.icp !== null && d.icp !== f.icp_class, derived: d.icp, step: d.step };
+    return { icp_class: f.icp_class, derivation: "stated", disagrees: d.icp !== null && d.firm && d.icp !== f.icp_class, ...common };
   }
-  if (d.icp) return { icp_class: d.icp, derivation: "derived", disagrees: false, derived: d.icp, step: d.step };
-  if (f.icp_class) return { icp_class: f.icp_class, derivation: "stated", disagrees: false, derived: null, step: null };
-  return { icp_class: null, derivation: "none", disagrees: false, derived: null, step: null };
+  if (d.icp) return { icp_class: d.icp, derivation: "derived", disagrees: false, ...common };
+  if (f.icp_class) return { icp_class: f.icp_class, derivation: "stated", disagrees: false, ...common };
+  return { icp_class: null, derivation: "none", disagrees: false, ...common };
 }
 
 /** A direct-to-client row (PRO-4): relationship_type direct or ICP-6. Agency-only rules skip it. */
