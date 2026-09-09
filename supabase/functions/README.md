@@ -58,8 +58,6 @@ requirement, not a convenience:
 - **pb-fathom-webhook and pb-pipedrive-webhook** likewise: Fathom signs with Standard
   Webhooks and Pipedrive sends HTTP Basic — neither can present a Supabase JWT.
 
-(`docs/RUNBOOK.md` §3 lists pb-sync/pb-score as `verify_jwt = true`; that table predates the
-token check and should read `false` for all four.)
 
 Through the Supabase MCP, one `deploy_edge_function` call per function with
 `project_id = sgagrmapuovnjwvgsxbp`, `name`, `entrypoint_path = "index.ts"`,
