@@ -33,7 +33,7 @@ import {
   routeTasks,
 } from "./engine.ts";
 import type { DealHealthInput } from "./engine.ts";
-import { evalWhen } from "./classify.ts";
+import { evalWhen, RubricError } from "./classify.ts";
 import type { ProspectFeatures, ProspectScorecard, SignalInput, Tier } from "./prospect_types.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,6 +58,36 @@ function eq(name: string, actual: unknown, expected: unknown) {
   const e = JSON.stringify(expected);
   check(name, a === e, a === e ? "" : `expected ${e}, got ${a}`);
 }
+/** The call must throw a RubricError whose message names `needle` (the rubric path). */
+function throws(name: string, fn: () => unknown, needle: string) {
+  try {
+    fn();
+    failures.push(`${name} — expected a RubricError naming '${needle}', nothing was thrown`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const ok = e instanceof RubricError && msg.includes(`'${needle}'`) && msg.includes("no code fallback");
+    check(name, ok, ok ? "" : `expected a RubricError naming '${needle}', got ${e instanceof Error ? e.name : typeof e}: ${msg}`);
+  }
+}
+/** Deep-clone the rubric and delete the key at a dotted path. */
+function without(path: string): Rubric {
+  const copy = structuredClone(R);
+  const segs = path.split(".");
+  let node = copy;
+  for (const s of segs.slice(0, -1)) node = node[s];
+  delete node[segs[segs.length - 1]];
+  return copy;
+}
+
+/* ------------------------------------------------------------------ *
+ * the pinned rubric fingerprint
+ * ------------------------------------------------------------------ *
+ * The rubric's bytes are the contract behind every fixture below. Changing them is a
+ * deliberate act — a new threshold, a new catalog row — and this pin makes it one: edit the
+ * rubric, re-read the fixtures, then re-record the hash here in the same change. A rubric
+ * edit that arrives without this line moving is an accident.
+ */
+const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "__PIN__" };
 
 /* ------------------------------------------------------------------ *
  * a synthetic base record

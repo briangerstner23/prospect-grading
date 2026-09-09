@@ -298,8 +298,8 @@ could not attach on a high key is in the merge queue (§12).
 
 ## 12 · Reviewing the merge queue
 
-`pb_identity_candidates` holds every match below `high` confidence (and every Orbit / Fathom
-row that found no account), `status = proposed`. A person decides; the decision is carried
+`pb_identity_candidates` holds every match below `high` confidence, plus the Orbit and Fathom
+rows the mappers could not attach, `status = proposed`. A person decides; the decision is carried
 through by **`pb_review_candidate(p_candidate uuid, p_decision text, p_note text default
 null)`** (migration 5), owner and rater lanes only, `p_decision` = `merged` or `rejected`:
 

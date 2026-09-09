@@ -95,7 +95,7 @@ scripts/
   seed.ts                        the one-time seed composer: collected pulls (scratch dir) → ≤ 150 KB SQL files (§4i; scripts/seed_README.md)
   sync_shared.sh                 writes / checks the _shared copies
   test_all.sh                    every *_test.ts (core, ingest, explain, scripts, supabase/functions) + the sync check
-  page_pure_test.ts              the page's pure rendering helpers under Node
+  page_pure_test.ts              slices web/index.html's @pure-start…@pure-end block and runs it under Node in an empty vm context
 docs/
   DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md (access status) · RUNBOOK.md
 .github/workflows/deploy-pages.yml   publishes web/ to GitHub Pages (manual dispatch; Pages must be enabled once)

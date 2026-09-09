@@ -410,16 +410,46 @@ check("grade: a scorecard came back", SC.account_id === ACCOUNT.id && SC.anticip
   check("pipedriveInboxHeaders: none", pipedriveInboxHeaders(null)["has-authorization"] === false);
 }
 
-check("hasNonEmptyActionItems: array", hasNonEmptyActionItems({ action_items: [{ text: "Send the SOW" }] }));
-check("hasNonEmptyActionItems: empty array", !hasNonEmptyActionItems({ action_items: [] }));
-check("hasNonEmptyActionItems: absent", !hasNonEmptyActionItems({}));
-check("hasNonEmptyActionItems: null", !hasNonEmptyActionItems({ action_items: null }));
-check("hasNonEmptyActionItems: string", hasNonEmptyActionItems({ action_items: "- send the SOW\n- book the call" }));
-check("hasNonEmptyActionItems: blank string", !hasNonEmptyActionItems({ action_items: "   " }));
-check("hasNonEmptyActionItems: array of blanks", !hasNonEmptyActionItems({ action_items: ["", " "] }));
-check("hasNonEmptyActionItems: object with items", hasNonEmptyActionItems({ action_items: { items: [1] } }) && !hasNonEmptyActionItems({ action_items: { items: [] } }));
-check("hasNonEmptyActionItems: non-object payload", !hasNonEmptyActionItems("x") && !hasNonEmptyActionItems(null));
-eq("actionItemCount", [actionItemCount({ action_items: [1, 2] }), actionItemCount({ action_items: "a\nb\n" }), actionItemCount({}), actionItemCount({ action_items: { items: [1, 2, 3] } })], [2, 2, null, 3]);
+/* ---- body cap: 1 MB, refused before storing anything ---- */
+{
+  eq("MAX_WEBHOOK_BODY_BYTES is 1 MB", MAX_WEBHOOK_BODY_BYTES, 1_048_576);
+  eq("declaredContentLength: parses", declaredContentLength(new FakeHeaders({ "Content-Length": "512" })), 512);
+  eq(
+    "declaredContentLength: absent / junk / negative / null headers → null",
+    [declaredContentLength(new FakeHeaders({})), declaredContentLength(new FakeHeaders({ "content-length": "lots" })), declaredContentLength(new FakeHeaders({ "content-length": "-1" })), declaredContentLength(null)],
+    [null, null, null, null],
+  );
+  check("exceedsCap: over / at / unknown / custom cap", exceedsCap(MAX_WEBHOOK_BODY_BYTES + 1) && !exceedsCap(MAX_WEBHOOK_BODY_BYTES) && !exceedsCap(null) && exceedsCap(11, 10) && !exceedsCap(10, 10));
+
+  const enc = new TextEncoder();
+  const stream = (parts: string[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const p of parts) c.enqueue(enc.encode(p));
+        c.close();
+      },
+    });
+  eq("readBodyCapped: small body across chunks", await readBodyCapped(stream(['{"a":', "1}"]), 100), { ok: true, text: '{"a":1}', bytes: 7 });
+  eq("readBodyCapped: null body", await readBodyCapped(null, 100), { ok: true, text: "", bytes: 0 });
+  const atCap = await readBodyCapped(stream(["x".repeat(10)]), 10);
+  check("readBodyCapped: exactly the cap passes", atCap.ok && atCap.bytes === 10);
+  const over = await readBodyCapped(stream(["x".repeat(6), "y".repeat(5)]), 10);
+  check("readBodyCapped: one byte over the cap is refused at the cut", !over.ok && over.reason === "body too large" && over.bytes === 11, JSON.stringify(over));
+  const big = await readBodyCapped(stream(["z".repeat(MAX_WEBHOOK_BODY_BYTES + 1)]));
+  check("readBodyCapped: default cap is MAX_WEBHOOK_BODY_BYTES", !big.ok);
+  const utf8 = enc.encode("é–ü");
+  const split = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(utf8.slice(0, 1));
+      c.enqueue(utf8.slice(1));
+      c.close();
+    },
+  });
+  const splitRead = await readBodyCapped(split, 100);
+  check("readBodyCapped: a multibyte character split across chunks decodes whole", splitRead.ok && splitRead.text === "é–ü" && splitRead.bytes === utf8.length);
+  const real = await readBodyCapped(new Request("https://x.test/fn", { method: "POST", body: "hello" }).body, 100);
+  check("readBodyCapped: reads a fetch Request body", real.ok && real.text === "hello" && real.bytes === 5);
+}
 
 const CALL: CallRow = {
   fathom_recording_id: "rec_42", account_id: null, title: "Harbor & Pine — discovery", held_at: "2026-09-08T15:00:00.000Z",
@@ -427,24 +457,60 @@ const CALL: CallRow = {
   summary: null, transcript_available: true, fields: null, extraction_status: "pending",
 };
 {
-  const cat = RUBRIC.signals.catalog.next_step_agreed;
-  const s = fathomNextStepSignal(CALL, ACCOUNT.id, { action_items: [{ text: "Send proposal" }] }, RUBRIC);
-  check("fathomNextStepSignal: raised", s !== null);
-  if (s) {
-    eq("fathomNextStepSignal: shape", [s.account_id, s.source, s.type, s.observed_at, s.evidence_url, s.entered_by, s.contact_id], [ACCOUNT.id, "fathom", "next_step_agreed", CALL.held_at, CALL.url, "system:fathom", null]);
-    check("fathomNextStepSignal: weight/lifespan/decays from catalog", s.weight === cat.weight && s.lifespan_days === cat.lifespan_days && s.decays === cat.decays);
-    eq("fathomNextStepSignal: expires_at", s.expires_at, addDays(CALL.held_at as string, cat.lifespan_days));
-    check("fathomNextStepSignal: payload names the approximation", typeof (s.payload as Record<string, unknown>).approximation === "string" && (s.payload as Record<string, unknown>).recording_id === "rec_42");
-  }
-  eq("fathomNextStepSignal: not attached → none", fathomNextStepSignal(CALL, null, { action_items: [1] }, RUBRIC), null);
-  eq("fathomNextStepSignal: no action items → none", fathomNextStepSignal(CALL, ACCOUNT.id, { action_items: [] }, RUBRIC), null);
-  eq("fathomNextStepSignal: absent action items → none (unknown is not evidence)", fathomNextStepSignal(CALL, ACCOUNT.id, {}, RUBRIC), null);
-  eq("fathomNextStepSignal: no catalog → none", fathomNextStepSignal(CALL, ACCOUNT.id, { action_items: [1] }, {}), null);
-  eq("fathomNextStepSignal: no held_at → none", fathomNextStepSignal({ ...CALL, held_at: null }, ACCOUNT.id, { action_items: [1] }, RUBRIC), null);
+  eq("callRowForUpsert: the attached account wins", callRowForUpsert(CALL, ACCOUNT.id).account_id, ACCOUNT.id);
+  eq("callRowForUpsert: no attach → the call's own account (null here)", callRowForUpsert(CALL, null).account_id, null);
+  check("callRowForUpsert: every CallRow column carried", ["fathom_recording_id", "title", "held_at", "url", "attendees", "external_domains", "extraction_status"].every((k) => k in callRowForUpsert(CALL, null)));
+}
+
+/* ---- the inbox row: full body only when verified or when no secret is configured ---- */
+{
+  eq("inboxStorage", [inboxStorage(true, true), inboxStorage(false, false), inboxStorage(false, true), inboxStorage(false, null)], ["full", "full", "digest", "digest"]);
+
+  const headers = { "webhook-id": "msg_1", "has-signature": true };
+  const rawBody = '{"recording_id":1}';
+  const base = { source: "fathom" as const, headers, rawBody, parsed: safeJsonParse(rawBody), bodyBytes: 18 };
+
+  const ok = await inboxRow({ ...base, verified: true, secretConfigured: true, reason: null });
+  eq("inboxRow: verified → full body, no error", [ok.storage, ok.row.body, ok.row.verified, ok.row.error], ["full", { recording_id: 1 }, true, null]);
+  eq("inboxRow: verified row columns", Object.keys(ok.row).sort(), ["body", "error", "headers", "source", "verified"]);
+
+  const replay = await inboxRow({ ...base, verified: false, secretConfigured: false, reason: "secret not configured" });
+  eq("inboxRow: secret unset → full body kept for replay, reason in error", [replay.storage, replay.row.body, replay.row.verified, replay.row.error], ["full", { recording_id: 1 }, false, "secret not configured"]);
+
+  const bad = await inboxRow({ ...base, verified: false, secretConfigured: true, reason: "signature mismatch" });
+  eq("inboxRow: verification failed → digest only", [bad.storage, bad.row.verified, bad.row.error], ["digest", false, "signature mismatch"]);
+  eq("inboxRow: the digest record", bad.row.body, { stored: "digest", body_sha256: await sha256Hex(rawBody), body_bytes: 18, reason: "signature mismatch" });
+  check("inboxRow: the body itself is nowhere in the digest row", !JSON.stringify(bad.row).includes("recording_id"));
+  eq("inboxRow: the digest row keeps the header subset", bad.row.headers, headers);
+
+  const errored = await inboxRow({ ...base, verified: false, secretConfigured: null, reason: "verification error: rpc down" });
+  eq("inboxRow: secret lookup failed → digest too (configured-ness unknown)", [errored.storage, errored.row.error], ["digest", "verification error: rpc down"]);
+
+  const pipedrive = await inboxRow({ ...base, source: "pipedrive", verified: false, secretConfigured: true, reason: null });
+  eq("inboxRow: a missing reason is still a reason", [pipedrive.row.source, pipedrive.row.error, (pipedrive.row.body as Record<string, unknown>).reason], ["pipedrive", "not verified", "not verified"]);
+
+  const notJson = await inboxRow({ ...base, rawBody: "{nope", parsed: safeJsonParse("{nope"), bodyBytes: 5, verified: true, secretConfigured: true, reason: null });
+  check("inboxRow: verified non-JSON → {raw} and the parse error", JSON.stringify(notJson.row.body) === JSON.stringify({ raw: "{nope" }) && String(notJson.row.error).startsWith("body is not JSON"));
+  const notJsonUnverified = await inboxRow({ ...base, rawBody: "{nope", parsed: safeJsonParse("{nope"), bodyBytes: 5, verified: false, secretConfigured: true, reason: "signature mismatch" });
+  check("inboxRow: unverified non-JSON → digest, raw text not stored", !JSON.stringify(notJsonUnverified.row).includes("{nope"));
 }
 
 {
-  // End to end through the real parser: an external call to a known domain attaches and would raise the signal.
+  // Phase 1: no signal from an inbound call. The pure module and the handler both stay clear of pb_signals.
+  const pure = readFileSync(join(here, "webhook_pure.ts"), "utf8");
+  check("webhook_pure.ts derives no signal from a Fathom delivery", !/next_step_agreed|action_items|pb_signals/.test(pure));
+  const fathom = readFileSync(join(here, "..", "pb-fathom-webhook", "index.ts"), "utf8");
+  check("pb-fathom-webhook writes no pb_signals row", !/pb_signals|next_step_agreed|action_items/.test(fathom));
+  const pipedrive = readFileSync(join(here, "..", "pb-pipedrive-webhook", "index.ts"), "utf8");
+  for (const [name, src] of [["pb-fathom-webhook", fathom], ["pb-pipedrive-webhook", pipedrive]] as const) {
+    check(`${name}: enforces the body cap (Content-Length first, then the read) and answers 413`, /exceedsCap\(/.test(src) && /readBodyCapped\(/.test(src) && /413/.test(src));
+    check(`${name}: builds the inbox row through inboxRow`, /inboxRow\(/.test(src));
+    check(`${name}: no fixed inbox insert of the raw body`, !/body:\s*inboxBody\(/.test(src));
+  }
+}
+
+{
+  // End to end through the real parser: an external call to a known domain attaches; the pb_calls row is the record.
   const known = [{ id: ACCOUNT.id, key: ACCOUNT.key, name: ACCOUNT.name, domain: "harborpine.example", pipedrive_org_id: null, orbit_client_id: null }];
   const payload = {
     recording_id: 42, title: "Discovery", url: "https://fathom.video/calls/42", created_at: "2026-09-08T15:00:00.000Z",
@@ -454,8 +520,9 @@ const CALL: CallRow = {
   };
   const r = parseFathomWebhook(payload, known);
   check("fathom e2e: external, attached", r.external && r.skip_reason === null && r.attach?.id === ACCOUNT.id);
-  const sig = fathomNextStepSignal(r.call, r.attach?.id ?? null, payload, RUBRIC);
-  check("fathom e2e: signal raised on attach + action_items", sig !== null && sig.account_id === ACCOUNT.id);
+  const callRow = callRowForUpsert(r.call, r.attach?.id ?? null);
+  check("fathom e2e: the pb_calls row carries the attached account", callRow.account_id === ACCOUNT.id && callRow.fathom_recording_id === "42");
+  check("fathom e2e: action items are only noted by the parser, never stored or scored", r.notes.some((n) => /action_items/.test(n)) && !("action_items" in callRow));
   const internal = parseFathomWebhook({ ...payload, calendar_invitees: [{ email: "sales@whitelabeliq.com", is_external: false }] }, known);
   check("fathom e2e: internal-only skipped", !internal.external && internal.skip_reason !== null);
 }
