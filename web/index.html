@@ -468,7 +468,8 @@ function overrideCapWarning(tier, computedTier, order) {
 /* @pure-end -------------------------------------------------------- */
 
 /* ------------------------------------------------------------------ *
- * DOM helpers. Text always goes through textContent — no innerHTML with data.
+ * DOM helpers. Text always goes through textContent / createTextNode — the page never sets
+ * markup from data.
  * ------------------------------------------------------------------ */
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
