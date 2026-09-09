@@ -69,7 +69,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -143,7 +145,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -219,7 +223,9 @@
           "Service shape unknown",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": null,
+        "potential_confidence": "Low"
       }
     }
   },
@@ -294,7 +300,9 @@
         "flags": [
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "High",
+        "potential_confidence": "High"
       }
     }
   },
@@ -368,7 +376,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "High",
+        "potential_confidence": "High"
       }
     }
   },
@@ -445,7 +455,9 @@
         ],
         "adjustments": [
           "ADJ-WL"
-        ]
+        ],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -522,7 +534,9 @@
         "adjustments": [
           "ADJ-WL",
           "ADJ-REF"
-        ]
+        ],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -599,7 +613,9 @@
         ],
         "adjustments": [
           "ADJ-REF"
-        ]
+        ],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -675,7 +691,9 @@
         ],
         "adjustments": [
           "ADJ-ICP4-UNPROVEN"
-        ]
+        ],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -749,7 +767,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Low",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -833,7 +853,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -918,7 +940,9 @@
           "Override refused: beyond one-tier cap",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -994,7 +1018,9 @@
           "Roster source uncertified",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1068,7 +1094,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1159,7 +1187,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1242,7 +1272,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1312,6 +1344,7 @@
           "last_buyer_touch_at": "2026-09-04T00:00:00.000Z",
           "buyer_email_velocity_7d": 2,
           "next_meeting_at": "2026-09-16T15:00:00Z",
+          "has_next_meeting": true,
           "decision_maker_engaged": true,
           "buyer_contacts_30d": 2,
           "price_discussed": true,
@@ -1338,7 +1371,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1413,7 +1448,9 @@
           "ICP disagrees with derivation",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1497,7 +1534,9 @@
           "PA signed — promotion pending (PRO-18)",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1573,7 +1612,9 @@
           "Headcount unknown",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1647,7 +1688,9 @@
           "Broker character flag",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Low",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1733,7 +1776,9 @@
           "Prior grade differs",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1824,7 +1869,9 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Low",
+        "potential_confidence": "Medium"
       }
     }
   },
@@ -1894,6 +1941,7 @@
           "last_buyer_touch_at": "2026-08-15T00:00:00.000Z",
           "buyer_email_velocity_7d": null,
           "next_meeting_at": null,
+          "has_next_meeting": null,
           "decision_maker_engaged": null,
           "buyer_contacts_30d": null,
           "price_discussed": null,
@@ -1942,7 +1990,85 @@
           "Ceiling capped: no climb evidence",
           "UNVALIDATED (PRO-8)"
         ],
-        "adjustments": []
+        "adjustments": [],
+        "fit_confidence": "Low",
+        "potential_confidence": "Medium"
+      }
+    }
+  },
+  {
+    "id": "PB25",
+    "description": "Potential confidence Medium on an evidence headcount with the WL signal unknown: 24 people from LinkedIn (evidence), wl_signal null → the High rule fails on the WL clause and the evidence-headcount Medium rule fires (not Low). ICP-2 Gold inferred, money and authority present → Partly qualified, fit confidence Medium. Headroom 24 × $175K × 20% (default share) × 50% × 0.5 = $210,000 → Partner proposed, capped to Project (no climb signal); no signals → Cold; year one from the ICP-2 prior band.",
+    "features": {
+      "account_id": "pb25",
+      "name": "Kestrel Row Studio",
+      "as_of": "2026-09-09",
+      "relationship_type": "agency",
+      "roster_source": "pipedrive",
+      "roster_certified": true,
+      "lineage": null,
+      "icp_class": "ICP-2",
+      "icp_class_label": "inferred",
+      "is_agency": true,
+      "agency_type": "full_service",
+      "headcount": 24,
+      "headcount_label": "evidence",
+      "revenue_band": null,
+      "vertical_depth": null,
+      "wl_signal": null,
+      "service_shape": "Core",
+      "economics": "pass",
+      "deal_size_estimate": null,
+      "hourly_rate_accepted": null,
+      "broker_character": null,
+      "referral_from_network": null,
+      "icp4_vertical_proven": null,
+      "recurring_revenue_share": null,
+      "niche_positioning": null,
+      "am_pm_separated": null,
+      "platform_partner_badge": null,
+      "peer_network_member": null,
+      "ai_posture": null,
+      "avg_project_size": null,
+      "already_outsources": null,
+      "owner_does_everything": null,
+      "inhouse_dev_team": null,
+      "dev_archetype": null,
+      "shrinking": null,
+      "money": "present",
+      "authority": "present",
+      "specification": "unknown",
+      "timing": null,
+      "timing_state": "unknown",
+      "archetype": null,
+      "serviceable_share": null,
+      "n_vendors": null,
+      "our_rank": null,
+      "trailing_12m_revenue": 0,
+      "quote_amount": null,
+      "stated_ceiling": null,
+      "climb_signals": [],
+      "signals": [],
+      "deals": [],
+      "prior_grades": []
+    },
+    "expected": {
+      "0.1.0": {
+        "status": "Ranked",
+        "effective_tier": "Gold",
+        "computed_tier": "Gold",
+        "cell": "Gold × Project",
+        "qualification": "Partly qualified",
+        "ceiling": "Project",
+        "year1_band": "$16K–46K",
+        "urgency": "Cold",
+        "flags": [
+          "Ceiling capped: no climb evidence",
+          "UNVALIDATED (PRO-8)"
+        ],
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
       }
     }
   }

@@ -17,10 +17,10 @@ supabase/functions/
     auth.ts          bearerOk(req, secret) constant-time; getSecret(db, name) via the pb_secret() RPC
     log.ts           startRun / finishRun → pb_runs
     rubric.ts        loadRubric(db, version|null); signal-catalog fill (weight, lifespan, decays, expires_at)
-    helpers.ts       json(), bearer parsing, sha256Hex, chunk, safeJsonParse, header subsets
+    helpers.ts       json(), bearer parsing, sha256Hex, chunk, safeJsonParse, header subsets, the 1 MB body cap
     sync_pure.ts     pb-sync's validation, column allow-lists, account_key → account_id, row preparation
     score_pure.ts    pb-score's grouping, pb_reads row, listing patch, preview diff, counts
-    webhook_pure.ts  inbox header subsets, the Fathom next_step_agreed approximation, deal merge, field map
+    webhook_pure.ts  inbox header subsets, the inbox row (full body or digest), deal merge, field map
     helpers_test.ts  node --experimental-strip-types supabase/functions/_shared/helpers_test.ts
     core/            byte-identical COPIES of core/*.ts + the rubric JSON   (scripts/sync_shared.sh)
     ingest/          byte-identical COPIES of ingest/*.ts                  (scripts/sync_shared.sh)
@@ -46,13 +46,20 @@ their secret is set.
 
 ## Deploy
 
-All four are deployed with **`verify_jwt = false`**. None of the callers presents a Supabase
-JWT: pb-sync / pb-score are called with our own bearer (`PB_SYNC_TOKEN`, checked in constant
-time by `bearerOk`) — including by the pg_cron job in `20260909120100_prospect_book_cron.sql`,
-which sends exactly that header — Fathom signs with Standard Webhooks, Pipedrive uses HTTP
-Basic. With `verify_jwt = true` the gateway would reject every one of those calls before the
-function ran. (`docs/RUNBOOK.md` §3 lists pb-sync/pb-score as `verify_jwt = true`; that table
-predates the token check and should read `false` for all four.)
+All four are deployed with **`verify_jwt = false`**, and for each of them that is a
+requirement, not a convenience:
+
+- **pb-sync and pb-score must be deployed with `verify_jwt = false`.** They carry the Prospect
+  Book's own bearer — `Authorization: Bearer <PB_SYNC_TOKEN>`, checked in constant time by
+  `bearerOk` — not a Supabase JWT. The pg_cron job in `20260909120100_prospect_book_cron.sql`
+  sends exactly that header every night; with `verify_jwt = true` the gateway would reject the
+  call before the function ran and no reads would ever be written. The token check *is* the
+  authentication: there is no anonymous path (503 while the token is unset, 401 when it is wrong).
+- **pb-fathom-webhook and pb-pipedrive-webhook** likewise: Fathom signs with Standard
+  Webhooks and Pipedrive sends HTTP Basic — neither can present a Supabase JWT.
+
+(`docs/RUNBOOK.md` §3 lists pb-sync/pb-score as `verify_jwt = true`; that table predates the
+token check and should read `false` for all four.)
 
 Through the Supabase MCP, one `deploy_edge_function` call per function with
 `project_id = sgagrmapuovnjwvgsxbp`, `name`, `entrypoint_path = "index.ts"`,
@@ -195,30 +202,60 @@ curl -sS -X POST "$FN/pb-score?rubric=0.2.0&preview=1" -H "Authorization: Bearer
 Statuses: `405` · `503` token unset / no active rubric · `401` · `400` bad `as_of`, non-active
 rubric without preview · `404` named rubric missing · `500` a load or write failed.
 
+## The webhooks: body cap, and what the inbox keeps
+
+Both webhook functions are public endpoints; two rules keep an unauthenticated caller from
+using them against us. Both live in pure code (`helpers.ts`, `webhook_pure.ts`) and are tested.
+
+**Body cap — 1 MB (`MAX_WEBHOOK_BODY_BYTES = 1_048_576`).** A `Content-Length` over the cap is
+answered **413** before the body is read. Without a usable `Content-Length` the body is read
+through `readBodyCapped`, which stops — and cancels the stream — the moment the running total
+passes the cap, and the delivery is answered **413** on the read length instead. Nothing over
+the cap is stored or verified. (A Fathom delivery carrying a transcript is far under 1 MB.)
+
+**What the inbox keeps (`inboxRow`).** `pb_webhook_inbox.body` holds the whole delivery only
+when it is safe to keep:
+
+| Outcome | `body` | `verified` | `error` |
+|---|---|---|---|
+| verified | the parsed JSON (or `{raw}` when not JSON) | true | null, or `body is not JSON: …` |
+| secret **not configured** | the parsed JSON (or `{raw}`) — the **replay** case: set the secret, then process the stored body | false | `secret not configured (…)` |
+| secret configured, verification **failed** (or the secret could not be read) | a **digest only**: `{stored: "digest", body_sha256, body_bytes, reason}` | false | the reason |
+
+`headers` is always the small subset (`content-type`, `content-length`, `user-agent`, the
+source's id headers, and a `has-signature` / `has-authorization` boolean — never the signature
+or credential). The digest row proves a delivery happened and lets a redelivered body be
+matched by hash, without letting anyone who lacks the secret fill the table with bodies.
+
 ## pb-fathom-webhook — "new meeting content ready" (DESIGN.md §4e)
 
 `GET $FN/pb-fathom-webhook` → `{ok:true, service:"pb-fathom-webhook"}` (reachability).
 `POST` → the delivery, headers `webhook-id`, `webhook-timestamp`, `webhook-signature`.
 
+0. Body cap (above): `Content-Length` over 1 MB → **413** before reading; otherwise the body
+   is read up to the cap and cut off there → **413**.
 1. Raw body is read as text (re-serialising would break the MAC).
 2. `verifyStandardWebhook` against `PB_FATHOM_WEBHOOK_SECRET` (HMAC-SHA256 over
-   `${id}.${timestamp}.${body}`, 5-minute tolerance). Unset secret → not verified.
+   `${id}.${timestamp}.${body}`, 5-minute tolerance). The stored secret is trimmed once; a
+   `whsec_` secret whose remainder is not base64 is refused with its own reason. Unset secret →
+   not verified.
 3. **Always** `insert pb_webhook_inbox {source: 'fathom', headers: {webhook-id,
-   webhook-timestamp, content-type, user-agent, has-signature}, body (parsed JSON or {raw}),
-   verified, error}`. The signature value itself is never stored.
+   webhook-timestamp, content-type, content-length, user-agent, has-signature}, body, verified,
+   error}` — `body` per the table above: whole when verified or when the secret is unset, a
+   digest when verification failed. The signature value itself is never stored.
 4. If verified: `parseFathomWebhook(body, known accounts)`. Internal-only calls are skipped and
    counted. External calls: upsert `pb_calls` on `fathom_recording_id`; insert
-   `pb_identity_candidates`; and, **only when** the call attached to an account (high domain
-   match) **and** the payload's `action_items` exist and are non-empty, insert one signal
-   `next_step_agreed` (weight / lifespan / decay from the rubric catalog, `entered_by
-   system:fathom`, one per recording). This is a documented approximation — an action item is
-   not proof a next step was agreed — that the seven-field extraction (later step) supersedes.
-   Otherwise no signal.
+   `pb_identity_candidates`. **No signal is raised from an inbound call in Phase 1** — the
+   `pb_calls` row is the record, and the seven-field extraction (a later step, confirmed by a
+   person) is what may read it. The payload's `action_items` are noted by the parser and not
+   stored.
 5. `processed_at` on the inbox row; a `pb_runs` row (kind `webhook`, source `fathom`).
 6. **200 always after inboxing.** Fathom retries on any non-2xx and would re-deliver the same
-   payload, so an unverified delivery is answered `200 {verified:false, reason}` and left in
-   the inbox for replay once the secret is right. The only non-2xx is a failed inbox insert
-   (nothing was stored, so the retry is wanted).
+   payload, so an unverified delivery is answered `200 {verified:false, stored, reason}` and
+   left in the inbox (whole, or as a digest). The non-2xx cases: **413** over the cap; **500**
+   when the inbox insert failed (nothing was stored, so the retry is wanted); **500** when the
+   secret could not be *read* from Vault (a fault on our side — only a digest was kept, so the
+   retry is wanted too).
 
 ```bash
 curl -sS "$FN/pb-fathom-webhook"                                      # reachability
@@ -236,16 +273,24 @@ Check: `select received_at, verified, processed_at, error from pb_webhook_inbox 
 `GET $FN/pb-pipedrive-webhook` → reachability. `POST` → `{meta, data, previous}` with HTTP
 Basic auth.
 
+0. Body cap (above): `Content-Length` over 1 MB → **413** before reading; otherwise the body
+   is read up to the cap and cut off there → **413**.
 1. Raw body → JSON (or `{raw}`).
-2. `verifyBasicAuth(Authorization, PB_PIPEDRIVE_WEBHOOK_BASIC)` — constant time; unset secret → not verified.
-3. **Always** inbox `{source: 'pipedrive', headers: {content-type, user-agent,
-   x-pipedrive-webhook-id, has-authorization}, body, verified, error}`. The credential is never stored.
+2. `verifyBasicAuth(Authorization, PB_PIPEDRIVE_WEBHOOK_BASIC)` — constant time; the stored
+   `user:pass` is trimmed once (the presented credential is not); unset secret → not verified.
+3. **Always** inbox `{source: 'pipedrive', headers: {content-type, content-length, user-agent,
+   x-pipedrive-webhook-id, has-authorization}, body, verified, error}` — `body` per the table
+   above: whole when verified or when the secret is unset, a digest when verification failed.
+   The credential is never stored.
 4. Status codes:
    - **200** verified; or **no** `Authorization` header at all; or the secret is unset — the
-     payload is stored for replay and Pipedrive is not told to retry or to auto-disable the hook.
+     payload (or its digest) is stored and Pipedrive is not told to retry or to auto-disable the hook.
    - **401** an `Authorization` header **is present and wrong** — a misconfigured credential
-     must surface in Pipedrive's webhook log so the operator sees it. The payload is already in
-     the inbox; nothing is lost.
+     must surface in Pipedrive's webhook log so the operator sees it. A digest of the delivery
+     is in the inbox.
+   - **413** over the body cap; nothing stored.
+   - **500** the inbox insert failed, or the secret could not be *read* from Vault (a fault on
+     our side; only a digest was kept, so Pipedrive's retry is wanted).
 5. If verified: field map from Vault (`PB_PIPEDRIVE_FIELD_MAP`, empty map when absent — hash
    keys are never hard-coded), the active rubric (signal weights), known accounts, and the
    deal → account map; `parsePipedriveEvent`; then
@@ -277,9 +322,11 @@ curl -sS -X POST "$FN/pb-pipedrive-webhook" -u "$PD_USER:$PD_PASS" -H "Content-T
 ## Tests
 
 ```bash
-node --experimental-strip-types supabase/functions/_shared/helpers_test.ts   # 207 checks
+node --experimental-strip-types supabase/functions/_shared/helpers_test.ts   # every pure helper, the cap, the inbox row
 bash scripts/sync_shared.sh --check                                          # copies match originals
 ```
 
-`helpers_test.ts` also asserts that no pure helper reads a clock or imports `jsr:`/`npm:`, and
-that every `_shared/core` and `_shared/ingest` copy is byte-identical to its original.
+`helpers_test.ts` also asserts that no pure helper reads a clock or imports `jsr:`/`npm:`, that
+every `_shared/core` and `_shared/ingest` copy is byte-identical to its original, that
+`webhook_pure.ts` and `pb-fathom-webhook` derive no signal from a delivery, and that both
+webhook handlers go through the cap and `inboxRow`.
