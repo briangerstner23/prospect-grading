@@ -24,8 +24,9 @@ ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes
             pipedrive_seed.ts (the certified roster from the read-only pull; PipedriveKeys =
             the seed's inferred field keys) · pipedrive_webhook.ts · fathom_webhook.ts ·
             webhook_signatures.ts (+ *_test.ts)
-supabase/   migrations/ — five, in order: 20260909120000 schema + RLS · 120100 cron ·
-            120200 merge · 120300 fixes · 120400 candidate review (all applied)
+supabase/   migrations/ — six, in order: 20260909120000 schema + RLS · 120100 cron ·
+            120200 merge · 120300 fixes · 120400 candidate review ·
+            20260910141528 touch search_path (all applied)
             functions/pb-sync, pb-score, pb-fathom-webhook, pb-pipedrive-webhook, _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)

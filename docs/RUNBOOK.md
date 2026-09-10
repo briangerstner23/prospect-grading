@@ -62,7 +62,7 @@ store every delivery unverified while their secret is unset; nothing is discarde
 
 ## 2 · Apply the migrations
 
-**All five are applied to `sgagrmapuovnjwvgsxbp` (9 Sep).** They are idempotent, so
+**All six are applied to `sgagrmapuovnjwvgsxbp` (9–10 Sep).** They are idempotent, so
 re-applying is safe. For a fresh project: in order, one `apply_migration` call per file
 (name = the filename stem, query = the file content), or
 `supabase db push --project-ref sgagrmapuovnjwvgsxbp`. Applied migrations are history and
@@ -73,6 +73,7 @@ are never edited; a correction is a new file that supersedes.
 3. `20260909120200_prospect_book_merge.sql` — `book = 'merged'` and `merged_into` on `pb_accounts`; the first `pb_merge_accounts`.
 4. `20260909120300_prospect_book_fixes.sql` — `pb_role()` becomes `SECURITY DEFINER` (the INVOKER version recursed through its own `pb_members` policy); the identity-review guard freezes `id` and every key column and tests `current_user`; a `BEFORE INSERT` trigger takes hand-signal weight / lifespan / decay from the active rubric's catalog; the views deny `anon` on their own; `pb_merge_accounts` re-issued as `(p_source, p_target, p_note)`.
 5. `20260909120400_prospect_book_candidate_review.sql` — `pb_review_candidate(p_candidate, p_decision, p_note)`, which carries a merge-queue decision through (§12).
+6. `20260910141528_prospect_book_touch_search_path.sql` — pins `pb_touch_updated_at()`'s `search_path`, clearing the last security-advisor warning of ours. The remaining advisor notes on `pb_*` are all intended: `pb_webhook_inbox` has RLS with no policy (service-role only, default deny), and `pb_role` / `pb_merge_accounts` / `pb_review_candidate` are `SECURITY DEFINER` and callable by signed-in users because each re-checks the caller's lane and raises when it is not owner or rater.
 
 Check afterwards:
 
@@ -123,14 +124,38 @@ supabase functions deploy pb-fathom-webhook    --project-ref sgagrmapuovnjwvgsxb
 supabase functions deploy pb-pipedrive-webhook --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 ```
 
+**Deploying from a session instead of the CLI.** The MCP takes every file inline in one call, and
+the four functions' TypeScript closure is too large for that, so `bash scripts/build_functions.sh`
+bundles each into one ES module under `dist/functions/<fn>/index.js`; deploy that with
+`entrypoint_path = index.js`. Two things to watch, both learned the hard way:
+
+- The payload is JSON, so **every backslash in the bundle must be escaped in it**. A bundle's
+  `\uXXXX` — the combining-mark class in `norm()`, for one — sent with a single backslash arrives
+  decoded to the character it names. The function still behaves identically, but its deployed
+  bytes no longer match the bundle, so the sha256 you recorded stops identifying what is running.
+- Emitting ~24–66 KB verbatim is the failure-prone step. Verify the deploy, don't assume it.
+
 Redeploy any function whose `_shared/` copy of a `core/` or `ingest/` module changed.
-Reachability: `curl -sS <FN>/pb-fathom-webhook` and `curl -sS <FN>/pb-pipedrive-webhook`
-answer `{ok:true, service:…}` on GET.
+
+**Check a deploy landed.** `curl -sS <FN>/pb-fathom-webhook` and `curl -sS <FN>/pb-pipedrive-webhook`
+answer `{"ok":true,"service":…}` on GET — which proves the deployed source parsed and booted, not
+merely that it was accepted. From a session with no route to `*.supabase.co`, ask Postgres to make
+the request instead:
+
+```sql
+select net.http_get(url := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-fathom-webhook');
+-- then, a moment later, with the id it returned:
+select status_code, content from net._http_response where id = <id>;
+```
 
 ## 4 · Register the Fathom webhook
 
-Done through the owner-account Fathom MCP (the account whose recordings are shared with the
-team) (`create_webhook`) once `pb-fathom-webhook` is deployed. Parameters:
+`pb-fathom-webhook` is deployed and answering, but **the webhook itself could not be created
+from a session**: the owner-account Fathom MCP's `create_webhook` returns
+`Fathom API error 400: {"error":"Url can't be blank"}` on every call — it drops the destination
+URL before Fathom's API sees it, whether the URL is passed as the schema's `destination_url` or
+as an explicit `url` beside it. Nothing on this side can supply the field; it needs a fixed MCP,
+or Fathom's own API or UI with a token. Parameters, wherever it is created:
 
 - `url`: `<FN>/pb-fathom-webhook`
 - `include_transcript: true`, `include_summary: true`, `include_action_items: true`,
@@ -139,7 +164,8 @@ team) (`create_webhook`) once `pb-fathom-webhook` is deployed. Parameters:
 
 The response carries the signing secret (`whsec_…`). Put it into Vault as
 `PB_FATHOM_WEBHOOK_SECRET` (§1) **before** the first call lands, or every delivery is stored
-in `pb_webhook_inbox` with `verified = false` and never becomes a call. Deliveries arriving
+in `pb_webhook_inbox` with `verified = false` and never becomes a call. Never paste that value
+into a file in this repository — it goes straight into `vault.create_secret(...)`. Deliveries arriving
 before the secret is set are kept in full and are replayable; once the secret is set, a
 delivery that fails verification is kept as a hash only. Bodies over 1 MB are refused. In
 Phase 1 a call becomes a

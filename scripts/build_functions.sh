@@ -12,6 +12,13 @@
 # asks for both). The Supabase CLI, where available, can deploy the TypeScript directly instead:
 #   supabase functions deploy <fn> --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 #
+# Deploying through the MCP carries the file as a JSON string, so every backslash in the bundle
+# has to be escaped in that payload: a bundle's `\uXXXX` (in a regex literal, say) sent as a
+# single backslash arrives decoded to the character it names. Semantically identical, but the
+# deployed bytes then differ from the bundle's and the sha256 recorded at deploy time no longer
+# matches what is running. Escape the payload, and confirm the deploy with a GET to the function
+# (each answers `{"ok":true,"service":"<slug>"}`), which proves it parsed and booted.
+#
 # Usage: bash scripts/build_functions.sh [out_dir]   (default: ./dist/functions, git-ignored)
 set -euo pipefail
 cd "$(dirname "$0")/.."
