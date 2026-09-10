@@ -226,15 +226,33 @@ confirmed live on the Client Journey cards.
 2. Actions → "Deploy Prospect Book page" → Run workflow. It uploads `web/` and nothing else.
 3. Note the Pages URL the run prints (`https://<org>.github.io/prospect-grading/`).
 
+Both steps are done for `briangerstner23/prospect-grading` (10 Sep): Pages is on, run 1 of the
+workflow succeeded, and the page is served at **https://briangerstner23.github.io/prospect-grading/**.
+Dispatching the workflow needs the **Actions tab** in the repo's top navigation — Settings →
+Actions is a different page (General / Runners / Policies / OIDC) and does not list workflows.
+
 ## 7 · Add the Pages URL to Supabase Auth
 
-Supabase dashboard → Authentication → URL Configuration:
+Supabase dashboard → Authentication → URL Configuration → **Redirect URLs** → Add URL:
 
-- **Site URL**: the Pages URL.
-- **Redirect URLs**: add the Pages URL (and `https://<org>.github.io/prospect-grading/**`).
+```
+https://<org>.github.io/prospect-grading/**
+```
 
-Without this the magic link cannot return to the page. Email sign-in (OTP) must be enabled
-under Authentication → Providers → Email.
+**Leave Site URL alone.** This project is shared with the Client Book and the momentum
+dashboard, and Site URL is one global setting for all of them — pointing it here would send
+their sign-ins to this page. The allow-list is additive and affects nothing else.
+
+Until the Pages URL is on that list the magic link cannot return to the page: the page asks
+Supabase to send the signer back to its own URL, Supabase honours that only for an allowed
+redirect, and otherwise falls back to Site URL — which on a fresh project is
+`http://localhost:3000`, so the link lands on "site can't be reached". A link is single-use, so
+request a fresh one after fixing the list. Email sign-in (OTP) must be enabled under
+Authentication → Providers → Email.
+
+This step cannot be done from a session: the setting is GoTrue platform config rather than a
+table, so `execute_sql` cannot reach it, the MCP has no tool for it, and `api.supabase.com` is
+blocked from the build container. A person does it in the dashboard.
 
 ## 8 · Insert `pb_members` rows
 
