@@ -13,7 +13,7 @@ Freeze the tiers on a date, wait 6–12 months, then compare. This is the date.
 |---|---|
 | Scoring run | `27724bb7-c002-40d3-bad3-3f93825ffeb6` — the nightly cron run of 10 Sep 2026, 06:15:06 UTC |
 | Rubric | `0.1.0`, spec sha256 `77e436ce18d682fa2e0608edfe681bbdb99854fe118650ac79713b7dca671400`, engine fingerprint `18e704f2` |
-| Commit | tag `v0.1.0-baseline` |
+| Commit | `09fdc15f5c75f881dfb15d5954b3f08daec45ad0`, also reachable as branch **`baseline-v0.1.0`**. A `v0.1.0-baseline` tag exists locally but could not be pushed — this environment's git proxy refuses tag refs with a 403 — so the branch is the shared anchor. |
 | Accounts scored | 680 (one read each; `pb_current_reads` = this run) |
 | Baseline fingerprint | `9b14748cb0d5e83e70269fca5402fa87` |
 
