@@ -233,6 +233,10 @@ Actions is a different page (General / Runners / Policies / OIDC) and does not l
 
 ## 7 · Add the Pages URL to Supabase Auth
 
+**Reading the book needs none of this** since 10 Sep 2026 — the page is public
+(`docs/DECISIONS.md` §5, migration `20260910190000`). This section is what makes *signing in*
+work, which is how a rater or the owner gets a lane to write with.
+
 Supabase dashboard → Authentication → URL Configuration → **Redirect URLs** → Add URL:
 
 ```

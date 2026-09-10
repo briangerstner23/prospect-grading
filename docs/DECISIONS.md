@@ -16,7 +16,7 @@ build proceeds on. Nothing here is a new ruling.
 | 4 | Who rates prospects and holds the override lane? | **PRO-5 (revised):** the two sales raters rate their own rows; Brian may stand in, recorded as a stand-in; **Brian alone overrides**. Deepak's lane is retired. PRO-2r: there are no judgment questions — raters enter **facts**. | `pb_members.role` = owner / rater / viewer; `pb_facts.entered_by` + `stand_in`; override insert policy is owner-only; per-rater comparison is a first-class report (later phase). |
 | 5 | SPICED as the shared qualification record, MEDDIC-lite above $35K/yr? | Not ruled. PRO-2r's Dimension A (money, authority, timing, specification) is the ruled qualification test. | Dimension A is the qualification read. SPICED's fields (pain, impact, critical event, decision) are the Fathom call-extraction schema, which feeds Dimension A and deal health; nothing is scored on them. |
 | 6 | Pipedrive stays the deal-motion record with write-back, or the Prospect Book becomes the record? | **PRO-6: Pipedrive is the source of truth for the roster, until it is not.** The Orbit CRM and the sales spreadsheet are uncertified. The database is still the grading record (the brief's architecture rule, not contradicted). | `pb_accounts.roster_certified` is true only for rows Pipedrive carries. Every other list seeds rows flagged "Roster source uncertified" and still graded (a grade is labelled, never withheld). Write-back is Phase 3. |
-| 7 | Share the Prospect Book publicly like the Client Book, or keep it private? | **PRO-7: anyone at WLIQ who signs in.** Not public. | RLS: `select` for any authenticated `@whitelabeliq.com` address; no role split; writes restricted by lane. The page lives on GitHub Pages and carries only a publishable key. |
+| 7 | Share the Prospect Book publicly like the Client Book, or keep it private? | **PRO-7: anyone at WLIQ who signs in.** Not public. | **Superseded on 10 Sep 2026 by Brian's instruction: the book reads publicly.** See §5. Writes are unchanged and still by lane (PRO-5). |
 
 ## 2 · Where the register changed the brief
 
@@ -53,7 +53,44 @@ build proceeds on. Nothing here is a new ruling.
   the raw pulls") was made for a *private* repo. Until `prospect-grading` is private, no
   prospect names, dollar bands, seed exports, gate reports or the build-kit documents (which
   carry Notion URLs, credit balances and staff names) are committed here. Code, schema, the
-  rubric and synthetic fixtures only.
+  rubric and synthetic fixtures only. Note that as of §5 the *data* is public anyway, through
+  the page — but the rule stands for this repository, which is a different surface with a
+  different audience and no way to take a commit back.
+
+## 5 · The book reads publicly (10 Sep 2026)
+
+Brian's instruction, given after the exposure was put to him in these words: the page is on
+GitHub Pages at a URL served to anyone who asks for it, from a public repository, so the link
+is discoverable without anyone sharing it. He asked for it anyway; migration
+`20260910190000_prospect_book_public_read.sql` implements it, and this section is why.
+
+**This reverses how PRO-7 was implemented, and PRO-7 has not itself been re-ruled.** The
+register still reads "anyone at WLIQ who signs in". Someone should take that back to the
+register and settle it; until then the code follows the owner and this file records the gap.
+
+What is now readable by anyone, no sign-in: the roster of 680 agencies by name, every
+anticipated tier, confidence, band and flag, the facts with their notes and evidence labels,
+the signals, the deals, the calls (including summaries and attendee names and addresses), the
+register, and the merge queue.
+
+What is not: **`pb_contacts`** — 817 named people at other companies with their email
+addresses, the largest block of personal data in the book, which the page never reads and
+which stays behind the sign-in; `pb_members` (WLIQ staff and their lanes); `pb_webhook_inbox`
+(raw delivery bodies); `pb_promotions` and `pb_potential_snapshots`.
+
+**Every write path is unchanged.** Anonymous inserts are refused — verified against the live
+REST endpoint with the publishable key: reads return 200, an insert into `pb_facts` returns
+401. Entering a fact or a hand signal still needs a rater's signed-in WLIQ address, an
+override still needs the owner's, and the page now treats signing in as what grants a lane
+rather than as the gate on the door.
+
+Two consequences worth holding in mind. A prospect who searches for their own name can read
+their own grade, the notes behind it and what WLIQ thinks the relationship is worth — and so
+can a competitor, in bulk. And reversing this restores the gate but un-publishes nothing that
+was read, copied or indexed while the book was open.
+
+## 6 · Where the roster came from
+
 - **Pipedrive was unreadable until 9 Sep, 17:15 UTC, and is now connected.** It is the ruled
   source of truth for the roster and the source of the qualification facts Brian named first.
   The certified roster is derived from the Client Journey cards: an organisation with a card

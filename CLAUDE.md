@@ -85,8 +85,12 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   `PB_PIPEDRIVE_API_TOKEN`.
 - All four edge functions deploy with `verify_jwt = false`: pb-sync / pb-score carry the
   Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
-- RLS is default-deny. Any authenticated `@whitelabeliq.com` address reads (PRO-7); writes
-  by lane via `pb_members.role` (owner / rater / viewer). `pb_webhook_inbox` is service-role only.
+- RLS is default-deny **except for reads, which are public** (10 Sep 2026, owner decision —
+  `docs/DECISIONS.md` §5; it supersedes how PRO-7 was implemented and PRO-7 itself is not
+  re-ruled). `anon` holds `select` on the tables the page reads and nothing else: `pb_contacts`,
+  `pb_members`, `pb_promotions`, `pb_potential_snapshots` and `pb_webhook_inbox` stay closed.
+  Writes are unchanged — by lane via `pb_members.role` (owner / rater / viewer), signed in.
+  Never grant `anon` an insert, update or delete; never open `pb_contacts` without asking.
 - Operator steps: `docs/RUNBOOK.md`. Access status: `docs/PHASE0.md`.
 
 ## Open rulings (do not resolve them in code; each is a toggle in the rubric)

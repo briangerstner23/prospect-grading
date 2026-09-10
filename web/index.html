@@ -197,7 +197,9 @@ footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;fle
 
   <section id="signin" class="card pad">
     <h2>Sign in</h2>
-    <p>Enter your White Label IQ address. A sign-in link arrives by email; there is no password.</p>
+    <p>The book reads publicly — signing in is what gives you a lane: entering facts and hand
+       signals, setting an override, reviewing a match. Enter your White Label IQ address and a
+       link arrives by email; there is no password.</p>
     <form id="signinForm" class="inline">
       <input id="email" type="email" required placeholder="you@whitelabeliq.com" autocomplete="email">
       <button class="primary" id="send" type="submit">Send my link</button>
@@ -205,7 +207,7 @@ footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;fle
     <div id="signinMsg" class="notice hidden" role="status"></div>
   </section>
 
-  <noscript><div class="notice warn">This page needs JavaScript to sign you in and read the book.</div></noscript>
+  <noscript><div class="notice warn">This page needs JavaScript to read the book.</div></noscript>
   <div id="fatal" class="notice warn hidden" role="alert"></div>
 
   <div id="app" class="hidden">
@@ -606,7 +608,11 @@ $("signinForm").addEventListener("submit", async (e) => {
   setNotice($("signinMsg"), error ? "warn" : "ok", error ? error.message : "Check your email for the sign-in link. It opens this page signed in.");
   $("send").disabled = false;
 });
-$("out").addEventListener("click", async () => { if (state.db) await state.db.auth.signOut(); window.location.replace(window.location.pathname); });
+$("out").addEventListener("click", async () => {
+  if (!state.session) { show($("app"), false); show($("signin"), true); $("email").focus(); return; }
+  if (state.db) await state.db.auth.signOut();
+  window.location.replace(window.location.pathname);
+});
 
 if (state.db) {
   state.db.auth.onAuthStateChange((event, session) => {
@@ -621,19 +627,23 @@ if (state.db) {
 async function boot() {
   if (!state.db || state.booted) return;
   const { data: { session } } = await state.db.auth.getSession();
-  if (!session) return;
   state.booted = true;
-  state.session = session;
-  state.email = String(session.user?.email ?? "").toLowerCase();
-  state.wliq = state.email.endsWith("@" + WLIQ_DOMAIN);
+  state.session = session ?? null;
+  state.email = session ? String(session.user?.email ?? "").toLowerCase() : null;
+  state.wliq = state.email ? state.email.endsWith("@" + WLIQ_DOMAIN) : false;
   show($("signin"), false);
   show($("app"), true);
-  $("who").textContent = state.email;
-  if (!state.wliq) {
-    setNotice($("outside"), "warn", `Signed in as ${state.email}. The book is readable by White Label IQ addresses only (PRO-7), so every list below will be empty for this address.`);
+  $("who").textContent = state.email ?? "Public view — not signed in";
+  $("out").textContent = state.session ? "Sign out" : "Sign in";
+  if (!state.session) {
+    // The book reads publicly (10 Sep 2026, owner decision; DECISIONS.md §1 row 7). Anyone who
+    // opens this page reads the whole roster. Signing in is what adds a lane, never a gate.
+    setNotice($("outside"), "warn", "Public view. Anyone with this link reads the book — no sign-in needed. Signing in with a White Label IQ address is what gives you a lane: entering facts and hand signals, setting an override, reviewing a match.");
+  } else if (!state.wliq) {
+    setNotice($("outside"), "warn", `Signed in as ${state.email}. Writing stays restricted to White Label IQ addresses (PRO-5), so this address reads only.`);
   }
   show($("busy"), true);
-  await loadMember();
+  if (state.session) await loadMember();
   await loadRubric();
   await loadBook();
   show($("busy"), false);
