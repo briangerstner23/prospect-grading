@@ -16,8 +16,10 @@
 # has to be escaped in that payload: a bundle's `\uXXXX` (in a regex literal, say) sent as a
 # single backslash arrives decoded to the character it names. Semantically identical, but the
 # deployed bytes then differ from the bundle's and the sha256 recorded at deploy time no longer
-# matches what is running. Escape the payload, and confirm the deploy with a GET to the function
-# (each answers `{"ok":true,"service":"<slug>"}`), which proves it parsed and booted.
+# matches what is running. Escape the payload, and confirm the deploy with a GET to the function.
+# The two webhooks answer `{"ok":true,"service":"<slug>"}`; pb-sync, pb-score and pb-notes have no
+# GET branch and answer 405 `{"error":"POST only"}`. Either proves it parsed and booted — a bundle
+# that did not answers a boot error instead of reaching the method check.
 #
 # Usage: bash scripts/build_functions.sh [out_dir]   (default: ./dist/functions, git-ignored)
 set -euo pipefail

@@ -506,8 +506,14 @@ bash scripts/build_functions.sh          # → dist/functions/pb-score/index.js
 ```
 
 Deploy that bundle with `entrypoint_path index.js` and `verify_jwt false`. **The bundle
-contains 59 backslashes** (regex literals and one `—`); §3's escaping discipline applies —
-send them escaped, and confirm with a GET, which must answer `{"ok":true,"service":"pb-score"}`.
+contains 59 backslashes** (regex literals and one `—`); §3's escaping discipline applies.
+
+Confirm with a GET — but expect **405 `{"error":"POST only"}`, not a health body**. Only the two
+webhooks carry a `GET` health branch; `pb-sync`, `pb-score` and `pb-notes` never have. A 405 with
+that JSON is still the proof you want: an unparseable or non-booting bundle answers a boot error
+instead, so reaching the method check at all means the source parsed and the function started.
+The conclusive check for pb-score is a real run against the ACTIVE rubric whose counts match the
+run before the redeploy (§9.1 above).
 Where the Supabase CLI is available it deploys the TypeScript directly and sidesteps this:
 
 ```bash
