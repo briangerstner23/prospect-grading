@@ -344,12 +344,7 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
   const lastWhole = body_text.lastIndexOf("},");
   if (lastWhole > 0) {
     const repaired = safeJsonParse(body_text.slice(0, lastWhole + 1) + "]}");
-    if (repaired.ok) {
-      throw new Error(
-        `REPAIRABLE: the reply was cut off (stop_reason ${String(body?.stop_reason ?? "?")}); ` +
-        `salvaged the complete claims. Raise max_tokens if this recurs.`,
-      );
-    }
+    if (repaired.ok) return repaired.value;
   }
   throw new Error(`reply was not JSON (${parsed.error}): ${text.slice(0, 160)}`);
 }
