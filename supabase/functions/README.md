@@ -10,6 +10,7 @@ container, so the handlers themselves are syntax-checked and type-checked, not e
 supabase/functions/
   pb-sync/index.ts               bearer-token bulk ingest of packs (+ rubric version upsert)
   pb-score/index.ts              score every account → pb_reads; preview a draft rubric
+  pb-notes/index.ts              nightly Pipedrive notes sweep → pb_facts / pb_fact_candidates
   pb-fathom-webhook/index.ts     Standard-Webhooks check → pb_webhook_inbox → pb_calls
   pb-pipedrive-webhook/index.ts  HTTP Basic check → pb_webhook_inbox → pb_deals / pb_accounts / pb_contacts
   _shared/
@@ -37,6 +38,8 @@ and `ingest/`, run `bash scripts/sync_shared.sh`, redeploy. `bash scripts/sync_s
 | `PB_SYNC_TOKEN` | pb-sync, pb-score, the pg_cron nightly job | random bearer token |
 | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | the `whsec_…` Fathom returns when the webhook is created |
 | `PB_PIPEDRIVE_WEBHOOK_BASIC` | pb-pipedrive-webhook | `user:pass` configured on the Pipedrive webhook |
+| `PB_PIPEDRIVE_API_TOKEN` | pb-notes | Pipedrive API token; the sweep pulls `/v1/notes` with it |
+| `PB_ANTHROPIC_API_KEY` | pb-notes | reads a note into claims. **Not yet set** — until it is, pb-notes answers 503 and writes no run row, so the nightly job is silent rather than failing |
 | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | JSON `{deals:{<hash>:{label,options}}, organizations:{…}, persons:{…}}` written by the collector that reads `/v2/dealFields` and `/v1/organizationFields`; absent → custom fields pass through unlabelled |
 
 `select vault.create_secret('<value>', '<NAME>', '<description>');` — see `docs/RUNBOOK.md` §1.
@@ -46,14 +49,16 @@ their secret is set.
 
 ## Deploy
 
-All four are deployed with **`verify_jwt = false`**, and for each of them that is a
+All five are deployed with **`verify_jwt = false`**, and for each of them that is a
 requirement, not a convenience:
 
-- **pb-sync and pb-score must be deployed with `verify_jwt = false`.** They carry the Prospect
+- **pb-sync, pb-score and pb-notes must be deployed with `verify_jwt = false`.** They carry the Prospect
   Book's own bearer — `Authorization: Bearer <PB_SYNC_TOKEN>`, checked in constant time by
   `bearerOk` — not a Supabase JWT. The pg_cron job in `20260909120100_prospect_book_cron.sql`
-  sends exactly that header every night; with `verify_jwt = true` the gateway would reject the
-  call before the function ran and no reads would ever be written. The token check *is* the
+  sends exactly that header every night — `pb-nightly-score` at 06:15 UTC and `pb-nightly-notes`
+  at 05:45, half an hour earlier so a note read in the morning changes that morning's tier. With
+  `verify_jwt = true` the gateway would reject the call before the function ran and no reads would
+  ever be written. The token check *is* the
   authentication: there is no anonymous path (503 while the token is unset, 401 when it is wrong).
 - **pb-fathom-webhook and pb-pipedrive-webhook** likewise: Fathom signs with Standard
   Webhooks and Pipedrive sends HTTP Basic — neither can present a Supabase JWT.

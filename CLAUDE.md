@@ -25,11 +25,16 @@ fixtures/   golden.json — synthetic accounts with expected scorecards per rubr
 ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes.ts
             pipedrive_seed.ts (the certified roster from the read-only pull; PipedriveKeys =
             the seed's inferred field keys) · pipedrive_webhook.ts · fathom_webhook.ts ·
-            webhook_signatures.ts (+ *_test.ts)
-supabase/   migrations/ — six, in order: 20260909120000 schema + RLS · 120100 cron ·
-            120200 merge · 120300 fixes · 120400 candidate review ·
-            20260910141528 touch search_path (all applied)
-            functions/pb-sync, pb-score, pb-fathom-webhook, pb-pipedrive-webhook, _shared/
+            webhook_signatures.ts · pipedrive_notes.ts (a note's claims → facts or a review
+            queue) · notes_sweep.ts (which notes are worth a model call, and what a model is
+            allowed to have said — the quote check lives here) (+ *_test.ts)
+supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron · 120200 merge ·
+            120300 fixes · 120400 candidate review · 20260910141528 touch search_path ·
+            20260910190000 public read · 20260911001048 apollo staging ·
+            20260911092040 fact candidates · 20260911120000 fact precedence ·
+            20260911130000 notes cron · 20260911140000 fact candidate review (all applied)
+            functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
+            _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)
 web/        index.html — the page, one file, no build step
@@ -72,7 +77,13 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
 7. **Overrides go through the register.** `pb_register` kind `override`, owner lane only,
    one tier max, reason code and expiry. The engine refuses anything beyond the cap.
 8. Identity never auto-merges below `high` confidence; medium/low become
-   `pb_identity_candidates` for a person to review.
+   `pb_identity_candidates` for a person to review. **Facts read out of prose follow the same
+   rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
+   `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
+   `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
+9. **Evidence outranks recency.** `pb_current_facts` and `latestFactPerKey` both resolve a key by
+   `evidence > inferred > unknown`, then newest written, then newest observed. The view is what
+   pb-score reads and the function is what the pure path reads; they must not drift.
 9. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
 
@@ -84,9 +95,12 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   `execute_sql`); the build container has no direct route to `*.supabase.co`.
 - Secrets in Vault, read by `pb_secret()` (service role only): `PB_SYNC_TOKEN`,
   `PB_FATHOM_WEBHOOK_SECRET`, `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP`,
-  `PB_PIPEDRIVE_API_TOKEN`.
-- All four edge functions deploy with `verify_jwt = false`: pb-sync / pb-score carry the
-  Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
+  `PB_PIPEDRIVE_API_TOKEN`, and `PB_ANTHROPIC_API_KEY` (**not yet set** — pb-notes answers 503
+  and writes no run row until it is, so the nightly sweep is silent rather than failing).
+- All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
+  the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
+  Two cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first so
+  a note read in the morning changes that morning's tier.
 - RLS is default-deny **except for reads, which are public** (10 Sep 2026, owner decision —
   `docs/DECISIONS.md` §5; it supersedes how PRO-7 was implemented and PRO-7 itself is not
   re-ruled). `anon` holds `select` on the tables the page reads and nothing else: `pb_contacts`,

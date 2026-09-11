@@ -549,3 +549,108 @@ update pb_rubric_versions set status = 'active', activated_by = '<owner email>',
 
 `pb_reads` is append-only, so the v0.1.0 baseline run survives activation untouched
 (`docs/BASELINE.md`). To go back, reverse the two statements and re-run `pb-score`.
+
+---
+
+## 17 · The nightly notes sweep (`pb-notes`)
+
+Reads Pipedrive notes into facts and a review queue. Runs at **05:45 UTC**, half an hour before
+the nightly score, so a note read in the morning changes that morning's tier.
+
+### Before it can run
+
+`pb-notes` answers **503 and writes no `pb_runs` row** until both of these are in Vault. An
+unconfigured sweep is silent, not a nightly failure.
+
+| Secret | What for |
+|---|---|
+| `PB_PIPEDRIVE_API_TOKEN` | pulling the notes (already set) |
+| `PB_ANTHROPIC_API_KEY` | reading each note into claims (**not yet set**) |
+
+Add the missing one the same way as the others:
+
+```sql
+select vault.create_secret('sk-ant-…', 'PB_ANTHROPIC_API_KEY', 'pb-notes extractor');
+-- rotate instead of re-adding:
+-- select vault.update_secret((select id from vault.secrets where name = 'PB_ANTHROPIC_API_KEY'), 'sk-ant-…');
+```
+
+Never paste a key into a repo file. `pb_secret()` reads it; the service role is the only reader.
+
+### Run it by hand
+
+```bash
+FN=https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1
+
+# See what it WOULD do. Writes nothing, moves no watermark, but does spend model calls.
+curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
+  -H "Content-Type: application/json" --data '{"dry_run":true,"max_notes":10}'
+
+# A real run, capped.
+curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
+  -H "Content-Type: application/json" --data '{"max_notes":50}'
+
+# Re-read EVERYTHING from the beginning (a new extractor version, say). Expensive: one model
+# call per note with prose in it, across the whole roster.
+curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
+  -H "Content-Type: application/json" --data '{"since":null,"max_notes":250}'
+```
+
+Cost is bounded twice: the watermark means a run reads only what changed (steady state is a
+handful of notes a night), and `max_notes` caps a single run. A re-run over the same text costs
+nothing to write — the fingerprint over (note id · updated_at · extractor · key) already refuses
+it — but it does re-spend the model call, so prefer the watermark over `since: null`.
+
+### Read the result
+
+```sql
+-- where the sweep got to
+select * from pb_source_watermarks where source = 'pipedrive_note';
+
+-- the last few runs, with the counters
+select started_at, status, counts, errors
+from pb_runs where source = 'pipedrive_note' order by started_at desc limit 5;
+```
+
+The counters worth looking at:
+
+| Counter | Means |
+|---|---|
+| `quote_verified` | claims whose sentence really was in the note — these can become facts |
+| `quote_not_in_note` | **the model invented a sentence.** The claim was kept for review and can never be written. A rising count means the prompt or the model needs attention. |
+| `key_not_extractable`, `value_out_of_shape` | the model returned something outside the contract; dropped |
+| `deferred_to_human` | a person already recorded that key and the note disagreed |
+| `org_not_in_book` | a note on an organisation with no account — usually a roster gap, not an error |
+| `extractor_failed` | the model call itself failed; those notes are left for the next run |
+
+**If a run has errors the watermark is not advanced**, so the same notes are read again next
+time. That is deliberate: a partial write must not look complete.
+
+### What a rater does with it
+
+Signed in, the roster shows a count per account (`N waiting on a person`) and a filter for the
+rows where a claim disagrees with what the book holds. On the account sheet, **Waiting on a
+person** shows each claim with its verbatim sentence, the current value, and a link to the source.
+
+Confirming calls `pb_review_fact_candidate`, which in one transaction writes the fact under the
+reviewer's name **dated by the note**, closes every other open proposal for that key, and writes a
+register row. Rejecting writes no fact and still writes the register row. Owner and rater lanes
+only; a decision already made is not re-made.
+
+```sql
+-- the queue, oldest first
+select a.name, c.key, c.value, c.current_value, c.conflicts, c.confidence, c.quote
+from pb_fact_candidates c join pb_accounts a on a.id = c.account_id
+where c.status = 'proposed' order by c.created_at;
+
+-- how the readings are landing, per key — the standing measure of extractor quality
+select key, extractor, status, count(*)
+from pb_fact_candidates group by key, extractor, status order by key;
+```
+
+### Changing what it reads
+
+`EXTRACTABLE` and `extractionPrompt()` live together in `ingest/notes_sweep.ts` so the prompt can
+never ask for something the validator will not accept. Change either and **bump
+`EXTRACTOR_VERSION`** — it is part of every fingerprint, so a new version re-reads every note
+instead of silently mixing two readings. Then `bash scripts/sync_shared.sh`, rebuild, redeploy.

@@ -230,3 +230,65 @@ Three further accounts are **white-label suppliers selling into agencies** — t
 model as WLIQ on the marketing side; one describes itself as *"the agency's agency."* These are
 channel or competitive relationships, not build buyers. Their grading is untouched; each carries
 a `note` row in the register labelling it, because the label is the point.
+
+---
+
+## 9 · Notes become a source, and evidence outranks recency (11 September 2026)
+
+Owner decision, measured before it was made.
+
+### What was measured
+
+Eight accounts with first-party Pipedrive notes were read against what the book already held.
+The notes filled **20 of 48 cells** (six fit criteria × eight accounts) as quote-backed facts and
+queued 10 more for a person. Apollo filled 16, almost all of them headcount.
+
+Where both spoke — eleven cells — **they disagreed on five, and Apollo was wrong on all five.**
+Each disagreement resolves the same way: Apollo describes what a company **is**; the note records
+what it **buys**. A construction consultancy that asks us to build custom API integrations is not
+"not an agency" for our purposes; a cybersecurity consultancy that already employs developers does
+not "have no dev team" because the industry label says consulting. Fit is a buying question, so
+the buying record wins.
+
+One account had **no Apollo match at all** while its note named three institutional clients and
+answered all six criteria. Two accounts had nothing but PandaDoc links and correctly yielded
+nothing — silence is a result.
+
+### What changed as a consequence
+
+**`pb_current_facts` now ranks evidence above recency.** It resolved ties by `created_at desc`
+alone, which was fine while every fact came from a machine sweep and became wrong the moment a
+quote-backed note could be overwritten by the next morning's Apollo run. The order is now
+`evidence > inferred > unknown`, then newest written, then newest observed. Within one label
+nothing moves, so no existing resolution changed. `ingest/resolve_features.ts::latestFactPerKey`
+carries the same order; the view is what `pb-score` reads and the function is what the pure path
+reads, and the two must not drift.
+
+**Reading notes is now a nightly process, not an errand.** `pb-notes` pulls what changed since
+the watermark, a model reads each note into claims, and `ingest/notes_sweep.ts` decides what the
+model is allowed to have said.
+
+### Why an unattended model call is safe here
+
+Not because the model is trusted — because it is checked.
+
+Every claim must carry the sentence that supports it, and `verifyClaims` tests that sentence
+against the note's own text. **A quote that is not in the note is stripped**, which drops the
+claim to the review queue under the no-quote rule in `ingest/pipedrive_notes.ts`. An invented
+sentence is therefore structurally unable to reach `pb_facts`. Everything else is a whitelist:
+nine extractable keys, the values each may hold, a cap per note; anything unexpected is dropped
+and counted, never coerced.
+
+The rest is rule 8's shape applied to facts. A claim without a verbatim sentence, or below high
+confidence, or contradicting something a **person** recorded, becomes a `pb_fact_candidates` row
+rather than a write. `pb_review_fact_candidate` carries a reviewer's decision through in one
+transaction: the fact, dated by the note rather than by today; every other open proposal for that
+key closed with it; and a register row either way.
+
+### What is not settled
+
+The precision of the extractor itself. The eight-account pass was read by hand, which measures
+coverage and catches Apollo's errors but cannot grade the reader against itself. The review queue
+is the standing measurement: confirm and reject rates per key, per extractor version, are the
+number to watch once raters are working it. A new prompt is a new `EXTRACTOR_VERSION`, which
+re-reads every note rather than silently mixing two readings.
