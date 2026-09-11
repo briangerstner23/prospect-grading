@@ -89,8 +89,9 @@ function claim(
   value: unknown,
   quote: string | null,
   confidence: ExtractedClaim["confidence"] = "high",
+  kind: ExtractedClaim["kind"] = "observation",
 ): ExtractedClaim {
-  return { key, value, quote, confidence };
+  return { key, value, quote, confidence, kind };
 }
 
 function run(extractions: NoteExtraction[], existing: ExistingFact[] = [], over: Partial<MapNotesInput> = {}) {
@@ -172,7 +173,46 @@ check("noteFingerprint is eight hex characters", /^[0-9a-f]{8}$/.test(noteFinger
 }
 
 /* ------------------------------------------------------------------ *
- * 3 · rule 2 — a machine never overrules a person
+ * 3 · rule 3 — a verified quote proves provenance, not truth
+ * ------------------------------------------------------------------ */
+
+{
+  // The sentence is really in the note. It is still somebody's opinion.
+  const r = run([{
+    note_id: 9001,
+    claims: [claim("is_agency", true, "Classified GENUINE, strong fit", "high", "judgement")],
+  }]);
+  eq("a judgement never writes itself, however confident", r.facts.length, 0);
+  eq("it goes to a person", r.candidates.length, 1);
+  eq("keeping the sentence, so the reviewer can weigh it", r.candidates[0].quote, "Classified GENUINE, strong fit");
+  check("and the reason says why", r.candidates[0].note.includes("assessment, not something a reader could check"));
+  eq("counted apart from the other queues", r.counters.queued_judgement, 1);
+}
+
+{
+  const r = run([{ note_id: 9001, claims: [claim("is_agency", true, "Full-service agency, 14 people", "high", "observation")] }]);
+  eq("an observation with a real sentence still writes", r.facts.length, 1);
+}
+
+{
+  // Absent is read as a judgement: the cautious default, not the convenient one.
+  const r = run([{
+    note_id: 9001,
+    claims: [{ key: "is_agency", value: true, quote: "Full-service agency, 14 people", confidence: "high" }],
+  }]);
+  eq("a claim that does not say which is treated as a judgement", r.facts.length, 0);
+  eq("and queues", r.counters.queued_judgement, 1);
+}
+
+{
+  // No quote at all is the more specific complaint, and takes precedence.
+  const r = run([{ note_id: 9001, claims: [claim("is_agency", true, null, "high", "judgement")] }]);
+  eq("no sentence is reported as no sentence, not as a judgement", r.counters.queued_no_quote, 1);
+  check("and not double-counted", r.counters.queued_judgement === undefined);
+}
+
+/* ------------------------------------------------------------------ *
+ * 4 · rule 2 — a machine never overrules a person
  * ------------------------------------------------------------------ */
 
 const HUMAN_HELD: ExistingFact = {
@@ -262,8 +302,34 @@ const HUMAN_HELD: ExistingFact = {
   eq("the freshest existing fact is the one compared against", r.candidates[0].current_value, 40);
 }
 
+{
+  // Re-reading a note under a new extractor version must not write the same fact twice.
+  const alreadyOurs: ExistingFact = {
+    key: "headcount", value: 14, evidence_label: "evidence",
+    source: "pipedrive_note", observed_at: "2026-03-04",
+  };
+  const r = run([{ note_id: 9001, claims: [claim("headcount", 14, "Full-service agency, 14 people")] }], [alreadyOurs]);
+  eq("a note that restates what it already told us writes nothing", r.facts.length, 0);
+  eq("and queues nothing", r.candidates.length, 0);
+  eq("it is simply already on record", r.counters.already_on_record, 1);
+}
+
+{
+  const alreadyOurs: ExistingFact = {
+    key: "headcount", value: 9, evidence_label: "evidence",
+    source: "pipedrive_note", observed_at: "2026-01-01",
+  };
+  const r = run([{ note_id: 9001, claims: [claim("headcount", 14, "Full-service agency, 14 people")] }], [alreadyOurs]);
+  // Two notes disagreeing is not a newer-wins race. One of the two readings is wrong and a
+  // person should say which, so neither is written over the other.
+  eq("but a note that CHANGES its mind writes nothing on its own", r.facts.length, 0);
+  eq("it asks instead", r.candidates.length, 1);
+  eq("showing what we already took from a note", r.candidates[0].current_value, 9);
+  eq("and marking the disagreement", r.candidates[0].conflicts, true);
+}
+
 /* ------------------------------------------------------------------ *
- * 4 · rule 3 — dates come from the source
+ * 5 · rule 4 — dates come from the source
  * ------------------------------------------------------------------ */
 
 {
@@ -305,7 +371,7 @@ const HUMAN_HELD: ExistingFact = {
 }
 
 /* ------------------------------------------------------------------ *
- * 5 · rule 5 — re-running is free
+ * 6 · rule 6 — re-running is free
  * ------------------------------------------------------------------ */
 
 {
@@ -357,7 +423,7 @@ const HUMAN_HELD: ExistingFact = {
 }
 
 /* ------------------------------------------------------------------ *
- * 6 · malformed input is skipped, never guessed at
+ * 7 · malformed input is skipped, never guessed at
  * ------------------------------------------------------------------ */
 
 {
@@ -380,7 +446,7 @@ const HUMAN_HELD: ExistingFact = {
 }
 
 /* ------------------------------------------------------------------ *
- * 7 · purity — the module reads nothing but its input
+ * 8 · purity — the module reads nothing but its input
  * ------------------------------------------------------------------ */
 
 {

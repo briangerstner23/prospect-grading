@@ -70,11 +70,12 @@ const {
   compareKey, orderAccounts, pickBand, coerceFactValue, overrideCapWarning, INVALID,
   ageWords, strengthWords, headcountWords, ratioWords, factValueWords, safeUrl, rowMatches,
   catalogEntries, signalCatalogWords, mergeTargets, movedWords, reviewEffectWords,
+  rulesWithInputs, ruleFired, evidenceUse, quoteFromNote,
 } = helpers;
 
 function run(): void {
 /* ---- the block exports what the page and this script expect ---- */
-for (const name of ["compareKey", "orderAccounts", "pickBand", "coerceFactValue", "overrideCapWarning", "INVALID", "factValueWords", "rowMatches", "reviewEffectWords", "mergeTargets"]) {
+for (const name of ["compareKey", "orderAccounts", "pickBand", "coerceFactValue", "overrideCapWarning", "INVALID", "factValueWords", "rowMatches", "reviewEffectWords", "mergeTargets", "evidenceUse", "quoteFromNote"]) {
   check(`block declares ${name}`, name in helpers && helpers[name] !== undefined);
 }
 check("INVALID is a symbol", typeof INVALID === "symbol");
@@ -260,6 +261,53 @@ eq("reviewEffectWords: fathom calls", reviewEffectWords({ decision: "merged", ef
 eq("reviewEffectWords: recorded only", reviewEffectWords({ decision: "merged", effect: { recorded_only: true } }), ["recorded only — this source attaches nothing"]);
 eq("reviewEffectWords: empty effect", reviewEffectWords({ decision: "merged", effect: {} }), ["recorded"]);
 eq("reviewEffectWords: no result", reviewEffectWords(null), ["recorded"]);
+
+/* ---- provenance: the walk that turns a tier back into its sentences ----
+ * The fixture is the SHAPE of a real scorecard — fit.adjustments[] with inputs, a criteria[]
+ * with answers, a gates map — on invented values. If the engine ever moves a rule somewhere
+ * new in the tree, this notices.
+ */
+const SCORECARD = {
+  effective_tier: "Bronze",
+  fit: {
+    base_tier: "Bronze",
+    criteria: [
+      { key: "sells_build_work", answer: "yes", rule_text: "sells_build_work == true", inputs: { sells_build_work: true } },
+      { key: "size_band_fit", answer: "no", rule_text: "headcount 8..40", inputs: { headcount: 115 } },
+    ],
+    adjustments: [
+      { id: "ADJ-RECUR", name: "Recurring or retainer model", fired: true, inputs: { recurring_revenue_share: 0.4 } },
+      { id: "ADJ-TINY", name: "Under 8 people", fired: false, inputs: { headcount: 115, owner_does_everything: null } },
+    ],
+    platinum_rule: { met: false, reasons: ["not met: top base band"] },
+  },
+  qualification: { money: { present: true, inputs: { budget_stated: true } } },
+  trace: { notes: ["Archetype unknown → blended."], tier_reasoning: "ICP-3 → base Bronze." },
+};
+
+{
+  const uses = evidenceUse(SCORECARD);
+  const keys = uses.map((u) => u.key);
+  check("evidenceUse finds inputs at every depth", ["sells_build_work", "headcount", "recurring_revenue_share", "owner_does_everything", "budget_stated"].every((k) => keys.includes(k)));
+  eq("an input read by two rules is listed once", keys.filter((k) => k === "headcount").length, 1);
+  const headcount = uses.find((u) => u.key === "headcount");
+  eq("and carries both readers", headcount.by.length, 2);
+  const recur = uses.find((u) => u.key === "recurring_revenue_share");
+  eq("a rule that fired is marked as such", recur.firedCount, 1);
+  eq("an answered criterion counts as fired", uses.find((u) => u.key === "sells_build_work").firedCount, 1);
+  eq("a criterion answered no did not fire", uses.find((u) => u.key === "owner_does_everything").firedCount, 0);
+  check("what moved the grade sorts first", uses[0].firedCount > 0);
+  check("a null input is still reported as read", uses.some((u) => u.key === "owner_does_everything" && u.value === null));
+}
+
+eq("evidenceUse of nothing is nothing", evidenceUse(null), []);
+eq("evidenceUse of a scorecard with no rules is nothing", evidenceUse({ effective_tier: "Bronze" }), []);
+check("the walk does not descend into inputs looking for more rules", !evidenceUse({ inputs: { a: { inputs: { b: 1 } } } }).some((u) => u.key === "b"));
+
+eq("quoteFromNote recovers the sentence", quoteFromNote('"They work with freelancers." \u2014 Pipedrive note 2702, 2025-08-13'), "They work with freelancers.");
+eq("quoteFromNote handles curly quotes", quoteFromNote("\u201cNo developers on staff\u201d \u2014 Pipedrive note 1, 2025-01-01"), "No developers on staff");
+eq("quoteFromNote of a plain note is null", quoteFromNote("Seen on the website"), null);
+eq("quoteFromNote of nothing is null", quoteFromNote(null), null);
 
 /* ---- the page itself: data reaches the DOM as text only ---- */
 check("page never assigns innerHTML / outerHTML", !/\.(inner|outer)HTML\s*=/.test(page));

@@ -16,11 +16,15 @@
  *      itself into pb_facts — it becomes a candidate a person reads the source for.
  *   2. A machine never overrules a person. An existing `evidence`-labelled fact entered by a
  *      human stands; a note-derived claim that disagrees becomes a candidate, never a write.
- *   3. Dates come from the SOURCE. A note written in 2025 is observed in 2025, so decay and
+ *   3. A verified quote proves provenance, not truth. A sentence really in the note may still
+ *      be somebody's opinion ("Strong ICP fit", "he seemed very experienced"). A claim whose
+ *      supporting sentence is a JUDGEMENT rather than an OBSERVATION never writes itself; it
+ *      goes to a person, who can tell the difference in about two seconds.
+ *   4. Dates come from the SOURCE. A note written in 2025 is observed in 2025, so decay and
  *      recency see it for what it is. Never the extraction date.
- *   4. Disagreement is surfaced, not settled. When a claim contradicts what the book holds,
+ *   5. Disagreement is surfaced, not settled. When a claim contradicts what the book holds,
  *      both values travel on the candidate so a reviewer sees the conflict without leaving it.
- *   5. Re-running is free. Every emission carries a fingerprint over
+ *   6. Re-running is free. Every emission carries a fingerprint over
  *      (source id · source updated_at · extractor version · key), so the same text extracted by
  *      the same extractor never queues or writes twice.
  *
@@ -55,6 +59,18 @@ export interface ExtractedClaim {
    */
   quote: string | null;
   confidence: "high" | "medium" | "low";
+  /**
+   * Is the supporting sentence an OBSERVATION — something about the world a reader could check
+   * — or a JUDGEMENT, someone's assessment of it?
+   *
+   * "They work with one or two freelancers for web projects" is an observation.
+   * "Classified Genuine / Strong ICP fit" is a judgement: really written, really in the note,
+   * and still just an opinion. Verifying the quote proves PROVENANCE, not TRUTH, so a
+   * judgement-backed claim never becomes a fact on its own however confident the reader was.
+   *
+   * Absent is treated as a judgement — the cautious reading.
+   */
+  kind?: "observation" | "judgement";
 }
 
 /** What an extractor read out of one note. */
@@ -275,14 +291,36 @@ export function mapPipedriveNotes(input: MapNotesInput): MapNotesResult {
         continue;
       }
 
+      /* Already on record from this same source, saying the same thing: nothing to add.
+         Without this, re-reading a note under a new extractor version writes the fact twice. */
+      if (current !== undefined && !conflicts && current.source === "pipedrive_note") {
+        bump(counters, "already_on_record");
+        continue;
+      }
+
       /* rule 1 — no quote, no fact. */
-      if (!quote || claim.confidence !== "high") {
+      if (!quote) {
+        candidates.push(candidate(input.account_id, claim, note, observed, fp, url, null, input.extractor,
+          current?.value ?? null, conflicts,
+          `No supporting sentence in the note; a person reads the source before this becomes a fact. ${stamp}.`));
+        bump(counters, "queued_no_quote");
+        continue;
+      }
+
+      /* rule 3 — a verified quote proves provenance, not truth. */
+      if (claim.kind !== "observation") {
         candidates.push(candidate(input.account_id, claim, note, observed, fp, url, quote, input.extractor,
           current?.value ?? null, conflicts,
-          quote
-            ? `Confidence ${claim.confidence}; a person confirms before it becomes a fact. ${stamp}.`
-            : `No supporting sentence in the note; a person reads the source before this becomes a fact. ${stamp}.`));
-        bump(counters, quote ? "queued_low_confidence" : "queued_no_quote");
+          `The sentence behind this is someone's assessment, not something a reader could check. It is really in the note; that does not make it so. ${stamp}.`));
+        bump(counters, "queued_judgement");
+        continue;
+      }
+
+      if (claim.confidence !== "high") {
+        candidates.push(candidate(input.account_id, claim, note, observed, fp, url, quote, input.extractor,
+          current?.value ?? null, conflicts,
+          `Confidence ${claim.confidence}; a person confirms before it becomes a fact. ${stamp}.`));
+        bump(counters, "queued_low_confidence");
         continue;
       }
 

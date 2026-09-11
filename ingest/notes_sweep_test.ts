@@ -10,6 +10,8 @@
 
 import {
   EXTRACTABLE,
+  JUDGEMENT_MARKERS,
+  judgementMarker,
   extractionPrompt,
   MAX_CLAIMS_PER_NOTE,
   MIN_NOTE_CHARS,
@@ -153,7 +155,7 @@ const P = plannedOf();
       key: "no_inhouse_dev_team",
       value: true,
       quote: "They lack in-house development capability and subcontract every build.",
-      confidence: "high",
+      confidence: "high", kind: "observation",
     }],
   });
   eq("a real sentence is kept", r.extraction.claims.length, 1);
@@ -167,7 +169,7 @@ const P = plannedOf();
       key: "no_inhouse_dev_team",
       value: true,
       quote: "They told us on the call they have no developers whatsoever.",
-      confidence: "high",
+      confidence: "high", kind: "observation",
     }],
   });
   eq("an invented sentence does not discard the claim", r.extraction.claims.length, 1);
@@ -183,7 +185,7 @@ const P = plannedOf();
     notes: [note({ content: "<p>They   lack in-house development\ncapability — and they subcontract every build.</p><p>Filler sentence to clear the minimum length for a model call, which is deliberately generous.</p>" })],
   });
   const r = verifyClaims(fancy, {
-    claims: [{ key: "no_inhouse_dev_team", value: true, quote: "They lack in-house development capability - and they subcontract every build.", confidence: "high" }],
+    claims: [{ key: "no_inhouse_dev_team", value: true, quote: "They lack in-house development capability - and they subcontract every build.", confidence: "high", kind: "observation" }],
   });
   eq("whitespace and dash style do not break a real quote", r.counters.quote_verified, 1);
 }
@@ -196,42 +198,42 @@ check("normalizeForQuote folds quotes and dashes", normalizeForQuote("“A—B�
  * ------------------------------------------------------------------ */
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "annual_revenue", value: 4000000, quote: "fourteen people", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "annual_revenue", value: 4000000, quote: "fourteen people", confidence: "high", kind: "observation" }] });
   eq("a key outside the whitelist is dropped", r.extraction.claims.length, 0);
   eq("and it is counted", r.counters.key_not_extractable, 1);
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "client_budget_size", value: "enterprise", quote: "regional banks and a hospital group", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "client_budget_size", value: "enterprise", quote: "regional banks and a hospital group", confidence: "high", kind: "observation" }] });
   eq("a value the key cannot hold is dropped", r.extraction.claims.length, 0);
   eq("and it is counted", r.counters.value_out_of_shape, 1);
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: "yes", quote: "is a full-service agency in Vermont", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: "yes", quote: "is a full-service agency in Vermont", confidence: "high", kind: "observation" }] });
   eq("a string where a boolean belongs is dropped, not coerced", r.extraction.claims.length, 0);
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "headcount", value: 99999, quote: "fourteen people in the building", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "headcount", value: 99999, quote: "fourteen people in the building", confidence: "high", kind: "observation" }] });
   eq("an out-of-range number is dropped", r.extraction.claims.length, 0);
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "headcount", value: 14.4, quote: "full-service agency in Vermont with fourteen people", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "headcount", value: 14.4, quote: "full-service agency in Vermont with fourteen people", confidence: "high", kind: "observation" }] });
   eq("a near-integer is rounded, not refused", r.extraction.claims[0]?.value, 14);
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: null, quote: "is a full-service agency in Vermont", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: null, quote: "is a full-service agency in Vermont", confidence: "high", kind: "observation" }] });
   eq("null is silence, not a claim", r.extraction.claims.length, 0);
 }
 
 {
   const r = verifyClaims(P, {
     claims: [
-      { key: "is_agency", value: true, quote: "Harbor Pine Studio is a full-service agency in Vermont", confidence: "high" },
-      { key: "is_agency", value: false, quote: "Harbor Pine Studio is a full-service agency in Vermont", confidence: "low" },
+      { key: "is_agency", value: true, quote: "Harbor Pine Studio is a full-service agency in Vermont", confidence: "high", kind: "observation" },
+      { key: "is_agency", value: false, quote: "Harbor Pine Studio is a full-service agency in Vermont", confidence: "low", kind: "observation" },
     ],
   });
   eq("one claim per key", r.extraction.claims.length, 1);
@@ -240,13 +242,13 @@ check("normalizeForQuote folds quotes and dashes", normalizeForQuote("“A—B�
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: true, quote: "Harbor Pine Studio is a full-service agency in Vermont", confidence: "certain" }] });
+  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: true, quote: "Harbor Pine Studio is a full-service agency in Vermont", confidence: "certain", kind: "observation" }] });
   eq("an unknown confidence becomes low, never high", r.extraction.claims[0].confidence, "low");
   eq("and it is counted", r.counters.confidence_missing, 1);
 }
 
 {
-  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: true, confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [{ key: "is_agency", value: true, confidence: "high", kind: "observation" }] });
   eq("a claim with no quote at all survives as a candidate", r.extraction.claims.length, 1);
   eq("with no quote", r.extraction.claims[0].quote, null);
   eq("and it is counted", r.counters.no_quote_offered, 1);
@@ -256,21 +258,71 @@ check("normalizeForQuote folds quotes and dashes", normalizeForQuote("“A—B�
   eq("a response that is not a claims array yields nothing", verifyClaims(P, "sure thing!").extraction.claims.length, 0);
   eq("and says so", verifyClaims(P, "sure thing!").counters.unreadable_response, 1);
   eq("null yields nothing", verifyClaims(P, null).extraction.claims.length, 0);
-  eq("a bare array is accepted too", verifyClaims(P, [{ key: "is_agency", value: true, quote: "is a full-service agency in Vermont", confidence: "high" }]).extraction.claims.length, 1);
+  eq("a bare array is accepted too", verifyClaims(P, [{ key: "is_agency", value: true, quote: "is a full-service agency in Vermont", confidence: "high", kind: "observation" }]).extraction.claims.length, 1);
 }
 
 {
-  const flood = Array.from({ length: MAX_CLAIMS_PER_NOTE + 1 }, () => ({ key: "is_agency", value: true, quote: "x", confidence: "high" }));
+  const flood = Array.from({ length: MAX_CLAIMS_PER_NOTE + 1 }, () => ({ key: "is_agency", value: true, quote: "x", confidence: "high", kind: "observation" }));
   const r = verifyClaims(P, { claims: flood });
   eq("a flood of claims is refused whole", r.extraction.claims.length, 0);
   eq("and counted", r.counters.over_claim_cap, 1);
 }
 
 {
-  const r = verifyClaims(P, { claims: [null, 7, "nope", { key: "is_agency", value: true, quote: "is a full-service agency in Vermont", confidence: "high" }] });
+  const r = verifyClaims(P, { claims: [null, 7, "nope", { key: "is_agency", value: true, quote: "is a full-service agency in Vermont", confidence: "high", kind: "observation" }] });
   eq("junk entries are dropped and the good one kept", r.extraction.claims.length, 1);
   eq("and the junk is counted", r.counters.malformed_claim, 3);
 }
+
+/* ------------------------------------------------------------------ *
+ * 3b · observation or judgement — the model says, the lexicon overrules
+ * ------------------------------------------------------------------ */
+
+const OPINION = plannedOf({
+  ...BASE,
+  notes: [note({ content: "<p>Screening. Harbor Pine Studio was classified Genuine with a strong fit for the partner programme. Andy did seem incredibly experienced on the call, and I believe they subcontract their builds. They lack in-house development capability.</p>" })],
+});
+
+{
+  const r = verifyClaims(OPINION, { claims: [{ key: "is_agency", value: true, quote: "classified Genuine with a strong fit for the partner programme", confidence: "high", kind: "observation" }] });
+  eq("a classification called an observation is caught anyway", r.extraction.claims[0].kind, "judgement");
+  eq("and counted", r.counters.judgement_caught_by_lexicon, 1);
+  check("and said out loud, naming the words that gave it away", r.notes.some((n) => n.includes("that is an assessment")));
+  check("the quote survives, so a person can still weigh it", r.extraction.claims[0].quote !== null);
+}
+
+{
+  const r = verifyClaims(OPINION, { claims: [{ key: "no_inhouse_dev_team", value: true, quote: "Andy did seem incredibly experienced on the call", confidence: "high", kind: "observation" }] });
+  eq("a hedge is an assessment too", r.extraction.claims[0].kind, "judgement");
+}
+
+{
+  const r = verifyClaims(OPINION, { claims: [{ key: "no_inhouse_dev_team", value: true, quote: "They lack in-house development capability", confidence: "high", kind: "observation" }] });
+  eq("a plain statement of fact stays an observation", r.extraction.claims[0].kind, "observation");
+  eq("and is counted as one", r.counters.observations, 1);
+}
+
+{
+  const r = verifyClaims(OPINION, { claims: [{ key: "no_inhouse_dev_team", value: true, quote: "They lack in-house development capability", confidence: "high", kind: "judgement" }] });
+  eq("the model may mark its own claim a judgement and is believed", r.extraction.claims[0].kind, "judgement");
+  check("without the lexicon being blamed for it", r.counters.judgement_caught_by_lexicon === undefined);
+}
+
+{
+  const r = verifyClaims(OPINION, { claims: [{ key: "no_inhouse_dev_team", value: true, quote: "They lack in-house development capability", confidence: "high" }] });
+  eq("a missing kind is read as a judgement, never as an observation", r.extraction.claims[0].kind, "judgement");
+  eq("and it is counted", r.counters.kind_missing, 1);
+}
+
+{
+  const r = verifyClaims(OPINION, { claims: [{ key: "is_agency", value: true, quote: "nonsense never written down anywhere", confidence: "high", kind: "observation" }] });
+  eq("an unverifiable quote is not re-judged by the lexicon", r.counters.judgement_caught_by_lexicon, undefined);
+  eq("it fails on the quote, which is the stronger objection", r.counters.quote_not_in_note, 1);
+}
+
+check("judgementMarker finds nothing in a plain observation", judgementMarker("They work with one or two freelancers for web projects.") === null);
+check("judgementMarker is case- and punctuation-insensitive", judgementMarker("CLASSIFIED \u2014 genuine") === "classified");
+check("the lexicon is not empty", JUDGEMENT_MARKERS.length > 20);
 
 /* ------------------------------------------------------------------ *
  * 4 · the prompt asks for exactly what the validator accepts
@@ -282,6 +334,8 @@ check("normalizeForQuote folds quotes and dashes", normalizeForQuote("“A—B�
     check(`the prompt names ${key}`, prompt.includes(key));
   }
   check("the prompt demands a verbatim quote", /WORD FOR WORD/.test(prompt));
+  check("the prompt asks which kind of sentence it is", /observation/.test(prompt) && /judgement/.test(prompt));
+  check("and shows one of each", /Classified Genuine/.test(prompt));
   check("the prompt says silence is correct", /Silence is correct/.test(prompt));
   check("the prompt names the enum values it will accept", prompt.includes('"buys_real_projects"'));
   eq("the prompt is deterministic", extractionPrompt(), prompt);

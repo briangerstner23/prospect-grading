@@ -530,6 +530,58 @@ function reviewEffectWords(result, nameOf) {
   if (e.recorded_only) out.push("recorded only — this source attaches nothing");
   return out.length ? out : ["recorded"];
 }
+
+/**
+ * Every rule anywhere in a scorecard that names the inputs it read. The engine records
+ * `inputs` on each rule it evaluates, fired or not, so this walk recovers the complete list of
+ * feature keys the grade actually depended on — without the page having to know the shape of
+ * any particular read.
+ */
+function rulesWithInputs(node, out) {
+  const acc = out || [];
+  if (!node || typeof node !== "object") return acc;
+  if (Array.isArray(node)) { for (const x of node) rulesWithInputs(x, acc); return acc; }
+  if (node.inputs && typeof node.inputs === "object" && !Array.isArray(node.inputs)) acc.push(node);
+  for (const k of Object.keys(node)) if (k !== "inputs") rulesWithInputs(node[k], acc);
+  return acc;
+}
+
+/** Did this rule conclude anything? Different reads say it differently. */
+function ruleFired(rule) {
+  return rule.fired === true || rule.met === true || rule.answer === "yes" || rule.present === true;
+}
+
+/**
+ * feature key → the value the engine saw, and every rule that read it. This is the join that
+ * turns "Bronze" back into the sentences underneath it.
+ */
+function evidenceUse(scorecard) {
+  const uses = new Map();
+  for (const rule of rulesWithInputs(scorecard, [])) {
+    const name = rule.name || rule.rule_text || rule.id || rule.key || "a rule";
+    const fired = ruleFired(rule);
+    const inputs = rule.inputs || {};
+    for (const k of Object.keys(inputs)) {
+      if (!uses.has(k)) uses.set(k, { key: k, value: inputs[k], by: [], firedCount: 0 });
+      const u = uses.get(k);
+      u.by.push({ name, fired, id: rule.id || null });
+      if (fired) u.firedCount++;
+    }
+  }
+  // What moved the grade first, then what was merely looked at; alphabetical within each.
+  return Array.from(uses.values()).sort((a, b) => {
+    if ((b.firedCount > 0 ? 1 : 0) !== (a.firedCount > 0 ? 1 : 0)) return (b.firedCount > 0 ? 1 : 0) - (a.firedCount > 0 ? 1 : 0);
+    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+  });
+}
+
+/** A note-derived fact carries its sentence first, in quotation marks. Recover it. */
+function quoteFromNote(note) {
+  if (typeof note !== "string") return null;
+  const m = /^\s*[\u201c"]([\s\S]+?)[\u201d"]\s+[\u2014-]/.exec(note);
+  return m ? m[1] : null;
+}
+
 /* @pure-end -------------------------------------------------------- */
 
 /* ------------------------------------------------------------------ *
@@ -921,6 +973,9 @@ function renderSheet(errors) {
   parts.push(signalTimeline(data.signals, sc));
   parts.push(callsList(data.calls));
   parts.push(dealsList(data.deals, sc));
+  const prov = provenance(sc, data.facts, data.factCands);
+  if (prov) parts.push(prov);
+  parts.push(decisionsMade(data.register, data.factCands));
   parts.push(registerList(data.register));
   parts.push(factQueue(data.factCands));
   parts.push(mergeQueue(data.candidates));
@@ -1156,6 +1211,98 @@ function registerList(entries) {
     h("div", { class: "body" }, r.text ?? ""),
   ));
   return group("Register", `${entries.length}`, "Every decision that touches a grade lives here, never in a read.", list(items, "No register entry for this account."));
+}
+
+/* ---- provenance: what the grade was built from ----
+ * The reads say what the engine concluded. This says what it READ, and where each of those
+ * came from — down to the sentence someone wrote in a note. Sales asks "why is this Bronze";
+ * this is the answer, in one screen, without opening Pipedrive.
+ */
+function provenance(sc, facts, factCands) {
+  if (!sc) return null;
+  const byKey = new Map(facts.map((f) => [f.key, f]));
+  const queuedByKey = new Map();
+  for (const c of factCands) if (c.status === "proposed") queuedByKey.set(c.key, c);
+  const uses = evidenceUse(sc);
+  const known = uses.filter((u) => byKey.has(u.key));
+  const unknown = uses.filter((u) => !byKey.has(u.key));
+
+  const sourceTone = (f) => f.evidence_label === "evidence" ? "c-good" : f.evidence_label === "unknown" ? "c-bad" : "";
+
+  const row = (u) => {
+    const f = byKey.get(u.key);
+    const quote = f ? quoteFromNote(f.note) : null;
+    const moved = u.firedCount > 0;
+    const queued = queuedByKey.get(u.key);
+
+    const whatItDid = u.by.map((b) =>
+      h("div", { class: "sub" }, b.fired ? chip("fired", "c-good") : chip("did not fire"), " ", b.name));
+
+    return h("div", { class: "item" },
+      h("div", { class: "top" },
+        moved ? chip("moved the grade", "c-good") : null,
+        h("b", null, u.key),
+        h("span", { class: "mono" }, fmtFactValue(u.value)),
+        f ? chip(f.source, sourceTone(f)) : chip("no fact on record", "c-bad"),
+        f ? chip(f.evidence_label, sourceTone(f)) : null,
+        queued ? chip("a claim is waiting on a person", "c-warn") : null,
+      ),
+      quote ? h("blockquote", { class: "quote" }, "\u201c", quote, "\u201d") : null,
+      f
+        ? h("div", { class: "sub" }, [
+            quote ? null : (f.note || null),
+            f.observed_at ? `observed ${fmtDate(f.observed_at)}` : null,
+            f.entered_by ? `entered by ${f.entered_by}` : null,
+            f.stand_in ? "stand-in (PRO-5)" : null,
+          ].filter(Boolean).join(" \u00b7 "))
+        : h("div", { class: "sub" }, "The engine read this as unknown. Under rule 5 an unknown never fires a gate or an adjustment \u2014 it cannot count against the agency, but it cannot count for them either."),
+      f && f.evidence_url ? h("div", { class: "sub" }, h("a", { href: f.evidence_url, target: "_blank", rel: "noopener noreferrer" }, "Open the source")) : null,
+      ...whatItDid,
+    );
+  };
+
+  const head = h("div", { class: "pad" },
+    h("p", { style: "max-width:80ch;margin:0" },
+      h("b", null, `${known.length} of ${uses.length} inputs had a fact behind them.`),
+      " ",
+      sc.tier_reasoning || (sc.trace && sc.trace.tier_reasoning) || "",
+    ),
+  );
+
+  const engineNotes = (sc.trace && Array.isArray(sc.trace.notes) && sc.trace.notes.length)
+    ? h("div", { class: "pad" }, h("div", { class: "sub" }, "The engine's own working:"),
+        ...sc.trace.notes.map((n) => h("div", { class: "sub" }, "\u00b7 " + n)))
+    : null;
+
+  return group(
+    "Where this grade came from",
+    `${known.length}/${uses.length}`,
+    "Every input the engine read, what supplied it, and what it did. An input with no fact behind it was read as unknown \u2014 which never counts either way.",
+    head,
+    list([...known.map(row), ...unknown.map(row)], "This grade read no inputs."),
+    engineNotes,
+  );
+}
+
+/* ---- decisions a person made on this account ---- */
+function decisionsMade(register, factCands) {
+  const reviewed = factCands.filter((c) => c.status === "confirmed" || c.status === "rejected");
+  const items = [
+    ...register.map((r) => h("div", { class: "item" },
+      h("div", { class: "top" }, chip(r.kind, r.kind === "override" ? "c-warn" : r.kind === "decision" ? "c-info" : ""), h("b", null, r.made_by || "(unknown)"), r.reason_code ? chip(r.reason_code) : null),
+      h("div", null, r.text),
+      h("div", { class: "sub" }, fmtDateTime(r.created_at) + (r.expires_at ? ` \u00b7 expires ${fmtDate(r.expires_at)}` : "")))),
+    ...reviewed.map((c) => h("div", { class: "item" },
+      h("div", { class: "top" }, chip(c.status, c.status === "confirmed" ? "c-good" : "c-bad"), h("b", null, c.reviewed_by || "(unknown)"), h("span", { class: "mono" }, `${c.key} = ${fmtFactValue(c.value)}`)),
+      c.quote ? h("blockquote", { class: "quote" }, "\u201c", c.quote, "\u201d") : null,
+      h("div", { class: "sub" }, `reviewed ${fmtDate(c.reviewed_at)} \u00b7 read by ${c.extractor || "a person"}`))),
+  ];
+  return group(
+    "Decisions a person made",
+    `${items.length}`,
+    "Overrides, disputes, notes and every claim someone confirmed or rejected. Nothing here was decided by the engine.",
+    list(items, "Nobody has had to decide anything about this account yet."),
+  );
 }
 
 /* ---- fact queue (pb_fact_candidates) ----

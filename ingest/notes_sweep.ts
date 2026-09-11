@@ -191,6 +191,41 @@ export function quoteIsInNote(noteText: string, quote: string): boolean {
   return normalizeForQuote(noteText).includes(q);
 }
 
+/**
+ * Sentences that are somebody's assessment rather than something a reader could check.
+ *
+ * The model is ASKED to mark each claim observation or judgement, and a model that wants to be
+ * helpful will call an opinion an observation. So its answer is not the last word: if any of
+ * these appears in the supporting sentence, the claim is a judgement whatever the model said.
+ *
+ * Every entry earns its place from real notes: screening summaries classify and rate
+ * ("Classified GENUINE, ICP-5", "Strong ICP fit", "HIGH white-label signal"), and call
+ * write-ups hedge ("he did seem incredibly knowledgeable", "I believe he came through a
+ * website submission"). None of that is checkable; all of it reads as confident prose.
+ *
+ * A false positive costs one row in the review queue, a false negative puts an opinion in the
+ * book as evidence. The list is tuned for the cheap mistake.
+ */
+export const JUDGEMENT_MARKERS: readonly string[] = [
+  // hedged perception
+  "seem", "seemed", "seems", "appear to", "appears to", "appeared to",
+  "looks like", "looked like", "strikes me", "my sense", "my impression", "my understanding",
+  "i think", "i believe", "i'd say", "i would say", "i suspect", "i assume", "i'm not sure",
+  "probably", "presumably", "apparently", "i don't have full", "not exactly sure",
+  // rating and classification
+  "classified", "classification", "strong fit", "good fit", "poor fit", "weak fit",
+  "strong icp", "weak icp", "ideal fit", "perfect fit", "great candidate", "priority a",
+  "priority b", "high signal", "low signal", "moderate fit", "qualified as", "rated",
+  "recommend", "recommended", "watch-item", "worth a look",
+];
+
+/** The marker that makes this sentence an assessment, or null when it reads as an observation. */
+export function judgementMarker(sentence: string): string | null {
+  const s = normalizeForQuote(sentence);
+  for (const m of JUDGEMENT_MARKERS) if (s.includes(m)) return m;
+  return null;
+}
+
 export interface VerifyResult {
   extraction: NoteExtraction;
   notes: string[];
@@ -273,8 +308,26 @@ export function verifyClaims(planned: PlannedNote, raw: unknown): VerifyResult {
       bump(counters, "quote_not_in_note");
     }
 
+    /* Observation or judgement. The model says which, and the lexicon overrules it — a model
+       that wants to be useful will call an opinion an observation. Either vote for judgement
+       is decisive; only a sentence both agree on is left as an observation. */
+    let kind: "observation" | "judgement" = c.kind === "observation" ? "observation" : "judgement";
+    if (c.kind !== "observation" && c.kind !== "judgement") {
+      notes.push(`Note ${id}: ${key} did not say whether its sentence is an observation or a judgement; read as a judgement.`);
+      bump(counters, "kind_missing");
+    }
+    if (kind === "observation" && quote !== null) {
+      const marker = judgementMarker(quote);
+      if (marker !== null) {
+        kind = "judgement";
+        notes.push(`Note ${id}: ${key} was offered as an observation, but its sentence says "${marker}" — that is an assessment, so a person confirms it.`);
+        bump(counters, "judgement_caught_by_lexicon");
+      }
+    }
+    bump(counters, kind === "observation" ? "observations" : "judgements");
+
     keysSeen.add(key);
-    claims.push({ key, value, quote, confidence });
+    claims.push({ key, value, quote, confidence, kind });
   }
 
   return { extraction: { note_id: planned.note.id, claims }, notes, counters };
@@ -308,7 +361,7 @@ function describe(v: unknown): string {
  * Change this and the extractor version changes too — every fingerprint carries the extractor
  * string, so a new prompt re-reads every note rather than silently mixing two readings.
  */
-export const EXTRACTOR_VERSION = "notes@v1";
+export const EXTRACTOR_VERSION = "notes@v2";
 
 export function extractionPrompt(): string {
   const keys = Object.entries(EXTRACTABLE).map(([k, s]) => {
@@ -323,7 +376,7 @@ export function extractionPrompt(): string {
   return [
     "You are reading one CRM note about an agency and recording only what the note actually says.",
     "",
-    "Return JSON: {\"claims\": [{\"key\", \"value\", \"quote\", \"confidence\"}]}. Return an empty list when the note says nothing about these.",
+    "Return JSON: {\"claims\": [{\"key\", \"value\", \"quote\", \"confidence\", \"kind\"}]}. Return an empty list when the note says nothing about these.",
     "",
     "Keys and the values they may take:",
     keys,
@@ -332,6 +385,10 @@ export function extractionPrompt(): string {
     "- quote must be copied WORD FOR WORD from the note. It is checked against the note text; an invented or paraphrased quote makes the claim unusable.",
     "- If you cannot find a sentence that says it, leave the key out. Silence is correct; guessing is not.",
     "- confidence is high only when the sentence states the answer outright. A range, an implication or an inference is medium or low.",
+    "- kind is \"observation\" when the sentence states something about the world a reader could check, and \"judgement\" when it is somebody's assessment of it.",
+    "    observation: \"They work with one or two freelancers for web projects.\"",
+    "    judgement:   \"Classified Genuine / Strong ICP fit.\" \u2014 really written, still an opinion.",
+    "  Mark it honestly. A judgement is not wasted: it reaches a person either way. Calling one an observation only sends it back.",
     "- sells_build_work and no_inhouse_dev_team are about what the agency SELLS and whether it can BUILD it, not what industry it is in.",
     "- client_budget_size is about the agency's CLIENTS' budgets, not the agency's own size.",
     "- One claim per key at most.",
