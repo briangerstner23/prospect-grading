@@ -643,6 +643,17 @@ select name from vault.secrets where name like 'PB_%' order by name;
 
 Gmail wants a **refresh** token, not an access token: an access token dies in an hour and the
 job runs at 05:45. The function exchanges the refresh token for an access token on each run.
+The scope is **`https://www.googleapis.com/auth/gmail.readonly`** — `gmail.metadata` is not
+enough, because it withholds the body and the sweep reads the message, not the headers.
+
+Two things about that channel are worth knowing before you set the OAuth up. It asks Gmail for
+`format=full` and walks the MIME tree for `text/plain`, falling back to `text/html` through the
+same stripHtml the CRM notes use, and skipping attachments. And it **cuts the quoted history off
+every reply** before anything reads it: a thread repeats itself in each message, so leaving it in
+would read the same sentences once per reply and — the real fault — date each copy by the reply
+that quoted it instead of the message that said it, which is rule 4 backwards. The markers are
+heuristics (`On … wrote:`, Outlook's header block, `>` lines); a message with none of them is
+kept whole, because keeping too much only costs tokens while cutting too much loses evidence.
 
 Add a missing one the same way as the others:
 

@@ -55,7 +55,7 @@ import {
 import type { PlannedNote } from "../_shared/ingest/notes_sweep.ts";
 import { mapPipedriveNotes } from "../_shared/ingest/written_record.ts";
 import type { ExistingFact, NoteExtraction, WrittenRecord } from "../_shared/ingest/written_record.ts";
-import { attributeAll, gmailToRecord, isChatter } from "../_shared/ingest/record_sources.ts";
+import { attributeAll, gmailBodyText, gmailToRecord, isChatter, stripQuotedReply } from "../_shared/ingest/record_sources.ts";
 import type { GmailMessage } from "../_shared/ingest/record_sources.ts";
 
 /** Domains that are us. Anyone at one of these does not attribute a record to an account. */
@@ -234,9 +234,12 @@ async function pullEmail(
 
     for (const m of ids) {
       if (!isRec(m)) continue;
+      /* `full`, not `metadata`. Metadata carries headers and a ~200-character snippet and no
+         body at all, so the extractor would be asked to read a preview and would mostly find
+         nothing — and what it did find it could not quote, because the quote check runs
+         against the text we hold. Reading the message means reading the message. */
       const one = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata` +
-        `&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date`,
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       if (!one.ok) continue;
@@ -253,6 +256,10 @@ async function pullEmail(
         toRecipients: (headers.to ?? "").split(","),
         ccRecipients: (headers.cc ?? "").split(","),
         date: msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : (headers.date ?? null),
+        /* The quoted history is cut off before anything sees it: every reply repeats the whole
+           thread, so leaving it in would read the same sentences once per message and date each
+           copy by the reply that quoted it rather than by the message that said it. */
+        body: stripQuotedReply(gmailBodyText(msg?.payload)),
         snippet: String(msg.snippet ?? ""),
       };
       if (isChatter(gm)) { chatter++; continue; }

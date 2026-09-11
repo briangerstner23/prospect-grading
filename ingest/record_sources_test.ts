@@ -13,12 +13,15 @@
 import {
   attribute,
   attributeAll,
+  decodeBase64Url,
   domainOf,
   externalDomains,
   fathomToRecord,
+  gmailBodyText,
   gmailToRecord,
   isChatter,
   PUBLIC_MAILBOXES,
+  stripQuotedReply,
 } from "./record_sources.ts";
 import type { FathomMeeting, GmailMessage } from "./record_sources.ts";
 
@@ -207,6 +210,93 @@ check("a contact-form submission is not chatter — it is the first thing they t
   fathomToRecord(input, OURS);
   eq("reading a meeting does not mutate it", JSON.stringify(input), snapshot);
   eq("and is deterministic", JSON.stringify(fathomToRecord(MEETING, OURS)), JSON.stringify(fathomToRecord(MEETING, OURS)));
+}
+
+/* ------------------------------------------------------------------ *
+ * reading a message body out of Gmail's MIME tree
+ * ------------------------------------------------------------------ */
+
+/** Gmail hands back base64url with the padding stripped. */
+function b64url(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+{
+  eq("base64url decodes", decodeBase64Url(b64url("We have no developer in house.")), "We have no developer in house.");
+  eq("and survives multibyte", decodeBase64Url(b64url("fee — £2,500 · naïve")), "fee — £2,500 · naïve");
+  eq("garbage decodes to empty, never throws", decodeBase64Url("!!!not base64!!!"), "");
+  eq("so does a missing body", decodeBase64Url(undefined), "");
+}
+
+{
+  // text/plain wins over the html twin a client sends beside it
+  const multipart = {
+    mimeType: "multipart/alternative",
+    parts: [
+      { mimeType: "text/plain", body: { data: b64url("the plain one") } },
+      { mimeType: "text/html", body: { data: b64url("<p>the html one</p>") } },
+    ],
+  };
+  eq("text/plain wins", gmailBodyText(multipart), "the plain one");
+
+  const htmlOnly = { mimeType: "text/html", body: { data: b64url("<p>only <b>html</b> here</p>") } };
+  eq("html is stripped when it is all there is", gmailBodyText(htmlOnly), "only html here");
+
+  const nested = {
+    mimeType: "multipart/mixed",
+    parts: [
+      { mimeType: "multipart/alternative", parts: [{ mimeType: "text/plain", body: { data: b64url("buried but read") } }] },
+      { mimeType: "application/pdf", filename: "quote.pdf", body: { data: b64url("%PDF-1.7 binary") } },
+    ],
+  };
+  eq("nested parts are walked", gmailBodyText(nested), "buried but read");
+  check("an attachment is never read as prose", !gmailBodyText(nested).includes("PDF"));
+
+  eq("no payload is empty, not a throw", gmailBodyText(null), "");
+  eq("a payload with no text part is empty", gmailBodyText({ mimeType: "image/png", filename: "logo.png", body: { data: b64url("x") } }), "");
+}
+
+/* ------------------------------------------------------------------ *
+ * cutting the quoted history off a reply
+ *
+ * This is the one that protects rule 4. A passage quoted inside a later reply would otherwise
+ * be dated by the reply, not by the message that said it.
+ * ------------------------------------------------------------------ */
+
+{
+  const gmail = "We have no developer in house.\n\nOn Tue, 3 Jun 2026 at 09:12, A Person <someone@example.com> wrote:\n> we do have three\n> and a designer";
+  eq("Gmail's 'On … wrote:' is the cut", stripQuotedReply(gmail), "We have no developer in house.");
+
+  const outlook = "Happy to start in July.\n\n-----Original Message-----\nFrom: someone@example.com\nSent: 1 June 2026\n\nearlier text";
+  eq("Outlook's original-message rule is the cut", stripQuotedReply(outlook), "Happy to start in July.");
+
+  const headerBlock = "Yes, that budget works.\n\nFrom: A Person <a@example.com>\nSent: Monday, 1 June 2026 09:00\nTo: Someone Else\n\nolder message";
+  eq("an Outlook header block is the cut", stripQuotedReply(headerBlock), "Yes, that budget works.");
+
+  const forwarded = "Passing this on.\n\n---------- Forwarded message ---------\nFrom: someone@example.com";
+  eq("a forward marker is the cut", stripQuotedReply(forwarded), "Passing this on.");
+
+  const chevrons = "No budget until Q4.\n> what about now\n> please advise";
+  eq("a bare chevron line is the cut", stripQuotedReply(chevrons), "No budget until Q4.");
+
+  const clean = "We sell websites and we outsource the build. No dev team here.";
+  eq("a message with no history is returned whole", stripQuotedReply(clean), clean);
+
+  eq("empty stays empty", stripQuotedReply(""), "");
+
+  // The earliest marker wins, not the first one in the list.
+  const both = "Top line.\n> quoted first\n\nOn Tue, 3 Jun 2026, X wrote:\nlater";
+  eq("the earliest marker wins", stripQuotedReply(both), "Top line.");
+
+  // What this protects: a sentence from an older message must not survive into a later record.
+  const dated = "Thanks, that is agreed.\n\nOn Tue, 3 Mar 2026 at 09:12, A Person <a@example.com> wrote:\n> our budget is $40,000";
+  check(
+    "a quoted figure from March cannot be read out of a September reply",
+    !stripQuotedReply(dated).includes("40,000"),
+  );
 }
 
 /* ------------------------------------------------------------------ *

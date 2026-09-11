@@ -22,6 +22,7 @@
  * Runs under Deno and `node --experimental-strip-types`.
  */
 
+import { stripHtml } from "./written_record.ts";
 import type { WrittenRecord } from "./written_record.ts";
 
 /* ------------------------------------------------------------------ *
@@ -155,6 +156,90 @@ export interface GmailMessage {
   /** The body when we have it; the snippet otherwise. */
   body?: string | null;
   snippet?: string | null;
+}
+
+/** One node of Gmail's MIME tree, as `users.messages.get?format=full` returns it. */
+export interface GmailPart {
+  mimeType?: string;
+  filename?: string;
+  body?: { data?: string; size?: number };
+  parts?: GmailPart[];
+}
+
+/** Gmail's base64url → text. Returns "" on anything that is not decodable. */
+export function decodeBase64Url(data: unknown): string {
+  if (typeof data !== "string" || data.length === 0) return "";
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  try {
+    const bin = atob(padded);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder("utf-8").decode(bytes);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The readable text of a message, walked out of its MIME tree.
+ *
+ * `text/plain` wins wherever it exists: it is what the person typed, before a mail client
+ * wrapped it in markup. `text/html` is the fallback and goes through the same stripHtml the
+ * CRM notes use. Attachments are skipped — a part with a filename is a file, not prose, and
+ * a PDF decoded as UTF-8 is noise the extractor would be charged to read.
+ */
+export function gmailBodyText(payload: GmailPart | null | undefined): string {
+  const plain: string[] = [];
+  const html: string[] = [];
+  const walk = (part: GmailPart | undefined, depth: number): void => {
+    if (!part || depth > 12) return;
+    const type = String(part.mimeType ?? "").toLowerCase();
+    const isAttachment = typeof part.filename === "string" && part.filename.length > 0;
+    if (!isAttachment && part.body?.data) {
+      if (type.startsWith("text/plain")) plain.push(decodeBase64Url(part.body.data));
+      else if (type.startsWith("text/html")) html.push(decodeBase64Url(part.body.data));
+    }
+    for (const child of part.parts ?? []) walk(child, depth + 1);
+  };
+  walk(payload ?? undefined, 0);
+  const text = plain.join("\n").trim();
+  if (text) return text;
+  return stripHtml(html.join("\n")).trim();
+}
+
+/**
+ * Cut the quoted history off a reply.
+ *
+ * Every message in a thread carries every message before it. Without this the sweep reads the
+ * same sentences once per reply — paying for each — and, far worse, DATES THEM WRONG: a
+ * passage someone wrote in March, quoted inside a September reply, becomes a fact observed in
+ * September. Rule 4 says a fact's date comes from the record it was written in, and a quote
+ * block is not that record. It also breaks attribution in a subtler way: the person quoted may
+ * not even be the person the message is attributed to.
+ *
+ * Heuristics, not parsing — there is no standard for this. Each marker is a line that mail
+ * clients emit before the history, and the earliest one wins. A message with none of them is
+ * returned whole, which is the safe direction: keeping too much costs tokens, cutting too much
+ * loses evidence.
+ */
+const QUOTE_MARKERS: readonly RegExp[] = [
+  /^\s*On\b[\s\S]{0,200}?\bwrote:\s*$/m,          // Gmail, often wrapped over two lines
+  /^\s*-{2,}\s*Original Message\s*-{2,}\s*$/im,     // Outlook
+  /^\s*-{2,}\s*Forwarded message\s*-{2,}/im,         // Gmail forward
+  /^\s*_{10,}\s*$/m,                                // Outlook's rule above the header block
+  /^\s*From:\s.+$(?:\r?\n)^\s*(?:Sent|Date):\s.+$/m, // Outlook header block
+  /^\s*>{1,}\s?.*$/m,                               // any quoted line
+];
+
+export function stripQuotedReply(body: string): string {
+  const text = String(body ?? "");
+  let cut = text.length;
+  for (const re of QUOTE_MARKERS) {
+    const m = re.exec(text);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return text.slice(0, cut).trim();
 }
 
 /**
