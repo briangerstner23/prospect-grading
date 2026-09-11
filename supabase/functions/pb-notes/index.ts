@@ -12,7 +12,7 @@
  * own credential; a channel with no credential is skipped and said so, never guessed at.
  *
  *   pipedrive_note   PB_PIPEDRIVE_API_TOKEN   attributed by the note's own organisation
- *   fathom_call      PB_FATHOM_API_KEY        attributed by who was on the call
+ *   fathom_call      (none — reads pb_calls)  already attributed by the Fathom webhook
  *   email            PB_GMAIL_REFRESH_TOKEN   attributed by who was on the thread
  *                    + PB_GMAIL_CLIENT_ID / PB_GMAIL_CLIENT_SECRET
  *
@@ -55,8 +55,8 @@ import {
 import type { PlannedNote } from "../_shared/ingest/notes_sweep.ts";
 import { mapPipedriveNotes } from "../_shared/ingest/written_record.ts";
 import type { ExistingFact, NoteExtraction, WrittenRecord } from "../_shared/ingest/written_record.ts";
-import { attributeAll, fathomToRecord, gmailToRecord, isChatter } from "../_shared/ingest/record_sources.ts";
-import type { FathomMeeting, GmailMessage } from "../_shared/ingest/record_sources.ts";
+import { attributeAll, gmailToRecord, isChatter } from "../_shared/ingest/record_sources.ts";
+import type { GmailMessage } from "../_shared/ingest/record_sources.ts";
 
 /** Domains that are us. Anyone at one of these does not attribute a record to an account. */
 const OUR_DOMAINS = ["whitelabeliq.com"];
@@ -142,63 +142,48 @@ async function pullPipedriveNotes(
 }
 
 /**
- * Fathom call summaries. The account comes from who was on the call, so a meeting with nobody
- * outside WLIQ on it — most of them — never reaches the model.
+ * Fathom call summaries, read from pb_calls rather than from Fathom.
+ *
+ * The webhook already does the hard part: it stores each recording with its summary AND the
+ * account it belongs to, having resolved that from who was on the call. So this channel needs
+ * no credential of its own and repeats no attribution — it reads what is already in the book.
+ * A call that arrives after this runs is swept the following night.
+ *
+ * The TRANSCRIPT is deliberately not read even though pb_calls knows one exists. A transcript
+ * is speech — half-finished sentences, people thinking aloud, two people talking at once.
+ * Quoting it verbatim would put "yeah, I mean, we don't really have anybody" in the book as
+ * evidence. A summary is already a considered written statement, which is what the quote rule
+ * assumes it is checking.
  */
-async function pullFathomCalls(
-  key: string,
-  since: string | null,
-  accountByDomain: Record<string, string>,
-): Promise<Pulled> {
-  const raw: { record: WrittenRecord; domains: string[] }[] = [];
-  const notes: string[] = [];
-  let cursor: string | null = null;
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const qs = new URLSearchParams({ include_transcript: "false", include_summary: "true" });
-    if (since) qs.set("created_after", since);
-    if (cursor) qs.set("cursor", cursor);
-    const res = await fetch(`https://api.fathom.ai/external/v1/meetings?${qs}`, {
-      headers: { "X-Api-Key": key, accept: "application/json" },
+async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled> {
+  const rows = await selectAll(
+    db,
+    "pb_calls",
+    "fathom_recording_id,account_id,title,held_at,url,recorded_by,summary,updated_at",
+    (q) => {
+      let query = q.not("summary", "is", null).not("account_id", "is", null);
+      if (since !== null) query = query.gt("updated_at", since);
+      return query.order("updated_at", { ascending: true });
+    },
+  );
+  const records: WrittenRecord[] = [];
+  for (const r of rows) {
+    const held = String(r.held_at ?? r.updated_at ?? "");
+    records.push({
+      id: String(r.fathom_recording_id ?? ""),
+      org_id: null,
+      content: String(r.summary ?? ""),
+      add_time: held,
+      // The watermark walks updated_at, so a call whose summary is revised is read again.
+      update_time: String(r.updated_at ?? held),
+      user_name: (r.recorded_by as string | null) ?? null,
+      source: FATHOM_CALLS,
+      url: (r.url as string | null) ?? null,
+      label: `Fathom call${r.title ? ` "${r.title}"` : ""}${held ? ` on ${held.slice(0, 10)}` : ""}`,
+      account_id: String(r.account_id),
     });
-    if (!res.ok) throw new Error(`Fathom /meetings returned ${res.status}`);
-    const body = await res.json();
-    const items = Array.isArray(body?.items) ? body.items : Array.isArray(body?.data) ? body.data : [];
-    if (items.length === 0) break;
-
-    for (const it of items) {
-      if (!isRec(it)) continue;
-      const attendees = Array.isArray(it.attendees)
-        ? (it.attendees as Rec[]).map((a) => (isRec(a) ? a.email : null))
-        : [];
-      const meeting: FathomMeeting = {
-        id: (it.recording_id ?? it.id) as number,
-        title: (it.title ?? it.meeting_title ?? null) as string | null,
-        url: (it.url ?? it.share_url ?? null) as string | null,
-        started_at: (it.recording_started_at ?? it.scheduled_start_time ?? null) as string | null,
-        created_at: (it.created_at ?? null) as string | null,
-        summary: typeof it.default_summary === "string"
-          ? it.default_summary
-          : isRec(it.default_summary)
-          ? String((it.default_summary as Rec).markdown_formatted ?? "")
-          : String(it.summary ?? ""),
-        recorded_by: isRec(it.recorded_by) ? String((it.recorded_by as Rec).name ?? "") || null : null,
-        attendee_emails: attendees,
-      };
-      raw.push(fathomToRecord(meeting, OUR_DOMAINS));
-    }
-    cursor = typeof body?.next_cursor === "string" ? body.next_cursor : null;
-    if (!cursor) break;
   }
-
-  const a = attributeAll(raw, accountByDomain);
-  notes.push(...a.notes.slice(0, 40));
-  if (a.notes.length > 40) notes.push(`…and ${a.notes.length - 40} more Fathom records that could not be attributed.`);
-  return {
-    records: a.attributed.map((x) => ({ ...x.record, account_id: x.account_id })),
-    notes,
-    counters: { pulled: raw.length, ...a.counters },
-  };
+  return { records, notes: [], counters: { pulled: records.length } };
 }
 
 /**
@@ -388,7 +373,7 @@ Deno.serve(async (req: Request) => {
 
     /* Each channel, behind its own credential. A missing key is said out loud, never guessed. */
     const pipedriveToken = await getSecret(db, "PB_PIPEDRIVE_API_TOKEN");
-    const fathomKey = await getSecret(db, "PB_FATHOM_API_KEY");
+
     const gmailRefresh = await getSecret(db, "PB_GMAIL_REFRESH_TOKEN");
     const gmailClientId = await getSecret(db, "PB_GMAIL_CLIENT_ID");
     const gmailClientSecret = await getSecret(db, "PB_GMAIL_CLIENT_SECRET");
@@ -407,8 +392,8 @@ Deno.serve(async (req: Request) => {
 
     consider(PIPEDRIVE_NOTES, pipedriveToken, "PB_PIPEDRIVE_API_TOKEN", () =>
       pullPipedriveNotes(pipedriveToken as string, watermark(PIPEDRIVE_NOTES), accountByOrg));
-    consider(FATHOM_CALLS, fathomKey, "PB_FATHOM_API_KEY", () =>
-      pullFathomCalls(fathomKey as string, watermark(FATHOM_CALLS), accountByDomain));
+    // No credential: the webhook already put these in pb_calls, with their account resolved.
+    consider(FATHOM_CALLS, "ready", "", () => pullFathomCalls(db, watermark(FATHOM_CALLS)));
     consider(EMAIL, gmailReady, "PB_GMAIL_REFRESH_TOKEN / PB_GMAIL_CLIENT_ID / PB_GMAIL_CLIENT_SECRET", async () => {
       const token = await gmailAccessToken(gmailRefresh as string, gmailClientId as string, gmailClientSecret as string);
       return pullEmail(token, watermark(EMAIL), accountByDomain, bookDomains);

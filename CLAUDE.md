@@ -100,9 +100,10 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   `PB_PIPEDRIVE_API_TOKEN`, and `PB_ANTHROPIC_API_KEY` (**not yet set** — pb-notes answers 503
   and writes no run row until it is, so the nightly sweep is silent rather than failing).
   pb-notes sweeps three channels, each behind its own credential and its own watermark row:
-  `pipedrive_note` (PB_PIPEDRIVE_API_TOKEN, set), `fathom_call` (**PB_FATHOM_API_KEY, not set**)
-  and `email` (**PB_GMAIL_REFRESH_TOKEN + PB_GMAIL_CLIENT_ID + PB_GMAIL_CLIENT_SECRET, not
-  set**). A channel with no credential is skipped and said so in the run's notes.
+  `pipedrive_note` (PB_PIPEDRIVE_API_TOKEN, set), `fathom_call` (**no credential** — it reads
+  `pb_calls`, which the webhook fills with the summary and the resolved account) and `email`
+  (**PB_GMAIL_REFRESH_TOKEN + PB_GMAIL_CLIENT_ID + PB_GMAIL_CLIENT_SECRET, not set**). A channel
+  with no credential is skipped and said so in the run's notes.
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
   Two cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first so

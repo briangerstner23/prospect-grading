@@ -107,6 +107,11 @@ export interface FathomMeeting {
  * A call summary is a written record: someone (Fathom) wrote down what was said, on a date,
  * about the people who were there.
  *
+ * NOTE: the nightly sweep does not use this. pb_calls already holds each recording's summary
+ * WITH its account resolved, put there by the Fathom webhook, so the sweep reads the book
+ * rather than Fathom. This adapter is for a backfill that goes to Fathom's own API for calls
+ * that predate the webhook — the one path that still has to attribute by attendee domain.
+ *
  * The TRANSCRIPT is deliberately not read. A transcript is speech — half-finished sentences,
  * people talking over each other, a prospect thinking aloud. Quoting it verbatim would put
  * "yeah, I mean, we don't really have anybody" in the book as evidence. The summary is already
