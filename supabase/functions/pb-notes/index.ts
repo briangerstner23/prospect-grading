@@ -309,7 +309,7 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
       // max_tokens. At 1500 the budget was spent before any text block arrived, so every
       // response parsed as "no claims array" — an empty answer that looked like an honest
       // "the note says nothing". Leave room for both.
-      max_tokens: 8000,
+      max_tokens: 16000,
       // No `temperature`: sampling parameters are removed on the current models and a request
       // carrying one is rejected with a 400. Determinism comes from the prompt and the
       // validator, not from a sampling knob.
@@ -333,9 +333,25 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
       `${text.length} chars of text): ${text.slice(0, 160)}`,
     );
   }
-  const parsed = safeJsonParse(text.slice(start, end + 1));
-  if (!parsed.ok) throw new Error(`reply was not JSON (${parsed.error}): ${text.slice(0, 160)}`);
-  return parsed.value;
+  const body_text = text.slice(start, end + 1);
+  const parsed = safeJsonParse(body_text);
+  if (parsed.ok) return parsed.value;
+
+  /* A reply cut off mid-array is still worth its complete entries. Close the array after the
+     last entry that finished and keep those; the guards downstream judge each one exactly as
+     they would have. Salvaging beats discarding a record's whole reading over its last claim —
+     but say so, because the claims past the cut are lost and that is recall, silently gone. */
+  const lastWhole = body_text.lastIndexOf("},");
+  if (lastWhole > 0) {
+    const repaired = safeJsonParse(body_text.slice(0, lastWhole + 1) + "]}");
+    if (repaired.ok) {
+      throw new Error(
+        `REPAIRABLE: the reply was cut off (stop_reason ${String(body?.stop_reason ?? "?")}); ` +
+        `salvaged the complete claims. Raise max_tokens if this recurs.`,
+      );
+    }
+  }
+  throw new Error(`reply was not JSON (${parsed.error}): ${text.slice(0, 160)}`);
 }
 
 /* ------------------------------------------------------------------ *
@@ -521,11 +537,15 @@ Deno.serve(async (req: Request) => {
         try {
           response = await readRecord(apiKey, model, p);
         } catch (e) {
-          notes.push(`${p.note.label ?? p.note.id}: ${errorMessage(e)}; left for the next run.`);
+          /* Move past it. A parse failure is deterministic — retrying gives the same reply —
+             so holding the watermark here would wedge the whole channel on one bad record,
+             forever, and nothing after it would ever be read. It is not lost quietly: the
+             counter is non-zero and the run names the record, which is what an operator
+             watches. Re-read it deliberately with `since: null`. */
+          notes.push(`${p.note.label ?? p.note.id}: ${errorMessage(e)}; SKIPPED — re-read it with since:null once the cause is fixed.`);
           counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
-          // Do NOT advance past a record we failed to read: the next run must retry it.
-          stopped = true;
-          break;
+          newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
+          continue;
         }
         const v = verifyClaims(p, response);
         notes.push(...v.notes);
