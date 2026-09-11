@@ -63,7 +63,7 @@ const OUR_DOMAINS = ["whitelabeliq.com"];
 const PIPEDRIVE_NOTES = "pipedrive_note";
 const FATHOM_CALLS = "fathom_call";
 const EMAIL = "email";
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "claude-haiku-4-5";
 const PAGE = 100;
 /** Pipedrive paging stops here even if the watermark is never reached — a first run is finite. */
 const MAX_PAGES = 40;
