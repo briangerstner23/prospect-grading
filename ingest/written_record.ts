@@ -1,9 +1,16 @@
 /**
- * WLIQ Prospect Book — Pipedrive notes → facts and fact candidates.
+ * WLIQ Prospect Book — a written record → facts and fact candidates.
  *
- * Sales writes the best data in the business into Pipedrive notes: structured screening
- * summaries ("Classified GENUINE, ICP-5 … HIGH white-label signal") and prose client profiles
- * ("Client base skews small business + nonprofit"). The seed never read them. This module does.
+ * Sales writes the best data in the business into prose, never into a field: structured
+ * screening summaries ("Classified GENUINE, ICP-5 … HIGH white-label signal") in Pipedrive
+ * notes, what was actually said in a Fathom call summary, what a client asked for in an email
+ * thread. The seed read none of it. This module reads all of it.
+ *
+ * It is deliberately SOURCE-AGNOSTIC. A Pipedrive note, a Fathom summary and a Missive thread
+ * are the same thing to the book: something a person wrote, on a date, about an account, that
+ * a reader can be sent back to. Whoever pulls them says what `source` they carry and how a
+ * reader returns to the original; everything downstream — the rules below, the review queue,
+ * the audit trail — is identical for all of them. A new channel is a puller, not a rewrite.
  *
  * PURE. No clock (`as_of` is an input), no network, no filesystem, no model call. The reading of
  * free text into structured claims happens OUTSIDE this module and arrives as `extractions`;
@@ -37,16 +44,39 @@ import type { EvidenceLabel } from "../core/prospect_types.ts";
  * inputs
  * ------------------------------------------------------------------ */
 
-/** A Pipedrive note row, as the API returns it. `content` is HTML. */
-export interface PipedriveNote {
+/**
+ * Something a person wrote about an account: a CRM note, a call summary, an email thread.
+ * `content` may be HTML — stripHtml runs before anything reads it.
+ */
+export interface WrittenRecord {
   id: number | string;
+  /** The source system's own id for what this is attached to, when it has one. */
   org_id: number | string | null;
   content: string;
+  /** When it was written. A fact's observed_at comes from here, never from the run. */
   add_time: string;
   update_time?: string | null;
   /** Display name of whoever wrote it, when known — travels into the fact's note. */
   user_name?: string | null;
+  /**
+   * What kind of record this is: `pipedrive_note`, `fathom_call`, `missive_thread`. It becomes
+   * pb_facts.source — what the book says when asked where a fact came from.
+   */
+  source?: string;
+  /** Where a reader goes to see the original. Overrides the Pipedrive default below. */
+  url?: string | null;
+  /** What a fact calls it: "Pipedrive note 3873", "Fathom call 2026-06-04". */
+  label?: string | null;
+  /**
+   * The account this is about, when the puller already worked it out. A Pipedrive note knows
+   * its organisation; a call or an email knows only who was on it, so record_sources.ts
+   * attributes those by domain and sets this. When it is set nothing re-derives it.
+   */
+  account_id?: string;
 }
+
+/** What this type was called before the module served more than one system. */
+export type PipedriveNote = WrittenRecord;
 
 /** One thing an extractor claims a note says. The quote is what makes it checkable. */
 export interface ExtractedClaim {
@@ -93,7 +123,8 @@ export interface ExistingFact {
 
 export interface MapNotesInput {
   account_id: string;
-  notes: PipedriveNote[];
+  /** Every record for this account that the run read. */
+  notes: WrittenRecord[];
   extractions: NoteExtraction[];
   existing: ExistingFact[];
   /** Versioned extractor identity, e.g. "notes@v1". Part of every fingerprint. */
@@ -113,10 +144,11 @@ export interface NoteFact {
   key: string;
   value: unknown;
   evidence_label: EvidenceLabel;
-  source: "pipedrive_note";
+  /** Which written record it came from: pipedrive_note, fathom_call, missive_thread. */
+  source: string;
   source_id: string;
   evidence_url: string | null;
-  /** The verbatim sentence, plus who wrote the note and when. This is the audit trail. */
+  /** The verbatim sentence, plus who wrote it and when. This is the audit trail. */
   note: string;
   /** ISO date — the NOTE's date. */
   observed_at: string;
@@ -128,7 +160,7 @@ export interface FactCandidate {
   key: string;
   value: unknown;
   evidence_label: EvidenceLabel;
-  source: "pipedrive_note";
+  source: string;
   source_id: string;
   evidence_url: string | null;
   quote: string | null;
@@ -210,9 +242,20 @@ function bump(c: Record<string, number>, k: string): void {
   c[k] = (c[k] ?? 0) + 1;
 }
 
-/** The Pipedrive permalink for a note, when the org is known. */
-export function noteUrl(note: PipedriveNote): string | null {
+/** The source a puller did not name — the first channel the book ever read. */
+export const DEFAULT_SOURCE = "pipedrive_note";
+
+/** Where a reader goes to see the original. A puller may supply its own; this is the fallback. */
+export function noteUrl(note: WrittenRecord): string | null {
+  if (note.url !== undefined) return note.url;
   return note.org_id == null ? null : `https://app.pipedrive.com/organization/${note.org_id}#note-${note.id}`;
+}
+
+/** How a fact names its own origin, before the author and the date are appended. */
+export function recordLabel(note: WrittenRecord): string {
+  if (note.label) return note.label;
+  const source = note.source ?? DEFAULT_SOURCE;
+  return source === "pipedrive_note" ? `Pipedrive note ${note.id}` : `${source.replace(/_/g, " ")} ${note.id}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -226,7 +269,7 @@ export function mapPipedriveNotes(input: MapNotesInput): MapNotesResult {
   const counters: Record<string, number> = {};
   const supersedable = input.may_supersede ?? DEFAULT_SUPERSEDABLE;
 
-  const byId = new Map<string, PipedriveNote>();
+  const byId = new Map<string, WrittenRecord>();
   for (const n of input.notes) byId.set(String(n.id), n);
 
   // Latest fact per key wins as "what the book holds today".
@@ -259,7 +302,8 @@ export function mapPipedriveNotes(input: MapNotesInput): MapNotesResult {
 
     const who = note.user_name ? ` by ${note.user_name}` : "";
     const url = noteUrl(note);
-    const stamp = `Pipedrive note ${note.id}${who}, ${observed}`;
+    const source = note.source ?? DEFAULT_SOURCE;
+    const stamp = `${recordLabel(note)}${who}, ${observed}`;
 
     for (const claim of ex.claims) {
       if (!claim.key || claim.value === undefined) {
@@ -293,7 +337,7 @@ export function mapPipedriveNotes(input: MapNotesInput): MapNotesResult {
 
       /* Already on record from this same source, saying the same thing: nothing to add.
          Without this, re-reading a note under a new extractor version writes the fact twice. */
-      if (current !== undefined && !conflicts && current.source === "pipedrive_note") {
+      if (current !== undefined && !conflicts && current.source === source) {
         bump(counters, "already_on_record");
         continue;
       }
@@ -330,7 +374,7 @@ export function mapPipedriveNotes(input: MapNotesInput): MapNotesResult {
         key: claim.key,
         value: claim.value,
         evidence_label: "evidence",
-        source: "pipedrive_note",
+        source,
         source_id: String(note.id),
         evidence_url: url,
         note: `"${quote}" — ${stamp}`,
@@ -351,7 +395,7 @@ export function mapPipedriveNotes(input: MapNotesInput): MapNotesResult {
 function candidate(
   accountId: string,
   claim: ExtractedClaim,
-  note: PipedriveNote,
+  note: WrittenRecord,
   observed: string,
   fingerprint: string,
   url: string | null,
@@ -366,7 +410,7 @@ function candidate(
     key: claim.key,
     value: claim.value,
     evidence_label: "inferred",
-    source: "pipedrive_note",
+    source: note.source ?? DEFAULT_SOURCE,
     source_id: String(note.id),
     evidence_url: url,
     quote,

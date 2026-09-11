@@ -22,7 +22,7 @@ import {
   verifyClaims,
 } from "./notes_sweep.ts";
 import type { PlannedNote, SweepPlanInput } from "./notes_sweep.ts";
-import type { PipedriveNote } from "./pipedrive_notes.ts";
+import type { PipedriveNote } from "./written_record.ts";
 
 let passed = 0;
 const failures: string[] = [];
@@ -339,6 +339,26 @@ check("the lexicon is not empty", JUDGEMENT_MARKERS.length > 20);
   check("the prompt says silence is correct", /Silence is correct/.test(prompt));
   check("the prompt names the enum values it will accept", prompt.includes('"buys_real_projects"'));
   eq("the prompt is deterministic", extractionPrompt(), prompt);
+}
+
+
+/* ------------------------------------------------------------------ *
+ * 5 · a record that already knows its account
+ * ------------------------------------------------------------------ */
+
+{
+  // A call or an email is attributed by domain before it reaches the planner; the org map has
+  // nothing to say about it, and must not be allowed to refuse it.
+  const call = { ...note({ id: 8100, org_id: null, content: PROSE }), account_id: "acct-2" };
+  const p = planSweep({ ...BASE, notes: [call], accountByOrg: {} });
+  eq("a pre-attributed record is read without an org", p.read.length, 1);
+  eq("and keeps the account it arrived with", p.read[0].account_id, "acct-2");
+}
+{
+  // The record's own answer wins: it was worked out from who was actually on the thread.
+  const both = { ...note({ id: 8101 }), account_id: "acct-2" };
+  const p = planSweep({ ...BASE, notes: [both] });
+  eq("an attributed record does not get re-derived from its org", p.read[0].account_id, "acct-2");
 }
 
 /* ------------------------------------------------------------------ *

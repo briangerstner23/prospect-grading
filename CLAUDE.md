@@ -25,9 +25,11 @@ fixtures/   golden.json — synthetic accounts with expected scorecards per rubr
 ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes.ts
             pipedrive_seed.ts (the certified roster from the read-only pull; PipedriveKeys =
             the seed's inferred field keys) · pipedrive_webhook.ts · fathom_webhook.ts ·
-            webhook_signatures.ts · pipedrive_notes.ts (a note's claims → facts or a review
-            queue) · notes_sweep.ts (which notes are worth a model call, and what a model is
-            allowed to have said — the quote check lives here) (+ *_test.ts)
+            webhook_signatures.ts · written_record.ts (any written record's claims → facts or a
+            review queue; source-agnostic) · record_sources.ts (Fathom / Gmail / Pipedrive →
+            WrittenRecord, and the domain attribution that decides WHICH account) ·
+            notes_sweep.ts (which records are worth a model call, and what a model is allowed
+            to have said — the quote and judgement checks live here) (+ *_test.ts)
 supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron · 120200 merge ·
             120300 fixes · 120400 candidate review · 20260910141528 touch search_path ·
             20260910190000 public read · 20260911001048 apollo staging ·
@@ -97,6 +99,10 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   `PB_FATHOM_WEBHOOK_SECRET`, `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP`,
   `PB_PIPEDRIVE_API_TOKEN`, and `PB_ANTHROPIC_API_KEY` (**not yet set** — pb-notes answers 503
   and writes no run row until it is, so the nightly sweep is silent rather than failing).
+  pb-notes sweeps three channels, each behind its own credential and its own watermark row:
+  `pipedrive_note` (PB_PIPEDRIVE_API_TOKEN, set), `fathom_call` (**PB_FATHOM_API_KEY, not set**)
+  and `email` (**PB_GMAIL_REFRESH_TOKEN + PB_GMAIL_CLIENT_ID + PB_GMAIL_CLIENT_SECRET, not
+  set**). A channel with no credential is skipped and said so in the run's notes.
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
   Two cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first so

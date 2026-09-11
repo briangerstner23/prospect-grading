@@ -10,7 +10,7 @@ container, so the handlers themselves are syntax-checked and type-checked, not e
 supabase/functions/
   pb-sync/index.ts               bearer-token bulk ingest of packs (+ rubric version upsert)
   pb-score/index.ts              score every account → pb_reads; preview a draft rubric
-  pb-notes/index.ts              nightly Pipedrive notes sweep → pb_facts / pb_fact_candidates
+  pb-notes/index.ts              nightly sweep of notes, calls and email → pb_facts / pb_fact_candidates
   pb-fathom-webhook/index.ts     Standard-Webhooks check → pb_webhook_inbox → pb_calls
   pb-pipedrive-webhook/index.ts  HTTP Basic check → pb_webhook_inbox → pb_deals / pb_accounts / pb_contacts
   _shared/
@@ -39,6 +39,10 @@ and `ingest/`, run `bash scripts/sync_shared.sh`, redeploy. `bash scripts/sync_s
 | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | the `whsec_…` Fathom returns when the webhook is created |
 | `PB_PIPEDRIVE_WEBHOOK_BASIC` | pb-pipedrive-webhook | `user:pass` configured on the Pipedrive webhook |
 | `PB_PIPEDRIVE_API_TOKEN` | pb-notes | Pipedrive API token; the sweep pulls `/v1/notes` with it |
+| `PB_FATHOM_API_KEY` | pb-notes | Fathom API key; the sweep pulls call SUMMARIES (never transcripts). **Not yet set** |
+| `PB_GMAIL_REFRESH_TOKEN` | pb-notes | Google OAuth refresh token for the mailbox to read. An access token lasts an hour, so the run exchanges this for one each time. **Not yet set** |
+| `PB_GMAIL_CLIENT_ID` | pb-notes | the OAuth client the refresh token belongs to. **Not yet set** |
+| `PB_GMAIL_CLIENT_SECRET` | pb-notes | its secret. **Not yet set** |
 | `PB_ANTHROPIC_API_KEY` | pb-notes | reads a note into claims. **Not yet set** — until it is, pb-notes answers 503 and writes no run row, so the nightly job is silent rather than failing |
 | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | JSON `{deals:{<hash>:{label,options}}, organizations:{…}, persons:{…}}` written by the collector that reads `/v2/dealFields` and `/v1/organizationFields`; absent → custom fields pass through unlabelled |
 

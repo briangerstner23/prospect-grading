@@ -14,7 +14,7 @@
  * Every claim arrives with a sentence the model says supports it. We check that sentence
  * against the note's own text. A quote that is not there was invented, and an invented quote
  * can never become a fact — verifyClaims strips it, which drops the claim to the review queue
- * by the no-quote rule in pipedrive_notes.ts. Hallucinated evidence is therefore structurally
+ * by the no-quote rule in written_record.ts. Hallucinated evidence is therefore structurally
  * unable to reach pb_facts, without anyone having to trust the model.
  *
  * Everything else is a whitelist: only keys the book knows, only values those keys can hold,
@@ -24,8 +24,8 @@
  * Runs under Deno and `node --experimental-strip-types`.
  */
 
-import { stripHtml } from "./pipedrive_notes.ts";
-import type { ExtractedClaim, NoteExtraction, PipedriveNote } from "./pipedrive_notes.ts";
+import { stripHtml } from "./written_record.ts";
+import type { ExtractedClaim, NoteExtraction, PipedriveNote } from "./written_record.ts";
 
 /* ------------------------------------------------------------------ *
  * what a model may claim
@@ -138,8 +138,10 @@ export function planSweep(input: SweepPlanInput): SweepPlan {
       continue;
     }
 
+    // A puller that already knows the account (a call or an email, attributed by domain) says
+    // so on the record; only a Pipedrive note is looked up by its organisation here.
     const orgKey = note.org_id == null ? "" : String(note.org_id);
-    const account_id = input.accountByOrg[orgKey];
+    const account_id = note.account_id ?? input.accountByOrg[orgKey];
     if (!account_id) {
       notes.push(`Note ${note.id} belongs to org ${orgKey || "(none)"}, which is not an account in the book; skipped.`);
       bump(counters, "org_not_in_book");

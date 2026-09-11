@@ -1,8 +1,8 @@
 /**
  * WLIQ Prospect Book — Pipedrive notes → facts and candidates, tests.
  *
- * Run:  node --experimental-strip-types ingest/pipedrive_notes_test.ts
- *   or: deno run ingest/pipedrive_notes_test.ts
+ * Run:  node --experimental-strip-types ingest/written_record_test.ts
+ *   or: deno run ingest/written_record_test.ts
  *
  * Every agency, person and note here is INVENTED (rule 2 — no prospect data in this repo).
  * The two fixture families are the SHAPES the real notes come in, re-cast on made-up
@@ -24,14 +24,14 @@ import {
   noteUrl,
   sameValue,
   stripHtml,
-} from "./pipedrive_notes.ts";
+} from "./written_record.ts";
 import type {
   ExistingFact,
   ExtractedClaim,
   MapNotesInput,
   NoteExtraction,
   PipedriveNote,
-} from "./pipedrive_notes.ts";
+} from "./written_record.ts";
 
 let passed = 0;
 const failures: string[] = [];
@@ -463,13 +463,13 @@ const HUMAN_HELD: ExistingFact = {
 
 const total = passed + failures.length;
 if (failures.length > 0) {
-  console.error(`pipedrive_notes_test: ${failures.length} of ${total} checks FAILED`);
+  console.error(`written_record_test: ${failures.length} of ${total} checks FAILED`);
   for (const f of failures) console.error(`  ✗ ${f}`);
   if (typeof (globalThis as { process?: { exit: (c: number) => void } }).process !== "undefined") {
     (globalThis as unknown as { process: { exit: (c: number) => void } }).process.exit(1);
   } else {
-    throw new Error("pipedrive_notes_test failed");
+    throw new Error("written_record_test failed");
   }
 } else {
-  console.log(`pipedrive_notes_test: ${passed} checks passed`);
+  console.log(`written_record_test: ${passed} checks passed`);
 }
