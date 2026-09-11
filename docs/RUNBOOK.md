@@ -554,20 +554,36 @@ update pb_rubric_versions set status = 'active', activated_by = '<owner email>',
 
 ## 17 · The nightly notes sweep (`pb-notes`)
 
-Reads Pipedrive notes into facts and a review queue. Runs at **05:45 UTC**, half an hour before
-the nightly score, so a note read in the morning changes that morning's tier.
+Reads the written record into facts and a review queue. Runs at **05:45 UTC**, half an hour
+before the nightly score, so something read in the morning changes that morning's tier.
+
+Three channels, swept in one run: `fathom_call` (the summaries the webhook already wrote into
+`pb_calls`), `pipedrive_note`, and `email`. Each has its own watermark row and its own
+credential, and **a channel with no credential is skipped and said so in the run's notes** — it
+is not an error.
 
 ### Before it can run
 
-`pb-notes` answers **503 and writes no `pb_runs` row** until both of these are in Vault. An
-unconfigured sweep is silent, not a nightly failure.
+`pb-notes` answers **503 and writes no `pb_runs` row** without `PB_ANTHROPIC_API_KEY`; that one
+key is the whole sweep. Everything else only decides how many channels do work. Check the real
+state rather than this table:
 
-| Secret | What for |
-|---|---|
-| `PB_PIPEDRIVE_API_TOKEN` | pulling the notes (already set) |
-| `PB_ANTHROPIC_API_KEY` | reading each note into claims (**not yet set**) |
+```sql
+select name from vault.secrets where name like 'PB_%' order by name;
+```
 
-Add the missing one the same way as the others:
+| Secret | Channel it opens | State (11 Sep 2026) |
+|---|---|---|
+| `PB_ANTHROPIC_API_KEY` | all of them — without it the function 503s | **set** |
+| *(none)* | `fathom_call` — reads `pb_calls`, which the webhook fills | always on |
+| `PB_PIPEDRIVE_API_TOKEN` | `pipedrive_note` | not set |
+| `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | `email` | not set |
+| `PB_EXTRACTOR_MODEL` | optional; defaults to `claude-sonnet-5` | not set |
+
+Gmail wants a **refresh** token, not an access token: an access token dies in an hour and the
+job runs at 05:45. The function exchanges the refresh token for an access token on each run.
+
+Add a missing one the same way as the others:
 
 ```sql
 select vault.create_secret('sk-ant-…', 'PB_ANTHROPIC_API_KEY', 'pb-notes extractor');
@@ -590,26 +606,76 @@ curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
 curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
   -H "Content-Type: application/json" --data '{"max_notes":50}'
 
+# One channel only, and a longer self-imposed deadline.
+curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{"sources":["fathom_call"],"max_notes":8,"budget_ms":110000}'
+
 # Re-read EVERYTHING from the beginning (a new extractor version, say). Expensive: one model
-# call per note with prose in it, across the whole roster.
+# call per record with prose in it, across the whole roster. The watermark carries what one
+# run cannot finish, so this is several runs, not one.
 curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
   -H "Content-Type: application/json" --data '{"since":null,"max_notes":250}'
 ```
 
-Cost is bounded twice: the watermark means a run reads only what changed (steady state is a
-handful of notes a night), and `max_notes` caps a single run. A re-run over the same text costs
-nothing to write — the fingerprint over (note id · updated_at · extractor · key) already refuses
-it — but it does re-spend the model call, so prefer the watermark over `since: null`.
+From this build container there is no route to `*.supabase.co`; call the function through
+`pg_net` instead and read the reply out of `net._http_response`:
+
+```sql
+select net.http_post(
+  url     := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-notes',
+  headers := jsonb_build_object('Content-Type','application/json',
+    'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets
+                                  where name = 'PB_SYNC_TOKEN' limit 1)),
+  body    := jsonb_build_object('sources', jsonb_build_array('fathom_call'),
+                                'max_notes', 8, 'budget_ms', 110000),
+  timeout_milliseconds := 150000) as request_id;
+
+-- a minute or two later, with the id that returned
+select status_code, content from net._http_response where id = <request_id>;
+```
+
+### What bounds a run, and what happens at each edge
+
+| Bound | What it does | What carries the rest |
+|---|---|---|
+| the watermark | a run reads only what changed since last time | — |
+| `max_notes` (default 120) | caps records read in one run | the watermark |
+| `budget_ms` (default 110 000) | **a self-imposed deadline.** At ~45s a record that is a handful per run | the watermark |
+
+The deadline is the important one. The platform kills a long function without warning, and a
+run killed mid-flight loses every model call it paid for and leaves `pb_runs` saying `running`
+forever — which is exactly what happened on 11 Sep before this was added. So the sweep stops
+*itself*: it checks the clock before each record, and when the budget is spent it finishes the
+run cleanly, sets `stopped_on_time`, and leaves the watermark where the last finished record
+put it.
+
+That works because **each record is written as it is read**, not accumulated to the end. The
+order is: read → write facts and candidates → *then* advance the watermark. A record is never
+marked read until its rows are in the database, and a failed write stops the run rather than
+stepping over it.
+
+The one exception is a record the model cannot be read from at all — a truncated or unparseable
+reply. That failure is deterministic, so holding the watermark there would wedge the channel on
+one bad record forever and nothing after it would ever be read. Instead the run **skips past
+it**: `<source>.extractor_failed` goes up and the run's notes name the record and say
+`SKIPPED — re-read it with since:null once the cause is fixed`. Re-reading is cheap to write
+(the fingerprint refuses a duplicate) and costs one model call per record.
+
+A re-run over the same text costs nothing to write — the fingerprint over
+(record id · updated_at · extractor · key) already refuses it — but it does re-spend the model
+call, so prefer the watermark over `since: null`.
 
 ### Read the result
 
 ```sql
--- where the sweep got to
-select * from pb_source_watermarks where source = 'pipedrive_note';
+-- where each channel got to
+select source, last_seen_at, last_run_at, note from pb_source_watermarks
+where source in ('fathom_call','pipedrive_note','email') order by source;
 
--- the last few runs, with the counters
-select started_at, status, counts, errors
-from pb_runs where source = 'pipedrive_note' order by started_at desc limit 5;
+-- the last few runs, with the counters. Counters are prefixed by channel.
+select started_at, finished_at, status, counts, errors
+from pb_runs order by started_at desc limit 5;
 ```
 
 The counters worth looking at:
@@ -625,10 +691,14 @@ The counters worth looking at:
 | `key_not_extractable`, `value_out_of_shape` | the model returned something outside the contract; dropped |
 | `deferred_to_human` | a person already recorded that key and the note disagreed |
 | `org_not_in_book` | a note on an organisation with no account — usually a roster gap, not an error |
-| `extractor_failed` | the model call itself failed; those notes are left for the next run |
+| `extractor_failed` | the reply could not be read at all. **The record is skipped, not retried** — the run names it; re-read it with `since: null`. |
+| `stopped_on_time` | the run hit `budget_ms` and ended itself. Not a failure: everything read was written, and the watermark carries the rest. |
+| `over_run_cap` | more records were waiting than `max_notes` allowed; the watermark carries them |
 
-**If a run has errors the watermark is not advanced**, so the same notes are read again next
-time. That is deliberate: a partial write must not look complete.
+**A failed *write* stops the run where it stands** and the watermark does not pass the record,
+so the next run reads it again — a partial write must not look complete. A failed *read* is the
+other way round (see above): the record is skipped and named, because retrying it forever would
+cost the whole channel.
 
 ### What a rater does with it
 
