@@ -167,6 +167,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .item .top{display:flex;gap:.4rem .8rem;align-items:center;flex-wrap:wrap}
 .item .top b{font-weight:600}
 .item .sub{font-size:.875rem;color:var(--muted);overflow-wrap:anywhere}
+.item .quote{margin:.15rem 0;padding:.4rem 0 .4rem .75rem;border-left:3px solid var(--line);font-size:.9375rem;line-height:1.45;overflow-wrap:anywhere}
 .item .body{font-size:.9375rem;overflow-wrap:anywhere;white-space:pre-wrap}
 .sub{font-size:.875rem;color:var(--muted)}
 details>summary{cursor:pointer;color:var(--accent-ink);font-size:.875rem;font-weight:500;list-style:none;width:fit-content}
@@ -229,6 +230,7 @@ footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;fle
         <select id="fStatus" aria-label="Filter by status"></select>
         <select id="fFlag" aria-label="Filter by flag"></select>
         <select id="fSource" aria-label="Filter by roster source"></select>
+        <select id="fQueue" aria-label="Filter by what is waiting on a person"></select>
         <button id="clear" class="ghost" type="button">Clear</button>
       </div>
       <div id="count" class="count"></div>
@@ -421,7 +423,7 @@ function safeUrl(u) {
   return /^https?:\/\/[^\s]+$/i.test(s) ? s : null;
 }
 
-function rowMatches(account, read, f) {
+function rowMatches(account, read, f, pending) {
   const sc = read?.scorecard ?? null;
   if (f.tier) {
     if (f.tier === "unscored") { if (read) return false; }
@@ -434,6 +436,13 @@ function rowMatches(account, read, f) {
   }
   if (f.flag && !(sc?.flags ?? []).includes(f.flag)) return false;
   if (f.source && (account.roster_source ?? "") !== f.source) return false;
+  if (f.queue) {
+    const open = pending?.open ?? 0;
+    const conflicts = pending?.conflicts ?? 0;
+    if (f.queue === "open" && open === 0) return false;
+    if (f.queue === "conflicts" && conflicts === 0) return false;
+    if (f.queue === "clear" && open > 0) return false;
+  }
   if (f.q) {
     const hay = [account.name, account.domain, sc?.cell, sc?.reason, sc?.status, sc?.effective_tier].filter(Boolean).join(" ").toLowerCase();
     if (!hay.includes(f.q.toLowerCase())) return false;
@@ -570,7 +579,8 @@ function plusDaysIso(days) { const d = new Date(); d.setUTCDate(d.getUTCDate() +
 const state = {
   db: null, session: null, email: null, member: null, role: null, wliq: false,
   rubric: null, rubricVersion: null, accounts: [], reads: new Map(), lastRun: null,
-  filters: { q: "", tier: "", status: "", flag: "", source: "" },
+  filters: { q: "", tier: "", status: "", flag: "", source: "", queue: "" },
+  pending: new Map(), // account_id → open fact claims; empty for a reader who cannot see the queue
   booted: false, current: null, flash: null,
 };
 const tiersBestFirst = () => (state.rubric?.vocabulary?.tiers ?? TIER_ORDER).slice().reverse();
@@ -686,16 +696,26 @@ async function loadRubric() {
 }
 
 async function loadBook() {
-  const [acc, reads, runs] = await Promise.all([
+  const [acc, reads, runs, pending] = await Promise.all([
     state.db.from("pb_accounts").select("*").in("book", ["prospect", "parked", "promoted"]).order("name"), // 'merged' rows are history, read only from a survivor's sheet
     state.db.from("pb_current_reads").select("*"),
     state.db.from("pb_runs").select("kind,status,started_at,finished_at,source").eq("kind", "score").order("started_at", { ascending: false }).limit(1),
+    // Signed-in only: pb_fact_candidates is behind auth, so a reader sees the book without the queue.
+    state.db.from("pb_fact_candidates").select("account_id,conflicts").eq("status", "proposed"),
   ]);
   if (acc.error) loadError("pb_accounts", acc.error);
   if (reads.error) loadError("pb_current_reads", reads.error);
   state.accounts = acc.data ?? [];
   state.reads = new Map((reads.data ?? []).map((r) => [r.account_id, r]));
   state.lastRun = { readAt: latestOf((reads.data ?? []).map((r) => r.run_at)), run: runs.data?.[0] ?? null };
+  // A count per account, so the roster shows where the work is without opening every sheet.
+  state.pending = new Map();
+  for (const row of pending.data ?? []) {
+    const at = state.pending.get(row.account_id) ?? { open: 0, conflicts: 0 };
+    at.open++;
+    if (row.conflicts) at.conflicts++;
+    state.pending.set(row.account_id, at);
+  }
   const anyUnvalidated = [...state.reads.values()].some((r) => r.scorecard?.validation === "UNVALIDATED");
   if (anyUnvalidated) {
     $("unvalidated").replaceChildren(
@@ -731,13 +751,14 @@ function buildFilters() {
   $("fFlag").replaceChildren(option("", "Any flag"), ...[...flags].sort().map((x) => option(x)));
   const sources = [...new Set(state.accounts.map((a) => a.roster_source).filter(Boolean))].sort();
   $("fSource").replaceChildren(option("", "Any roster source"), ...sources.map((s) => option(s)));
-  tierSel.value = f.tier; statusSel.value = f.status; $("fFlag").value = f.flag; $("fSource").value = f.source; $("q").value = f.q;
+  $("fQueue").replaceChildren(option("", "Anything, reviewed or not"), option("open", "Waiting on a person"), option("conflicts", "A claim disagrees with the book"), option("clear", "Nothing waiting"));
+  tierSel.value = f.tier; statusSel.value = f.status; $("fFlag").value = f.flag; $("fSource").value = f.source; $("fQueue").value = f.queue ?? ""; $("q").value = f.q;
 }
-for (const [id, key] of [["fTier", "tier"], ["fStatus", "status"], ["fFlag", "flag"], ["fSource", "source"]]) {
+for (const [id, key] of [["fTier", "tier"], ["fStatus", "status"], ["fFlag", "flag"], ["fSource", "source"], ["fQueue", "queue"]]) {
   $(id).addEventListener("change", () => { state.filters[key] = $(id).value; renderRoster(); });
 }
 $("q").addEventListener("input", () => { state.filters.q = $("q").value.trim(); renderRoster(); });
-$("clear").addEventListener("click", () => { state.filters = { q: "", tier: "", status: "", flag: "", source: "" }; buildFilters(); renderRoster(); });
+$("clear").addEventListener("click", () => { state.filters = { q: "", tier: "", status: "", flag: "", source: "", queue: "" }; buildFilters(); renderRoster(); });
 
 function tierChip(read) {
   if (!read) return chip("not yet scored", "tier t-none");
@@ -752,7 +773,7 @@ const qualWords = (q) => q ? `${q.label} · ${q.present_count} of 4 facts` : "�
 
 function renderRoster() {
   const ordered = orderAccounts(state.accounts, state.reads);
-  const shown = ordered.filter((a) => rowMatches(a, state.reads.get(a.id) ?? null, state.filters));
+  const shown = ordered.filter((a) => rowMatches(a, state.reads.get(a.id) ?? null, state.filters, state.pending.get(a.id) ?? null));
   const total = state.accounts.length;
   const when = state.lastRun?.readAt ? fmtDateTime(state.lastRun.readAt)
     : state.lastRun?.run ? `no reads yet; last score run ${fmtDateTime(state.lastRun.run.started_at)} (${state.lastRun.run.status})`
@@ -769,6 +790,15 @@ function renderRoster() {
 
 function cellOf(label, ...content) { return h("div", { class: "c" }, h("span", { class: "lab" }, label), ...content); }
 
+/** What is waiting on a person for this account. Empty for a reader who cannot see the queue. */
+function queueChips(accountId) {
+  const p = state.pending?.get(accountId);
+  if (!p || p.open === 0) return [];
+  const out = [chip(`${p.open} waiting on a person`, "c-warn")];
+  if (p.conflicts) out.push(chip(`${p.conflicts} disagree${p.conflicts === 1 ? "s" : ""} with the book`, "c-bad"));
+  return out;
+}
+
 function rosterRow(a, read) {
   const sc = read?.scorecard ?? null;
   const sub = [a.domain, a.roster_source ? `roster: ${a.roster_source}${a.roster_certified ? "" : " (uncertified)"}` : null].filter(Boolean).join(" · ");
@@ -780,7 +810,7 @@ function rosterRow(a, read) {
     cellOf("Year one", sc?.potential?.year1_band ?? "—"),
     cellOf("Urgency", sc ? urgencyChip(sc.signals?.urgency) ?? "—" : "—"),
     cellOf("Cell", sc?.cell ?? (sc ? statusChip(sc.status) : "—")),
-    h("div", { class: "c flags" }, h("span", { class: "lab" }, "Flags"), ...(sc?.flags ?? []).map(flagChip)),
+    h("div", { class: "c flags" }, h("span", { class: "lab" }, "Flags"), ...(sc?.flags ?? []).map(flagChip), ...queueChips(a.id)),
     h("div", { class: "reason" }, sc ? sc.reason : "Not yet scored — this account has no read; the nightly run will grade it from the facts on record."),
   );
 }
@@ -814,7 +844,7 @@ async function openSheet(id) {
     if (order) s = s.order(order.col, { ascending: !!order.asc, nullsFirst: false });
     return s;
   };
-  const [facts, factSources, signals, calls, deals, register, candidates, merged] = await Promise.all([
+  const [facts, factSources, signals, calls, deals, register, candidates, merged, factCands] = await Promise.all([
     q("pb_current_facts", "*", { col: "key", asc: true }),
     q("pb_facts", "source,observed_at,created_at,entered_by,stand_in"),
     q("pb_signals", "*", { col: "observed_at" }),
@@ -823,10 +853,11 @@ async function openSheet(id) {
     q("pb_register", "*", { col: "created_at" }),
     q("pb_identity_candidates", "*", { col: "created_at" }),
     db.from("pb_accounts").select("id,name,domain,roster_source,updated_at").eq("merged_into", id).order("updated_at", { ascending: false }),
+    q("pb_fact_candidates", "*", { col: "created_at" }),
   ]);
   if (window.location.hash !== "#account=" + encodeURIComponent(id)) return; // the reader moved on
-  const data = { facts: facts.data ?? [], factSources: factSources.data ?? [], signals: signals.data ?? [], calls: calls.data ?? [], deals: deals.data ?? [], register: register.data ?? [], candidates: candidates.data ?? [], merged: merged.data ?? [] };
-  const errors = [["pb_current_facts", facts.error], ["pb_facts", factSources.error], ["pb_signals", signals.error], ["pb_calls", calls.error], ["pb_deals", deals.error], ["pb_register", register.error], ["pb_identity_candidates", candidates.error], ["pb_accounts (merged rows)", merged.error]].filter(([, e]) => e);
+  const data = { facts: facts.data ?? [], factSources: factSources.data ?? [], signals: signals.data ?? [], calls: calls.data ?? [], deals: deals.data ?? [], register: register.data ?? [], candidates: candidates.data ?? [], merged: merged.data ?? [], factCands: factCands.data ?? [] };
+  const errors = [["pb_current_facts", facts.error], ["pb_facts", factSources.error], ["pb_signals", signals.error], ["pb_calls", calls.error], ["pb_deals", deals.error], ["pb_register", register.error], ["pb_identity_candidates", candidates.error], ["pb_accounts (merged rows)", merged.error], ["pb_fact_candidates", factCands.error]].filter(([, e]) => e);
   state.current = { account, read: state.reads.get(id) ?? null, data };
   renderSheet(errors);
 }
@@ -891,6 +922,7 @@ function renderSheet(errors) {
   parts.push(callsList(data.calls));
   parts.push(dealsList(data.deals, sc));
   parts.push(registerList(data.register));
+  parts.push(factQueue(data.factCands));
   parts.push(mergeQueue(data.candidates));
   if (data.merged.length) parts.push(mergedRows(data.merged));
 
@@ -1124,6 +1156,82 @@ function registerList(entries) {
     h("div", { class: "body" }, r.text ?? ""),
   ));
   return group("Register", `${entries.length}`, "Every decision that touches a grade lives here, never in a read.", list(items, "No register entry for this account."));
+}
+
+/* ---- fact queue (pb_fact_candidates) ----
+ * Claims read out of a note or a profile that were NOT written. Rule 8's shape, applied to
+ * facts: nothing a machine read becomes a fact on a machine's say-so. What makes a row
+ * reviewable in seconds is the quote — the reader sees the sentence, what the book holds
+ * today, and the link back to the source, without leaving the page.
+ */
+function factQueue(cands) {
+  const open = cands.filter((c) => c.status === "proposed");
+  const closed = cands.filter((c) => c.status !== "proposed");
+  const statusTone = (st) => st === "confirmed" ? "c-good" : st === "rejected" ? "c-bad" : st === "superseded" ? "" : "c-warn";
+
+  const row = (c) => {
+    const item = h("div", { class: "item" },
+      h("div", { class: "top" },
+        chip(c.status, statusTone(c.status)),
+        h("b", null, c.key),
+        h("span", { class: "mono" }, fmtFactValue(c.value)),
+        c.conflicts ? chip("disagrees with the book", "c-bad") : null,
+        c.confidence ? chip(`${c.confidence} confidence`, c.confidence === "high" ? "c-good" : "") : null,
+      ),
+      c.quote
+        ? h("blockquote", { class: "quote" }, "\u201c", c.quote, "\u201d")
+        : h("div", { class: "sub" }, "No sentence was offered for this claim \u2014 read the source before confirming it."),
+      h("div", { class: "sub" }, [
+        c.conflicts ? `the book holds ${fmtFactValue(c.current_value)}` : null,
+        c.source ? `from ${c.source}` : null,
+        c.extractor ? `read by ${c.extractor}` : null,
+        c.observed_at ? `said ${fmtDate(c.observed_at)}` : null,
+        c.reviewed_by ? `reviewed by ${c.reviewed_by} on ${fmtDate(c.reviewed_at)}` : null,
+      ].filter(Boolean).join(" \u00b7 ")),
+      c.note ? h("div", { class: "sub" }, c.note) : null,
+      c.evidence_url ? h("div", { class: "sub" }, h("a", { href: c.evidence_url, target: "_blank", rel: "noopener noreferrer" }, "Open the source")) : null,
+    );
+    if (c.status === "proposed" && canReview()) item.append(factReviewControls(c));
+    return item;
+  };
+
+  const items = [...open.map(row), ...closed.map(row)];
+  return group(
+    "Waiting on a person",
+    `${open.length}`,
+    "Claims read out of a note that were not written: no verbatim sentence behind them, confidence below high, or a person already recorded something else. Confirming one writes the fact under your name and dates it by the note, not by today.",
+    list(items, "Nothing about this account is waiting on a person."),
+  );
+}
+
+/** The database performs the decision (pb_review_fact_candidate): fact, supersessions and register row, in one transaction. */
+function factReviewControls(c) {
+  const note = h("input", { type: "text", placeholder: "Note (optional)", "aria-label": "Review note" });
+  const msg = h("div", { class: "notice hidden" });
+  const act = async (decision) => {
+    for (const b of buttons) b.disabled = true;
+    const { data, error } = await state.db.rpc("pb_review_fact_candidate", { p_candidate: c.id, p_decision: decision, p_note: note.value.trim() || null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); for (const b of buttons) b.disabled = false; return; }
+    const also = data?.superseded ? ` ${data.superseded} other proposal${data.superseded === 1 ? "" : "s"} for ${c.key} closed with it.` : "";
+    flash("ok", decision === "confirmed"
+      ? `${c.key} is now a fact on record under ${state.email}, dated ${fmtDate(c.observed_at)} from the source.${also} It reaches the grade at the next nightly run.`
+      : `Rejected the ${c.source} claim about ${c.key}; nothing was written. The decision is in the register.`);
+    await refreshSheet();
+  };
+  const buttons = [
+    h("button", { type: "button", class: "primary", onclick: () => act("confirmed") }, c.quote ? "Confirm \u2014 write the fact" : "Confirm anyway"),
+    h("button", { type: "button", class: "danger", onclick: () => act("rejected") }, "Reject"),
+  ];
+  return h("div", { class: "form", style: "margin-top:.5rem" }, h("div", { class: "inline" }, note, ...buttons), msg);
+}
+
+/** jsonb comes back as whatever it is; show it the way a reader would say it. */
+function fmtFactValue(v) {
+  if (v === null || v === undefined) return "nothing";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") return v;
+  return JSON.stringify(v);
 }
 
 /* ---- merge queue (pb_identity_candidates) ---- */
