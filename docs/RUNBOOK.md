@@ -484,11 +484,22 @@ select source, verified, count(*) from pb_webhook_inbox group by 1, 2;          
 `09d4e8cb36baa1d041968df3165b6e95aefe5a7a0e5ca3ba2538e08095c4f3d1`. **0.1.0 is still active and
 nothing has been re-scored.** See `docs/DECISIONS.md` §8 for why ICP was retired as the fit read.
 
-### 9.1 · pb-score must be redeployed first
+### 9.1 · pb-score must be redeployed first — **done 11 Sep 2026 (version 3)**
 
-The deployed `pb-score` predates the criteria path and would take the ICP branch, which 0.2.0
-no longer carries — it would throw a `RubricError` naming
-`dimension_b.base_tier_from_icp.map.<class>`. Rebuild and redeploy before previewing:
+This section was right, and the cost of skipping it is worth recording. The preview was run
+against the old `pb-score` first: it answered `ok:false` with an error on **every ranked row** —
+`'dimension_b.base_tier_from_icp.map.ICP-3' must be one of … (got nothing)` — because the
+deployed engine predated the criteria path and still took the ICP branch, which 0.2.0 no longer
+carries. Nothing was wrong with the draft; its stored spec matched the repo byte for byte.
+**The version in `pb_rubric_versions` says nothing about which engine is live**, so a rubric that
+moves a decision into a new spec key is not previewable until the function is redeployed.
+
+Version 3 was deployed and then checked against the ACTIVE rubric before being trusted: a 0.1.0
+run immediately before and after the redeploy returned identical counts (scored / ranked /
+parked / unclassified all equal, zero errors). That check is the point — a redeploy that changes
+nothing under the live rubric is the only kind that is safe to make outside a release.
+
+To rebuild and redeploy:
 
 ```bash
 bash scripts/build_functions.sh          # → dist/functions/pb-score/index.js

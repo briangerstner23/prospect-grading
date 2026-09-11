@@ -211,6 +211,43 @@ Nothing has been re-scored. Preview before activating, per rule 4:
 POST $FN/pb-score?rubric=0.2.0&preview=1
 ```
 
+### The preview runs, and it found the one thing to settle first (11 September 2026)
+
+The first preview attempt failed outright, and the cause is worth recording because it will
+recur: **the deployed `pb-score` predated the engine branch that reads `base_tier_from_fit`.**
+It took the ICP path unconditionally and raised
+`'dimension_b.base_tier_from_icp.map.ICP-3' must be one of … (got nothing)` on every ranked row.
+The draft was never at fault — its stored spec matched the repo byte for byte. **A rubric that
+moves a decision into a new spec key needs the function redeployed before the preview means
+anything**; the version number in `pb_rubric_versions` says nothing about which engine is live.
+
+With the current engine the preview is clean, and it changes a large share of the book — almost
+all of it downward. The cause is not that the agencies read worse. It is that **the six criteria
+are unanswered for nearly the whole roster**: only a handful of accounts have five or more of
+the six on record, and the Gold band needs `min_yes >= 5`. Gold becomes nearly unreachable by
+arithmetic, not by judgement.
+
+That exposes the one place this draft leaks against rule 5. `base_tier_from_fit` scores
+yes-answers, so **inside the band lookup an unknown and a "no" are the same thing** — both add
+nothing. The spec is explicit that "Strong on 5 of 6 answered" and "Strong on 5 of 6, two
+unknown" are different states, and `criteria_answered` does travel beside the score. But the
+TIER only consults it through `unclassified_when_answered_below`, which the draft sets to **1**.
+One answered criterion is therefore enough to publish a tier, so a barely-read agency lands in
+the lowest band rather than in Unclassified — graded on ignorance, which is exactly what rule 5
+forbids.
+
+**Not resolved here.** It is a toggle and the owner sets it. The two honest directions:
+
+- raise `unclassified_when_answered_below` so a thinly-read agency is Unclassified rather than
+  quietly Bronze — the answer that matches rule 5, at the cost of a larger Unclassified pile; or
+- answer the criteria first and activate afterwards. The answers are in the written record:
+  the `fathom_call` channel is read, `pipedrive_note` and `email` are still dark for want of
+  their credentials (`docs/RUNBOOK.md` §17).
+
+Either way, **activating 0.2.0 before one of those is done would restate the roster's ignorance
+as a demotion**, and the page would print it beside the word *anticipated* as though it were a
+finding.
+
 ### The non-agencies
 
 Eleven accounts in the warm list are not agencies (a tax service, a counselling practice, an
