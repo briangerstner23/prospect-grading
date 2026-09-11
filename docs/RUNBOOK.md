@@ -618,6 +618,10 @@ The counters worth looking at:
 |---|---|
 | `quote_verified` | claims whose sentence really was in the note — these can become facts |
 | `quote_not_in_note` | **the model invented a sentence.** The claim was kept for review and can never be written. A rising count means the prompt or the model needs attention. |
+| `observations` / `judgements` | how the run split what it read. A note full of judgements is a screening summary; one full of observations is a profile. |
+| `queued_judgement` | the sentence was real but it was somebody's assessment, so a person decides. Not a fault — this is the system working. |
+| `judgement_caught_by_lexicon` | the model called an opinion an observation and was overruled. A rising count means the prompt is drifting; a count near zero across many runs means the lexicon may be doing nothing and is worth re-reading. |
+| `already_on_record` | a note restated what it had already told us; nothing written, nothing queued |
 | `key_not_extractable`, `value_out_of_shape` | the model returned something outside the contract; dropped |
 | `deferred_to_human` | a person already recorded that key and the note disagreed |
 | `org_not_in_book` | a note on an organisation with no account — usually a roster gap, not an error |
@@ -650,7 +654,20 @@ from pb_fact_candidates group by key, extractor, status order by key;
 
 ### Changing what it reads
 
-`EXTRACTABLE` and `extractionPrompt()` live together in `ingest/notes_sweep.ts` so the prompt can
-never ask for something the validator will not accept. Change either and **bump
+`EXTRACTABLE`, `JUDGEMENT_MARKERS` and `extractionPrompt()` live together in
+`ingest/notes_sweep.ts` so the prompt can never ask for something the validator will not accept.
+
+**Tuning the judgement lexicon.** A false positive costs one row in the review queue; a false
+negative puts somebody's opinion in the book as evidence. Tune for the cheap mistake — when in
+doubt, add the phrase. Check a candidate phrase against the real corpus before adding it:
+
+```sql
+-- how often a phrase appears in sentences we have already written as facts
+select count(*) from pb_facts
+where source = 'pipedrive_note' and note ilike '%<phrase>%';
+```
+
+If that returns rows, the phrase would have blocked facts you already accepted — look at them
+before adding it. Change either and **bump
 `EXTRACTOR_VERSION`** — it is part of every fingerprint, so a new version re-reads every note
 instead of silently mixing two readings. Then `bash scripts/sync_shared.sh`, rebuild, redeploy.

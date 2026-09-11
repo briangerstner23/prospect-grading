@@ -285,6 +285,39 @@ rather than a write. `pb_review_fact_candidate` carries a reviewer's decision th
 transaction: the fact, dated by the note rather than by today; every other open proposal for that
 key closed with it; and a register row either way.
 
+### A verified quote proves provenance, not truth (added the same day)
+
+The quote check answers *did someone write this?* It does not answer *is this so?* — and the
+real notes are full of sentences that pass it while being pure opinion. Two from the corpus:
+
+> "Classified GENUINE, ICP-5 (Strategic Consultant), Priority B, Moderate fit, HIGH white-label
+> signal."
+
+> "he did seem incredibly knowledgeable and incredibly experienced"
+
+Both are verbatim. Neither is checkable. Writing them as `evidence` would launder a rater's
+judgement into a fact and then feed it to the engine as though it had been observed.
+
+So a claim must now declare whether its supporting sentence is an **observation** — something
+about the world a reader could check — or a **judgement**. Only an observation can write itself;
+a judgement reaches a person however confident the reader was, carrying its sentence so the
+reviewer can weigh it. Absent is read as a judgement: the cautious default, not the convenient
+one.
+
+The model's own answer is not the last word, because a model that wants to be useful will call
+an opinion an observation. `JUDGEMENT_MARKERS` — 46 hedges, classifications and ratings, every
+one drawn from a real note — overrules it, and either vote for judgement is decisive. On the
+corpus it correctly passes *"They work with one or two freelancers for web projects"* and
+*"lack in-house design/development capabilities"* while catching both sentences above.
+
+This is the honest limit of the whole design: **the machine can prove where a sentence came
+from and can recognise the shape of an opinion. It cannot tell you whether the sentence is
+true.** Only a person does that, which is what the queue is for.
+
+The account sheet now shows the same chain in reverse — **Where this grade came from** lists
+every input the engine read, what supplied it, the verbatim sentence, and whether the rule that
+read it fired. An input with no fact behind it says so, and says what rule 5 means for it.
+
 ### What is not settled
 
 The precision of the extractor itself. The eight-account pass was read by hand, which measures
