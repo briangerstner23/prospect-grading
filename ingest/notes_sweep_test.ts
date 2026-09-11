@@ -10,6 +10,8 @@
 
 import {
   EXTRACTABLE,
+  extractorId,
+  PROMPT_VERSION,
   JUDGEMENT_MARKERS,
   judgementMarker,
   extractionPrompt,
@@ -22,6 +24,7 @@ import {
   verifyClaims,
 } from "./notes_sweep.ts";
 import type { PlannedNote, SweepPlanInput } from "./notes_sweep.ts";
+import { noteFingerprint } from "./written_record.ts";
 import type { PipedriveNote } from "./written_record.ts";
 
 let passed = 0;
@@ -354,6 +357,26 @@ const DEAL = plannedOf({
   const prompt = extractionPrompt();
   check("the prompt warns that not mentioned is not the same as not there", /Not mentioned is not the same as not there/.test(prompt));
   for (const k of ["money", "authority", "specification", "timing"]) check(`the prompt names ${k}`, prompt.includes(k));
+}
+
+/* ------------------------------------------------------------------ *
+ * 3d · the reader's identity includes the model
+ * ------------------------------------------------------------------ */
+
+{
+  eq("extractorId names the prompt and the model", extractorId("claude-sonnet-5"), "notes@v3+claude-sonnet-5");
+  check("two models are two different readers", extractorId("claude-sonnet-5") !== extractorId("claude-haiku-4-5"));
+  check("two prompts are two different readers", extractorId("claude-sonnet-5", "notes@v4") !== extractorId("claude-sonnet-5", "notes@v3"));
+  eq("the prompt version defaults to the current one", extractorId("m"), `${PROMPT_VERSION}+m`);
+}
+{
+  // This is the property that makes a model comparison possible at all: the same record read
+  // by two models must produce two different fingerprints, or the second read is skipped as
+  // already-seen and the new model silently never sees anything.
+  const rec = { id: 11, org_id: 1, add_time: "2026-01-01 00:00:00", update_time: "2026-01-01 00:00:00", content: "x" };
+  const a = noteFingerprint([String(rec.id), rec.update_time, extractorId("claude-sonnet-5"), "headcount"]);
+  const b = noteFingerprint([String(rec.id), rec.update_time, extractorId("claude-haiku-4-5"), "headcount"]);
+  check("the same record read by two models does not collide", a !== b);
 }
 
 /* ------------------------------------------------------------------ *

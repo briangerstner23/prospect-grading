@@ -652,10 +652,56 @@ select key, extractor, status, count(*)
 from pb_fact_candidates group by key, extractor, status order by key;
 ```
 
+### Choosing the model, and comparing two
+
+The reader is `PB_EXTRACTOR_MODEL` in Vault, defaulting to `claude-sonnet-5`. Change it without
+a redeploy:
+
+```sql
+select vault.create_secret('claude-haiku-4-5', 'PB_EXTRACTOR_MODEL', 'pb-notes reader');
+-- already set? update instead:
+-- select vault.update_secret((select id from vault.secrets where name='PB_EXTRACTOR_MODEL'), 'claude-haiku-4-5');
+```
+
+**Why Sonnet is the default.** Every guard in this pipeline protects *precision*: the quote
+check, the whitelist, the judgement rule and the review queue all stop a wrong fact from being
+written. **Nothing protects recall.** A claim the reader fails to notice leaves no trace — no
+counter moves, no queue row appears, and silence is indistinguishable from an honest "the note
+does not say it". Noticing is the part worth paying for, and at this volume the difference
+between readers is pennies a month.
+
+**To compare two readers on the same corpus**, run one against the other with `model` in the
+body. The extractor id is `<prompt version>+<model>`, and it is part of every fingerprint, so
+the two readings do not collide — both sets of candidates sit side by side:
+
+```bash
+curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{"since":null,"max_notes":40,"model":"claude-haiku-4-5"}'
+```
+
+```sql
+-- what each reader found, per key. Recall differences show up as missing rows, not wrong ones.
+select extractor, key, count(*) as claims,
+       count(*) filter (where quote is not null) as quote_backed
+from pb_fact_candidates group by extractor, key order by key, extractor;
+
+-- and what each wrote as fact
+select entered_by as extractor, key, count(*)
+from pb_facts where source in ('pipedrive_note','fathom_call','email')
+group by entered_by, key order by key, extractor;
+```
+
+Read the *union* first: a key one reader found and the other did not is the finding. A reader
+that produces fewer claims is not being careful — the guards already handle carefulness — it is
+missing things.
+
 ### Changing what it reads
 
 `EXTRACTABLE`, `JUDGEMENT_MARKERS` and `extractionPrompt()` live together in
 `ingest/notes_sweep.ts` so the prompt can never ask for something the validator will not accept.
+Change either and bump `PROMPT_VERSION` — it is half of the extractor id, so a new prompt
+re-reads every record instead of silently mixing two readings (the model is the other half).
 
 **Tuning the judgement lexicon.** A false positive costs one row in the review queue; a false
 negative puts somebody's opinion in the book as evidence. Tune for the cheap mistake — when in

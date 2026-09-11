@@ -47,7 +47,7 @@ import { finishRun, runStatus, startRun } from "../_shared/log.ts";
 import { errorMessage, isRec, json, safeJsonParse } from "../_shared/helpers.ts";
 import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
-  EXTRACTOR_VERSION,
+  extractorId,
   extractionPrompt,
   planSweep,
   verifyClaims,
@@ -63,7 +63,17 @@ const OUR_DOMAINS = ["whitelabeliq.com"];
 const PIPEDRIVE_NOTES = "pipedrive_note";
 const FATHOM_CALLS = "fathom_call";
 const EMAIL = "email";
-const MODEL = "claude-haiku-4-5";
+/**
+ * Which model reads the records. Overridable from Vault (`PB_EXTRACTOR_MODEL`) so switching is
+ * a secret change, not a redeploy — and so the two can be compared on the same corpus.
+ *
+ * Sonnet 5 is the default deliberately. Every guard in this pipeline protects PRECISION — the
+ * quote check, the whitelist, the judgement rule and the review queue all stop a wrong fact
+ * from being written. NOTHING protects RECALL: a claim the reader simply fails to notice
+ * leaves no trace anywhere, and silence is indistinguishable from an honest "the note does not
+ * say". Noticing is the part worth paying for, and at this volume the difference is pennies.
+ */
+const DEFAULT_MODEL = "claude-sonnet-5";
 const PAGE = 100;
 /** Pipedrive paging stops here even if the watermark is never reached — a first run is finite. */
 const MAX_PAGES = 40;
@@ -75,6 +85,8 @@ interface Body {
   dry_run?: unknown;
   /** Which channels to sweep. Default: every one that has a credential. */
   sources?: unknown;
+  /** Read with this model for one run, to compare it against the standing one. */
+  model?: unknown;
 }
 
 function today(): string {
@@ -281,7 +293,7 @@ async function gmailAccessToken(refresh: string, clientId: string, clientSecret:
 }
 
 /** One record, one model call. Returns whatever came back; verifyClaims decides what it is worth. */
-async function readRecord(apiKey: string, planned: PlannedNote): Promise<unknown> {
+async function readRecord(apiKey: string, model: string, planned: PlannedNote): Promise<unknown> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -290,7 +302,7 @@ async function readRecord(apiKey: string, planned: PlannedNote): Promise<unknown
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       max_tokens: 1500,
       temperature: 0,
       system: extractionPrompt(),
@@ -333,6 +345,8 @@ Deno.serve(async (req: Request) => {
   if (apiKey === null) {
     return json({ ok: false, error: "PB_ANTHROPIC_API_KEY is not in Vault; nothing can be read" }, 503);
   }
+  const model = (typeof body.model === "string" && body.model) || (await getSecret(db, "PB_EXTRACTOR_MODEL")) || DEFAULT_MODEL;
+  const extractor = extractorId(model);
 
   const as_of = typeof body.as_of === "string" ? body.as_of : today();
   const max_notes = typeof body.max_notes === "number" && body.max_notes > 0 ? Math.floor(body.max_notes) : 250;
@@ -448,7 +462,7 @@ Deno.serve(async (req: Request) => {
         for (const p of planned) {
           let response: unknown = null;
           try {
-            response = await readRecord(apiKey, p);
+            response = await readRecord(apiKey, model, p);
           } catch (e) {
             notes.push(`${p.note.label ?? p.note.id}: ${errorMessage(e)}; left for the next run.`);
             counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
@@ -481,7 +495,7 @@ Deno.serve(async (req: Request) => {
           notes: planned.map((p) => p.note),
           extractions,
           existing: held,
-          extractor: EXTRACTOR_VERSION,
+          extractor,
           as_of,
         });
         notes.push(...mapped.notes);
@@ -497,7 +511,7 @@ Deno.serve(async (req: Request) => {
             evidence_url: f.evidence_url,
             note: f.note,
             observed_at: f.observed_at,
-            entered_by: EXTRACTOR_VERSION,
+            entered_by: extractor,
             stand_in: false,
           });
         }
@@ -533,7 +547,7 @@ Deno.serve(async (req: Request) => {
       notes.push("Dry run: nothing was written and no watermark moved.");
       await finishRun(db, runId, "success", { ...counters, facts: factRows.length, candidates: candidateRows.length }, notes);
       return json({
-        ok: true, run_id: runId, dry_run: true, swept,
+        ok: true, run_id: runId, dry_run: true, swept, extractor,
         would_write: { facts: factRows.length, candidates: candidateRows.length },
         next_watermarks: newWatermarks, counters, notes,
       });
@@ -562,7 +576,7 @@ Deno.serve(async (req: Request) => {
           source,
           last_seen_at,
           last_run_at: new Date().toISOString(),
-          note: `${EXTRACTOR_VERSION}: swept ${source}.`,
+          note: `${extractor}: swept ${source}.`,
         }, { onConflict: "source" });
         if (error) { errors++; notes.push(`pb_source_watermarks(${source}): ${error.message}`); }
       }
@@ -572,7 +586,7 @@ Deno.serve(async (req: Request) => {
 
     await finishRun(db, runId, runStatus(wrote, errors), { ...counters, facts: factRows.length, candidates: candidateRows.length, wrote, errors }, notes);
     return json({
-      ok: errors === 0, run_id: runId, swept,
+      ok: errors === 0, run_id: runId, swept, extractor,
       wrote: { facts: factRows.length, candidates: candidateRows.length },
       next_watermarks: newWatermarks, counters, notes,
     });

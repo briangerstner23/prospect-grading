@@ -372,7 +372,28 @@ function describe(v: unknown): string {
  * Change this and the extractor version changes too — every fingerprint carries the extractor
  * string, so a new prompt re-reads every note rather than silently mixing two readings.
  */
-export const EXTRACTOR_VERSION = "notes@v3";
+/** The instruction's own version. Bump it whenever EXTRACTABLE or the prompt below changes. */
+export const PROMPT_VERSION = "notes@v3";
+
+/**
+ * Who read this record — the prompt AND the model together.
+ *
+ * Every fingerprint carries this string, so it is what makes a re-read happen. Leaving the
+ * model out of it would mean switching models changed nothing: the watermark and the
+ * fingerprints would both say "already read", and the new model would silently never see a
+ * single record. It would also make the review queue unreadable — confirm and reject rates
+ * per key are only meaningful if you know which reader produced them.
+ *
+ * It is also what makes a comparison possible. Two models reading the same corpus produce two
+ * non-colliding sets of candidates, so they can sit side by side and be diffed rather than
+ * one overwriting the other.
+ */
+export function extractorId(model: string, promptVersion: string = PROMPT_VERSION): string {
+  return `${promptVersion}+${model}`;
+}
+
+/** Kept so a caller that has not been updated still compiles; prefer extractorId(model). */
+export const EXTRACTOR_VERSION = PROMPT_VERSION;
 
 export function extractionPrompt(): string {
   const keys = Object.entries(EXTRACTABLE).map(([k, s]) => {

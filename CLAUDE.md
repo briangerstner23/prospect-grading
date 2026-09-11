@@ -106,6 +106,7 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   | `PB_ANTHROPIC_API_KEY` | pb-notes (the extractor) | not set — pb-notes 503s, no run row |
   | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel) | not set |
   | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set |
+  | `PB_EXTRACTOR_MODEL` | pb-notes | optional — defaults to `claude-sonnet-5` |
   | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | not set (PHASE0 A3) |
   | `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set |
 
