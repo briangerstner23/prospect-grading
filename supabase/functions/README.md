@@ -38,7 +38,7 @@ and `ingest/`, run `bash scripts/sync_shared.sh`, redeploy. `bash scripts/sync_s
 | `PB_SYNC_TOKEN` | pb-sync, pb-score, the pg_cron nightly job | random bearer token |
 | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | the `whsec_…` Fathom returns when the webhook is created |
 | `PB_PIPEDRIVE_WEBHOOK_BASIC` | pb-pipedrive-webhook | `user:pass` configured on the Pipedrive webhook |
-| `PB_PIPEDRIVE_API_TOKEN` | pb-notes | Pipedrive API token; the sweep pulls `/v1/notes` with it |
+| `PB_PIPEDRIVE_API_TOKEN` | pb-notes | Pipedrive API token; the sweep pulls `/v1/notes` with it. **Not yet set** — the `pipedrive_note` channel is skipped until it is |
 | `PB_GMAIL_REFRESH_TOKEN` | pb-notes | Google OAuth refresh token for the mailbox to read. An access token lasts an hour, so the run exchanges this for one each time. **Not yet set** |
 | `PB_GMAIL_CLIENT_ID` | pb-notes | the OAuth client the refresh token belongs to. **Not yet set** |
 | `PB_GMAIL_CLIENT_SECRET` | pb-notes | its secret. **Not yet set** |

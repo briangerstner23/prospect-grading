@@ -95,15 +95,25 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   This project is shared with other WLIQ systems; everything of ours is prefixed `pb_`.
 - Deploy through the Supabase MCP (`apply_migration`, `deploy_edge_function`,
   `execute_sql`); the build container has no direct route to `*.supabase.co`.
-- Secrets in Vault, read by `pb_secret()` (service role only): `PB_SYNC_TOKEN`,
-  `PB_FATHOM_WEBHOOK_SECRET`, `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP`,
-  `PB_PIPEDRIVE_API_TOKEN`, and `PB_ANTHROPIC_API_KEY` (**not yet set** — pb-notes answers 503
-  and writes no run row until it is, so the nightly sweep is silent rather than failing).
-  pb-notes sweeps three channels, each behind its own credential and its own watermark row:
-  `pipedrive_note` (PB_PIPEDRIVE_API_TOKEN, set), `fathom_call` (**no credential** — it reads
-  `pb_calls`, which the webhook fills with the summary and the resolved account) and `email`
-  (**PB_GMAIL_REFRESH_TOKEN + PB_GMAIL_CLIENT_ID + PB_GMAIL_CLIENT_SECRET, not set**). A channel
-  with no credential is skipped and said so in the run's notes.
+- Secrets in Vault, read by `pb_secret()` (service role only). **Verify with
+  `select name from vault.secrets where name like 'PB_%'` rather than trusting this list** — as
+  of 11 Sep 2026 only `PB_SYNC_TOKEN` is actually set, and this file previously claimed
+  otherwise. The names the code reads:
+
+  | Secret | Read by | State (11 Sep 2026) |
+  |---|---|---|
+  | `PB_SYNC_TOKEN` | pb-sync, pb-score, pb-notes, pg_cron | **set** |
+  | `PB_ANTHROPIC_API_KEY` | pb-notes (the extractor) | not set — pb-notes 503s, no run row |
+  | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel) | not set |
+  | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set |
+  | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | not set (PHASE0 A3) |
+  | `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set |
+
+  pb-notes sweeps three channels, each behind its own credential and its own watermark row. The
+  `fathom_call` channel needs **no credential of its own** — it reads `pb_calls`, which the
+  webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
+  enough to make the sweep do real work. A channel with no credential is skipped and said so in
+  the run's notes.
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
   Two cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first so
