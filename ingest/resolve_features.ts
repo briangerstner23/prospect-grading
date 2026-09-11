@@ -178,6 +178,8 @@ const FACT_STATES: readonly FactState[] = ["present", "absent", "unknown"];
 const ICP_CLASSES: readonly IcpClass[] = ["ICP-1", "ICP-2", "ICP-3", "ICP-4", "ICP-5", "ICP-6"];
 const AGENCY_TYPES: readonly AgencyType[] = ["full_service", "boutique", "digital_only", "niche_vertical", "consultancy", "direct_end_client"];
 const REVENUE_BANDS: readonly RevenueBand[] = ["<1M", "1-5M", "5-10M", "10-25M", ">25M"];
+type ClientBudgetSize = NonNullable<ProspectFeatures["client_budget_size"]>;
+const CLIENT_BUDGET_SIZES: readonly ClientBudgetSize[] = ["buys_real_projects", "local_small"];
 const VERTICAL_DEPTHS: readonly VerticalDepth[] = ["deep_single_vertical", "generalist"];
 const WL_SIGNALS: readonly WlSignal[] = ["Very High", "High", "Medium", "Low"];
 const SERVICE_SHAPES: readonly ServiceShape[] = ["Core", "Complement", "Off"];
@@ -570,6 +572,22 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const headcount_label = labelOf("headcount", headcount);
 
   const agency_type = fact<AgencyType>("agency_type", (v) => toEnum<AgencyType>(v, AGENCY_TYPES, AGENCY_TYPE_ALIASES));
+
+  /* Observable fit criteria (rubric 0.2.0 onward; unread by 0.1.0).
+   * no_inhouse_dev_team falls back to the inverse of the older inhouse_dev_team fact so the
+   * criterion can be answered from data the book already holds, rather than only from new facts. */
+  const sells_build_work = fact("sells_build_work", toBool);
+  const sells_build_work_label = labelOf("sells_build_work", sells_build_work);
+  const inhouse_dev_team = fact("inhouse_dev_team", toBool);
+  const no_inhouse_dev_team_direct = fact("no_inhouse_dev_team", toBool);
+  const no_inhouse_dev_team = no_inhouse_dev_team_direct ?? (inhouse_dev_team === null ? null : !inhouse_dev_team);
+  const no_inhouse_dev_team_label = no_inhouse_dev_team_direct !== null
+    ? labelOf("no_inhouse_dev_team", no_inhouse_dev_team_direct)
+    : labelOf("inhouse_dev_team", inhouse_dev_team);
+  const client_budget_size = fact("client_budget_size", (v) => toEnum(v, CLIENT_BUDGET_SIZES));
+  const client_budget_size_label = labelOf("client_budget_size", client_budget_size);
+  const recurring_work_shape = fact("recurring_work_shape", toBool);
+  const recurring_work_shape_label = labelOf("recurring_work_shape", recurring_work_shape);
   const service_shape = fact("service_shape", (v) => toEnum(v, SERVICE_SHAPES, V.serviceShapeAliases));
 
   /* ---- Dimension A ---- */
@@ -793,6 +811,16 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     hourly_rate_accepted: fact("hourly_rate_accepted", toBool),
     broker_character: fact("broker_character", (v) => toEnum(v, BROKER)),
 
+    sells_build_work,
+    sells_build_work_label,
+    no_inhouse_dev_team,
+    no_inhouse_dev_team_label,
+    client_budget_size,
+    client_budget_size_label,
+    client_evidence_count: fact("client_evidence_count", (v) => toInt(v, 0)),
+    recurring_work_shape,
+    recurring_work_shape_label,
+
     referral_from_network: fact("referral_from_network", toBool),
     icp4_vertical_proven: fact("icp4_vertical_proven", toBool),
     recurring_revenue_share: fact("recurring_revenue_share", toRatio),
@@ -804,7 +832,7 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     avg_project_size: fact("avg_project_size", toMoney),
     already_outsources: fact("already_outsources", toBool),
     owner_does_everything: fact("owner_does_everything", toBool),
-    inhouse_dev_team: fact("inhouse_dev_team", toBool),
+    inhouse_dev_team,
     dev_archetype: fact("dev_archetype", toBool),
     shrinking: fact("shrinking", toBool),
 

@@ -167,6 +167,30 @@ export interface ProspectFeatures {
   /** PRO-2r-a (open): broker character is never a grading input; it may be a safety flag. */
   broker_character: "pass" | "flag" | null;
 
+  /* ---- Observable fit criteria (docs/FIT-v0.2-CRITERIA.md; rubric 0.2.0 onward) ----
+   *
+   * Added 11 Sep 2026 by owner decision: ICP class is retired as the FIT READ and kept as a
+   * descriptive label. These six criteria carry Dimension B instead. Every key is nullable and
+   * unread by rubric 0.1.0, so the frozen v0.1.0 baseline still grades identically (BASELINE.md).
+   *
+   * Unknown is never evidence (rule 5): a null scores nothing and is never held against the
+   * agency. The answered count travels beside the score and is never folded into it.
+   */
+  /** Do they sell what we deliver — website builds, web apps, custom development, e-commerce? */
+  sells_build_work: boolean | null;
+  sells_build_work_label: EvidenceLabel;
+  /** Do they need someone to build? True when no developer sits in the building. */
+  no_inhouse_dev_team: boolean | null;
+  no_inhouse_dev_team_label: EvidenceLabel;
+  /** Who are their clients? The client's client sets the ticket size and the technical depth. */
+  client_budget_size: "buys_real_projects" | "local_small" | null;
+  client_budget_size_label: EvidenceLabel;
+  /** How many clients were identifiable at all; guards client_budget_size against a thin read. */
+  client_evidence_count: number | null;
+  /** Will the work repeat — retainers, care plans, managed services? Rarely visible from outside. */
+  recurring_work_shape: boolean | null;
+  recurring_work_shape_label: EvidenceLabel;
+
   /* ---- Stage 2 adjustment inputs (named rules only; net cap one grade, ruled 2026-07-09) ---- */
   referral_from_network: boolean | null; // Brian / AMI / BABA referral (July rule)
   icp4_vertical_proven: boolean | null; // July rule: ICP-4 in an unproven vertical drops
@@ -244,9 +268,30 @@ export interface AdjustmentTrace {
   inputs: Record<string, unknown>;
 }
 
+/**
+ * One observable fit criterion, as answered. Present only when the rubric carries
+ * `dimension_b.base_tier_from_fit` (0.2.0 onward); empty under 0.1.0.
+ */
+export interface FitCriterionTrace {
+  key: string;
+  answer: "yes" | "no" | "unknown";
+  rule_text: string;
+  basis: "ruled" | "unruled_default" | "reasoned";
+  inputs: Record<string, unknown>;
+}
+
 export interface FitRead {
+  /** Retained as a DESCRIPTIVE LABEL from 0.2.0 onward; it no longer sets the base tier. */
   icp_class: IcpClass | null;
   icp_derivation: "stated" | "derived" | "none";
+  /** "icp" under rubric 0.1.0; "criteria" from 0.2.0, where the six observables carry the read. */
+  base_tier_source: "icp" | "criteria";
+  /** Empty under 0.1.0. */
+  criteria: FitCriterionTrace[];
+  /** Count of criteria answered "yes". */
+  criteria_score: number;
+  /** Count of criteria answered at all. Reported BESIDE the score, never folded into it. */
+  criteria_answered: number;
   base_tier: Tier | null;
   adjustments: AdjustmentTrace[];
   net_adjustment: number; // after the ±1 caps

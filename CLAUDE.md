@@ -17,7 +17,9 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ## Layout
 
 ```
-core/       prospect_types.ts (types, do not change) · rubric.prospect.v0.1.json (spec as data)
+core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
+            retype or repurpose an existing key; see docs/DECISIONS.md §8)
+            rubric.prospect.v0.1.json (active) · rubric.prospect.v0.2.json (draft, spec as data)
             engine.ts (pure grade()) · classify.ts · decay.ts · reason.ts · engine_test.ts
 fixtures/   golden.json — synthetic accounts with expected scorecards per rubric version
 ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes.ts
@@ -60,8 +62,8 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
    (invented agency names). People appear only as roles.
 3. **The engine is pure.** `grade(features, rubric, options) → scorecard`, deterministic,
    every fired rule in the trace with its basis (`ruled` / `unruled_default` / `reasoned`).
-4. **The rubric is data.** Every threshold, band, weight and lifespan is read from
-   `core/rubric.prospect.v0.1.json`. Never hard-code one. A new version is a new file and a
+4. **The rubric is data.** Every threshold, band, weight and lifespan is read from the active
+   rubric spec (`core/rubric.prospect.v0.1.json` today). Never hard-code one. A new version is a new file and a
    `pb_rubric_versions` row, previewed (`?rubric=<v>&preview=1`) before activation.
 5. **Unknown is never evidence.** A null input never fires a gate, an adjustment or a
    warning; it produces a flag where the rubric names one. A grade is labelled, never withheld.
@@ -102,6 +104,9 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
 - The sizing pass mark on bands (PRO-16).
 - The five July elements never ruled: gates as written, ICP → grade mapping, adjust rules
   as written, climb-evidence requirement, Grade × Ceiling output shape.
+  **ICP → grade mapping is answered in draft 0.2.0** (owner, 11 Sep 2026): ICP is retired as
+  the fit read and kept as a label; six observable criteria carry Dimension B. The ICP
+  definitions stay verbatim under PRO-15. `docs/DECISIONS.md` §8. Still a toggle, not a ruling.
 - Tier-1 capacity sizing (decision 1) and SPICED vs Dimension A (decision 5) — not ruled;
   the engine outputs a chase key and Dimension A is the qualification read.
 

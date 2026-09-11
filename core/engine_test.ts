@@ -882,3 +882,101 @@ if (failures.length) {
   if (proc) proc.exit(1);
   else throw new Error(`${failures.length} engine checks failed`);
 }
+
+/* ------------------------------------------------------------------ *
+ * rubric 0.2.0 · the observable fit criteria carry Dimension B
+ *
+ * Owner decision 11 Sep 2026: ICP is retired as the fit read and kept as a label. These cases
+ * pin the behaviour that decision requires, and — critically — that a rubric WITHOUT
+ * base_tier_from_fit still takes the ICP path, so the frozen v0.1.0 baseline stays reproducible.
+ * ------------------------------------------------------------------ */
+{
+  const V2: Rubric = load("rubric.prospect.v0.2.json");
+
+  // Six criteria, all yes → Gold. ICP-3 maps to Bronze under 0.1.0 and must NOT decide here.
+  const strong = base({
+    icp_class: "ICP-3",
+    is_agency: true,
+    headcount: 20,
+    sells_build_work: true,
+    no_inhouse_dev_team: true,
+    client_budget_size: "buys_real_projects",
+    recurring_work_shape: true,
+  });
+  const sc = grade(strong, V2);
+  eq("0.2.0: takes the criteria path", sc.fit.base_tier_source, "criteria");
+  eq("0.2.0: six yeses counted", sc.fit.criteria_score, 6);
+  eq("0.2.0: six criteria answered", sc.fit.criteria_answered, 6);
+  eq("0.2.0: 5+ yeses reach Gold, not the ICP-3 Bronze", sc.fit.base_tier, "Gold");
+
+  // The same account under 0.1.0 must still reach Bronze via the ICP map. This is the guard
+  // that keeps docs/BASELINE.md reproducible.
+  const scV1 = grade(strong, R);
+  eq("0.1.0: still takes the ICP path", scV1.fit.base_tier_source, "icp");
+  eq("0.1.0: unchanged — ICP-3 → Bronze", scV1.fit.base_tier, "Bronze");
+  eq("0.1.0: emits no criteria trace", scV1.fit.criteria.length, 0);
+
+  // Unknown is never evidence: unanswered criteria score nothing and count neither way.
+  const partial = base({
+    icp_class: "ICP-1",
+    is_agency: true,
+    headcount: 20,
+    sells_build_work: true,
+    no_inhouse_dev_team: null,
+    client_budget_size: null,
+    recurring_work_shape: null,
+  });
+  const scP = grade(partial, V2);
+  eq("0.2.0: three yeses", scP.fit.criteria_score, 3);
+  eq("0.2.0: three answered — unknowns count neither way", scP.fit.criteria_answered, 3);
+  eq("0.2.0: 3 yeses → Silver", scP.fit.base_tier, "Silver");
+  eq("0.2.0: the three unknowns are traced", scP.fit.criteria.filter((c) => c.answer === "unknown").length, 3);
+
+  // The ICP-1 shape that used to buy Gold: too big, and it employs its own engineers.
+  const tooBig = base({
+    icp_class: "ICP-1",
+    is_agency: true,
+    headcount: 380,
+    sells_build_work: true,
+    no_inhouse_dev_team: false,
+    client_budget_size: "buys_real_projects",
+    recurring_work_shape: null,
+  });
+  const scB = grade(tooBig, V2);
+  eq("0.2.0: 380 people with a dev team scores 3", scB.fit.criteria_score, 3);
+  eq("0.2.0: …and no longer buys Gold", scB.fit.base_tier, "Silver");
+  eq("0.1.0: …whereas it did buy Gold", grade(tooBig, R).fit.base_tier, "Gold");
+  eq("0.2.0: the size criterion reads headcount and answers no", scB.fit.criteria.find((c) => c.key === "size_band_fit")?.answer, "no");
+
+  // Nothing observable at all → Unclassified, not Bronze. A tier on zero evidence is a fabrication.
+  const blank = base({
+    icp_class: "ICP-2",
+    is_agency: null,
+    headcount: null,
+    sells_build_work: null,
+    no_inhouse_dev_team: null,
+    client_budget_size: null,
+    recurring_work_shape: null,
+  });
+  const scN = grade(blank, V2);
+  eq("0.2.0: nothing answered", scN.fit.criteria_answered, 0);
+  eq("0.2.0: no base tier asserted on zero evidence", scN.fit.base_tier, null);
+  eq("0.2.0: status is Unclassified", scN.status, "Unclassified");
+
+  // Every criterion carries its rule text, its basis and the input it read.
+  for (const c of sc.fit.criteria) {
+    check(`0.2.0: criterion ${c.key} carries its rule text`, typeof c.rule_text === "string" && c.rule_text.length > 0);
+    eq(`0.2.0: criterion ${c.key} is basis reasoned — nothing here is ruled`, c.basis, "reasoned");
+    check(`0.2.0: criterion ${c.key} names the input it read`, Object.keys(c.inputs).length > 0);
+  }
+
+  // Rule 4: a missing threshold is a loud failure, never a code default.
+  throws("0.2.0: a rubric missing the bands throws and names the path", () => {
+    const broken = structuredClone(V2);
+    delete broken.dimension_b.base_tier_from_fit.bands;
+    return grade(strong, broken);
+  }, "dimension_b.base_tier_from_fit.bands");
+
+  // Determinism holds on the new path too.
+  eq("0.2.0: grading twice is byte-identical", canonicalJson(grade(strong, V2)), canonicalJson(grade(strong, V2)));
+}

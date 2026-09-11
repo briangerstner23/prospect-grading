@@ -30,6 +30,7 @@ import type {
   IcpClass,
   Override,
   PotentialRead,
+  FitCriterionTrace,
   ProspectFeatures,
   ProspectScorecard,
   ProspectStatus,
@@ -53,6 +54,7 @@ import {
   reqObj,
   reqOneOf,
   reqOneOfIn,
+  rubricAt,
   reqStr,
   reqStrIn,
   RubricError,
@@ -178,6 +180,89 @@ function runAdjustments(
 /* ------------------------------------------------------------------ *
  * qualification
  * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ *
+ * fit · observable criteria (rubric 0.2.0 onward)
+ *
+ * Replaces the ICP→tier map as the source of the base tier. ICP class is still classified and
+ * still printed, as a DESCRIPTIVE LABEL — it no longer decides the grade. Owner decision,
+ * 11 Sep 2026; see docs/DECISIONS.md §8. The ICP DEFINITIONS are untouched (PRO-15).
+ *
+ * Every threshold is read from the rubric (rule 4). Unknown is never evidence (rule 5): an
+ * unanswered criterion scores nothing and is never counted against the agency. The answered
+ * count travels beside the score and is never folded into it.
+ * ------------------------------------------------------------------ */
+function runFitCriteria(
+  f: ProspectFeatures,
+  rubric: Rubric,
+  notes: string[],
+): { criteria: FitCriterionTrace[]; score: number; answered: number } {
+  const defs = reqArr<Record<string, unknown>>(rubric, "dimension_b.base_tier_from_fit.criteria");
+  if (defs.length === 0) {
+    throw new RubricError(rubric, "dimension_b.base_tier_from_fit.criteria", "at least one criterion", defs);
+  }
+  const bag = f as unknown as Record<string, unknown>;
+  const criteria: FitCriterionTrace[] = [];
+  let score = 0;
+  let answered = 0;
+
+  for (let i = 0; i < defs.length; i++) {
+    const path = `dimension_b.base_tier_from_fit.criteria[${i}]`;
+    const def = defs[i];
+    const key = reqStrIn(rubric, def, "key", path);
+    const feature = reqStrIn(rubric, def, "feature", path);
+    const kind = reqOneOfIn(rubric, def, "kind", path, ["boolean", "range", "equals"] as const);
+    const ruleText = reqStrIn(rubric, def, "rule", path);
+    const basis = reqOneOfIn(rubric, def, "basis", path, ["ruled", "unruled_default", "reasoned"] as const);
+    const raw = bag[feature];
+
+    let answer: "yes" | "no" | "unknown";
+    const inputs: Record<string, unknown> = { [feature]: raw ?? null };
+
+    if (raw === null || raw === undefined) {
+      answer = "unknown";
+    } else if (kind === "boolean") {
+      if (typeof raw !== "boolean") {
+        notes.push(`Fit criterion ${key}: ${feature} is not a boolean; treated as unknown.`);
+        answer = "unknown";
+      } else answer = raw ? "yes" : "no";
+    } else if (kind === "range") {
+      const min = reqNumIn(rubric, def, "min", path);
+      const max = reqNumIn(rubric, def, "max", path);
+      inputs.min = min;
+      inputs.max = max;
+      if (typeof raw !== "number" || !Number.isFinite(raw)) {
+        notes.push(`Fit criterion ${key}: ${feature} is not a number; treated as unknown.`);
+        answer = "unknown";
+      } else answer = raw >= min && raw <= max ? "yes" : "no";
+    } else {
+      const yesValue = reqStrIn(rubric, def, "yes_value", path);
+      inputs.yes_value = yesValue;
+      answer = raw === yesValue ? "yes" : "no";
+    }
+
+    if (answer === "yes") { score++; answered++; } else if (answer === "no") answered++;
+    criteria.push({ key, answer, rule_text: ruleText, basis, inputs });
+  }
+
+  return { criteria, score, answered };
+}
+
+/** The band a criteria score falls in. Bands are scanned from the highest min_yes down. */
+function fitBandTier(rubric: Rubric, score: number): Tier | null {
+  const bands = reqArr<Record<string, unknown>>(rubric, "dimension_b.base_tier_from_fit.bands");
+  if (bands.length === 0) {
+    throw new RubricError(rubric, "dimension_b.base_tier_from_fit.bands", "at least one band", bands);
+  }
+  let best: { min: number; tier: Tier } | null = null;
+  for (let i = 0; i < bands.length; i++) {
+    const path = `dimension_b.base_tier_from_fit.bands[${i}]`;
+    const min = reqNumIn(rubric, bands[i], "min_yes", path);
+    const tier = reqOneOfIn(rubric, bands[i], "tier", path, TIER_ORDER);
+    if (score >= min && (best === null || min > best.min)) best = { min, tier };
+  }
+  return best ? best.tier : null;
+}
 
 function qualify(f: ProspectFeatures, rubric: Rubric, notes: string[]): QualificationRead {
   let timingFact: FactState = f.timing_state ?? "unknown";
@@ -562,8 +647,38 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   if (icp.derivation === "none") notes.push("No ICP class stated and none derivable from the facts → Unclassified.");
   const icpLabel: EvidenceLabel = icp.derivation === "stated" ? (f.icp_class_label ?? "inferred") : icp.derivation === "derived" ? "inferred" : "unknown";
 
-  /* 3 · base tier */
-  const baseTier: Tier | null = icp.icp_class ? reqOneOf(rubric, `dimension_b.base_tier_from_icp.map.${icp.icp_class}`, TIER_ORDER) : null;
+  /* 3 · base tier
+   *
+   * Two shapes are supported, chosen by what the rubric carries — never by a flag:
+   *   dimension_b.base_tier_from_fit  (0.2.0+) the six observable criteria decide the tier
+   *   dimension_b.base_tier_from_icp  (0.1.0)  the ICP class decides the tier
+   * Keeping both is what lets the frozen v0.1.0 baseline stay reproducible (docs/BASELINE.md).
+   */
+  const usesCriteria = rubricAt(rubric, "dimension_b.base_tier_from_fit") !== undefined;
+  let baseTier: Tier | null = null;
+  let fitCriteria: FitCriterionTrace[] = [];
+  let criteriaScore = 0;
+  let criteriaAnswered = 0;
+
+  if (usesCriteria) {
+    const run = runFitCriteria(f, rubric, notes);
+    fitCriteria = run.criteria;
+    criteriaScore = run.score;
+    criteriaAnswered = run.answered;
+    const minAnswered = reqNum(rubric, "dimension_b.base_tier_from_fit.unclassified_when_answered_below");
+    if (criteriaAnswered < minAnswered) {
+      notes.push(
+        `Only ${criteriaAnswered} of ${fitCriteria.length} fit criteria could be answered (the rubric needs ${minAnswered}) → Unclassified. Unknown is never evidence: nothing here counts against the agency.`,
+      );
+    } else {
+      baseTier = fitBandTier(rubric, criteriaScore);
+      notes.push(
+        `Fit ${criteriaScore} of ${criteriaAnswered} answered (${fitCriteria.length} criteria) → base ${baseTier}. ICP ${icp.icp_class ?? "none"} is a label here, not an input.`,
+      );
+    }
+  } else {
+    baseTier = icp.icp_class ? reqOneOf(rubric, `dimension_b.base_tier_from_icp.map.${icp.icp_class}`, TIER_ORDER) : null;
+  }
 
   /* 4 · adjustments */
   const adj = runAdjustments(f, icp.icp_class, rubric, notes);
@@ -789,6 +904,10 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     status,
     gates,
     fit: {
+      base_tier_source: usesCriteria ? "criteria" : "icp",
+      criteria: fitCriteria,
+      criteria_score: criteriaScore,
+      criteria_answered: criteriaAnswered,
       icp_class: icp.icp_class,
       icp_derivation: icp.derivation,
       base_tier: baseTier,

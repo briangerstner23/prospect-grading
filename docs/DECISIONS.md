@@ -130,3 +130,103 @@ The review also made the case against the whole exercise: for two raters and 680
 value may sit in coverage and hygiene — duplicates, who is already a partner, who has not been
 touched — rather than in ranking. On today's evidence that case is strong, and the merge queue
 (75 unconfirmed matches, 48 of them from Orbit) is the first place it pays.
+
+---
+
+## 8 · ICP is retired as the fit read (11 September 2026)
+
+**Owner decision.** Dimension B no longer takes its base tier from the ICP class. Six
+observable criteria carry it instead. ICP is still classified and still printed — as a
+descriptive label.
+
+### Why
+
+The Apollo enrichment of the 200 warmest prospects (195 domains, 173 matched, 173 credits)
+made the ICP ordering measurable for the first time. Against an equal-weight score built from
+three now-observable criteria:
+
+**r = −0.135, 95% CI [−0.28, +0.01], n = 172.**
+
+The interval barely touches zero and rules out any meaningful positive relationship. The
+ordering carries no fit information, and leans slightly negative.
+
+Broken out by class, it is close to inverted. ICP-1 — *Established Full-Service Partner*,
+mapped to Gold, July priority A — is the **worst-fitting class in the book**: mean 1.04 of 3,
+median headcount 115, and **22 of its 24 accounts already employ engineers**. ICP-3, *Lean
+Boutique Operator*, mapped to Bronze at priority B+, is the second best and carries 83 of 170
+accounts. The two classes that matter most by volume were mapped backwards.
+
+### The cause is the flow, not the definitions
+
+Classification step 3 reads:
+
+```
+agency_type == full_service AND headcount >= 11 AND revenue_band in [5-10M, 10-25M, >25M] → ICP-1
+```
+
+A floor with **no ceiling**, plus revenue as a *positive* signal. For a white-label supplier
+both are backwards: the bigger and richer the agency, the more likely it has already hired the
+developers. The definition and the rule disagree and the rule wins — ICP-1's own definition
+says *"employees 11–50 (some 25–100)"* while the flow admits a 380-person agency. No class in
+the flow has an upper bound.
+
+ICP-6 (*Direct End-Client*) mapping to **Silver** also placed non-agencies above every lean
+boutique; nine of the eleven non-agencies found in the warm list sit there.
+
+### What was and was not touched
+
+- **ICP definitions: unchanged, verbatim, under PRO-15.** Rewriting them would be a new ruling,
+  and nothing in this repo is a new ruling (rule 1).
+- **The classification flow: unchanged.** The missing upper bound is left exactly as it is. The
+  class it produces is now a label, so the defect no longer reaches a grade.
+- **`base_tier_from_icp`: retired**, and kept in the spec as `base_tier_from_icp_retired` with
+  the map as it stood, so the v0.1.0 baseline stays readable.
+- **`base_tier_from_fit`: added** — six criteria, equal weight, one point each, bands 5+ → Gold,
+  3–4 → Silver, 0–2 → Bronze. Platinum stays *earned* by `platinum_rule`, never a base.
+- **Potential still keys its year-1 prior band off the ICP class** (PRO-16). That is a separate
+  read and was not in evidence here; it is left alone and stated as such in the spec.
+
+Nothing above is ruled. Every criterion carries `basis: reasoned` and is a toggle.
+
+### Why `core/prospect_types.ts` changed
+
+CLAUDE.md carried *"types, do not change"* on that file. Retiring ICP as the fit read requires
+four feature keys that did not exist, so the note had to be addressed rather than worked
+around. The change is **additive and nullable only** — no existing key changed type, name or
+meaning. Rubric 0.1.0 does not read the new keys, so it grades identically and
+`docs/BASELINE.md` stays reproducible; `core/engine_test.ts` asserts exactly that, in both
+directions, on the same synthetic account.
+
+The engine chooses its path by **which key the rubric carries**, never by a flag: a rubric with
+`dimension_b.base_tier_from_fit` takes the criteria path, one with `base_tier_from_icp` takes
+the ICP path.
+
+### Status
+
+`0.2.0` is registered in `pb_rubric_versions` as **draft**, spec sha256
+`09d4e8cb36baa1d041968df3165b6e95aefe5a7a0e5ca3ba2538e08095c4f3d1`. **0.1.0 remains active.**
+Nothing has been re-scored. Preview before activating, per rule 4:
+
+```
+POST $FN/pb-score?rubric=0.2.0&preview=1
+```
+
+### The non-agencies
+
+Eleven accounts in the warm list are not agencies (a tax service, a counselling practice, an
+investment firm, a consumer-goods manufacturer, a fitness equipment maker, an NGO, an ad-tech
+platform, a fintech, a trade association, a direct nonprofit, an aeromedical consultancy).
+The owner asked for them parked.
+
+They are **not hard-parked**, because parking fires from a gate in `park` mode and **PRO-4 rules
+direct end-clients explicitly in scope, flagged, and excluded from agency-only fit weights**. A
+park gate here would contradict the ruling. What was done instead is what PRO-4 prescribes, and
+reaches the same operational outcome: `is_agency = false` recorded as a fact,
+`relationship_type = direct` on the account, and a `decision` row per account in `pb_register`.
+Criterion 6 then answers *no*, the fit score sinks, and they leave the top of the chase order on
+the evidence rather than by fiat.
+
+Three further accounts are **white-label suppliers selling into agencies** — the same business
+model as WLIQ on the marketing side; one describes itself as *"the agency's agency."* These are
+channel or competitive relationships, not build buyers. Their grading is untouched; each carries
+a `note` row in the register labelling it, because the label is the point.
