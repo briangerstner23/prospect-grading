@@ -34,7 +34,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             120300 fixes · 120400 candidate review · 20260910141528 touch search_path ·
             20260910190000 public read · 20260911001048 apollo staging ·
             20260911092040 fact candidates · 20260911120000 fact precedence ·
-            20260911130000 notes cron · 20260911140000 fact candidate review (all applied)
+            20260911130000 notes cron · 20260911140000 fact candidate review ·
+            20260911150000 notes cron budget · 20260911170000 revoke anon writes (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -125,6 +126,19 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   `pb_members`, `pb_promotions`, `pb_potential_snapshots` and `pb_webhook_inbox` stay closed.
   Writes are unchanged — by lane via `pb_members.role` (owner / rater / viewer), signed in.
   Never grant `anon` an insert, update or delete; never open `pb_contacts` without asking.
+- **A new `pb_` table arrives with `anon` holding everything.** Supabase's default privileges
+  on `public` grant insert/update/delete/truncate to `anon` on any table created after they
+  were set — three tables made on 11 Sep inherited exactly that, and RLS default-deny was the
+  only thing refusing it. The defaults are not ours to change (the project is shared), so
+  **every new table needs its own `revoke`**, as in
+  `20260911170000_prospect_book_revoke_anon_writes`. Check after adding one:
+
+  ```sql
+  select table_name, string_agg(privilege_type, ',' order by privilege_type)
+  from information_schema.role_table_grants
+  where table_schema='public' and grantee='anon' and table_name like 'pb\_%'
+  group by 1 having string_agg(privilege_type, ',' order by privilege_type) <> 'SELECT';
+  ```
 - Operator steps: `docs/RUNBOOK.md`. Access status: `docs/PHASE0.md`.
 
 ## Open rulings (do not resolve them in code; each is a toggle in the rubric)

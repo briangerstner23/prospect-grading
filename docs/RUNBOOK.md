@@ -476,6 +476,26 @@ select effective_tier, count(*) from pb_current_reads group by 1;               
 select source, verified, count(*) from pb_webhook_inbox group by 1, 2;                    -- inbound deliveries
 ```
 
+**Every `pb_` table must grant `anon` `SELECT` and nothing else.** A new table does not:
+Supabase's default privileges on `public` hand `anon` insert, update, delete and truncate on
+anything created after they were set, and three tables made on 11 Sep arrived that way. RLS
+default-deny was the only thing refusing them — one permissive read policy later and the writes
+would have come with it. The defaults belong to a project shared with other WLIQ systems, so
+they stay as they are and **each new table carries its own revoke**
+(`20260911170000_prospect_book_revoke_anon_writes` is the pattern). This returns nothing when
+the book is in order:
+
+```sql
+select table_name, string_agg(privilege_type, ',' order by privilege_type) as anon_privs
+from information_schema.role_table_grants
+where table_schema = 'public' and grantee = 'anon' and table_name like 'pb\_%'
+group by 1
+having string_agg(privilege_type, ',' order by privilege_type) <> 'SELECT';
+```
+
+`pb_source_watermarks` and `pb_apollo_enrichment` are not in the anon set at all — the page
+reads neither, and when the sweep last looked at an agency is not the public's to know.
+
 ---
 
 ## 9 · Previewing and activating rubric 0.2.0
