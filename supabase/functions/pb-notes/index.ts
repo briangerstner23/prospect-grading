@@ -303,7 +303,11 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1500,
+      // The current models think before they answer, and thinking is billed and counted inside
+      // max_tokens. At 1500 the budget was spent before any text block arrived, so every
+      // response parsed as "no claims array" — an empty answer that looked like an honest
+      // "the note says nothing". Leave room for both.
+      max_tokens: 8000,
       // No `temperature`: sampling parameters are removed on the current models and a request
       // carrying one is rejected with a 400. Determinism comes from the prompt and the
       // validator, not from a sampling knob.
@@ -318,9 +322,18 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
     : "";
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
+  if (start < 0 || end <= start) {
+    // Say WHY there was no JSON. "No claims array" is indistinguishable from an honest empty
+    // read, and that ambiguity cost a whole run to diagnose: stop_reason "max_tokens" means
+    // the budget was spent, not that the record said nothing.
+    throw new Error(
+      `no JSON in the reply (stop_reason ${String(body?.stop_reason ?? "?")}, ` +
+      `${text.length} chars of text): ${text.slice(0, 160)}`,
+    );
+  }
   const parsed = safeJsonParse(text.slice(start, end + 1));
-  return parsed.ok ? parsed.value : null;
+  if (!parsed.ok) throw new Error(`reply was not JSON (${parsed.error}): ${text.slice(0, 160)}`);
+  return parsed.value;
 }
 
 /* ------------------------------------------------------------------ *
