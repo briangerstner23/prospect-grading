@@ -43,7 +43,7 @@
 
 import { serviceClient, insertBatches, selectAll } from "../_shared/db.ts";
 import { bearerOk, getSecret, SECRET_NOT_CONFIGURED } from "../_shared/auth.ts";
-import { finishRun, runStatus, startRun } from "../_shared/log.ts";
+import { closeAbandonedRuns, finishRun, runStatus, startRun } from "../_shared/log.ts";
 import { errorMessage, isRec, json, safeJsonParse } from "../_shared/helpers.ts";
 import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
@@ -89,6 +89,8 @@ interface Body {
   model?: unknown;
   /** Wall-clock budget in ms. The run stops itself before the platform kills it. */
   budget_ms?: unknown;
+  /** How many records to read at once. Default 3, capped at 6. */
+  concurrency?: unknown;
 }
 
 function today(): string {
@@ -383,6 +385,10 @@ Deno.serve(async (req: Request) => {
 
   const runId = await startRun(db, "ingest", "written_record", dry_run ? "pb-notes (dry run)" : "pb-notes");
   const notes: string[] = [];
+  const abandoned = await closeAbandonedRuns(db, "written_record");
+  if (abandoned > 0) {
+    notes.push(`Closed ${abandoned} earlier run(s) that never reported — killed mid-flight. What they wrote is kept; the watermark says how far they got.`);
+  }
   const counters: Record<string, number> = {};
   const add = (prefix: string, c: Record<string, number>) => {
     for (const [k, v] of Object.entries(c)) {
@@ -450,13 +456,30 @@ Deno.serve(async (req: Request) => {
     /* A self-imposed deadline. The platform kills a long function without warning, and a run
        killed mid-flight loses every model call it had paid for and leaves pb_runs saying
        "running" forever. Stopping ourselves means the run always ends cleanly, always reports,
-       and always leaves a watermark the next run can resume from. Measured at ~45s per record,
-       so the default fits a handful — the watermark carries the rest. */
+       and always leaves a watermark the next run can resume from.
+
+       The deadline has to be checked with the NEXT batch's cost in hand, not just the clock:
+       a run that is 109s into a 110s budget and starts a 50s batch finishes at 159s, which is
+       exactly the overrun the budget existed to prevent. So the check reserves headroom — the
+       slowest batch this run has taken, or a first guess before there is one — and stops when
+       starting another would cross the line. That makes the budget a real ceiling rather than
+       a suggestion, at the cost of leaving a little of it unused. The watermark carries the
+       rest, so unused budget costs a night, never a record. */
     const started = Date.now();
     const budgetMs = typeof body.budget_ms === "number" && body.budget_ms > 0
       ? Math.floor(body.budget_ms)
       : 110_000;
-    const outOfTime = () => Date.now() - started > budgetMs;
+    /* How many records may be in flight at once. Three is chosen to be plainly under any
+       rate limit rather than to be fast: the bottleneck is one model call per record, and the
+       ceiling on a run is the budget, not the pool. */
+    const concurrency = typeof body.concurrency === "number" && body.concurrency > 0
+      ? Math.min(6, Math.floor(body.concurrency))
+      : 3;
+
+    const FIRST_BATCH_GUESS_MS = 60_000;
+    let slowestBatchMs = 0;
+    const headroomMs = () => (slowestBatchMs > 0 ? slowestBatchMs : FIRST_BATCH_GUESS_MS);
+    const outOfTime = () => Date.now() - started + headroomMs() > budgetMs;
 
     let wrote = 0;
     let errors = 0;
@@ -510,93 +533,133 @@ Deno.serve(async (req: Request) => {
       notes.push(...plan.notes);
       add(channel.source, plan.counters);
 
-      /* Oldest first, one record at a time. Not grouped by account: grouping would break the
-         time order the watermark depends on, and a record read after a sibling should see what
-         that sibling wrote. */
+      /* Oldest first. The cost of a record is almost entirely one model call — about fifty
+         seconds of waiting on a network round trip and almost no CPU — so reading them one at
+         a time spends the whole budget on idling. Records are read in small concurrent
+         batches instead, then processed strictly in time order, one at a time.
+
+         A batch never holds two records for the same account. That is the one place sequence
+         genuinely matters: a record must see what an earlier record on the same account
+         already wrote, or the two would each write the same key. Across accounts there is
+         nothing to see. Time order survives either way, because a batch is always a
+         contiguous run of the ordered list — the batch closes at the first repeat rather than
+         reaching past it. */
       const ordered = [...plan.read].sort((a, b) => {
         const ta = String(a.note.update_time ?? a.note.add_time ?? "");
         const tb = String(b.note.update_time ?? b.note.add_time ?? "");
         return ta < tb ? -1 : ta > tb ? 1 : 0;
       });
 
-      for (const p of ordered) {
+      let cursor = 0;
+      while (cursor < ordered.length && budget > 0) {
         if (outOfTime()) {
-          notes.push(`Stopped after ${Math.round((Date.now() - started) / 1000)}s to finish cleanly; the watermark carries the rest to the next run.`);
+          notes.push(
+            `Stopped after ${Math.round((Date.now() - started) / 1000)}s of a ${Math.round(budgetMs / 1000)}s budget: another batch needs about ` +
+            `${Math.round(headroomMs() / 1000)}s and would run past it. The watermark carries the rest to the next run — ` +
+            `raise budget_ms only as far as the caller's own timeout allows.`,
+          );
           counters["stopped_on_time"] = 1;
           stopped = true;
           break;
         }
-        budget--;
 
-        let response: unknown = null;
-        try {
-          response = await readRecord(apiKey, model, p);
-        } catch (e) {
-          /* Move past it. A parse failure is deterministic — retrying gives the same reply —
-             so holding the watermark here would wedge the whole channel on one bad record,
-             forever, and nothing after it would ever be read. It is not lost quietly: the
-             counter is non-zero and the run names the record, which is what an operator
-             watches. Re-read it deliberately with `since: null`. */
-          notes.push(`${p.note.label ?? p.note.id}: ${errorMessage(e)}; SKIPPED — re-read it with since:null once the cause is fixed.`);
-          counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
-          newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
-          continue;
+        const batch: typeof ordered = [];
+        const accountsInBatch = new Set<string>();
+        while (cursor < ordered.length && batch.length < concurrency && budget > 0) {
+          const next = ordered[cursor];
+          if (accountsInBatch.has(next.account_id)) break; // the batch ends here, not past it
+          accountsInBatch.add(next.account_id);
+          batch.push(next);
+          cursor++;
+          budget--;
         }
-        const v = verifyClaims(p, response);
-        notes.push(...v.notes);
-        add(channel.source, v.counters);
+        if (batch.length === 0) break;
 
-        if (v.extraction.claims.length > 0) {
-          const existing = await selectAll(
-            db,
-            "pb_current_facts",
-            "key,value,evidence_label,source,observed_at,entered_by",
-            (q) => q.eq("account_id", p.account_id),
-          );
-          const held: ExistingFact[] = existing.map((f) => ({
-            key: String(f.key),
-            value: f.value,
-            evidence_label: String(f.evidence_label) as ExistingFact["evidence_label"],
-            source: String(f.source),
-            observed_at: (f.observed_at as string | null) ?? null,
-            entered_by: (f.entered_by as string | null) ?? null,
-          }));
-
-          const mapped = mapPipedriveNotes({
-            account_id: p.account_id,
-            notes: [p.note],
-            extractions: [v.extraction],
-            existing: held,
-            extractor,
-            as_of,
-          });
-          notes.push(...mapped.notes);
-          add(channel.source, mapped.counters);
-
-          const factRows: Rec[] = mapped.facts.map((f) => ({
-            account_id: f.account_id, key: f.key, value: f.value,
-            evidence_label: f.evidence_label, source: f.source, evidence_url: f.evidence_url,
-            note: f.note, observed_at: f.observed_at, entered_by: extractor, stand_in: false,
-          }));
-          const candidateRows: Rec[] = mapped.candidates.map((c) => ({
-            account_id: c.account_id, key: c.key, value: c.value,
-            evidence_label: c.evidence_label, source: c.source, source_id: c.source_id,
-            evidence_url: c.evidence_url, quote: c.quote, observed_at: c.observed_at,
-            confidence: c.confidence, extractor: c.extractor, fingerprint: c.fingerprint,
-            current_value: c.current_value, conflicts: c.conflicts, note: c.note,
-          }));
-
-          if (!dry_run) {
-            const ok = await flush(factRows, candidateRows);
-            if (!ok) { stopped = true; break; } // a write that failed must not be marked read
-          } else {
-            factsWritten += factRows.length;
-            queued += candidateRows.length;
+        const batchStarted = Date.now();
+        const replies = await Promise.all(batch.map(async (p) => {
+          try {
+            return { p, response: await readRecord(apiKey, model, p), failure: null as string | null };
+          } catch (e) {
+            return { p, response: null as unknown, failure: errorMessage(e) };
           }
+        }));
+
+        for (const r of replies) {
+          const p = r.p;
+          if (r.failure !== null) {
+            /* Move past it. A parse failure is deterministic — retrying gives the same reply —
+               so holding the watermark here would wedge the whole channel on one bad record,
+               forever, and nothing after it would ever be read. It is not lost quietly: the
+               counter is non-zero and the run names the record, which is what an operator
+               watches. Re-read it deliberately with `since: null`. */
+            notes.push(`${p.note.label ?? p.note.id}: ${r.failure}; SKIPPED — re-read it with since:null once the cause is fixed.`);
+            counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
+            newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
+            continue;
+          }
+
+          const v = verifyClaims(p, r.response);
+          notes.push(...v.notes);
+          add(channel.source, v.counters);
+
+          if (v.extraction.claims.length > 0) {
+            const existing = await selectAll(
+              db,
+              "pb_current_facts",
+              "key,value,evidence_label,source,observed_at,entered_by",
+              (q) => q.eq("account_id", p.account_id),
+            );
+            const held: ExistingFact[] = existing.map((f) => ({
+              key: String(f.key),
+              value: f.value,
+              evidence_label: String(f.evidence_label) as ExistingFact["evidence_label"],
+              source: String(f.source),
+              observed_at: (f.observed_at as string | null) ?? null,
+              entered_by: (f.entered_by as string | null) ?? null,
+            }));
+
+            const mapped = mapPipedriveNotes({
+              account_id: p.account_id,
+              notes: [p.note],
+              extractions: [v.extraction],
+              existing: held,
+              extractor,
+              as_of,
+            });
+            notes.push(...mapped.notes);
+            add(channel.source, mapped.counters);
+
+            const factRows: Rec[] = mapped.facts.map((f) => ({
+              account_id: f.account_id, key: f.key, value: f.value,
+              evidence_label: f.evidence_label, source: f.source, evidence_url: f.evidence_url,
+              note: f.note, observed_at: f.observed_at, entered_by: extractor, stand_in: false,
+            }));
+            const candidateRows: Rec[] = mapped.candidates.map((c) => ({
+              account_id: c.account_id, key: c.key, value: c.value,
+              evidence_label: c.evidence_label, source: c.source, source_id: c.source_id,
+              evidence_url: c.evidence_url, quote: c.quote, observed_at: c.observed_at,
+              confidence: c.confidence, extractor: c.extractor, fingerprint: c.fingerprint,
+              current_value: c.current_value, conflicts: c.conflicts, note: c.note,
+            }));
+
+            if (!dry_run) {
+              const ok = await flush(factRows, candidateRows);
+              if (!ok) { stopped = true; break; } // a write that failed must not be marked read
+            } else {
+              factsWritten += factRows.length;
+              queued += candidateRows.length;
+            }
+          }
+
+          // Only now is this record genuinely done, so only now may the watermark pass it.
+          newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
         }
 
-        // Only now is this record genuinely done, so only now may the watermark pass it.
-        newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
+        /* Headroom is measured in batches because that is the unit the next iteration costs.
+           A batch that was cut short by a write failure is not a measurement of anything. */
+        if (stopped) break;
+        slowestBatchMs = Math.max(slowestBatchMs, Date.now() - batchStarted);
+
         if (budget <= 0) {
           notes.push(`The run cap of ${max_notes} record(s) was reached; the rest waits for the next run.`);
           stopped = true;

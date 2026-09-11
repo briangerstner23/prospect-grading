@@ -39,6 +39,35 @@ export async function startRun(db: DbLike, kind: RunKind | string, source: strin
   return String(data.id);
 }
 
+/**
+ * A row left in `running` is a lie: the function was killed before it could report, and nothing
+ * else will ever close it. The next run does, marked `failed` with the reason, so the history
+ * reads "killed" rather than "still going" a month later. Whatever the dead run wrote is kept —
+ * it was written record by record and the watermark says how far it got.
+ *
+ * The cutoff is what makes this safe: a run still legitimately in flight is younger than it.
+ */
+export async function closeAbandonedRuns(
+  db: DbLike,
+  source: string,
+  olderThanMs = 15 * 60_000,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  const { data, error } = await db
+    .from("pb_runs")
+    .update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      errors: [`Never reported. Killed before it could finish; anything it wrote is kept and the watermark says how far it got. Closed by a later run at ${new Date().toISOString()}.`],
+    })
+    .eq("source", source)
+    .eq("status", "running")
+    .lt("started_at", cutoff)
+    .select("id");
+  if (error) return 0; // bookkeeping must never fail the run it is bookkeeping for
+  return Array.isArray(data) ? data.length : 0;
+}
+
 export async function finishRun(
   db: DbLike,
   id: string,
