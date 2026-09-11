@@ -87,6 +87,8 @@ interface Body {
   sources?: unknown;
   /** Read with this model for one run, to compare it against the standing one. */
   model?: unknown;
+  /** Wall-clock budget in ms. The run stops itself before the platform kills it. */
+  budget_ms?: unknown;
 }
 
 function today(): string {
@@ -434,13 +436,47 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, run_id: runId, swept: [], counters, notes });
     }
 
-    const factRows: Rec[] = [];
-    const candidateRows: Rec[] = [];
+    /* A self-imposed deadline. The platform kills a long function without warning, and a run
+       killed mid-flight loses every model call it had paid for and leaves pb_runs saying
+       "running" forever. Stopping ourselves means the run always ends cleanly, always reports,
+       and always leaves a watermark the next run can resume from. Measured at ~45s per record,
+       so the default fits a handful — the watermark carries the rest. */
+    const started = Date.now();
+    const budgetMs = typeof body.budget_ms === "number" && body.budget_ms > 0
+      ? Math.floor(body.budget_ms)
+      : 110_000;
+    const outOfTime = () => Date.now() - started > budgetMs;
+
+    let wrote = 0;
+    let errors = 0;
+    let factsWritten = 0;
+    let queued = 0;
     const newWatermarks: Record<string, string> = {};
     const swept: string[] = [];
     let budget = max_notes;
+    let stopped = false;
+
+    /* Written per record, never accumulated to the end. A timeout then costs at most the
+       record in flight, and everything already read stays in the book. */
+    const flush = async (factRows: Rec[], candidateRows: Rec[]): Promise<boolean> => {
+      let ok = true;
+      if (factRows.length > 0) {
+        const r = await insertBatches(db, "pb_facts", factRows);
+        wrote += r.wrote;
+        factsWritten += r.wrote;
+        if (r.errors.length) { errors += r.errors.length; notes.push(...r.errors); ok = false; }
+      }
+      if (candidateRows.length > 0) {
+        const { error } = await db.from("pb_fact_candidates")
+          .upsert(candidateRows, { onConflict: "fingerprint", ignoreDuplicates: true });
+        if (error) { errors++; notes.push(`pb_fact_candidates: ${error.message}`); ok = false; }
+        else { wrote += candidateRows.length; queued += candidateRows.length; }
+      }
+      return ok;
+    };
 
     for (const channel of channels) {
+      if (stopped) break;
       let pulled: Pulled;
       try {
         pulled = await channel.pull();
@@ -462,131 +498,114 @@ Deno.serve(async (req: Request) => {
       });
       notes.push(...plan.notes);
       add(channel.source, plan.counters);
-      budget -= plan.read.length;
 
-      /* Group by account so the mapper sees every record for an account at once. */
-      const byAccount = new Map<string, PlannedNote[]>();
-      for (const p of plan.read) {
-        const list = byAccount.get(p.account_id) ?? [];
-        list.push(p);
-        byAccount.set(p.account_id, list);
-      }
+      /* Oldest first, one record at a time. Not grouped by account: grouping would break the
+         time order the watermark depends on, and a record read after a sibling should see what
+         that sibling wrote. */
+      const ordered = [...plan.read].sort((a, b) => {
+        const ta = String(a.note.update_time ?? a.note.add_time ?? "");
+        const tb = String(b.note.update_time ?? b.note.add_time ?? "");
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
 
-      for (const [account_id, planned] of byAccount) {
-        const extractions: NoteExtraction[] = [];
-        for (const p of planned) {
-          let response: unknown = null;
-          try {
-            response = await readRecord(apiKey, model, p);
-          } catch (e) {
-            notes.push(`${p.note.label ?? p.note.id}: ${errorMessage(e)}; left for the next run.`);
-            counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
-            continue;
-          }
-          const v = verifyClaims(p, response);
-          notes.push(...v.notes);
-          add(channel.source, v.counters);
-          if (v.extraction.claims.length > 0) extractions.push(v.extraction);
+      for (const p of ordered) {
+        if (outOfTime()) {
+          notes.push(`Stopped after ${Math.round((Date.now() - started) / 1000)}s to finish cleanly; the watermark carries the rest to the next run.`);
+          counters["stopped_on_time"] = 1;
+          stopped = true;
+          break;
         }
-        if (extractions.length === 0) continue;
+        budget--;
 
-        const existing = await selectAll(
-          db,
-          "pb_current_facts",
-          "key,value,evidence_label,source,observed_at,entered_by",
-          (q) => q.eq("account_id", account_id),
-        );
-        const held: ExistingFact[] = existing.map((f) => ({
-          key: String(f.key),
-          value: f.value,
-          evidence_label: String(f.evidence_label) as ExistingFact["evidence_label"],
-          source: String(f.source),
-          observed_at: (f.observed_at as string | null) ?? null,
-          entered_by: (f.entered_by as string | null) ?? null,
-        }));
+        let response: unknown = null;
+        try {
+          response = await readRecord(apiKey, model, p);
+        } catch (e) {
+          notes.push(`${p.note.label ?? p.note.id}: ${errorMessage(e)}; left for the next run.`);
+          counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
+          // Do NOT advance past a record we failed to read: the next run must retry it.
+          stopped = true;
+          break;
+        }
+        const v = verifyClaims(p, response);
+        notes.push(...v.notes);
+        add(channel.source, v.counters);
 
-        const mapped = mapPipedriveNotes({
-          account_id,
-          notes: planned.map((p) => p.note),
-          extractions,
-          existing: held,
-          extractor,
-          as_of,
-        });
-        notes.push(...mapped.notes);
-        add(channel.source, mapped.counters);
-
-        for (const f of mapped.facts) {
-          factRows.push({
-            account_id: f.account_id,
-            key: f.key,
+        if (v.extraction.claims.length > 0) {
+          const existing = await selectAll(
+            db,
+            "pb_current_facts",
+            "key,value,evidence_label,source,observed_at,entered_by",
+            (q) => q.eq("account_id", p.account_id),
+          );
+          const held: ExistingFact[] = existing.map((f) => ({
+            key: String(f.key),
             value: f.value,
-            evidence_label: f.evidence_label,
-            source: f.source,
-            evidence_url: f.evidence_url,
-            note: f.note,
-            observed_at: f.observed_at,
-            entered_by: extractor,
-            stand_in: false,
-          });
-        }
-        for (const c of mapped.candidates) {
-          candidateRows.push({
-            account_id: c.account_id,
-            key: c.key,
-            value: c.value,
-            evidence_label: c.evidence_label,
-            source: c.source,
-            source_id: c.source_id,
-            evidence_url: c.evidence_url,
-            quote: c.quote,
-            observed_at: c.observed_at,
-            confidence: c.confidence,
-            extractor: c.extractor,
-            fingerprint: c.fingerprint,
-            current_value: c.current_value,
-            conflicts: c.conflicts,
-            note: c.note,
-          });
-        }
-      }
+            evidence_label: String(f.evidence_label) as ExistingFact["evidence_label"],
+            source: String(f.source),
+            observed_at: (f.observed_at as string | null) ?? null,
+            entered_by: (f.entered_by as string | null) ?? null,
+          }));
 
-      if (plan.next_watermark !== null) newWatermarks[channel.source] = plan.next_watermark;
-      if (budget <= 0) {
-        notes.push(`The run cap of ${max_notes} record(s) was reached; the remaining channels wait for the next run.`);
-        break;
+          const mapped = mapPipedriveNotes({
+            account_id: p.account_id,
+            notes: [p.note],
+            extractions: [v.extraction],
+            existing: held,
+            extractor,
+            as_of,
+          });
+          notes.push(...mapped.notes);
+          add(channel.source, mapped.counters);
+
+          const factRows: Rec[] = mapped.facts.map((f) => ({
+            account_id: f.account_id, key: f.key, value: f.value,
+            evidence_label: f.evidence_label, source: f.source, evidence_url: f.evidence_url,
+            note: f.note, observed_at: f.observed_at, entered_by: extractor, stand_in: false,
+          }));
+          const candidateRows: Rec[] = mapped.candidates.map((c) => ({
+            account_id: c.account_id, key: c.key, value: c.value,
+            evidence_label: c.evidence_label, source: c.source, source_id: c.source_id,
+            evidence_url: c.evidence_url, quote: c.quote, observed_at: c.observed_at,
+            confidence: c.confidence, extractor: c.extractor, fingerprint: c.fingerprint,
+            current_value: c.current_value, conflicts: c.conflicts, note: c.note,
+          }));
+
+          if (!dry_run) {
+            const ok = await flush(factRows, candidateRows);
+            if (!ok) { stopped = true; break; } // a write that failed must not be marked read
+          } else {
+            factsWritten += factRows.length;
+            queued += candidateRows.length;
+          }
+        }
+
+        // Only now is this record genuinely done, so only now may the watermark pass it.
+        newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
+        if (budget <= 0) {
+          notes.push(`The run cap of ${max_notes} record(s) was reached; the rest waits for the next run.`);
+          stopped = true;
+          break;
+        }
       }
     }
 
     if (dry_run) {
       notes.push("Dry run: nothing was written and no watermark moved.");
-      await finishRun(db, runId, "success", { ...counters, facts: factRows.length, candidates: candidateRows.length }, notes);
+      await finishRun(db, runId, "success", { ...counters, facts: factsWritten, candidates: queued }, notes);
       return json({
         ok: true, run_id: runId, dry_run: true, swept, extractor,
-        would_write: { facts: factRows.length, candidates: candidateRows.length },
+        would_write: { facts: factsWritten, candidates: queued },
         next_watermarks: newWatermarks, counters, notes,
       });
     }
 
-    let wrote = 0;
-    let errors = 0;
-
-    if (factRows.length > 0) {
-      const r = await insertBatches(db, "pb_facts", factRows);
-      wrote += r.wrote;
-      errors += r.errors.length;
-      notes.push(...r.errors);
-    }
-    if (candidateRows.length > 0) {
-      // A fingerprint already queued is not an error — it is the same text, already waiting.
-      const { error } = await db.from("pb_fact_candidates")
-        .upsert(candidateRows, { onConflict: "fingerprint", ignoreDuplicates: true });
-      if (error) { errors++; notes.push(`pb_fact_candidates: ${error.message}`); }
-      else wrote += candidateRows.length;
-    }
-
+    /* The watermark moves only over records that were read AND written. A record that failed
+       either step stopped the loop before its watermark was recorded, so the next run retries
+       exactly it and nothing before it is read twice. */
     if (errors === 0) {
       for (const [source, last_seen_at] of Object.entries(newWatermarks)) {
+        if (!last_seen_at) continue;
         const { error } = await db.from("pb_source_watermarks").upsert({
           source,
           last_seen_at,
@@ -599,10 +618,10 @@ Deno.serve(async (req: Request) => {
       notes.push("No watermark was advanced because this run had errors; the same records are read again next time.");
     }
 
-    await finishRun(db, runId, runStatus(wrote, errors), { ...counters, facts: factRows.length, candidates: candidateRows.length, wrote, errors }, notes);
+    await finishRun(db, runId, runStatus(wrote, errors), { ...counters, facts: factsWritten, candidates: queued, wrote, errors }, notes);
     return json({
-      ok: errors === 0, run_id: runId, swept, extractor,
-      wrote: { facts: factRows.length, candidates: candidateRows.length },
+      ok: errors === 0, run_id: runId, swept, extractor, stopped_early: stopped,
+      wrote: { facts: factsWritten, candidates: queued },
       next_watermarks: newWatermarks, counters, notes,
     });
   } catch (e) {
