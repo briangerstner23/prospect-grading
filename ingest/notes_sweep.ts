@@ -50,6 +50,15 @@ export const EXTRACTABLE: Readonly<Record<string, Shape>> = {
   relationship_type: { kind: "enum", values: ["agency", "direct", "reseller", "referral"] },
   headcount: { kind: "integer", min: 1, max: 5000 },
   client_evidence_count: { kind: "integer", min: 0, max: 100000 },
+
+  /* Dimension A — is the deal real. A call summary states these outright and a CRM field never
+     does, which is why they belong here. `unknown` is deliberately not a value: silence is
+     already unknown, and rule 5 says an unknown never counts either way. `absent` is reserved
+     for a record that SAYS it is absent, never for one that simply does not mention it. */
+  money: { kind: "enum", values: ["present", "absent"] },
+  authority: { kind: "enum", values: ["present", "absent"] },
+  specification: { kind: "enum", values: ["present", "absent"] },
+  timing: { kind: "enum", values: ["within_1_week", "within_1_month", "within_3_months", "no_timeline"] },
 };
 
 const CONFIDENCES: readonly string[] = ["high", "medium", "low"];
@@ -363,7 +372,7 @@ function describe(v: unknown): string {
  * Change this and the extractor version changes too — every fingerprint carries the extractor
  * string, so a new prompt re-reads every note rather than silently mixing two readings.
  */
-export const EXTRACTOR_VERSION = "notes@v2";
+export const EXTRACTOR_VERSION = "notes@v3";
 
 export function extractionPrompt(): string {
   const keys = Object.entries(EXTRACTABLE).map(([k, s]) => {
@@ -393,6 +402,7 @@ export function extractionPrompt(): string {
     "  Mark it honestly. A judgement is not wasted: it reaches a person either way. Calling one an observation only sends it back.",
     "- sells_build_work and no_inhouse_dev_team are about what the agency SELLS and whether it can BUILD it, not what industry it is in.",
     "- client_budget_size is about the agency's CLIENTS' budgets, not the agency's own size.",
+    "- money, authority, specification: use \"absent\" ONLY when the record says it is missing (\"they have no budget this year\"). A record that simply does not mention it is silence — leave the key out. Not mentioned is not the same as not there.",
     "- One claim per key at most.",
   ].join("\n");
 }

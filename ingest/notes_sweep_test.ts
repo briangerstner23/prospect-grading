@@ -325,6 +325,38 @@ check("judgementMarker is case- and punctuation-insensitive", judgementMarker("C
 check("the lexicon is not empty", JUDGEMENT_MARKERS.length > 20);
 
 /* ------------------------------------------------------------------ *
+ * 3c · Dimension A — stated on calls, never in a CRM field
+ * ------------------------------------------------------------------ */
+
+const DEAL = plannedOf({
+  ...BASE,
+  notes: [note({ content: "<p>They aim to kick off as soon as next week pending Legal approval. Legal controls the compliance budget and has not yet approved. They told us they have no budget for this until the next fiscal year.</p>" })],
+});
+
+{
+  const r = verifyClaims(DEAL, { claims: [{ key: "timing", value: "within_1_week", quote: "They aim to kick off as soon as next week pending Legal approval", confidence: "high", kind: "observation" }] });
+  eq("a stated timeline is extractable", r.extraction.claims[0]?.value, "within_1_week");
+}
+{
+  const r = verifyClaims(DEAL, { claims: [{ key: "timing", value: "next tuesday", quote: "They aim to kick off as soon as next week pending Legal approval", confidence: "high", kind: "observation" }] });
+  eq("a timeline outside the vocabulary is dropped", r.extraction.claims.length, 0);
+}
+{
+  const r = verifyClaims(DEAL, { claims: [{ key: "money", value: "absent", quote: "They told us they have no budget for this until the next fiscal year", confidence: "high", kind: "observation" }] });
+  eq("a STATED absence is evidence", r.extraction.claims[0]?.value, "absent");
+}
+{
+  const r = verifyClaims(DEAL, { claims: [{ key: "authority", value: "unknown", quote: "Legal controls the compliance budget and has not yet approved", confidence: "high", kind: "observation" }] });
+  eq("'unknown' is not a value a record can carry — silence already means that", r.extraction.claims.length, 0);
+  eq("and it is counted as out of shape", r.counters.value_out_of_shape, 1);
+}
+{
+  const prompt = extractionPrompt();
+  check("the prompt warns that not mentioned is not the same as not there", /Not mentioned is not the same as not there/.test(prompt));
+  for (const k of ["money", "authority", "specification", "timing"]) check(`the prompt names ${k}`, prompt.includes(k));
+}
+
+/* ------------------------------------------------------------------ *
  * 4 · the prompt asks for exactly what the validator accepts
  * ------------------------------------------------------------------ */
 
