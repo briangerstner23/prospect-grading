@@ -24,7 +24,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="${1:-dist/functions}"
 ESBUILD_VERSION="0.24.2"
-FUNCTIONS=(pb-sync pb-score pb-fathom-webhook pb-pipedrive-webhook)
+FUNCTIONS=(pb-sync pb-score pb-notes pb-fathom-webhook pb-pipedrive-webhook)
 
 mkdir -p "$OUT"
 for fn in "${FUNCTIONS[@]}"; do
