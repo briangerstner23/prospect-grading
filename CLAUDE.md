@@ -35,7 +35,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260910190000 public read · 20260911001048 apollo staging ·
             20260911092040 fact candidates · 20260911120000 fact precedence ·
             20260911130000 notes cron · 20260911140000 fact candidate review ·
-            20260911150000 notes cron budget · 20260911170000 revoke anon writes (all applied)
+            20260911150000 notes cron budget · 20260911170000 revoke anon writes ·
+            20260911180000 restore view invoker (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;

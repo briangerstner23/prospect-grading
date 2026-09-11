@@ -1,0 +1,28 @@
+-- WLIQ Prospect Book — give pb_current_facts its security_invoker back.
+--
+-- 20260909120000 created both views `with (security_invoker = true)`, deliberately: a view
+-- that runs as its definer enforces the DEFINER's permissions and RLS, not the caller's, and
+-- 20260909120300's comment states the intent plainly — "the views now deny anon on their own."
+--
+-- 20260911120000 (fact precedence) then rewrote this one with a bare
+-- `create or replace view public.pb_current_facts as …`. **Postgres resets a view's reloptions
+-- when it is replaced without a WITH clause**, so security_invoker went away silently. No error,
+-- no diff in the SELECT, and the setting simply stopped existing. Its sibling pb_current_reads
+-- was never rewritten and still carries it, which is what made the drift visible:
+--
+--   select c.relname,
+--          (select option_value from pg_options_to_table(c.reloptions)
+--            where option_name = 'security_invoker')
+--   from pg_class c join pg_namespace n on n.oid = c.relnamespace
+--   where n.nspname = 'public' and c.relkind = 'v' and c.relname like 'pb\_%';
+--
+-- Nothing leaked. pb_facts carries `pb_facts_read_anon ... using (true)` under the public-read
+-- decision (DECISIONS §5), so the rows the view returns were already readable by anon through
+-- the table. What the regression removed is the guarantee: with the definer's rights baked in,
+-- the day pb_facts' read policy is narrowed the view keeps serving what the policy now refuses.
+-- That is the whole reason the setting was there.
+--
+-- ALTER rather than CREATE OR REPLACE, so the definition is not restated and cannot drift from
+-- the precedence migration that owns it. Idempotent.
+
+alter view public.pb_current_facts set (security_invoker = true);

@@ -496,6 +496,30 @@ having string_agg(privilege_type, ',' order by privilege_type) <> 'SELECT';
 `pb_source_watermarks` and `pb_apollo_enrichment` are not in the anon set at all — the page
 reads neither, and when the sweep last looked at an agency is not the public's to know.
 
+**Both views must keep `security_invoker = true`.** `create or replace view` **resets a view's
+options** when it is replaced without a `WITH` clause, so rewriting one silently turns it into a
+definer's-rights view that enforces the creator's RLS rather than the caller's — which is how
+`pb_current_facts` lost the setting when the fact-precedence migration rewrote it, and how it
+got it back in `20260911180000_prospect_book_restore_view_invoker`. Rewrite a view and re-check:
+
+```sql
+select c.relname,
+       coalesce((select option_value from pg_options_to_table(c.reloptions)
+                  where option_name = 'security_invoker'), 'not set') as security_invoker
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'v' and c.relname like 'pb\_%';
+```
+
+Both rows must read `true`. `ALTER VIEW … SET (security_invoker = true)` restores it without
+restating the definition.
+
+Supabase's own linter catches both of these — `get_advisors(type: security)` through the MCP.
+Its other `pb_` findings are intended and stay: RLS-with-no-policy on the service-role-only
+tables (`pb_apollo_enrichment`, `pb_source_watermarks`, `pb_webhook_inbox`), public reads under
+DECISIONS §5, and the four `SECURITY DEFINER` functions, each of which re-checks the caller's
+lane before doing anything. Findings on tables without a `pb_` prefix belong to other WLIQ
+systems sharing this project — not ours to change.
+
 ---
 
 ## 9 · Previewing and activating rubric 0.2.0
