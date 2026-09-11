@@ -475,3 +475,77 @@ select status, source, count(*) from pb_identity_candidates group by 1, 2 order 
 select effective_tier, count(*) from pb_current_reads group by 1;                          -- tier spread
 select source, verified, count(*) from pb_webhook_inbox group by 1, 2;                    -- inbound deliveries
 ```
+
+---
+
+## 9 · Previewing and activating rubric 0.2.0
+
+`0.2.0` is registered in `pb_rubric_versions` as **draft**, spec sha256
+`09d4e8cb36baa1d041968df3165b6e95aefe5a7a0e5ca3ba2538e08095c4f3d1`. **0.1.0 is still active and
+nothing has been re-scored.** See `docs/DECISIONS.md` §8 for why ICP was retired as the fit read.
+
+### 9.1 · pb-score must be redeployed first
+
+The deployed `pb-score` predates the criteria path and would take the ICP branch, which 0.2.0
+no longer carries — it would throw a `RubricError` naming
+`dimension_b.base_tier_from_icp.map.<class>`. Rebuild and redeploy before previewing:
+
+```bash
+bash scripts/build_functions.sh          # → dist/functions/pb-score/index.js
+```
+
+Deploy that bundle with `entrypoint_path index.js` and `verify_jwt false`. **The bundle
+contains 59 backslashes** (regex literals and one `—`); §3's escaping discipline applies —
+send them escaped, and confirm with a GET, which must answer `{"ok":true,"service":"pb-score"}`.
+Where the Supabase CLI is available it deploys the TypeScript directly and sidesteps this:
+
+```bash
+supabase functions deploy pb-score --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
+```
+
+### 9.2 · Preview — writes nothing
+
+```
+POST $FN/pb-score?rubric=0.2.0&preview=1     # same bearer as the nightly run
+```
+
+No `pb_reads` rows, no `pb_runs` row. The response carries the counts and a per-account diff
+against the current reads. That diff is the thing to read before activating: decision 8 projects
+roughly half the warm list moving, with about 37 of 57 current Golds dropping and about 53 of 97
+Bronzes rising.
+
+### 9.3 · What the criteria can answer today
+
+Six criteria; fact coverage across all 680 accounts as of 11 Sep 2026:
+
+| Criterion | Accounts with the fact |
+|---|---|
+| `sells_build_work` | 175 |
+| `no_inhouse_dev_team` (or the older `inhouse_dev_team`) | 159 |
+| `headcount` → `size_band_fit` | 463 |
+| `is_agency` | 558 |
+| `client_budget_size` | **0** |
+| `recurring_work_shape` | **0** |
+
+The two empty criteria are the ones no API supplies. `client_budget_size` needs a person reading
+the agency's work page — ninety seconds each, or record unknown. Until they are answered, the
+best any account can score is 4 of 6, so **no account outside the enriched warm slice can reach
+the Gold band (5+)**, and most of the book will sit on one or two answered criteria.
+
+That is the correct behaviour, not a defect — unknown is never evidence — but it means
+**activating 0.2.0 before the rater pass would flatten most of the book to Bronze**. Preview
+first, read the diff, and consider answering `client_budget_size` on the warm 200 before
+activating.
+
+### 9.4 · Activating
+
+Activation is a deliberate step, not a side effect of previewing:
+
+```sql
+update pb_rubric_versions set status = 'retired' where version = '0.1.0';
+update pb_rubric_versions set status = 'active', activated_by = '<owner email>',
+       activated_at = now() where version = '0.2.0';
+```
+
+`pb_reads` is append-only, so the v0.1.0 baseline run survives activation untouched
+(`docs/BASELINE.md`). To go back, reverse the two statements and re-run `pb-score`.
