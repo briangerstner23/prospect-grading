@@ -401,11 +401,26 @@ function buildVocab(rubric: Rubric): Vocab {
  * Facts
  * ------------------------------------------------------------------ */
 
-/** Latest row per key. pb_current_facts already does this; sorting again costs nothing and protects a raw pb_facts caller. */
+/** How much a row's label is worth when two rows claim the same key. Lower wins. */
+function labelRank(label: unknown): number {
+  return label === "evidence" ? 0 : label === "inferred" ? 1 : 2;
+}
+
+/**
+ * Winning row per key, in the same order as the pb_current_facts view: evidence outranks
+ * inferred outranks unknown, then newest written, then newest observed.
+ *
+ * Recency alone is not quality. A quote-backed sentence from a 2025 call note beats a machine
+ * guess made this morning, and under a pure created_at sort the next sweep would overwrite it.
+ * The view and this function must stay in step — pb-score reads one, the pure path the other.
+ */
 function latestFactPerKey(facts: FactRow[]): Map<string, FactRow> {
   const sorted = facts
     .map((f, i) => ({ f, i }))
     .sort((a, b) => {
+      const la = labelRank(a.f.evidence_label);
+      const lb = labelRank(b.f.evidence_label);
+      if (la !== lb) return la - lb;
       const ca = parseMs(a.f.created_at) ?? -Infinity;
       const cb = parseMs(b.f.created_at) ?? -Infinity;
       if (ca !== cb) return cb - ca;

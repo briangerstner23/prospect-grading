@@ -168,6 +168,37 @@ function run(partial: Partial<ResolveInput> = {}) {
   eq("no notes for a clean multi-row history", r.notes, []);
 }
 {
+  // Evidence outranks recency. A quote-backed sentence from a call note beats a machine guess
+  // written this morning — otherwise the next Apollo sweep silently overwrites what a person
+  // confirmed. Same order as the pb_current_facts view; the two must not drift apart.
+  const r = run({
+    facts: [
+      factRow("headcount", 40, { evidence_label: "evidence", source: "pipedrive_note", created_at: "2025-08-13T00:00:00Z" }),
+      factRow("headcount", 115, { evidence_label: "inferred", source: "apollo", created_at: "2026-09-11T00:00:00Z" }),
+    ],
+  });
+  eq("an older evidence fact outranks a newer inferred one", r.features.headcount, 40);
+  eq("and the label follows it", r.features.headcount_label, "evidence");
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 9, { evidence_label: "unknown", created_at: "2026-09-11T00:00:00Z" }),
+      factRow("headcount", 12, { evidence_label: "inferred", created_at: "2026-08-01T00:00:00Z" }),
+    ],
+  });
+  eq("inferred outranks unknown", r.features.headcount, 12);
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 12, { evidence_label: "evidence", created_at: "2026-08-01T00:00:00Z" }),
+      factRow("headcount", 18, { evidence_label: "evidence", created_at: "2026-09-02T00:00:00Z" }),
+    ],
+  });
+  eq("within one label the newest still wins", r.features.headcount, 18);
+}
+{
   const r = run({ facts: [factRow("icp_class", "ICP-2", { evidence_label: "evidence" })] });
   eq("icp_class resolved with its label", [r.features.icp_class, r.features.icp_class_label], ["ICP-2", "evidence"]);
 }
