@@ -691,6 +691,11 @@ select started_at, finished_at, status, counts, errors
 from pb_runs order by started_at desc limit 5;
 ```
 
+**`errors` is the run's whole commentary, not just its failures.** A successful run fills it
+with ordinary remarks — which quote was refused, which claim went to a person, where the budget
+ran out. `status` and `counts.errors` are what say whether anything went wrong; the column is a
+log, and a long one on a `success` row is the sweep explaining itself, not a problem.
+
 The counters worth looking at:
 
 | Counter | Means |
