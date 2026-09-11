@@ -304,7 +304,9 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
     body: JSON.stringify({
       model,
       max_tokens: 1500,
-      temperature: 0,
+      // No `temperature`: sampling parameters are removed on the current models and a request
+      // carrying one is rejected with a 400. Determinism comes from the prompt and the
+      // validator, not from a sampling knob.
       system: extractionPrompt(),
       messages: [{ role: "user", content: `<record>\n${planned.text}\n</record>` }],
     }),
