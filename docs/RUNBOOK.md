@@ -609,7 +609,7 @@ curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
 # One channel only, and a longer self-imposed deadline.
 curl -sS -X POST "$FN/pb-notes" -H "Authorization: Bearer $PB_SYNC_TOKEN" \
   -H "Content-Type: application/json" \
-  --data '{"sources":["fathom_call"],"max_notes":8,"budget_ms":110000}'
+  --data '{"sources":["fathom_call"],"max_notes":12,"budget_ms":150000,"concurrency":3}'
 
 # Re-read EVERYTHING from the beginning (a new extractor version, say). Expensive: one model
 # call per record with prose in it, across the whole roster. The watermark carries what one
@@ -641,14 +641,27 @@ select status_code, content from net._http_response where id = <request_id>;
 |---|---|---|
 | the watermark | a run reads only what changed since last time | — |
 | `max_notes` (default 120) | caps records read in one run | the watermark |
-| `budget_ms` (default 110 000) | **a self-imposed deadline.** At ~45s a record that is a handful per run | the watermark |
+| `budget_ms` (default 110 000) | **a self-imposed deadline**, reserving headroom for the next batch | the watermark |
+| `concurrency` (default 3, max 6) | how many records are read at once | — |
+
+**Concurrency is why the budget buys anything.** A record costs one model call — about fifty
+seconds of waiting on a network round trip and almost no CPU — so reading one at a time spends
+the budget on idling. Records are read in small concurrent batches and then processed strictly
+in time order, one at a time. A batch never holds two records for the same account: that is
+the one place sequence matters, because a record must see what an earlier record on the same
+account already wrote. The batch closes at the first repeat rather than reaching past it, so
+time order survives.
 
 The deadline is the important one. The platform kills a long function without warning, and a
 run killed mid-flight loses every model call it paid for and leaves `pb_runs` saying `running`
 forever — which is exactly what happened on 11 Sep before this was added. So the sweep stops
-*itself*: it checks the clock before each record, and when the budget is spent it finishes the
-run cleanly, sets `stopped_on_time`, and leaves the watermark where the last finished record
-put it.
+*itself*, and it checks the clock **with the next batch's cost in hand**, not just the clock:
+a run 109s into a 110s budget that starts a 50s batch finishes at 159s, which is the overrun
+the budget existed to prevent. So the check reserves headroom — the slowest batch this run has
+taken — and stops when starting another would cross the line. A little budget goes unused; the
+watermark carries the rest, so that costs a night, never a record. When it stops it finishes
+the run cleanly, sets `stopped_on_time`, and leaves the watermark where the last finished
+record put it.
 
 That works because **each record is written as it is read**, not accumulated to the end. The
 order is: read → write facts and candidates → *then* advance the watermark. A record is never
@@ -693,6 +706,7 @@ The counters worth looking at:
 | `org_not_in_book` | a note on an organisation with no account — usually a roster gap, not an error |
 | `extractor_failed` | the reply could not be read at all. **The record is skipped, not retried** — the run names it; re-read it with `since: null`. |
 | `stopped_on_time` | the run hit `budget_ms` and ended itself. Not a failure: everything read was written, and the watermark carries the rest. |
+| a run stuck in `running` | the function was killed before it could report. The next run closes it as `failed` with that reason — whatever it wrote is kept, and the watermark says how far it got. A rising count of these means `budget_ms` is set past what the caller's timeout allows. |
 | `over_run_cap` | more records were waiting than `max_notes` allowed; the watermark carries them |
 
 **A failed *write* stops the run where it stands** and the watermark does not pass the record,
