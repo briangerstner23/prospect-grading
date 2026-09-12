@@ -458,6 +458,67 @@ from pb_runs where status <> 'success' and started_at > now() - interval '7 days
 order by started_at desc;
 ```
 
+**A missed night is an ABSENCE, and no query above shows an absence.** Every check here reads the
+rows that exist; a night on which the job never wrote a row at all looks exactly like a night that
+has scrolled off a `limit 3`. That is not hypothetical — see the 12 Sep 2026 entry below. Ask for
+the gap instead of the rows:
+
+```sql
+-- nights in the last fortnight with no finished score. Rows here are missed nights.
+select d::date as night
+from generate_series(now()::date - interval '13 days', now()::date, interval '1 day') d
+where not exists (
+  select 1 from pb_runs r
+  where r.kind = 'score'
+    and r.status in ('success', 'partial')
+    and r.started_at >= d + interval '6 hours'
+    and r.started_at <  d + interval '9 hours'
+)
+order by night;
+```
+
+`pg_cron` keeps its own account of whether the job fired at all, and `pg_net` of what came back.
+Those two and `pb_runs` answer three different questions, and a silent night is when they
+disagree — the job fired, the request was made, and no run row exists:
+
+```sql
+-- did the jobs fire, and what did the function answer?
+select case when d.command like '%/pb-score%' then 'score'
+            when d.command like '%/pb-notes%' then 'notes' else 'other' end as job,
+       d.status as cron_status, d.start_time,
+       r.status_code, coalesce(r.error_msg, left(r.content, 80)) as answer
+from cron.job_run_details d
+left join net._http_response r
+       on r.created between d.start_time and d.start_time + interval '5 minutes'
+where d.command like '%functions/v1/pb-%' and d.start_time > now() - interval '4 days'
+order by d.start_time desc;
+```
+
+Two things about that query, both of which cost an hour to learn:
+
+- **Match on `d.command`, not on the job name.** `cron.job_run_details` keeps the `jobid`, and
+  amending a job here means `cron.unschedule` then `cron.schedule`, which issues a **new** jobid —
+  so `join cron.job using (jobid)` silently drops every firing that happened under the old one.
+  After `20260912130000` the score job is jobid 4; join by name and its 10 and 11 Sep history
+  disappears. The command text is in the run row itself and survives the re-schedule.
+- **`cron_status = 'succeeded'` means the POST was *sent*, not that the function worked.** It
+  reports `net.http_post` returning a request id, nothing more. The function's actual answer is in
+  `net._http_response`, which **pg_net prunes after about six hours** — so this query is a
+  same-morning tool. `pb_runs` is the durable record, which is exactly why a night with no
+  `pb_runs` row is worth noticing.
+
+> **12 Sep 2026 — both nightly jobs failed and only one of them said so.** At 05:45 and 06:15 UTC
+> `pb-notes` and `pb-score` each answered **500** and wrote **no `pb_runs` row**, so the book went
+> a day unscored with nothing in its own record to say so. The cause was one transient
+> **504 Gateway Timeout** on `public.pb_secret('PB_SYNC_TOKEN')` — the first call each function
+> makes, made before either has written anything — and Postgres logged no error at all, because
+> the query never reached it. The sweep's failure was legible because
+> `20260911150000` had given that job `timeout_milliseconds := 150000` and `pg_net` captured the
+> 500; the score's was not, because its job still carried `pg_net`'s 5000 ms default and had been
+> recording "Timeout of 5000 ms reached" on every night, good and bad alike, since
+> `20260909120100`. `20260912130000_prospect_book_score_cron_timeout` gives it the same 150 s.
+> The score was re-run by hand the same day (680 scored, 601 ranked, 0 errors — unchanged counts).
+
 `status` is `running` (never finished — investigate), `success`, `partial` (some rows
 errored; see `errors`) or `failed`. The seed run's `counts.skipped` lists the organisations
 and Notion rows dropped as "already an Agency Partner" by design (PRO-10).
