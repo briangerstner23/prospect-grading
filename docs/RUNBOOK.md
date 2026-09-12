@@ -448,9 +448,11 @@ select started_at, finished_at, kind, source, triggered_by, status, counts, erro
 from pb_runs order by started_at desc limit 10;
 
 -- did last night's score happen, and did it finish?
-select started_at, status, counts
-from pb_runs where kind = 'score' and triggered_by = 'pg_cron'
-order by started_at desc limit 3;
+-- No triggered_by filter, deliberately: `= 'pg_cron'` hides a hand-run recovery AND hides the
+-- watchdog row, which says triggered_by = 'pb-nightly-watchdog'. Read `source` instead —
+-- 'pb-score' is a run that happened, 'watchdog' is a night that did not.
+select started_at, status, source, triggered_by, counts
+from pb_runs where kind = 'score' order by started_at desc limit 5;
 
 -- anything not clean in the last week
 select started_at, kind, source, status, errors

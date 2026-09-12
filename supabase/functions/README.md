@@ -42,7 +42,7 @@ and `ingest/`, run `bash scripts/sync_shared.sh`, redeploy. `bash scripts/sync_s
 | `PB_GMAIL_REFRESH_TOKEN` | pb-notes | Google OAuth refresh token for the mailbox to read. An access token lasts an hour, so the run exchanges this for one each time. **Not yet set** |
 | `PB_GMAIL_CLIENT_ID` | pb-notes | the OAuth client the refresh token belongs to. **Not yet set** |
 | `PB_GMAIL_CLIENT_SECRET` | pb-notes | its secret. **Not yet set** |
-| `PB_ANTHROPIC_API_KEY` | pb-notes | reads a note into claims. **Not yet set** — until it is, pb-notes answers 503 and writes no run row, so the nightly job is silent rather than failing |
+| `PB_ANTHROPIC_API_KEY` | pb-notes | reads a note into claims. **Set** (11 Sep 2026). While it was unset pb-notes answered 503 and wrote no run row, so the nightly job was silent rather than failing |
 | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | JSON `{deals:{<hash>:{label,options}}, organizations:{…}, persons:{…}}` written by the collector that reads `/v2/dealFields` and `/v1/organizationFields`; absent → custom fields pass through unlabelled |
 
 `select vault.create_secret('<value>', '<NAME>', '<description>');` — see `docs/RUNBOOK.md` §1.
@@ -89,6 +89,18 @@ supabase/functions/_shared/ingest/webhook_signatures.ts  resolve_features.ts
 supabase/functions/_shared/core/prospect_types.ts  engine.ts  classify.ts  decay.ts  reason.ts
 ```
 
+**pb-notes**
+```
+supabase/functions/pb-notes/index.ts
+supabase/functions/_shared/db.ts  auth.ts  log.ts  helpers.ts
+supabase/functions/_shared/ingest/webhook_signatures.ts  notes_sweep.ts  written_record.ts  record_sources.ts
+supabase/functions/_shared/core/prospect_types.ts
+```
+
+pb-notes is the one function that needs no `rubric.ts`: it writes facts and candidates and never
+grades. `webhook_signatures.ts` still ships, because `helpers.ts` imports `timingSafeEqualString`
+from it for the constant-time bearer compare.
+
 **pb-fathom-webhook**
 ```
 supabase/functions/pb-fathom-webhook/index.ts
@@ -114,6 +126,7 @@ CLI equivalent, from the repo root:
 ```bash
 supabase functions deploy pb-sync              --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 supabase functions deploy pb-score             --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
+supabase functions deploy pb-notes             --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 supabase functions deploy pb-fathom-webhook    --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 supabase functions deploy pb-pipedrive-webhook --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 ```
