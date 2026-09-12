@@ -206,6 +206,36 @@ export function chunk<T>(rows: readonly T[], size = 200): T[][] {
   return out;
 }
 
+/**
+ * Drive a paged query to exhaustion, `page` rows at a time.
+ *
+ * PostgREST caps a response at 1000 rows by default and says so in no way the client can
+ * notice: `data` simply arrives 1000 long. The cap is per REQUEST, not per filter value, so
+ * "one request for 100 accounts" is capped at 1000 rows whatever those 100 accounts hold — and
+ * ~10 facts per account puts 100 accounts exactly on the line. That is not hypothetical: on
+ * 12 Sep 2026 pb-score scored two accounts as Unclassified because their `icp_class` sat past
+ * row 1000 of their chunk, with the facts present in the table and the view the whole time.
+ *
+ * Stopping rule: a short page is the last one. A page that comes back exactly `page` long may
+ * or may not be the end, so it costs one more request to find out — which is why a total that
+ * is an exact multiple of `page` always fetches one empty page. Cheaper than guessing wrong.
+ *
+ * The caller supplies the fetch, so this stays pure: no clock, no network, no vendor import,
+ * and testable with a stub that counts calls.
+ */
+export async function collectPages<T>(
+  page: number,
+  fetchPage: (from: number, to: number) => Promise<T[]>,
+): Promise<T[]> {
+  const size = Math.max(1, Math.floor(page));
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const rows = await fetchPage(from, from + size - 1);
+    out.push(...rows);
+    if (rows.length < size) return out;
+  }
+}
+
 /** ISO timestamp `days` after `iso`; null when `iso` is not a date. */
 export function addDays(iso: string, days: number): string | null {
   const ms = Date.parse(iso);

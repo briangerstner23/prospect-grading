@@ -9,7 +9,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import type { DbLike, Rec } from "./helpers.ts";
-import { chunk } from "./helpers.ts";
+import { chunk, collectPages } from "./helpers.ts";
 
 export function serviceClient(): DbLike {
   const url = Deno.env.get("SUPABASE_URL");
@@ -45,28 +45,60 @@ export async function insertBatches(db: DbLike, table: string, rows: Rec[], size
   return out;
 }
 
-/** `select <cols> from <table> where <col> in (ids)`, chunked so the URL stays short. */
-export async function selectIn(db: DbLike, table: string, col: string, ids: readonly string[], cols = "*", size = 100): Promise<Rec[]> {
+/**
+ * `select <cols> from <table> where <col> in (ids)` — chunked so the URL stays short AND paged
+ * so the answer is all of it.
+ *
+ * THE CHUNKING AND THE PAGING SOLVE DIFFERENT PROBLEMS AND BOTH ARE REQUIRED. `size` bounds the
+ * `in (…)` list so the request URL does not grow past what the gateway accepts. `page` gets past
+ * PostgREST's 1000-row response cap, which applies per request and not per id — so a slice of
+ * 100 accounts is capped at 1000 rows however many rows those accounts actually have.
+ *
+ * This function had the chunking and not the paging until 12 Sep 2026, and the book carries
+ * about ten facts per account: 100 accounts is ~1000 rows, exactly the cap. pb-score read
+ * `pb_current_facts` this way and silently scored the tail of four of its seven chunks on facts
+ * it never received — two accounts lost their `icp_class` and were published as Unclassified
+ * with the fact sitting in the table and the view the whole time. Nothing errored. The rule that
+ * unknown is never evidence cannot hold if a known fact can arrive as absent.
+ *
+ * `order_by` must be UNIQUE or a page boundary can drop or repeat a row: paging an unordered
+ * query is undefined. `id` is present on every table and view this is called with.
+ */
+export async function selectIn(
+  db: DbLike,
+  table: string,
+  col: string,
+  ids: readonly string[],
+  cols = "*",
+  size = 100,
+  orderBy = "id",
+  page = 1000,
+): Promise<Rec[]> {
   const out: Rec[] = [];
   for (const slice of chunk(ids, size)) {
-    const { data, error } = await db.from(table).select(cols).in(col, slice);
-    if (error) throw new Error(`${table}: ${error.message}`);
-    for (const r of data ?? []) out.push(r as Rec);
+    const rows = await collectPages<Rec>(page, async (from, to) => {
+      const { data, error } = await db.from(table).select(cols).in(col, slice).order(orderBy).range(from, to);
+      if (error) throw new Error(`${table}: ${error.message}`);
+      return (data ?? []) as Rec[];
+    });
+    out.push(...rows);
   }
   return out;
 }
 
-/** Every row of a query, paging past PostgREST's default 1000-row cap. */
+/**
+ * Every row of a query, paging past PostgREST's default 1000-row cap. Same cap, same loop as
+ * selectIn — shared through collectPages so the stopping rule lives in one tested place.
+ *
+ * Callers that will ever exceed one page should add a unique `order` through `apply`; paging an
+ * unordered query is undefined. Every current caller is either single-page or ordered.
+ */
 export async function selectAll(db: DbLike, table: string, cols: string, apply?: (q: DbLike) => DbLike, page = 1000): Promise<Rec[]> {
-  const out: Rec[] = [];
-  for (let from = 0; ; from += page) {
-    let q = db.from(table).select(cols).range(from, from + page - 1);
+  return await collectPages<Rec>(page, async (from, to) => {
+    let q = db.from(table).select(cols).range(from, to);
     if (apply) q = apply(q);
     const { data, error } = await q;
     if (error) throw new Error(`${table}: ${error.message}`);
-    const rows = (data ?? []) as Rec[];
-    out.push(...rows);
-    if (rows.length < page) break;
-  }
-  return out;
+    return (data ?? []) as Rec[];
+  });
 }

@@ -22,6 +22,7 @@ import {
   exceedsCap,
   headerSubset,
   inboxBody,
+  collectPages,
   isoDate,
   json,
   MAX_WEBHOOK_BODY_BYTES,
@@ -596,6 +597,40 @@ for (const f of ["helpers.ts", "rubric.ts", "sync_pure.ts", "score_pure.ts", "we
   const src = readFileSync(join(here, f), "utf8");
   check(`no Date.now()/new Date() in ${f}`, !/Date\.now\(\)|new Date\(\)/.test(src));
   check(`no jsr:/npm: import in ${f}`, !/from\s+["'](jsr|npm):/.test(src));
+}
+
+/* ------------------------------------------------------------------ *
+ * collectPages — the 1000-row cap that published two accounts as
+ * Unclassified on facts pb-score never received (12 Sep 2026)
+ * ------------------------------------------------------------------ */
+
+{
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ i }));
+  const fetcher = (total: number, seen: Array<[number, number]>) =>
+    async (from: number, to: number): Promise<Array<{ i: number }>> => {
+      seen.push([from, to]);
+      return rows(total).slice(from, to + 1);
+    };
+
+  let seen: Array<[number, number]> = [];
+  eq("collectPages: a short first page is the whole answer", (await collectPages(1000, fetcher(42, seen))).length, 42);
+  eq("collectPages: and costs exactly one request", seen, [[0, 999]]);
+
+  seen = [];
+  eq("collectPages: pages past the cap instead of truncating at it", (await collectPages(1000, fetcher(2500, seen))).length, 2500);
+  eq("collectPages: over three windows", seen, [[0, 999], [1000, 1999], [2000, 2999]]);
+
+  // The boundary that hid the bug: a full page is indistinguishable from the end, so it costs
+  // one more request to find out. 1000 facts in a chunk returned 1000 rows and looked complete.
+  seen = [];
+  eq("collectPages: an exact multiple of the page returns every row", (await collectPages(100, fetcher(100, seen))).length, 100);
+  eq("collectPages: and spends one more request proving it ended", seen, [[0, 99], [100, 199]]);
+
+  seen = [];
+  eq("collectPages: no rows at all terminates", (await collectPages(1000, fetcher(0, seen))).length, 0);
+
+  seen = [];
+  eq("collectPages: a page size under 1 is floored to 1, not an endless loop", (await collectPages(0, fetcher(3, seen))).length, 3);
 }
 
 /* ------------------------------------------------------------------ */
