@@ -549,6 +549,19 @@ Two things about that query, both of which cost an hour to learn:
 > `20260909120100`. `20260912130000_prospect_book_score_cron_timeout` gives it the same 150 s.
 > The score was re-run by hand the same day (680 scored, 601 ranked, 0 errors — unchanged counts).
 
+> **12 Sep 2026, later the same day — the reads were right about the wrong facts.** Two accounts
+> went Ranked → Unclassified after a Pipedrive sweep that had written them nothing. `selectIn`
+> chunked ids for URL length and never paged rows, so PostgREST's 1000-row cap — which is per
+> *request*, not per filter value — silently truncated four of pb-score's seven chunks. The fix
+> is in **pb-score v5**; a `?preview=1` run proved it before anything was written, and the real
+> run that followed moved **14 accounts Unclassified → Ranked** (7 Bronze, 4 Gold, 3 Silver),
+> nothing in the other direction and no tier moved among the accounts already ranked. Every read
+> published between the seed and that run was computed from a truncated window: 72 unclassified
+> where 58 was the truth. The lesson for the next reader is the shape of it — a truncation is
+> *invisible* (200 OK, `content-range: 0-999/*`), so what surfaces is a downstream nonsense like
+> a tier flip, and the trace is what turns that into a diagnosis (`icp_derivation` went "stated"
+> → "none" while the fact sat in `pb_current_facts` the whole time).
+
 `status` is `running` (never finished — investigate), `success`, `partial` (some rows
 errored; see `errors`) or `failed`. The seed run's `counts.skipped` lists the organisations
 and Notion rows dropped as "already an Agency Partner" by design (PRO-10).

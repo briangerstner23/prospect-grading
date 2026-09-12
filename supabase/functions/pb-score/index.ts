@@ -120,7 +120,9 @@ Deno.serve(async (req: Request) => {
 
     const facts = await selectIn(db, "pb_current_facts", "account_id", ids, "*");
     const signals = await selectIn(db, "pb_signals", "account_id", ids, "*");
-    const deals = await selectIn(db, "pb_deals", "account_id", ids, "*");
+    // pb_deals is keyed on pipedrive_deal_id, not id — selectIn pages, and paging needs a
+    // unique order column. Passing the wrong one is a loud 500, not a silent truncation.
+    const deals = await selectIn(db, "pb_deals", "account_id", ids, "*", 100, "pipedrive_deal_id");
     const overrides = await selectIn(db, "pb_register", "account_id", ids, "*");
 
     factsBy = groupBy(facts as unknown as FactRow[], "account_id");
@@ -144,7 +146,8 @@ Deno.serve(async (req: Request) => {
     );
 
     if (preview) {
-      const current = await selectIn(db, "pb_current_reads", "account_id", ids, "account_id,effective_tier,status");
+      // distinct on (account_id), so account_id is unique here — and it is already selected.
+      const current = await selectIn(db, "pb_current_reads", "account_id", ids, "account_id,effective_tier,status", 100, "account_id");
       currentBy = new Map();
       for (const r of current) {
         currentBy.set(String(r.account_id), {

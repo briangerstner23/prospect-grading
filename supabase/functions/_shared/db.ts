@@ -62,7 +62,11 @@ export async function insertBatches(db: DbLike, table: string, rows: Rec[], size
  * unknown is never evidence cannot hold if a known fact can arrive as absent.
  *
  * `order_by` must be UNIQUE or a page boundary can drop or repeat a row: paging an unordered
- * query is undefined. `id` is present on every table and view this is called with.
+ * query is undefined. The default `id` suits pb_current_facts, pb_signals, pb_register and
+ * pb_accounts — but NOT every table: `pb_deals` is keyed on `pipedrive_deal_id` and has no `id`
+ * at all, and `pb_current_reads` is `distinct on (account_id)`, so account_id is its unique
+ * column. Both pass their own. A wrong order column is a loud 500 from PostgREST
+ * ("column X does not exist"), never a silent truncation, so this fails the safe way.
  */
 export async function selectIn(
   db: DbLike,
