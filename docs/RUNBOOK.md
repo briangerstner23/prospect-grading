@@ -707,13 +707,15 @@ job runs at 05:45. The function exchanges the refresh token for an access token 
 The scope is **`https://www.googleapis.com/auth/gmail.readonly`** — `gmail.metadata` is not
 enough, because it withholds the body and the sweep reads the message, not the headers.
 
-> **Redeploy `pb-notes` before adding these three secrets.** The deployed function is version 8;
-> the full-body read and the quoted-reply trim landed after it and are in the repo only. While
-> the channel has no credential it is skipped and the drift is invisible — the moment the
-> secrets exist, an un-redeployed function starts reading ~200-character previews and dating
-> quoted passages by the reply that quoted them. Build with `bash scripts/build_functions.sh`
-> and deploy `dist/functions/pb-notes/index.js`, then confirm with a GET (405 `{"ok":false,
-> "error":"POST only"}` — pb-notes has no health branch; see §9.1) and a `dry_run` sweep.
+> **Done — the redeploy this step used to wait for happened on 12 Sep 2026.** `pb-notes` is
+> **version 9**, which is the first deployed build with the full-body read and the quoted-reply
+> trim; v8 had neither, and while the channel has no credential the drift is invisible, so the
+> trap was real: the moment those secrets existed an un-redeployed v8 would have read
+> ~200-character previews and dated quoted passages by the reply that quoted them. The deploy was
+> confirmed three ways — GET answered 405 `{"ok":false,"error":"POST only"}` (pb-notes has no
+> health branch; see §9.1), a `dry_run` sweep ran the whole handler green, and the deployed source
+> was read back and checked character by character at every one of its 38 regex backslashes.
+> **The three Gmail secrets can now be added whenever you like.**
 
 Minting the refresh token, end to end:
 

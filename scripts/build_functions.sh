@@ -13,10 +13,18 @@
 #   supabase functions deploy <fn> --project-ref sgagrmapuovnjwvgsxbp --no-verify-jwt
 #
 # Deploying through the MCP carries the file as a JSON string, so every backslash in the bundle
-# has to be escaped in that payload: a bundle's `\uXXXX` (in a regex literal, say) sent as a
-# single backslash arrives decoded to the character it names. Semantically identical, but the
-# deployed bytes then differ from the bundle's and the sha256 recorded at deploy time no longer
-# matches what is running. Escape the payload, and confirm the deploy with a GET to the function.
+# has to be escaped in that payload: a backslash sent singly arrives decoded to whatever it named.
+#
+# `--charset=utf8` exists to shrink that hazard rather than to be tidy. Without it esbuild escapes
+# every non-ASCII character as `\uXXXX` — eleven of them in pb-notes alone, all em dashes and
+# curly quotes inside ordinary strings. Those are the DANGEROUS ones, because JSON decodes `—`
+# to an em dash silently: the function behaves identically, so nothing fails, and the only casualty
+# is the sha256 recorded at deploy time, which then no longer identifies what is running. With
+# `--charset=utf8` those characters are emitted as themselves and the remaining backslashes are
+# all regex syntax (`\s`, `\S`, `\b`, `\.`, `\/`, `\0`, `\n`, `\t`, `\r`), where a wrong decode
+# breaks the pattern loudly instead. pb-notes goes from 49 backslashes to 38 this way.
+#
+# Escape the payload, and confirm the deploy with a GET to the function.
 # The two webhooks answer `{"ok":true,"service":"<slug>"}`; pb-sync, pb-score and pb-notes have no
 # GET branch and answer 405 `{"error":"POST only"}`. Either proves it parsed and booted — a bundle
 # that did not answers a boot error instead of reaching the method check.
@@ -34,7 +42,7 @@ for fn in "${FUNCTIONS[@]}"; do
   npx --yes "esbuild@${ESBUILD_VERSION}" "supabase/functions/$fn/index.ts" \
     --bundle --format=esm --platform=neutral --target=esnext \
     --external:'jsr:*' --external:'npm:*' --external:'https://*' --external:'node:*' \
-    --minify-whitespace --minify-syntax --legal-comments=none \
+    --minify-whitespace --minify-syntax --legal-comments=none --charset=utf8 \
     --outfile="$OUT/$fn/index.js" >/dev/null
   printf "%-24s %8d bytes  sha256 %s\n" "$fn" "$(wc -c < "$OUT/$fn/index.js")" "$(sha256sum "$OUT/$fn/index.js" | cut -c1-16)…"
 done

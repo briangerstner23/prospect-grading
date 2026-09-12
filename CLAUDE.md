@@ -36,7 +36,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260911092040 fact candidates · 20260911120000 fact precedence ·
             20260911130000 notes cron · 20260911140000 fact candidate review ·
             20260911150000 notes cron budget · 20260911170000 revoke anon writes ·
-            20260911180000 restore view invoker (all applied)
+            20260911180000 restore view invoker · 20260912130000 score cron timeout
+            (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -45,7 +46,8 @@ web/        index.html — the page, one file, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
 scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_README.md) ·
-            sync_shared.sh · test_all.sh
+            sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
+            index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts
 ```
 
 ## Conventions
@@ -98,16 +100,15 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
 - Deploy through the Supabase MCP (`apply_migration`, `deploy_edge_function`,
   `execute_sql`); the build container has no direct route to `*.supabase.co`.
 - Secrets in Vault, read by `pb_secret()` (service role only). **Verify with
-  `select name from vault.secrets where name like 'PB_%'` rather than trusting this list** — as
-  of 11 Sep 2026 only `PB_SYNC_TOKEN` is actually set, and this file previously claimed
-  otherwise. The names the code reads:
+  `select name from vault.secrets where name like 'PB_%'` rather than trusting this list** — it
+  has been wrong before, in both directions. The names the code reads:
 
-  | Secret | Read by | State (11 Sep 2026) |
+  | Secret | Read by | State (12 Sep 2026) |
   |---|---|---|
   | `PB_SYNC_TOKEN` | pb-sync, pb-score, pb-notes, pg_cron | **set** |
-  | `PB_ANTHROPIC_API_KEY` | pb-notes (the extractor) | not set — pb-notes 503s, no run row |
+  | `PB_ANTHROPIC_API_KEY` | pb-notes (the extractor) | **set** — without it pb-notes 503s and writes no run row |
   | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel) | not set |
-  | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set — **redeploy pb-notes before setting these**; deployed v8 predates the full-body read (RUNBOOK §17) |
+  | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set — safe to add now; the redeploy they were waiting on landed as pb-notes **v9** (RUNBOOK §17) |
   | `PB_EXTRACTOR_MODEL` | pb-notes | optional — defaults to `claude-sonnet-5` |
   | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | not set (PHASE0 A3) |
   | `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set |
@@ -117,6 +118,11 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
   enough to make the sweep do real work. A channel with no credential is skipped and said so in
   the run's notes.
+- Deployed versions as of 12 Sep 2026: **pb-notes v9**, **pb-score v3**, pb-sync and both
+  webhooks v1. `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
+  runs *before* anything is written — so a transient gateway failure there costs the whole run
+  and leaves no `pb_runs` row at all. That is not hypothetical: it took both nightly jobs out on
+  12 Sep (RUNBOOK §15).
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
   Two cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first so
