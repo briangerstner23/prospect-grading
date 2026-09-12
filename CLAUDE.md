@@ -111,7 +111,8 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel) | not set |
   | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set — safe to add now; the redeploy they were waiting on landed as pb-notes **v9** (RUNBOOK §17) |
   | `PB_EXTRACTOR_MODEL` | pb-notes | optional — defaults to `claude-sonnet-5` |
-  | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | not set (PHASE0 A3) |
+  | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | **set** (12 Sep 2026) — `whsec_`, 24-byte key. From a webhook created in the Fathom UI; see RUNBOOK §4 |
+  | `PB_FATHOM_API_KEY` | nothing — operator only | **set** (12 Sep 2026). Creates/deletes the Fathom webhook via `api.fathom.ai` from `pg_net`. No edge function reads it; safe to delete once the webhook is settled |
   | `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set |
 
   pb-notes sweeps three channels, each behind its own credential and its own watermark row. The

@@ -150,12 +150,32 @@ select status_code, content from net._http_response where id = <id>;
 
 ## 4 · Register the Fathom webhook
 
-`pb-fathom-webhook` is deployed and answering, but **the webhook itself could not be created
-from a session**: the owner-account Fathom MCP's `create_webhook` returns
-`Fathom API error 400: {"error":"Url can't be blank"}` on every call — it drops the destination
-URL before Fathom's API sees it, whether the URL is passed as the schema's `destination_url` or
-as an explicit `url` beside it. Nothing on this side can supply the field; it needs a fixed MCP,
-or Fathom's own API or UI with a token. Parameters, wherever it is created:
+**Done, 12 Sep 2026** — the webhook exists (created in the Fathom UI) and
+`PB_FATHOM_WEBHOOK_SECRET` is set: a `whsec_` whose 32 base64 characters decode to a 24-byte
+key, checked with `decode(substring(d from 7),'base64')` rather than assumed.
+
+Three things were learned getting there, because the obvious routes all fail differently:
+
+- **The Fathom MCP's `create_webhook` is still broken.** Re-tested 12 Sep: it returns
+  `Fathom API error 400: {"error":"Url can't be blank"}` whether the URL is passed as the
+  schema's `destination_url` or as an explicit `url` beside it. It drops the field before
+  Fathom's API sees it. The error says *blank*, not *invalid*, so reformatting the URL cannot
+  help.
+- **The REST API does work, and from `pg_net` rather than from a session.** This container has
+  no egress to `developers.fathom.ai` or to `*.supabase.co`, but Postgres does:
+  `POST https://api.fathom.ai/external/v1/webhooks` with an `X-Api-Key` header, sent by
+  `net.http_post` reading the key out of Vault, so the key never enters a transcript or a file.
+  An unauthenticated POST to that path answers 401, which is the cheap way to prove the host
+  is reachable and the path right before spending anything.
+- **There is no list endpoint.** `GET` on that same path answers a routing `404`, so webhooks
+  cannot be enumerated — there is no way to confirm from SQL how many exist or where they
+  point. That has to be eyeballed in the Fathom UI, and it is the one step a session cannot do.
+
+A `whsec_…` is the *signing secret*, not an API key: it will 401 against the API. If
+`vault.create_secret` errors on a re-run it is refusing a name that already exists — use
+`vault.update_secret` (§1), which also renames.
+
+Parameters, wherever it is created:
 
 - `url`: `<FN>/pb-fathom-webhook`
 - `include_transcript: true`, `include_summary: true`, `include_action_items: true`,
