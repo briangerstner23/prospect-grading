@@ -566,6 +566,77 @@ Two things about that query, both of which cost an hour to learn:
 errored; see `errors`) or `failed`. The seed run's `counts.skipped` lists the organisations
 and Notion rows dropped as "already an Agency Partner" by design (PRO-10).
 
+## 18 · Pull the closed-deal history from Pipedrive
+
+`pb_deals` was seeded with **open** deals only, because the roster was derived from Client
+Journey cards and open pipeline-1 deals (DESIGN §4d). Pipedrive holds the closed ones, and they
+are the only outcome record either book has. Re-run this whenever the outcome question comes up;
+it is read-only against Pipedrive and idempotent against `pb_deals`.
+
+**Scope.** Pipeline 1 is the deal pipeline. Pipeline 9 (Client Journey) holds **no** closed
+deals — its cards stay `open` and carry their state in the stage — so pipeline 1 is the whole
+closed universe. Verify that before widening:
+
+```
+getDeals status=won  pipeline_id=9 limit=2     -> expect data: []
+```
+
+**Paging.** `getDeals` caps at 500 per page and returns `additional_data.next_cursor`; a
+response of 500 with a cursor is a floor, never a total. Page until `next_cursor` is null —
+two pages each for won and lost as of 12 Sep 2026. Each page is ~1 MB, so read it from the
+saved tool-result file rather than into the conversation.
+
+```
+getDeals status=won  pipeline_id=1 limit=500 sort_by=add_time sort_direction=desc [cursor=...]
+getDeals status=lost pipeline_id=1 limit=500 sort_by=add_time sort_direction=desc [cursor=...]
+```
+
+**What to load, and what not to.** Join each deal's `org_id` to `pb_accounts.pipedrive_org_id`
+— that is a `high` key under `ingest/identity.ts`, so it attaches automatically. **Load only
+the deals that match a book account.** Most closed deals belong to organisations that are
+Agency Partners under PRO-10 and are deliberately not in the book; importing their deal history
+would put client data in the prospect system and cut against PRO-17. Their outcomes are analysis
+input, not book rows.
+
+**Safety.** `pb-score` filters `status === "open" && is_cj !== true` before grading
+(`pb-score/index.ts`), so closed rows are inert in the scoring path. Confirm with a
+`?preview=1` run: the counts must not move. If they do, something else changed.
+
+**Two casting traps in the load SQL.** A `VALUES` list whose column holds a quoted timestamp
+*and* a `null` resolves to `text`, and the insert fails with *"column is of type timestamp with
+time zone but expression is of type text"*. Cast in the select — `v.won_time::timestamptz` —
+rather than trusting inference. `close_date::date` from the same unknown literal is fine.
+Upsert on the primary key `pipedrive_deal_id`.
+
+### What the history is worth
+
+Two things, and it is worth being clear which is which.
+
+**Deal-motion thresholds — immediately usable.** The rubric defaults every stage median to
+**21 days** "until WLIQ's own are known" (METHOD §12). They are now knowable. Measured over
+1,355 closed pipeline-1 deals on 12 Sep 2026, creation to close:
+
+| | n | p25 | median | p75 |
+|---|---|---|---|---|
+| Won | 589 | 1 d | **8 d** | 34 d |
+| Lost | 667 | 36 d | **97 d** | 257 d |
+
+The placeholder sits between the two and is a poor stand-in for either. Three quarters of wins
+close inside 34 days, which is the shape of the finding: a deal still open well past a month is
+already behaving like a loss. Changing the rubric on this is a new version, previewed and
+owner-activated (rule 4) — not an edit in place.
+
+**A conversion cohort — NOT directly available, and this is the trap.** PRO-10 removes winners
+from the book: an agency with an invoice is an Agency Partner. So of the organisations with a
+won deal, essentially none are in the book, and a conversion test on current membership has
+about one positive. The counts on 12 Sep were 233 organisations with a closed outcome, 133 of
+them ever-won, and **1 of those 133 in the book** against 51 of the 100 never-won.
+
+That is not a reason to skip the pull. It is the reason PRO-8 is worded as it is — winners
+scored "as prospects on facts dated **before** their first invoice". The pull supplies the
+labels and the dates, which were the missing half; the other half is the pre-signing feature
+snapshot, which PRO-8 has always recorded as unrun. Do not read a roster join as the cohort.
+
 ## 16 · Quick health checks
 
 ```sql
