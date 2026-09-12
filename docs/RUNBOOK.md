@@ -626,16 +626,56 @@ close inside 34 days, which is the shape of the finding: a deal still open well 
 already behaving like a loss. Changing the rubric on this is a new version, previewed and
 owner-activated (rule 4) — not an edit in place.
 
-**A conversion cohort — NOT directly available, and this is the trap.** PRO-10 removes winners
-from the book: an agency with an invoice is an Agency Partner. So of the organisations with a
-won deal, essentially none are in the book, and a conversion test on current membership has
-about one positive. The counts on 12 Sep were 233 organisations with a closed outcome, 133 of
-them ever-won, and **1 of those 133 in the book** against 51 of the 100 never-won.
+**A conversion cohort — not from pipeline 1, and this is the trap.** Pipeline-1 deals record
+whether a piece of *work* was won. They are mostly repeat projects for existing partners, and
+the project motion has since moved to Orbit. Of the 133 organisations with a won pipeline-1
+deal, **1** is in the book, because PRO-10 removed the rest long ago. A conversion test built
+on them would have one positive case.
 
-That is not a reason to skip the pull. It is the reason PRO-8 is worded as it is — winners
-scored "as prospects on facts dated **before** their first invoice". The pull supplies the
-labels and the dates, which were the missing half; the other half is the pre-signing feature
-snapshot, which PRO-8 has always recorded as unrun. Do not read a roster join as the cohort.
+### The Client Journey cards are the conversion record (§18b)
+
+One card per company, pipeline 9, always `status = open` — the state lives in the stage. A
+prospect becoming an Agency Partner IS a card moving into a client stage, which is the PRO-10
+event. Pull all of them the same way (two pages on 12 Sep 2026, 943 cards):
+
+```
+getDeals status=open pipeline_id=9 limit=500 sort_by=add_time sort_direction=desc [cursor=...]
+```
+
+| Stage | Cards | Reads as |
+|---|---|---|
+| Active Client 63 · Lost Client 67 · Past 65 · Inactive 64 | 113 · 89 · 27 · 20 | **converted — 249** |
+| Unqualified/DNC 66 · Quote Lost 71 | 172 · 75 | **did not convert — 247** |
+| Schedule Sales Call 58 · Sales Call Done 59 · Quoting 70 · New 57 | 185 · 158 · 51 · 22 | in flight — 416 |
+| Friends of WLIQ 69 | 31 | not a sales relationship |
+
+**249 converted against 247 not.** `docs/BASELINE.md` records the available cohort as n = 31 and
+notes adequate power needs ~110. This is sixteen times that, and clears every vendor training
+minimum. It is the single most useful thing either pull produced.
+
+The 247 non-converters are **already in the book and already graded** — PRO-10 only removes
+winners — so a partial check runs today with no new data. Grading in-book accounts by how the
+relationship ended (12 Sep 2026): Gold rate is 35% at Sales Call Done, 13% Quoting, 11% Schedule
+Sales Call, 7% Quote Lost, 3% Unqualified/DNC.
+
+**Do not report that as validation.** It is confounded twice: accounts further along carry more
+facts and facts feed the grade (average facts present falls with the Gold rate, 1.06 → 0.52),
+and an agency marked Unqualified was marked so by a person whose judgement also seeded its ICP
+class. It says the sign is not obviously wrong. It cannot settle PRO-8.
+
+**What is still missing** is the pre-conversion feature snapshot for the 249 winners: they are
+not in the book, and each needs evidence dated before its card reached a client stage. That is
+the pre-signing harvest PRO-8 has always recorded as unrun. Also missing is *when* each card
+changed stage — the pull captures stage membership, not stage history, so the cohort is not yet
+dated. Pipedrive keeps a changelog; reading it is a separate job.
+
+### Deal health is pointed at the wrong system
+
+Project deals are now run in **Orbit**, not Pipedrive. The book holds 31 open Pipedrive deals,
+**none** with a `last_buyer_touch_at` and **none** carrying a health verdict. Every deal-health
+rule needs a field that is null and unknown never warns, so the read is silent by construction
+rather than because the deals are healthy. Re-grounding the stage medians matters much less
+than pointing the read at whichever system now holds the motion.
 
 ## 16 · Quick health checks
 
