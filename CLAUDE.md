@@ -36,8 +36,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260911092040 fact candidates · 20260911120000 fact precedence ·
             20260911130000 notes cron · 20260911140000 fact candidate review ·
             20260911150000 notes cron budget · 20260911170000 revoke anon writes ·
-            20260911180000 restore view invoker · 20260912130000 score cron timeout
-            (all applied)
+            20260911180000 restore view invoker · 20260912130000 score cron timeout ·
+            20260912140000 revoke authenticated writes (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -133,19 +133,51 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   `pb_members`, `pb_promotions`, `pb_potential_snapshots` and `pb_webhook_inbox` stay closed.
   Writes are unchanged — by lane via `pb_members.role` (owner / rater / viewer), signed in.
   Never grant `anon` an insert, update or delete; never open `pb_contacts` without asking.
-- **A new `pb_` table arrives with `anon` holding everything.** Supabase's default privileges
-  on `public` grant insert/update/delete/truncate to `anon` on any table created after they
-  were set — three tables made on 11 Sep inherited exactly that, and RLS default-deny was the
-  only thing refusing it. The defaults are not ours to change (the project is shared), so
-  **every new table needs its own `revoke`**, as in
-  `20260911170000_prospect_book_revoke_anon_writes`. Check after adding one:
+- **A new `pb_` table arrives with `anon` AND `authenticated` holding everything.** Supabase's
+  default privileges on `public` grant insert/update/delete/truncate on any table created after
+  they were set. Three tables made on 11 Sep inherited that for `anon`
+  (`20260911170000_prospect_book_revoke_anon_writes`); **all twenty objects held it for
+  `authenticated`** until `20260912140000_prospect_book_revoke_authenticated_writes`, because
+  the check below originally asked about `anon` only. The defaults are not ours to change (the
+  project is shared), so **every new table needs its own `revoke`, for both roles**.
+
+  RLS default-deny refuses these over PostgREST, with one exception worth remembering:
+  **TRUNCATE is not subject to RLS at all** — a row policy cannot refuse it, and only
+  PostgREST's not exposing TRUNCATE stood between a signed-in user and an empty `pb_reads`.
+
+  Check after adding a table. `authenticated` legitimately writes where a policy says so, so
+  its expected set is not simply `SELECT`: insert on `pb_facts`, `pb_signals`, `pb_register`
+  and `pb_promotions`; update on `pb_fact_candidates` and `pb_identity_candidates`; select
+  elsewhere; and nothing at all on `pb_apollo_enrichment`, `pb_source_watermarks` or
+  `pb_webhook_inbox`. This returns nothing when the book is in order:
 
   ```sql
-  select table_name, string_agg(privilege_type, ',' order by privilege_type)
-  from information_schema.role_table_grants
-  where table_schema='public' and grantee='anon' and table_name like 'pb\_%'
-  group by 1 having string_agg(privilege_type, ',' order by privilege_type) <> 'SELECT';
+  select grantee, table_name, privs, expected
+  from (
+    select grantee, table_name,
+           string_agg(privilege_type, ',' order by privilege_type) as privs,
+           case
+             when grantee = 'authenticated'
+              and table_name in ('pb_facts','pb_signals','pb_register','pb_promotions')
+             then 'INSERT,SELECT'
+             when grantee = 'authenticated'
+              and table_name in ('pb_fact_candidates','pb_identity_candidates')
+             then 'SELECT,UPDATE'
+             else 'SELECT'
+           end as expected
+    from information_schema.role_table_grants
+    where table_schema='public' and grantee in ('anon','authenticated')
+      and table_name like 'pb\_%'
+    group by 1, 2
+  ) g
+  where privs <> expected;
   ```
+
+  Compare against a computed `expected` rather than writing the exception list into a
+  `having … not in (…, case … end)`: when that `case` falls through to NULL the comparison is
+  NULL, not true, and the row is dropped — a check that hides exactly the findings it exists
+  to surface. The three service-role-only tables appear in no row at all, which is correct;
+  they now hold no grant for either role.
 - Operator steps: `docs/RUNBOOK.md`. Access status: `docs/PHASE0.md`.
 
 ## Open rulings (do not resolve them in code; each is a toggle in the rubric)

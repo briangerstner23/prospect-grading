@@ -537,25 +537,53 @@ select effective_tier, count(*) from pb_current_reads group by 1;               
 select source, verified, count(*) from pb_webhook_inbox group by 1, 2;                    -- inbound deliveries
 ```
 
-**Every `pb_` table must grant `anon` `SELECT` and nothing else.** A new table does not:
-Supabase's default privileges on `public` hand `anon` insert, update, delete and truncate on
-anything created after they were set, and three tables made on 11 Sep arrived that way. RLS
-default-deny was the only thing refusing them — one permissive read policy later and the writes
-would have come with it. The defaults belong to a project shared with other WLIQ systems, so
-they stay as they are and **each new table carries its own revoke**
-(`20260911170000_prospect_book_revoke_anon_writes` is the pattern). This returns nothing when
-the book is in order:
+**Check both `anon` and `authenticated`.** Supabase's default privileges on `public` hand
+insert, update, delete and truncate on anything created after they were set, to **both** roles.
+Three tables made on 11 Sep arrived that way for `anon`
+(`20260911170000_prospect_book_revoke_anon_writes`); every one of the twenty `pb_` objects had
+it for `authenticated` until `20260912140000_prospect_book_revoke_authenticated_writes`, which
+went unnoticed for as long as it did because the check here asked about `anon` alone. The
+defaults belong to a project shared with other WLIQ systems, so they stay as they are and
+**each new table carries its own revoke, for both roles**.
+
+RLS default-deny refuses these over PostgREST — with one exception. **TRUNCATE is not subject
+to RLS**: Postgres checks the privilege and nothing else, so no row policy ever refused it, and
+the only thing between a signed-in user and an empty `pb_reads` was that PostgREST does not
+expose TRUNCATE. That is a property of the client, not of our permissions.
+
+`authenticated` writes legitimately where a policy says so, so its expected set is not simply
+`SELECT`. Six policies, six verbs, read out of `pg_policy` rather than assumed: insert on
+`pb_facts`, `pb_signals`, `pb_register`, `pb_promotions`; update on `pb_fact_candidates` and
+`pb_identity_candidates`. Everything else is select, and the three service-role-only tables
+(`pb_apollo_enrichment`, `pb_source_watermarks`, `pb_webhook_inbox`) hold nothing for either
+role. This returns nothing when the book is in order:
 
 ```sql
-select table_name, string_agg(privilege_type, ',' order by privilege_type) as anon_privs
-from information_schema.role_table_grants
-where table_schema = 'public' and grantee = 'anon' and table_name like 'pb\_%'
-group by 1
-having string_agg(privilege_type, ',' order by privilege_type) <> 'SELECT';
+select grantee, table_name, privs, expected
+from (
+  select grantee, table_name,
+         string_agg(privilege_type, ',' order by privilege_type) as privs,
+         case
+           when grantee = 'authenticated'
+            and table_name in ('pb_facts','pb_signals','pb_register','pb_promotions')
+           then 'INSERT,SELECT'
+           when grantee = 'authenticated'
+            and table_name in ('pb_fact_candidates','pb_identity_candidates')
+           then 'SELECT,UPDATE'
+           else 'SELECT'
+         end as expected
+  from information_schema.role_table_grants
+  where table_schema = 'public' and grantee in ('anon','authenticated')
+    and table_name like 'pb\_%'
+  group by 1, 2
+) g
+where privs <> expected;
 ```
 
-`pb_source_watermarks` and `pb_apollo_enrichment` are not in the anon set at all — the page
-reads neither, and when the sweep last looked at an agency is not the public's to know.
+Compare against a computed `expected` rather than writing the exceptions into
+`having … not in (…, case … end)`. When that `case` falls through to NULL the whole comparison
+is NULL rather than true and the row is silently dropped — a check that hides precisely the
+findings it exists to surface.
 
 **Both views must keep `security_invoker = true`.** `create or replace view` **resets a view's
 options** when it is replaced without a `WITH` clause, so rewriting one silently turns it into a
