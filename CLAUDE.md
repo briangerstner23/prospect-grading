@@ -37,7 +37,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260911130000 notes cron · 20260911140000 fact candidate review ·
             20260911150000 notes cron budget · 20260911170000 revoke anon writes ·
             20260911180000 restore view invoker · 20260912130000 score cron timeout ·
-            20260912140000 revoke authenticated writes (all applied)
+            20260912140000 revoke authenticated writes ·
+            20260912150000 nightly watchdog (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -125,8 +126,11 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   12 Sep (RUNBOOK §15).
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
-  Two cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first so
-  a note read in the morning changes that morning's tier.
+  Three cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first
+  so a note read in the morning changes that morning's tier — and `pb-nightly-watchdog` 07:00,
+  which writes a `failed` `pb_runs` row for either of them if it left no finished run. It lives
+  in the database on purpose: the thing that took both jobs out on 12 Sep was the API gateway,
+  and a remedy that goes through the gateway is no remedy (migration 20260912150000).
 - RLS is default-deny **except for reads, which are public** (10 Sep 2026, owner decision —
   `docs/DECISIONS.md` §5; it supersedes how PRO-7 was implemented and PRO-7 itself is not
   re-ruled). `anon` holds `select` on the tables the page reads and nothing else: `pb_contacts`,

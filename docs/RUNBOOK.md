@@ -458,6 +458,14 @@ from pb_runs where status <> 'success' and started_at > now() - interval '7 days
 order by started_at desc;
 ```
 
+Since 12 Sep a **`pb-nightly-watchdog`** job at 07:00 UTC asks this question for you and writes
+a `failed` row with `source = 'watchdog'` for any nightly job that left no finished run that
+morning, carrying what `pg_cron` and `pg_net` saw while they still remember it. So a silent
+night now leaves a row after all, and `select … where status <> 'success'` above finds it.
+A `watchdog` row is a record, never an attempt and never a retry — re-run the job by hand.
+Call `select public.pb_nightly_watchdog();` to run the check early; it returns how many rows
+it wrote and will not write a second one for the same night.
+
 **A missed night is an ABSENCE, and no query above shows an absence.** Every check here reads the
 rows that exist; a night on which the job never wrote a row at all looks exactly like a night that
 has scrolled off a `limit 3`. That is not hypothetical — see the 12 Sep 2026 entry below. Ask for
@@ -584,6 +592,25 @@ Compare against a computed `expected` rather than writing the exceptions into
 `having … not in (…, case … end)`. When that `case` falls through to NULL the whole comparison
 is NULL rather than true and the row is silently dropped — a check that hides precisely the
 findings it exists to surface.
+
+To prove a revoke took without breaking a lane, try the write as the role and read the error:
+**`permission denied for table …` is the grant refusing, `new row violates row-level security
+policy …` is RLS refusing a grant that is still there.** The second is what a lane's table must
+say — a real signed-in rater carries a JWT and passes the policy. Run it inside a transaction
+and roll back. `reset role` before writing the results anywhere, or the probe cannot record
+itself:
+
+```sql
+begin;
+set local role authenticated;
+insert into pb_facts(account_id, key, value, evidence_label, source)
+  values ('00000000-0000-0000-0000-000000000000','is_agency','true'::jsonb,'evidence','manual');
+--  expect: new row violates row-level security policy   (grant kept, policy gating)
+insert into pb_reads(account_id, rubric_version)
+  values ('00000000-0000-0000-0000-000000000000','0.1.0');
+--  expect: permission denied for table pb_reads          (grant gone — CLAUDE.md rule 6)
+rollback;
+```
 
 **Both views must keep `security_invoker = true`.** `create or replace view` **resets a view's
 options** when it is replaced without a `WITH` clause, so rewriting one silently turns it into a
