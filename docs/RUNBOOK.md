@@ -654,6 +654,25 @@ enough, because it withholds the body and the sweep reads the message, not the h
 > and deploy `dist/functions/pb-notes/index.js`, then confirm with a GET (405 `{"ok":false,
 > "error":"POST only"}` — pb-notes has no health branch; see §9.1) and a `dry_run` sweep.
 
+Minting the refresh token, end to end:
+
+1. **Google Cloud Console → APIs & Services → Library** → *Gmail API* → **Enable**.
+2. **OAuth consent screen** → **Internal** (a Workspace org; External would need verification
+   for a restricted scope) → name and support email → Save.
+3. **Credentials → Create Credentials → OAuth client ID** → type **Web application**.
+4. Add the authorised redirect URI exactly: `https://developers.google.com/oauthplayground`
+5. Keep the **Client ID** and **Client secret**.
+6. At **developers.google.com/oauthplayground**: gear icon → tick *Use your own OAuth
+   credentials* → paste both. In *Input your own scopes* put
+   `https://www.googleapis.com/auth/gmail.readonly`. **Authorise APIs**, sign in **as the mailbox
+   to be read**, allow, then **Exchange authorization code for tokens** and keep the
+   **refresh** token.
+7. Store all three with §1's `vault.create_secret` form — after the redeploy above.
+
+The refresh token is bound to the account that authorised it, so step 6 decides whose mail the
+sweep reads. It lasts until it is revoked or the consent screen changes; a `400` from the token
+exchange at run time means exactly that, and the run says so rather than guessing.
+
 Two things about that channel are worth knowing before you set the OAuth up. It asks Gmail for
 `format=full` and walks the MIME tree for `text/plain`, falling back to `text/html` through the
 same stripHtml the CRM notes use, and skipping attachments. And it **cuts the quoted history off
