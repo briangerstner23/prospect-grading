@@ -582,6 +582,24 @@ function quoteFromNote(note) {
   return m ? m[1] : null;
 }
 
+/**
+ * How far behind the book is, in words — or null while it is current.
+ *
+ * The roster prints "last scored <date>", and a date from last week reads exactly like a date
+ * from this morning; that is how 12 Sep went unnoticed for a day. `pb-score` runs every night
+ * at 06:15 UTC, so anything past about a day means a night did not happen.
+ *
+ * `now` is an input, not a clock read: the page passes one, the test passes a fixture.
+ */
+function stalenessNote(readAt, now) {
+  if (typeof readAt !== "string" || typeof now !== "string") return null;
+  const ms = Date.parse(now) - Date.parse(readAt);
+  if (!Number.isFinite(ms)) return null;
+  const nights = Math.floor(ms / 3600000 / 24);
+  if (nights < 1) return null;
+  return `${nights} night${nights === 1 ? "" : "s"} not scored`;
+}
+
 /* @pure-end -------------------------------------------------------- */
 
 /* ------------------------------------------------------------------ *
@@ -830,7 +848,12 @@ function renderRoster() {
   const when = state.lastRun?.readAt ? fmtDateTime(state.lastRun.readAt)
     : state.lastRun?.run ? `no reads yet; last score run ${fmtDateTime(state.lastRun.run.started_at)} (${state.lastRun.run.status})`
     : "no scoring run yet";
-  $("count").textContent = `${shown.length === total ? total : shown.length + " of " + total} account${total === 1 ? "" : "s"} · last scored ${when}`;
+  const stale = stalenessNote(state.lastRun?.readAt ?? null, new Date().toISOString());
+  $("count").replaceChildren(
+    `${shown.length === total ? total : shown.length + " of " + total} account${total === 1 ? "" : "s"} · last scored ${when}`,
+  );
+  // A stale book looks exactly like a current one unless it says so.
+  if (stale) $("count").append(" ", chip(stale, "c-warn"));
 
   const rows = $("rows");
   if (!shown.length) {

@@ -70,7 +70,7 @@ const {
   compareKey, orderAccounts, pickBand, coerceFactValue, overrideCapWarning, INVALID,
   ageWords, strengthWords, headcountWords, ratioWords, factValueWords, safeUrl, rowMatches,
   catalogEntries, signalCatalogWords, mergeTargets, movedWords, reviewEffectWords,
-  rulesWithInputs, ruleFired, evidenceUse, quoteFromNote,
+  rulesWithInputs, ruleFired, evidenceUse, quoteFromNote, stalenessNote,
 } = helpers;
 
 function run(): void {
@@ -308,6 +308,22 @@ eq("quoteFromNote recovers the sentence", quoteFromNote('"They work with freelan
 eq("quoteFromNote handles curly quotes", quoteFromNote("\u201cNo developers on staff\u201d \u2014 Pipedrive note 1, 2025-01-01"), "No developers on staff");
 eq("quoteFromNote of a plain note is null", quoteFromNote("Seen on the website"), null);
 eq("quoteFromNote of nothing is null", quoteFromNote(null), null);
+
+/* ---- stalenessNote: the book saying how far behind it is ---- */
+// pb-score runs at 06:15 UTC nightly, so under a day is current and anything past it is a
+// night that did not happen — the state 12 Sep was in while the page said nothing.
+eq("stalenessNote is null when the book was scored this morning",
+   stalenessNote("2026-09-12T06:15:00Z", "2026-09-12T13:00:00Z"), null);
+eq("stalenessNote is null just under a day",
+   stalenessNote("2026-09-11T06:15:00Z", "2026-09-12T06:14:00Z"), null);
+eq("stalenessNote counts one missed night",
+   stalenessNote("2026-09-11T06:15:00Z", "2026-09-12T13:00:00Z"), "1 night not scored");
+eq("stalenessNote pluralises",
+   stalenessNote("2026-09-09T06:15:00Z", "2026-09-12T13:00:00Z"), "3 nights not scored");
+eq("stalenessNote of a book never scored is null", stalenessNote(null, "2026-09-12T13:00:00Z"), null);
+eq("stalenessNote of an unparseable date is null", stalenessNote("not a date", "2026-09-12T13:00:00Z"), null);
+eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
+   stalenessNote("2026-09-13T06:15:00Z", "2026-09-12T13:00:00Z"), null);
 
 /* ---- the page itself: data reaches the DOM as text only ---- */
 check("page never assigns innerHTML / outerHTML", !/\.(inner|outer)HTML\s*=/.test(page));
