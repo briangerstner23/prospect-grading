@@ -13,6 +13,7 @@ import {
   emptyCallFields,
   INTERNAL_DOMAINS,
   markdownToPlain,
+  meetingKey,
   parseFathomWebhook,
 } from "./fathom_webhook.ts";
 import type { CallFields, FathomWebhookPayload } from "./fathom_webhook.ts";
@@ -86,7 +87,7 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
   eq("call: fields null, extraction pending", [r.call.fields, r.call.extraction_status], [null, "pending"]);
   eq("call: signals always empty", r.signals, []);
   eq("call: every key is a pb_calls column", Object.keys(r.call).sort(), [
-    "account_id", "attendees", "external_domains", "extraction_status", "fathom_recording_id", "fields", "held_at", "recorded_by", "summary", "title", "transcript_available", "url",
+    "account_id", "attendees", "external_domains", "extraction_status", "fathom_recording_id", "fields", "held_at", "meeting_key", "recorded_by", "summary", "title", "transcript_available", "url",
   ]);
 }
 
@@ -281,6 +282,58 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
   const b = JSON.stringify(parseFathomWebhook(basePayload({ action_items: [{ text: "send quote" }], crm_matches: { deals: [] } }), KNOWN));
   eq("parseFathomWebhook is deterministic", a, b);
   check("action_items and crm_matches are acknowledged in notes, not stored", JSON.parse(a).notes.some((n: string) => n.includes("action_items")) && JSON.parse(a).notes.some((n: string) => n.includes("crm_matches")));
+}
+
+
+/* ------------------------------------------------------------------ *
+ * meetingKey — one meeting, many recorders
+ *
+ * The shapes below are the four rows one real call left in pb_calls on 29 Jun 2026: four
+ * recording ids, four recorders, held_at spanning 11 seconds, and one external attendee.
+ * ------------------------------------------------------------------ */
+{
+  const ext = { name: "H M", email: "hmatthews@brainjar.example", is_external: true, domain: "brainjar.example" };
+  const wliq = (e: string) => ({ name: e, email: e, is_external: false, domain: null });
+  const TITLE = "Caitlin Sims and Hartford Matthews";
+
+  // The four recorders, each with their own start time and their own idea of who was internal.
+  const rec1 = meetingKey(TITLE, "2026-06-29T18:02:12+00:00", [wliq("a@wliq.example"), wliq("b@wliq.example"), ext]);
+  const rec2 = meetingKey(TITLE, "2026-06-29T18:02:15+00:00", [wliq("a@wliq.example"), wliq("b@wliq.example"), ext]);
+  const rec3 = meetingKey(TITLE, "2026-06-29T18:02:20+00:00", [wliq("b@wliq.example"), ext]);
+  // The real defect: one row carried a DIFFERENT colleague, so an attendee-set match fails.
+  const rec4 = meetingKey(TITLE, "2026-06-29T18:02:23+00:00", [wliq("c@wliq.example"), ext]);
+  check("meetingKey: four recorders of one call agree", rec1 === rec2 && rec2 === rec3 && rec3 === rec4);
+  check("meetingKey: differing internal attendees do not split the meeting", rec3 === rec4);
+  eq("meetingKey: shape is date|title|external emails", rec1, "2026-06-29|caitlin sims and hartford matthews|hmatthews@brainjar.example");
+
+  // Same title and people, a week later: a recurring call is a different meeting.
+  check("meetingKey: the same call next week is a different meeting",
+    meetingKey(TITLE, "2026-07-06T18:02:12+00:00", [ext]) !== rec1);
+
+  // A different agency on the same day at the same title is a different meeting.
+  check("meetingKey: a different external attendee is a different meeting",
+    meetingKey(TITLE, "2026-06-29T18:02:12+00:00", [{ ...ext, email: "someone@other.example" }]) !== rec1);
+
+  // Normalisation.
+  eq("meetingKey: title case and whitespace are normalised",
+    meetingKey("  Caitlin   Sims AND Hartford Matthews ", "2026-06-29T18:02:12Z", [ext]), rec1);
+  eq("meetingKey: external addresses are lower-cased, de-duplicated and sorted",
+    meetingKey("x", "2026-06-29T00:00:00Z", [{ ...ext, email: "B@z.example" }, { ...ext, email: "a@z.example" }, { ...ext, email: "b@z.example" }]),
+    "2026-06-29|x|a@z.example,b@z.example");
+
+  // Internal people never key a meeting; only the calendar's external side does.
+  eq("meetingKey: internal attendees contribute nothing",
+    meetingKey("x", "2026-06-29T00:00:00Z", [wliq("a@wliq.example"), ext]),
+    meetingKey("x", "2026-06-29T00:00:00Z", [ext]));
+
+  // Unknown is never evidence: nothing to key on is null, not a shared empty bucket.
+  eq("meetingKey: no title and no external attendee is null", meetingKey(null, "2026-06-29T00:00:00Z", []), null);
+  eq("meetingKey: an attendee with no email cannot key a meeting",
+    meetingKey(null, "2026-06-29T00:00:00Z", [{ name: "?", email: null, is_external: true, domain: null }]), null);
+  check("meetingKey: a title alone still keys", meetingKey("Just a title", "2026-06-29T00:00:00Z", []) !== null);
+  eq("meetingKey: a missing held_at leaves the date empty rather than throwing",
+    meetingKey("x", null, [ext]), "|x|hmatthews@brainjar.example");
+  eq("meetingKey: is deterministic", meetingKey(TITLE, "2026-06-29T18:02:12Z", [ext]), meetingKey(TITLE, "2026-06-29T18:02:12Z", [ext]));
 }
 
 /* ------------------------------------------------------------------ *

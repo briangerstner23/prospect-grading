@@ -112,6 +112,68 @@ export function touchedAt(note: PipedriveNote): string {
   return String(note.update_time ?? note.add_time ?? "");
 }
 
+/* ------------------------------------------------------------------ *
+ * One recording per meeting
+ * ------------------------------------------------------------------ */
+
+/** The part of a pb_calls row that decides whether it is a meeting the sweep has already read. */
+export interface RecordingRef {
+  /** pb_calls.id — the fallback identity when there is no meeting key. */
+  id: string;
+  /** pb_calls.fathom_recording_id. Ascending, but text, and not always numeric. */
+  fathom_recording_id: string;
+  account_id: string;
+  /** pb_calls.meeting_key, written by ingest/fathom_webhook.ts `meetingKey()`. */
+  meeting_key: string | null;
+}
+
+/**
+ * Recording ids ascend. Compare as numbers when both are numeric, so "9001" comes before
+ * "159150499"; otherwise compare as text.
+ */
+export function earlierRecording(a: string, b: string): boolean {
+  const na = Number(a), nb = Number(b);
+  if (a !== "" && b !== "" && Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na < nb;
+  return a < b;
+}
+
+/**
+ * Which recordings represent distinct MEETINGS.
+ *
+ * `fathom_recording_id` identifies a recording and Fathom issues one per recorder, so a call
+ * four WLIQ people sat on with Fathom running arrives as four rows holding four summaries of
+ * one conversation. Reading each writes the same facts four times and inflates every count
+ * that reads them.
+ *
+ * Two rules, both deliberate:
+ *
+ *   A null meeting_key is never grouped with another null. A recording with nothing to key on
+ *   stays its own meeting rather than collapsing into every other unkeyable one — the same
+ *   reason a null feature never fires a rule.
+ *
+ *   The representative is the earliest recording id, chosen without looking at content. They
+ *   are summaries of one conversation, so there is nothing to choose between them; and a
+ *   content rule ("the longest summary") would hand the meeting to a different row whenever a
+ *   summary was revised, re-reading a call the book had already read.
+ *
+ * Returns the input order, filtered. `duplicates` is how many rows were dropped.
+ */
+export function oneRecordingPerMeeting<T extends RecordingRef>(rows: readonly T[]): { kept: T[]; duplicates: number } {
+  const best = new Map<string, T>();
+  for (const r of rows ?? []) {
+    const key = r.meeting_key === null || r.meeting_key === undefined || r.meeting_key === ""
+      ? `row:${String(r.id)}`
+      : `meeting:${String(r.account_id)}|${r.meeting_key}`;
+    const held = best.get(key);
+    if (held === undefined || earlierRecording(String(r.fathom_recording_id ?? ""), String(held.fathom_recording_id ?? ""))) {
+      best.set(key, r);
+    }
+  }
+  const winners = new Set<T>(best.values());
+  const kept = (rows ?? []).filter((r) => winners.has(r));
+  return { kept, duplicates: (rows ?? []).length - kept.length };
+}
+
 /**
  * Decide what this run reads. Notes are ordered oldest-touched first so that a run cut short
  * by `max_notes` still advances the watermark over a contiguous block — no note is skipped

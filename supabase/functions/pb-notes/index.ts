@@ -49,6 +49,7 @@ import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
   extractorId,
   extractionPrompt,
+  oneRecordingPerMeeting,
   planSweep,
   verifyClaims,
 } from "../_shared/ingest/notes_sweep.ts";
@@ -172,18 +173,38 @@ async function pullPipedriveNotes(
  * assumes it is checking.
  */
 async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled> {
+  /* Every usable row, NOT just those past the watermark. A meeting's representative has to be
+     chosen from all of its recordings: filter by the watermark first and a second recorder's
+     row, touched later than the one already swept, arrives here alone and is read as though it
+     were a meeting of its own. So: choose first, then apply the watermark to the winners. */
   const rows = await selectAll(
     db,
     "pb_calls",
-    "fathom_recording_id,account_id,title,held_at,url,recorded_by,summary,updated_at",
-    (q) => {
-      let query = q.not("summary", "is", null).not("account_id", "is", null);
-      if (since !== null) query = query.gt("updated_at", since);
-      return query.order("updated_at", { ascending: true });
-    },
+    "id,fathom_recording_id,account_id,meeting_key,title,held_at,url,recorded_by,summary,updated_at",
+    (q) => q.not("summary", "is", null).not("account_id", "is", null).order("fathom_recording_id", { ascending: true }),
   );
+
+  /* One row per meeting — the rule and the reasons live in notes_sweep.oneRecordingPerMeeting. */
+  const { kept, duplicates: collapsed } = oneRecordingPerMeeting(rows.map((r) => ({
+    id: String(r.id ?? ""),
+    fathom_recording_id: String(r.fathom_recording_id ?? ""),
+    account_id: String(r.account_id ?? ""),
+    meeting_key: (r.meeting_key as string | null) ?? null,
+    row: r,
+  })));
+
+  /* The watermark applies to the winners only. A loser's updated_at never moves it, so a
+     revised duplicate does not drag the whole channel backwards. */
+  const fresh = kept
+    .map((k) => k.row)
+    .filter((r) => since === null || String(r.updated_at ?? "") > since)
+    .sort((a, b) => {
+      const ta = String(a.updated_at ?? ""), tb = String(b.updated_at ?? "");
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+
   const records: WrittenRecord[] = [];
-  for (const r of rows) {
+  for (const r of fresh) {
     const held = String(r.held_at ?? r.updated_at ?? "");
     records.push({
       id: String(r.fathom_recording_id ?? ""),
@@ -199,7 +220,11 @@ async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled
       account_id: String(r.account_id),
     });
   }
-  return { records, notes: [], counters: { pulled: records.length } };
+  const notes: string[] = [];
+  if (collapsed > 0) {
+    notes.push(`${collapsed} pb_calls row(s) are additional recordings of a meeting already represented here — several people had Fathom running on the same call. Each meeting is read once.`);
+  }
+  return { records, notes, counters: { pulled: records.length, duplicate_recordings: collapsed } };
 }
 
 /**

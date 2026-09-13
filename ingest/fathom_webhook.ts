@@ -172,6 +172,11 @@ export interface CallAttendee {
 export interface CallRow {
   fathom_recording_id: string;
   account_id: string | null;
+  /**
+   * Which MEETING this recording is of — see `meetingKey`. Null when the payload carries
+   * nothing to key on. Several recorders on one call produce several rows that share this.
+   */
+  meeting_key: string | null;
   title: string | null;
   held_at: string | null;
   url: string | null;
@@ -397,6 +402,58 @@ function buildAttendees(seeds: AttendeeSeed[], internal: Set<string>): CallAtten
 }
 
 /* ------------------------------------------------------------------ *
+ * Meeting identity
+ * ------------------------------------------------------------------ */
+
+/**
+ * Which MEETING a recording is of.
+ *
+ * `fathom_recording_id` identifies a RECORDING, and Fathom issues one per recorder: when four
+ * WLIQ people sit on the same call with Fathom running, four deliveries arrive and four
+ * pb_calls rows are written. The notes sweep then reads each one and extracts the same facts
+ * four times over.
+ *
+ * The key is built from the three things that are the same for every recorder on one call, and
+ * from nothing that is not. Measured against the four rows of one real call (29 Jun 2026):
+ *
+ *   held_at            differed — 18:02:12, :15, :20, :23, each recorder's own start
+ *   internal attendees differed — Fathom substitutes the recorder's own address into the list,
+ *                      so one row carried a colleague the other three did not
+ *   title              identical
+ *   EXTERNAL attendees identical — they come from the calendar invite, not from the recorder
+ *
+ * So: the UTC date, the normalised title, and the external attendee addresses. No time window
+ * is used and none is needed — a window would have to be applied against rows already stored,
+ * which a pure function cannot see, and bucketing a timestamp moves the problem to the bucket
+ * edge. The date separates a weekly call with the same title and the same people into the
+ * separate meetings it is.
+ *
+ * The one case this gets wrong is a call whose recorders straddle UTC midnight: they key apart
+ * and the meeting stays duplicated. That is the failure direction to want — it degrades to
+ * today's behaviour rather than merging two meetings that were never one.
+ *
+ * Returns null when there is neither a title nor an external address to key on; a null key is
+ * never grouped with another null (see the notes sweep), so an unkeyable row stays its own
+ * meeting rather than collapsing into every other unkeyable one.
+ */
+export function meetingKey(title: string | null, heldAt: string | null, attendees: ReadonlyArray<CallAttendee>): string | null {
+  const day = typeof heldAt === "string" && heldAt.length >= 10 ? heldAt.slice(0, 10) : "";
+  const name = typeof title === "string" ? title.trim().toLowerCase().replace(/\s+/g, " ") : "";
+
+  const seen: string[] = [];
+  for (const a of attendees ?? []) {
+    if (a.is_external !== true) continue;
+    const email = typeof a.email === "string" ? a.email.trim().toLowerCase() : "";
+    if (email === "" || seen.includes(email)) continue;
+    seen.push(email);
+  }
+  seen.sort();
+
+  if (name === "" && seen.length === 0) return null;
+  return `${day}|${name}|${seen.join(",")}`;
+}
+
+/* ------------------------------------------------------------------ *
  * parseFathomWebhook
  * ------------------------------------------------------------------ */
 
@@ -485,11 +542,15 @@ export function parseFathomWebhook(
   if (p.action_items !== undefined && p.action_items !== null) notes.push("payload carried action_items (not stored in Phase 1)");
   if (p.crm_matches !== undefined && p.crm_matches !== null) notes.push("payload carried crm_matches (not stored in Phase 1)");
 
+  const title = firstStr(p.title, p.meeting_title);
+  const heldAt = firstIso(p.created_at, p.recorded_at, p.scheduled_start_time, p.recording_start_time);
+
   const call: CallRow = {
     fathom_recording_id: recordingId ?? "",
     account_id: attach?.id ?? null,
-    title: firstStr(p.title, p.meeting_title),
-    held_at: firstIso(p.created_at, p.recorded_at, p.scheduled_start_time, p.recording_start_time),
+    meeting_key: meetingKey(title, heldAt, attendees),
+    title,
+    held_at: heldAt,
     url: firstStr(p.url, p.share_url, p.recording_url),
     recorded_by: recordedBy(p.recorded_by),
     attendees,

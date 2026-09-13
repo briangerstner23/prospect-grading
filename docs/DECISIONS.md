@@ -465,3 +465,82 @@ And it must be **additive**: `chase_rank_key` is typed `[number, number, number,
 A new nullable sibling key leaves the frozen order stored, recoverable and reportable as
 BASELINE §4's pre-registered ranking #1, with the refinement entered as an additional ranking
 rather than replacing it.
+
+---
+
+## 11 · One meeting, several recorders (13 September 2026)
+
+`pb_calls` was keyed on `fathom_recording_id`. That is the identity of a **recording**, and
+Fathom issues one per **recorder** — so a call several WLIQ people sat on with Fathom running
+wrote one row each, and the nightly sweep read every one of them and extracted the same facts
+over again.
+
+Measured against the live table: **four of the twelve rows were one meeting** — four recording
+ids, one account, one title, `held_at` spanning eleven seconds, four different `recorded_by`
+addresses. A third of the table.
+
+### What the four rows actually agreed about
+
+Choosing the key meant checking, not guessing. Across those four rows:
+
+| | |
+|---|---|
+| `held_at` | **differed** — 18:02:12, :15, :20, :23; each recorder's own start |
+| internal attendees | **differed** — Fathom substitutes the recorder's own address into the invitee list, so one row carried a colleague the other three did not |
+| title | identical |
+| **external** attendees | identical — they come from the calendar invite, not from the recorder |
+
+So an attendee-set match would have failed on exactly the row it most needed to catch. The key
+is the **UTC date, the normalised title, and the external attendee addresses**
+(`meetingKey()`, `ingest/fathom_webhook.ts`).
+
+### Why no time window
+
+A window has to be evaluated against rows already stored, which a pure function cannot see, and
+bucketing a timestamp only moves the problem to the bucket edge. The date does the separating
+instead: a weekly call with the same title and the same people is correctly two meetings.
+
+The one case this gets wrong is a call whose recorders straddle UTC midnight — they key apart
+and the meeting stays duplicated. That is the failure direction to want: it degrades to the old
+behaviour rather than merging two meetings that were never one.
+
+### Collapse at read time, not at write time
+
+Every recording keeps its row. The extra recorders are evidence the meeting happened and each
+may hold a different transcript, so nothing is deleted and nothing is refused on write. The
+sweep picks one row per `(account_id, meeting_key)` instead
+(`oneRecordingPerMeeting`, `ingest/notes_sweep.ts`).
+
+Two rules there are deliberate, and both are the same rule the engine follows elsewhere:
+
+- **A null key is never grouped with another null.** A recording with nothing to key on stays
+  its own meeting rather than collapsing into every other unkeyable one — unknown is not a
+  bucket you can be sorted into.
+- **The representative is the earliest recording id, chosen without reading content.** They are
+  summaries of one conversation, so there is nothing to choose between them; a content rule
+  ("the longest summary") would hand the meeting to a different row whenever a summary was
+  revised, and the book would read a call it had already read.
+
+The sweep also selects **before** applying its watermark, not after. Filtering by the watermark
+first would let a second recorder's row, touched later than the one already swept, arrive alone
+and be read as a meeting of its own — which is the original defect wearing a different hat.
+
+### Why this is not only tidiness
+
+§10 rejected ordering the book by evidence density, partly because density is untrustworthy.
+Duplicated calls are one of the reasons it is untrustworthy: they inflate the fact counts that
+any such ordering would read. This does not make density trustworthy — 33 of 613 accounts carry
+an evidence-labelled fact and that does not change — but it removes one way the count could
+have been wrong.
+
+### State
+
+The column and the back-fill are applied (`20260913200000_prospect_book_call_meeting_key`);
+all twelve stored rows now carry a key and resolve to **nine meetings**. The code is committed
+and the bundles are built, but **pb-fathom-webhook and pb-notes are not yet redeployed**, so
+the webhook still writes rows without a key until they are. That is safe in the meantime: an
+unkeyed row is its own meeting, which is the behaviour that was there before.
+
+The ~175-meeting Fathom back-fill from 19 August has still never run. It goes through this same
+parser, so it will key its rows on the way in — but it must run **after** the redeploy, or it
+will import the whole history unkeyed and in bulk.

@@ -54,7 +54,7 @@ export const COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "buyer_contacts_30d", "price_discussed", "calls_held", "health", "health_reasons", "raw",
   ],
   pb_calls: [
-    "id", "account_id", "fathom_recording_id", "title", "held_at", "url", "recorded_by", "attendees",
+    "id", "account_id", "fathom_recording_id", "meeting_key", "title", "held_at", "url", "recorded_by", "attendees",
     "external_domains", "summary", "transcript_available", "fields", "extraction_status", "confirmed_by",
     "confirmed_at",
   ],

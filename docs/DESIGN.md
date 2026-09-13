@@ -281,7 +281,17 @@ become a call. Parser is defensive about field names (`recording_id` | `id`, `ti
 `url` | `share_url`, `created_at` | `recorded_at`, `recorded_by`, `calendar_invitees[]` with
 `email`, `name`, `is_external`, `default_summary` | `summary`, `transcript[]`).
 `external_domains` = normalized domains of external invitees; join to pb_accounts by domain
-(high) else identity candidate. Internal-only calls are skipped, counted in pb_runs. The
+(high) else identity candidate.
+
+`fathom_recording_id` identifies a RECORDING, and Fathom issues one per RECORDER: a call four
+WLIQ people sat on with Fathom running arrives as four deliveries and four pb_calls rows. So
+the parser also emits **`meeting_key`** — the UTC date, the normalised title and the external
+attendee addresses, which are the three things every recorder on one call agrees about. It is
+built by `meetingKey()` and is nullable; a payload with neither a title nor an external address
+has nothing to key on, and a null key is never grouped with another null. The notes sweep reads
+one recording per meeting (`oneRecordingPerMeeting`, `ingest/notes_sweep.ts`), choosing the
+earliest recording id without looking at content — they are summaries of one conversation, and
+a content rule would re-read a call whenever a summary was revised. Internal-only calls are skipped, counted in pb_runs. The
 seven-field extraction schema is defined here (`CallFields` type) and left `pending`;
 extraction is a later step and nothing writes to Pipedrive before `confirmed_by`. **No signal
 is raised from an inbound call in Phase 1** — not from attendance, not from action items; a

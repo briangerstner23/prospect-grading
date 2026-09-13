@@ -18,6 +18,7 @@ import {
   MAX_CLAIMS_PER_NOTE,
   MIN_NOTE_CHARS,
   normalizeForQuote,
+  oneRecordingPerMeeting,
   planSweep,
   quoteIsInNote,
   touchedAt,
@@ -414,6 +415,52 @@ const DEAL = plannedOf({
   const both = { ...note({ id: 8101 }), account_id: "acct-2" };
   const p = planSweep({ ...BASE, notes: [both] });
   eq("an attributed record does not get re-derived from its org", p.read[0].account_id, "acct-2");
+}
+
+/* ------------------------------------------------------------------ *
+ * oneRecordingPerMeeting — several people recorded the same call
+ *
+ * The four rows below are one real call as pb_calls held it on 29 Jun 2026: four recording
+ * ids, four recorders, one meeting.
+ * ------------------------------------------------------------------ */
+{
+  const MK = "2026-06-29|caitlin sims and hartford matthews|hm@brainjar.example";
+  const call = (rid: string, mk: string | null, acc = "acc-1") => ({ id: `row-${rid}`, fathom_recording_id: rid, account_id: acc, meeting_key: mk });
+
+  const four = [call("159150499", MK), call("159151383", MK), call("159154228", MK), call("159155689", MK)];
+  const r = oneRecordingPerMeeting(four);
+  eq("oneRecordingPerMeeting: four recordings of one call become one", r.kept.length, 1);
+  eq("oneRecordingPerMeeting: the earliest recording id represents it", r.kept[0].fathom_recording_id, "159150499");
+  eq("oneRecordingPerMeeting: the rest are counted as duplicates", r.duplicates, 3);
+
+  // Order of arrival must not change which row wins.
+  const shuffled = [four[2], four[0], four[3], four[1]];
+  eq("oneRecordingPerMeeting: the winner does not depend on input order",
+    oneRecordingPerMeeting(shuffled).kept[0].fathom_recording_id, "159150499");
+
+  // Numeric, not lexicographic: "9001" is earlier than "159150499".
+  eq("oneRecordingPerMeeting: ids compare numerically, not as text",
+    oneRecordingPerMeeting([call("159150499", MK), call("9001", MK)]).kept[0].fathom_recording_id, "9001");
+
+  // Different meetings are never merged.
+  const two = oneRecordingPerMeeting([call("1", MK), call("2", "2026-07-06|caitlin sims and hartford matthews|hm@brainjar.example")]);
+  eq("oneRecordingPerMeeting: the same call a week later is a separate meeting", two.kept.length, 2);
+  const acrossAccounts = oneRecordingPerMeeting([call("1", MK, "acc-1"), call("2", MK, "acc-2")]);
+  eq("oneRecordingPerMeeting: the same key on two accounts stays two meetings", acrossAccounts.kept.length, 2);
+
+  // Unknown is never evidence: nulls do not pool.
+  const nulls = oneRecordingPerMeeting([call("1", null), call("2", null), call("3", null)]);
+  eq("oneRecordingPerMeeting: unkeyable recordings each stay their own meeting", nulls.kept.length, 3);
+  eq("oneRecordingPerMeeting: an empty key is treated as no key", oneRecordingPerMeeting([call("1", ""), call("2", "")]).kept.length, 2);
+
+  // A null-keyed row alongside a keyed group.
+  const mixed = oneRecordingPerMeeting([call("1", MK), call("2", MK), call("3", null)]);
+  eq("oneRecordingPerMeeting: a keyless row survives beside a collapsed group", mixed.kept.length, 2);
+  eq("oneRecordingPerMeeting: and the duplicate count covers only the group", mixed.duplicates, 1);
+
+  eq("oneRecordingPerMeeting: input order is preserved", oneRecordingPerMeeting([call("5", null), call("3", null), call("4", null)]).kept.map((x) => x.fathom_recording_id), ["5", "3", "4"]);
+  eq("oneRecordingPerMeeting: an empty list is empty", oneRecordingPerMeeting([]).kept.length, 0);
+  eq("oneRecordingPerMeeting: a single recording is kept", oneRecordingPerMeeting([call("1", MK)]).kept.length, 1);
 }
 
 /* ------------------------------------------------------------------ *
