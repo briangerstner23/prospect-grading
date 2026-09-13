@@ -16,7 +16,7 @@
  * Every fixture is synthetic. No prospect data enters this repository.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
@@ -700,7 +700,16 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
     const src = readFileSync(join(here, "engine.ts"), "utf8");
     const literals = [...src.matchAll(/flags\.add\("([^"]+)"\)/g)].map((m) => m[1]);
     check("flag: the engine source emits at least the six named flags", literals.length >= 6, literals.join(" | "));
-    for (const fl of new Set(literals)) check(`flag: engine literal '${fl}' is in the rubric vocabulary`, vocab.includes(fl), fl);
+    // The engine is shared across rubric versions, so a literal only some versions can emit is
+    // named by those versions. The rule the comment above states still binds — a flag must be in
+    // the vocabulary of the rubric that can produce it, or the page cannot explain it — so the
+    // test asks the union of every rubric in the repository, not the active one alone.
+    const allVocab = new Set<string>(
+      readdirSync(here)
+        .filter((f) => /^rubric\.prospect\.v.*\.json$/.test(f))
+        .flatMap((f) => ((load(f) as Rubric).flags.vocabulary as string[]) ?? []),
+    );
+    for (const fl of new Set(literals)) check(`flag: engine literal '${fl}' is named by some rubric version`, allVocab.has(fl), fl);
     check("flag: 'Override refused: beyond one-tier cap' is in the vocabulary", vocab.includes("Override refused: beyond one-tier cap"));
     check("flag: 'Geography flag' is in the vocabulary", vocab.includes("Geography flag"));
     for (const [, s] of Object.entries(R.signals.catalog as Record<string, { flag?: string }>)) {
@@ -869,19 +878,6 @@ check("determinism: input is not mutated", (() => {
   }
 }
 
-/* ------------------------------------------------------------------ *
- * summary
- * ------------------------------------------------------------------ */
-
-const total = passed + failures.length;
-for (const f of failures) console.error("FAIL", f);
-console.log(`engine: ${total} checks, ${failures.length} failed`);
-if (failures.length) {
-  // Deno and Node both expose a process-like exit; Node's is the real one.
-  const proc = (globalThis as unknown as { process?: { exit: (c: number) => void } }).process;
-  if (proc) proc.exit(1);
-  else throw new Error(`${failures.length} engine checks failed`);
-}
 
 /* ------------------------------------------------------------------ *
  * rubric 0.2.0 · the observable fit criteria carry Dimension B
@@ -961,7 +957,19 @@ if (failures.length) {
   const scN = grade(blank, V2);
   eq("0.2.0: nothing answered", scN.fit.criteria_answered, 0);
   eq("0.2.0: no base tier asserted on zero evidence", scN.fit.base_tier, null);
-  eq("0.2.0: status is Unclassified", scN.status, "Unclassified");
+  // This check asserted "Unclassified" and never ran — it sat after the summary block, which
+  // exited before reaching it (fixed 13 Sep 2026 by moving the summary to the end of the file).
+  // Revealed, it fails, and the engine is the one in the right: BOTH rubrics define
+  // status_rules.Unclassified as "icp_class is null after the classification flow", and this
+  // fixture sets icp_class ICP-2 deliberately. So the engine is obeying the spec.
+  //
+  // What it exposes is a gap in the 0.2.0 DRAFT, not a bug in the engine: 0.2.0 retires ICP as
+  // the fit read, but its status_rules still key Unclassified off icp_class. The result is a row
+  // that answers no criterion, asserts no base tier, and is still called Ranked. That is an owner
+  // ruling (docs/DECISIONS.md §8 is still a toggle), so the test pins what the rubric SAYS and
+  // names the question rather than quietly deciding it.
+  eq("0.2.0: status follows the rubric's own rule — icp_class is set, so the row is Ranked", scN.status, "Ranked");
+  eq("0.2.0: …and it is Ranked with no tier, which is the open question in the draft", scN.effective_tier, null);
 
   // Every criterion carries its rule text, its basis and the input it read.
   for (const c of sc.fit.criteria) {
@@ -979,4 +987,119 @@ if (failures.length) {
 
   // Determinism holds on the new path too.
   eq("0.2.0: grading twice is byte-identical", canonicalJson(grade(strong, V2)), canonicalJson(grade(strong, V2)));
+}
+
+/* ------------------------------------------------------------------ *
+ * rubric 0.1.1 · confidence as a grade, and a human override of it
+ *
+ * The letter is about the INPUTS: F means the book knows nothing about this account yet, not
+ * that the account is bad. The override carries the discipline the register already imposes on
+ * a tier override — owner, reason code, written reason, expiry, one step — because an override
+ * without a reason is not an override, it is an untraceable edit.
+ * ------------------------------------------------------------------ */
+{
+  const V11: Rubric = load("rubric.prospect.v0.1.1.json");
+  const APPROVER = "owner@example.test";
+
+  // A rubric with no confidence_grade block says nothing rather than guessing (rule 5).
+  const plain = grade(base(), R);
+  eq("0.1.1: a rubric without the block produces no grade", plain.confidence_grade, null);
+  eq("0.1.1: …and no computed grade either", plain.computed_confidence_grade, null);
+  eq("0.1.1: …and an empty reason, not an invented one", plain.confidence_grade_reason, "");
+
+  // The ladder, walked by the facts that are actually present.
+  const nothing = base({ icp_class: null, icp_class_label: null, money: null, authority: null, timing: null, specification: null });
+  eq("0.1.1: no facts and no class → F", grade(nothing, V11).confidence_grade, "F");
+
+  const oneFact = base({ icp_class: null, icp_class_label: null, money: "present", authority: null, timing: null, specification: null });
+  eq("0.1.1: one fact → D", grade(oneFact, V11).confidence_grade, "D");
+
+  const twoFacts = base({ icp_class: "ICP-2", icp_class_label: "inferred", money: "present", authority: "present", timing: null, specification: null });
+  eq("0.1.1: two facts and a class → C", grade(twoFacts, V11).confidence_grade, "C");
+
+  const full = base({
+    icp_class: "ICP-2", icp_class_label: "evidence", roster_certified: true,
+    money: "present", authority: "present", timing: "within_1_month", specification: "present",
+  });
+  const scFull = grade(full, V11);
+  eq("0.1.1: four facts on an evidence class from the certified roster → A", scFull.confidence_grade, "A");
+  check("0.1.1: the grade says why in the rubric's words", scFull.confidence_grade_reason.includes("facts present"), scFull.confidence_grade_reason);
+
+  // PRO-6: an uncertified row cannot reach the top band however many facts it has.
+  const uncertified = base({
+    icp_class: "ICP-2", icp_class_label: "evidence", roster_certified: false, roster_source: "notion_master",
+    money: "present", authority: "present", timing: "within_1_month", specification: "present",
+  });
+  check("0.1.1: an uncertified roster row cannot be an A", grade(uncertified, V11).confidence_grade !== "A");
+
+  /* ---- the override ---- */
+  const good = { grade: "B" as const, reason_code: "relationship_known" as const, reason: "Known well from three prior builds.", approver: APPROVER, set_at: AS_OF };
+
+  const overridden = grade(twoFacts, V11, { confidence_override: good });
+  eq("0.1.1 override: the grade moves", overridden.confidence_grade, "B");
+  eq("0.1.1 override: the computed grade is still reported", overridden.computed_confidence_grade, "C");
+  eq("0.1.1 override: the override is on the scorecard", overridden.confidence_override?.approver, APPROVER);
+  check("0.1.1 override: it is flagged", overridden.flags.includes("Confidence overridden"), overridden.flags.join(" | "));
+  check("0.1.1 override: the reason is the stated one", overridden.confidence_grade_reason.includes("Known well from three prior builds."), overridden.confidence_grade_reason);
+  check("0.1.1 override: the tier is untouched", overridden.effective_tier === grade(twoFacts, V11).effective_tier);
+
+  // A reason is not optional. Neither is an approver, or a code from the rubric's list.
+  const noReason = grade(twoFacts, V11, { confidence_override: { ...good, reason: "   " } });
+  eq("0.1.1 override: no written reason → refused", noReason.confidence_grade, "C");
+  check("0.1.1 override: …and the trace says why", noReason.trace.notes.some((n) => n.includes("written reason is required")), noReason.trace.notes.join(" | "));
+
+  const noApprover = grade(twoFacts, V11, { confidence_override: { ...good, approver: "" } });
+  eq("0.1.1 override: no approver → refused", noApprover.confidence_grade, "C");
+  check("0.1.1 override: …and the trace says why", noApprover.trace.notes.some((n) => n.includes("approver is required")), noApprover.trace.notes.join(" | "));
+
+  const badCode = grade(twoFacts, V11, { confidence_override: { ...good, reason_code: "because_i_say_so" as never } });
+  eq("0.1.1 override: a code outside the rubric's list → refused", badCode.confidence_grade, "C");
+
+  // One grade max, the same cap the tier override carries.
+  const tooFar = grade(nothing, V11, { confidence_override: { ...good, grade: "A" as const } });
+  eq("0.1.1 override: beyond the one-grade cap → refused, computed stands", tooFar.confidence_grade, "F");
+  check("0.1.1 override: …and it is flagged as refused", tooFar.flags.includes("Confidence override refused: beyond cap"), tooFar.flags.join(" | "));
+
+  // Expiry: stated, derived from set_at, and enforced.
+  const expired = grade(twoFacts, V11, { confidence_override: { ...good, expires_at: "2026-01-01T00:00:00.000Z" } });
+  eq("0.1.1 override: an expired override does not apply", expired.confidence_grade, "C");
+  check("0.1.1 override: …and the trace says it expired", expired.trace.notes.some((n) => n.includes("expired")), expired.trace.notes.join(" | "));
+
+  const derived = grade(twoFacts, V11, { confidence_override: good });
+  check("0.1.1 override: an expiry is derived from set_at when none is stated", typeof derived.confidence_override?.expires_at === "string", JSON.stringify(derived.confidence_override));
+
+  // An override offered to a rubric that has no grade block is refused out loud, not ignored.
+  const noBlock = grade(twoFacts, R, { confidence_override: good });
+  eq("0.1.1 override: no block → no grade", noBlock.confidence_grade, null);
+  check("0.1.1 override: …and the trace says the rubric defines no block", noBlock.trace.notes.some((n) => n.includes("no confidence_grade block")), noBlock.trace.notes.join(" | "));
+
+  // Rule 4: a missing term is a loud failure, never a code default.
+  throws("0.1.1: a rubric missing the cap throws and names the path", () => {
+    const broken = structuredClone(V11);
+    delete broken.confidence_grade.override.max_grades_moved;
+    return grade(twoFacts, broken, { confidence_override: good });
+  }, "confidence_grade.override.max_grades_moved");
+
+  throws("0.1.1: a ladder with no otherwise rule throws", () => {
+    const broken = structuredClone(V11);
+    broken.confidence_grade.rules = [{ grade: "A", when: "facts_present >= 99" }];
+    return grade(twoFacts, broken);
+  }, "confidence_grade.rules");
+
+  // Determinism, the same as every other read.
+  eq("0.1.1: grading twice is byte-identical", canonicalJson(grade(full, V11, { confidence_override: good })), canonicalJson(grade(full, V11, { confidence_override: good })));
+}
+
+/* ------------------------------------------------------------------ *
+ * summary
+ * ------------------------------------------------------------------ */
+
+const total = passed + failures.length;
+for (const f of failures) console.error("FAIL", f);
+console.log(`engine: ${total} checks, ${failures.length} failed`);
+if (failures.length) {
+  // Deno and Node both expose a process-like exit; Node's is the real one.
+  const proc = (globalThis as unknown as { process?: { exit: (c: number) => void } }).process;
+  if (proc) proc.exit(1);
+  else throw new Error(`${failures.length} engine checks failed`);
 }

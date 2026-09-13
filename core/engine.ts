@@ -27,6 +27,8 @@ import type {
   FactState,
   GateResult,
   GradeOptions,
+  ConfidenceGrade,
+  ConfidenceOverride,
   IcpClass,
   Override,
   PotentialRead,
@@ -312,6 +314,51 @@ function confidenceFrom(rubric: Rubric, path: string, ctx: WhenContext): Confide
     if (ok) return label;
   }
   throw new RubricError(rubric, path, "a ladder ending in an { otherwise: true } rule", rules.map((r) => r.label));
+}
+
+const GRADE_WORDS = ["A", "B", "C", "D", "F"] as const;
+
+/**
+ * Walk `rubric.confidence_grade.rules` the way confidenceFrom walks a confidence ladder:
+ * top to bottom, first `when` that holds names the grade, ending in `{ otherwise: true }`.
+ * Returns the grade and the rule that produced it, so the read can say why in the rubric's
+ * own words rather than in the engine's.
+ */
+function confidenceGradeFrom(rubric: Rubric, ctx: WhenContext): { grade: ConfidenceGrade; why: string } {
+  const path = "confidence_grade.rules";
+  const rules = reqArr<Record<string, unknown>>(rubric, path);
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i];
+    const grade = reqOneOfIn(rubric, rule, "grade", `${path}[${i}]`, GRADE_WORDS);
+    if (rule.otherwise === true) return { grade, why: "otherwise" };
+    const expr = reqStrIn(rubric, rule, "when", `${path}[${i}]`);
+    const ok = expr.includes(" OR ") ? expr.split(" OR ").some((part) => evalWhen(part, ctx)) : evalWhen(expr, ctx);
+    if (ok) return { grade, why: expr };
+  }
+  throw new RubricError(rubric, path, "a ladder ending in an { otherwise: true } rule", rules.map((r) => r.grade));
+}
+
+/**
+ * The expiry an override carries: a stated `expires_at`, else `set_at` + the rubric's default,
+ * else none. Shared by the tier override and the confidence override so the two cannot drift
+ * into meaning different things by the same words.
+ */
+function overrideExpiry(
+  ov: { set_at?: string; expires_at?: string | null },
+  defaultDays: number,
+  notes: string[],
+): { expires_at: string | null; source: "stated" | "derived" | "none" } {
+  if (typeof ov.expires_at === "string" && ov.expires_at.trim().length > 0) {
+    if (Number.isFinite(Date.parse(ov.expires_at))) return { expires_at: ov.expires_at, source: "stated" };
+    notes.push(`Override expires_at '${ov.expires_at}' is not a date; treated as no expiry.`);
+    return { expires_at: null, source: "none" };
+  }
+  if (typeof ov.set_at === "string") {
+    const setMs = Date.parse(ov.set_at);
+    if (Number.isFinite(setMs)) return { expires_at: new Date(setMs + defaultDays * 86_400_000).toISOString(), source: "derived" };
+    notes.push(`Override set_at '${ov.set_at}' is not a date; no expiry could be derived.`);
+  }
+  return { expires_at: null, source: "none" };
 }
 
 /* ------------------------------------------------------------------ *
@@ -768,18 +815,9 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     const hasReason = typeof ov.reason === "string" && ov.reason.trim().length > 0;
 
     // Expiry: a stated expires_at; else set_at + rubric.override.expiry_default_days; else none.
-    let expiresAt: string | null = null;
-    let expirySource: "stated" | "derived" | "none" = "none";
-    if (typeof ov.expires_at === "string" && ov.expires_at.trim().length > 0) {
-      if (Number.isFinite(Date.parse(ov.expires_at))) { expiresAt = ov.expires_at; expirySource = "stated"; }
-      else notes.push(`Override expires_at '${ov.expires_at}' is not a date; treated as no expiry.`);
-    } else if (typeof ov.set_at === "string") {
-      const setMs = Date.parse(ov.set_at);
-      if (Number.isFinite(setMs)) {
-        expiresAt = new Date(setMs + expiryDefaultDays * 86_400_000).toISOString();
-        expirySource = "derived";
-      } else notes.push(`Override set_at '${ov.set_at}' is not a date; no expiry could be derived.`);
-    }
+    const exp = overrideExpiry(ov, expiryDefaultDays, notes);
+    const expiresAt = exp.expires_at;
+    const expirySource = exp.source;
     const asOfMs = Date.parse(asOf);
     const expired = expiresAt !== null && Number.isFinite(asOfMs) && Date.parse(expiresAt) < asOfMs;
 
@@ -809,6 +847,86 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
       } else {
         const left = daysBetween(asOf, expiresAt);
         if (left !== null && left <= expiresSoonDays) flags.add("Override expires soon");
+      }
+    }
+  }
+
+  /* 10b · confidence as a grade, and a human override of it.
+     The block is optional. A rubric that does not define it produces null — an absent spec is
+     not a grade of F, the same way an unknown fact is not evidence (rule 5, one level up). */
+  let computedConfidenceGrade: ConfidenceGrade | null = null;
+  let confidenceGrade: ConfidenceGrade | null = null;
+  let confidenceGradeReason = "";
+  let confidenceOverrideApplied: ConfidenceOverride | null = null;
+  const cov = options?.confidence_override ?? null;
+
+  if (rubricAt(rubric, "confidence_grade.rules") === undefined) {
+    if (cov) notes.push("Confidence override ignored: this rubric defines no confidence_grade block.");
+  } else {
+    const qf = qualification.facts;
+    const states = [qf.money, qf.authority, qf.timing, qf.specification];
+    const gctx: WhenContext = {
+      facts_present: qualification.present_count,
+      facts_unknown: states.filter((x) => x === "unknown").length,
+      icp_class_label: icpLabel,
+      headcount_label: isNum(f.headcount) ? f.headcount_label : "unknown",
+      roster_certified: f.roster_certified,
+      signals_live: decayed.traces.filter((t) => t.weight_now > 0).length,
+    };
+    const g = confidenceGradeFrom(rubric, gctx);
+    computedConfidenceGrade = g.grade;
+    confidenceGrade = g.grade;
+    confidenceGradeReason =
+      `${qualification.present_count} of 4 facts present, icp_class_label ${icpLabel}, ` +
+      `roster ${f.roster_certified ? "certified" : "uncertified"} → ${g.grade} (${g.why})`;
+
+    if (cov) {
+      // Every term is rubric data, read strictly — the same contract the tier override signs.
+      const scale = reqArr<string>(rubric, "confidence_grade.scale");
+      const maxMovedGrades = reqNum(rubric, "confidence_grade.override.max_grades_moved");
+      const covCodeRequired = reqBool(rubric, "confidence_grade.override.reason_code_required");
+      const covReasonRequired = reqBool(rubric, "confidence_grade.override.written_reason_required");
+      const covExpiryDays = reqNum(rubric, "confidence_grade.override.expiry_default_days");
+      const covSoonDays = reqNum(rubric, "confidence_grade.override.expires_soon_days");
+      // One reason-code list for the whole book: the block names where it lives rather than restating it.
+      const covCodes = reqArr<string>(rubric, reqStr(rubric, "confidence_grade.override.reason_codes_from"));
+
+      const hasApprover = typeof cov.approver === "string" && cov.approver.trim().length > 0;
+      const codeGiven = typeof cov.reason_code === "string" && cov.reason_code.trim().length > 0;
+      const codeOk = codeGiven ? covCodes.includes(cov.reason_code) : !covCodeRequired;
+      const hasReason = typeof cov.reason === "string" && cov.reason.trim().length > 0;
+      const cexp = overrideExpiry(cov, covExpiryDays, notes);
+      const asOfMsC = Date.parse(asOf);
+      const cExpired = cexp.expires_at !== null && Number.isFinite(asOfMsC) && Date.parse(cexp.expires_at) < asOfMsC;
+
+      if (!hasApprover) {
+        notes.push("Confidence override ignored: an approver is required.");
+      } else if (!codeOk) {
+        notes.push(codeGiven
+          ? `Confidence override ignored: reason code '${cov.reason_code}' is not one of ${covCodes.join(", ")}.`
+          : "Confidence override ignored: a reason code is required (confidence_grade.override.reason_code_required).");
+      } else if (covReasonRequired && !hasReason) {
+        notes.push("Confidence override ignored: a written reason is required.");
+      } else if (cExpired) {
+        notes.push(`Confidence override expired ${cexp.expires_at}${cexp.source === "derived" ? ` (set_at ${cov.set_at} + ${covExpiryDays} days)` : ""}; computed grade ${computedConfidenceGrade} stands.`);
+      } else if (!scale.includes(cov.grade)) {
+        notes.push(`Confidence override ignored: '${String(cov.grade)}' is not one of ${scale.join(", ")}.`);
+      } else if (Math.abs(scale.indexOf(cov.grade) - scale.indexOf(computedConfidenceGrade)) > maxMovedGrades) {
+        flags.add("Confidence override refused: beyond cap");
+        notes.push(`Confidence override to ${cov.grade} refused: more than ${maxMovedGrades} grade from computed ${computedConfidenceGrade}.`);
+      } else {
+        confidenceOverrideApplied = cexp.source === "derived" ? { ...cov, expires_at: cexp.expires_at } : cov;
+        confidenceGrade = cov.grade;
+        flags.add("Confidence overridden");
+        confidenceGradeReason = `${computedConfidenceGrade} → ${cov.grade} by ${cov.approver} (${cov.reason_code}): ${cov.reason}`;
+        notes.push(`Confidence override applied: ${computedConfidenceGrade} → ${cov.grade} (${cov.reason_code}, ${cov.approver}).`);
+        if (cexp.source === "derived") notes.push(`Confidence override expiry derived: set_at ${cov.set_at} + ${covExpiryDays} days → ${cexp.expires_at}.`);
+        if (cexp.expires_at === null) {
+          notes.push("Confidence override has no expiry: no expires_at, and no set_at to derive one from.");
+        } else {
+          const left = daysBetween(asOf, cexp.expires_at);
+          if (left !== null && left <= covSoonDays) flags.add("Confidence override expires soon");
+        }
       }
     }
   }
@@ -924,6 +1042,10 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     signals,
     deal_health,
     override: applied,
+    confidence_grade: confidenceGrade,
+    confidence_grade_reason: confidenceGradeReason,
+    computed_confidence_grade: computedConfidenceGrade,
+    confidence_override: confidenceOverrideApplied,
     effective_tier: effectiveTier,
     cell,
     chase_rank_key,

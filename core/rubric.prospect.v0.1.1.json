@@ -1,8 +1,8 @@
 {
- "version": "0.2.0",
- "name": "WLIQ Prospect Book \u2014 anticipated grade, rank and band",
+ "version": "0.1.1",
+ "name": "WLIQ Prospect Book \u2014 anticipated grade, rank and band \u2014 confidence as a grade",
  "status": "DRAFT",
- "created": "2026-09-11",
+ "created": "2026-09-13",
  "what_the_grade_is_for": {
   "ruling": "PRO-0 (2026-09-04): who we chase first, and how much this is worth pursuing.",
   "explicitly_not": [
@@ -197,8 +197,19 @@
      "july_priority": "varies",
      "ruling": "PRO-4 (2026-09-04): in scope, flagged 'Direct-to-client', excluded from agency-only fit weights. The 9 Sep research recommended removal; the ruling stands."
     }
-   },
-   "retained_as": "DESCRIPTIVE LABEL ONLY from 0.2.0. Owner decision, 11 Sep 2026: ICP is retired as the fit read. The definitions and the classification flow are unchanged and stay verbatim under PRO-15 \u2014 what changed is that nothing downstream of Dimension B reads the class to set a tier. Potential still keys its year-1 prior band off the class (PRO-16), and the icp4_vertical_proven adjustment still names it; both are stated as such."
+   }
+  },
+  "base_tier_from_icp": {
+   "basis": "unruled_default",
+   "stated_rule": "The July Stage 1 mapping (ICP-1/2/4 \u2192 High \u00b7 ICP-6 \u2192 Medium \u00b7 ICP-3/5 \u2192 Low) restated on PRO-1r's four words: High \u2192 Gold, Medium \u2192 Silver, Low \u2192 Bronze. Platinum is never a base; it is EARNED by the platinum_rule below, mirroring the client engine's top-tier gate ('a high-revenue / weak-partner account can't buy Platinum').",
+   "map": {
+    "ICP-1": "Gold",
+    "ICP-2": "Gold",
+    "ICP-4": "Gold",
+    "ICP-6": "Silver",
+    "ICP-3": "Bronze",
+    "ICP-5": "Bronze"
+   }
   },
   "adjustments": {
    "ruling": "July Stage 2, ruled by Brian 2026-07-09: named rules only, every adjustment logged, bumps cap at ONE grade total, ever. The named rules AS WRITTEN were never ruled; each is a toggle with its basis.",
@@ -371,97 +382,6 @@
     }
    ],
    "note": "Confidence prints beside every anticipated tier (PRO-1r). It is about the INPUTS, not about validation \u2014 validation is a separate stamp (PRO-8)."
-  },
-  "base_tier_from_icp_retired": {
-   "basis": "reasoned",
-   "retired_on": "2026-09-11",
-   "why": "Measured against observable fit on the 173 enriched accounts of the warm list, the ICP ordering carried no fit information and leaned negative: r = -0.135, 95% CI [-0.28, +0.01], n = 172. ICP-1, mapped to Gold at July priority A, was the WORST-fitting class (mean 1.04 of 3; median headcount 115; 22 of 24 already employ engineers). ICP-3, mapped to Bronze, was the second best and carries 83 of 170 accounts. The cause is in the flow, not the definitions: step 3 tests headcount >= 11 with NO UPPER BOUND and rewards revenue, so 'Established Full-Service Partner' fills with agencies that have already hired the developers. ICP-6 mapped to Silver also placed non-agencies above every lean boutique.",
-   "map_as_it_stood": {
-    "ICP-1": "Gold",
-    "ICP-2": "Gold",
-    "ICP-4": "Gold",
-    "ICP-6": "Silver",
-    "ICP-3": "Bronze",
-    "ICP-5": "Bronze"
-   },
-   "note": "Kept for provenance so the v0.1.0 baseline stays readable. The engine does not read this key."
-  },
-  "base_tier_from_fit": {
-   "basis": "reasoned",
-   "stated_rule": "Six observable criteria, equal weight, one point each. Fitted weights do not beat equal weights at this sample size and there will not be enough won-and-lost outcomes to fit any for years. Unknown is never evidence: an unanswered criterion scores nothing and is never held against the agency. The ANSWERED COUNT is reported beside the score and never folded into it \u2014 'Strong on 5 of 6 answered' and 'Strong on 5 of 6, two unknown' are different states and the page must show which. Platinum is never a base; it stays EARNED by platinum_rule below.",
-   "source": "docs/FIT-v0.2-CRITERIA.md",
-   "criteria": [
-    {
-     "key": "sells_build_work",
-     "feature": "sells_build_work",
-     "kind": "boolean",
-     "basis": "reasoned",
-     "rule": "Do they sell what we deliver? Yes when the service list includes website builds, web applications, custom development, e-commerce or app development. No when the offer is strategy, media, brand, PR, content or SEO with no build component.",
-     "failure_mode": "Agencies list build work they subcontract or no longer sell. This says the demand exists, not that they are good at it."
-    },
-    {
-     "key": "no_inhouse_dev_team",
-     "feature": "no_inhouse_dev_team",
-     "kind": "boolean",
-     "basis": "reasoned",
-     "rule": "Do they need someone to build? Yes when no developer, engineer or technical role appears on the team page, in job postings or in the headcount breakdown.",
-     "failure_mode": "The strongest single predictor in the July research and the easiest to get wrong: a two-person dev team can mean overflow need, not no need."
-    },
-    {
-     "key": "size_band_fit",
-     "feature": "headcount",
-     "kind": "range",
-     "min": 8,
-     "max": 40,
-     "basis": "reasoned",
-     "rule": "Are they the right size? Yes at roughly 8-40 people: enough client flow to need outside capacity, not enough scale to have built a development team.",
-     "failure_mode": "Purchased headcount under about ten people is mostly estimated rather than reported; headcount_label must say whether it was evidence or a guess."
-    },
-    {
-     "key": "client_budget_size",
-     "feature": "client_budget_size",
-     "kind": "equals",
-     "yes_value": "buys_real_projects",
-     "basis": "reasoned",
-     "rule": "Who are their clients? Yes when the published work is majority for organisations that can buy real projects. No when the portfolio is majority single-location local businesses.",
-     "failure_mode": "Portfolios show the flattering end of a client list. Read it as a ceiling on what they sell, not an average. No API supplies this; a person reads the work page in ninety seconds or records unknown."
-    },
-    {
-     "key": "recurring_work_shape",
-     "feature": "recurring_work_shape",
-     "kind": "boolean",
-     "basis": "reasoned",
-     "rule": "Will this repeat? Yes when they sell retainers, care plans, managed services or ongoing support.",
-     "failure_mode": "Expect mostly unknown until someone asks. That is the correct outcome, not a gap to fill with a guess."
-    },
-    {
-     "key": "is_agency",
-     "feature": "is_agency",
-     "kind": "boolean",
-     "basis": "reasoned",
-     "rule": "Are they reselling our work? No when they are a direct end-business buying for themselves \u2014 in scope under PRO-4, kept, flagged, and excluded from agency-only adjustments.",
-     "failure_mode": "Already recorded on most of the book from Pipedrive organisation type."
-    }
-   ],
-   "bands": [
-    {
-     "min_yes": 5,
-     "tier": "Gold",
-     "label": "Strong"
-    },
-    {
-     "min_yes": 3,
-     "tier": "Silver",
-     "label": "Moderate"
-    },
-    {
-     "min_yes": 0,
-     "tier": "Bronze",
-     "label": "Weak"
-    }
-   ],
-   "unclassified_when_answered_below": 1,
-   "unclassified_note": "Nothing observable established at all \u2192 Unclassified, not Bronze. A grade is labelled, never withheld, but a tier asserted on zero evidence would be a fabrication."
   }
  },
  "dimension_a": {
@@ -676,6 +596,60 @@
     24
    ],
    "note": "Phase 4. Frozen at first SOW, scored against Orbit and QuickBooks actuals; interval hit-rate, median error by estimator and ICP, Brier on the two binaries."
+  }
+ },
+ "confidence_grade": {
+  "ruling": "NOT a ruling. PRO-1r requires a confidence beside every anticipated tier and does not say in what vocabulary. This block states it as a letter for the whole read; the High/Medium/Low ladders on dimension_b and potential are untouched and still print. Owner, 13 Sep 2026.",
+  "basis": "reasoned",
+  "scale": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "F"
+  ],
+  "note": "A grade about the INPUTS, never about the prospect. F means the book knows nothing about this account yet \u2014 rule 5 printed rather than hidden \u2014 and says nothing about whether it is worth chasing. The ladder is walked top to bottom; the first rule whose `when` holds names the grade, and it must end in an { otherwise: true } rule.",
+  "inputs": {
+   "facts_present": "Dimension A facts present, 0..4 (qualification.present_count)",
+   "facts_unknown": "Dimension A facts that are outright unknown, 0..4",
+   "icp_class_label": "evidence | inferred | null \u2014 how the fit read got its class",
+   "headcount_label": "evidence | inferred | null \u2014 how potential got its headcount",
+   "roster_certified": "PRO-6: true when Pipedrive carries the row, false for uncertified intake",
+   "signals_live": "count of signals still carrying weight after decay"
+  },
+  "rules": [
+   {
+    "grade": "A",
+    "when": "facts_present >= 4 AND icp_class_label == evidence AND roster_certified == true"
+   },
+   {
+    "grade": "B",
+    "when": "facts_present >= 3 AND icp_class_label == evidence AND roster_certified == true OR facts_present >= 4 AND icp_class_label == inferred"
+   },
+   {
+    "grade": "C",
+    "when": "facts_present >= 2 AND icp_class_label in [evidence,inferred]"
+   },
+   {
+    "grade": "D",
+    "when": "facts_present >= 1"
+   },
+   {
+    "grade": "F",
+    "otherwise": true
+   }
+  ],
+  "override": {
+   "ruling": "The same discipline PRO-5 revision and July put on a tier override: owner lane, one step, reason code and written reason, expiry.",
+   "lane": "owner",
+   "max_grades_moved": 1,
+   "reason_code_required": true,
+   "reason_codes_from": "override.reason_codes",
+   "written_reason_required": true,
+   "expiry_default_days": 90,
+   "expires_soon_days": 14,
+   "beyond_cap": "refused \u2014 the engine rejects an override more than one grade from the computed grade rather than applying it",
+   "into_register": true
   }
  },
  "signals": {

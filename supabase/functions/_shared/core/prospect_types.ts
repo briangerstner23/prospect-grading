@@ -39,6 +39,17 @@ export const URGENCY_ORDER: readonly Urgency[] = ["Cold", "Warm", "Hot", "Super 
 
 export type Confidence = "High" | "Medium" | "Low";
 
+/**
+ * How much the read can be trusted, as a letter. High/Medium/Low says it in three steps and
+ * says it twice (fit and potential each carry one); a grade says it once, for the whole read,
+ * on a scale everyone already knows how to read. F is not a bad prospect — it is a prospect
+ * we know nothing about, which is rule 5 printed rather than hidden.
+ *
+ * The bands are rubric data (`confidence_grade.rules`), never code. A rubric that does not
+ * define the block produces null, not a guess.
+ */
+export type ConfidenceGrade = "A" | "B" | "C" | "D" | "F";
+
 export type WlSignal = "Very High" | "High" | "Medium" | "Low";
 
 export type ServiceShape = "Core" | "Complement" | "Off";
@@ -240,8 +251,28 @@ export interface Override {
   expires_at?: string | null;
 }
 
+/**
+ * A human override of the confidence GRADE. Separate from `Override`, which moves the tier:
+ * the two answer different questions ("is this the right tier" vs "how much do we actually
+ * know"), and a person often wants one without the other.
+ *
+ * It carries the same discipline the register already imposes on a tier override (PRO-5
+ * revision, July): owner lane, a reason code from the rubric's list, a written reason, and an
+ * expiry. The engine refuses it otherwise — an override without a reason is not an override,
+ * it is an untraceable edit.
+ */
+export interface ConfidenceOverride {
+  grade: ConfidenceGrade;
+  reason_code: "data_wrong" | "relationship_known" | "timing_known" | "conflict" | "other";
+  reason: string;
+  approver: string;
+  set_at?: string;
+  expires_at?: string | null;
+}
+
 export interface GradeOptions {
   override?: Override | null;
+  confidence_override?: ConfidenceOverride | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -378,6 +409,19 @@ export interface ProspectScorecard {
   deal_health: DealHealthRead[];
 
   override: Override | null;
+
+  /**
+   * The whole read's confidence as a letter. Null when the active rubric defines no
+   * `confidence_grade` block — an absent spec is not a grade of F.
+   */
+  confidence_grade: ConfidenceGrade | null;
+  /** Why that letter, in the rubric's own terms. Empty when no block is defined. */
+  confidence_grade_reason: string;
+  /** The grade the rubric's bands produced, before any override. */
+  computed_confidence_grade: ConfidenceGrade | null;
+  /** The override that moved it, if one was applied. Refused overrides are in the trace. */
+  confidence_override: ConfidenceOverride | null;
+
   effective_tier: Tier | null;
   /** Fit × Ceiling, e.g. "Gold × Embedded". Null when the row is not ranked. */
   cell: string | null;
