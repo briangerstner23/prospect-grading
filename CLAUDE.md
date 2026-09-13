@@ -40,6 +40,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260912140000 revoke authenticated writes ·
             20260912150000 nightly watchdog ·
             20260913060000 movement views ·
+            20260913160000 account cohort ·
             20260913200000 call meeting key (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/

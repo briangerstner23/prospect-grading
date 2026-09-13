@@ -625,3 +625,62 @@ Meeting" (1 and 8 Sep), "Campfire Digital : Next Action Planning" (27 Aug). Ridg
 - **The non-agency question is a ruling, not a cleanup.** PRO-4 keeps direct-to-client in scope
   with a flag; whether 153 ranked non-agencies should be parked instead is the owner's call, and
   nothing here pre-empts it.
+
+---
+
+## 13 · One roster, several books (13 September 2026)
+
+Correcting §12. The 153 ranked rows recorded `is_agency: false` are **not contamination** — they
+are a different cohort. WLIQ holds several relationships, each needing the same evidence and a
+different grade (owner, 13 Sep 2026):
+
+| Cohort | Standing today |
+|---|---|
+| **Agency partners** | the core focus; the only cohort rubric 0.1.0 actually describes |
+| **Direct clients** | also a focus; graded today as though they were agencies |
+| **Peer communities** | critical for longer-term growth — AMI, BABA, the Think Tank |
+| **Friends of WLIQ** | a real Pipedrive Client Journey stage (69) |
+| others | the vocabulary is not yet complete |
+
+**The same data matters for every cohort. The grading does not.** Agency partners are the focus
+now; the other cohorts' grading is later work.
+
+### What the book actually held
+
+`pb_accounts` had no cohort dimension at all — only `relationship_type` (agency 422, direct 158,
+null 81), which covers two of them. Nothing for peer communities or Friends of WLIQ.
+
+And the gap is not theoretical: **all 31 Friends-of-WLIQ organisations in Pipedrive are absent
+from `pb_accounts` entirely** — among them *Agency Management Institute*, AMIN Worldwide,
+Predictive ROI, Sakas and Company, Agency Builders and Dynamic Agency OS. The rubric carries an
+adjustment, `ADJ-REF`, that rewards a "referral from the Brian / AMI / BABA network", and it fires
+on real accounts — while the network it names is tracked nowhere in the book.
+
+That stage also mixes cohorts: peer bodies sit beside vendors (WP Engine) and ordinary agencies
+(Spindustry, SJ Innovation, B Squared Media). "Friends of WLIQ" is a journey stage, not a cohort,
+and cannot be lifted wholesale.
+
+### What was done
+
+`20260913160000_prospect_book_account_cohort` adds a **nullable, unconstrained** `cohort` column
+and derives only what the book already states:
+
+| cohort | accounts | ranked | carry any evidence |
+|---|---|---|---|
+| agency_partner | 422 | 410 | 29 |
+| direct_client | 170 | 167 | 9 |
+| (unassigned) | 61 | 23 | 4 |
+| not_a_prospect | 9 | 1 | 0 |
+
+No check constraint: the vocabulary is the owner's and is not yet complete, so nothing here
+forecloses it. **No grade changed** — the column records which book a row belongs to so grading
+can be scoped per cohort later. Today the chase list still mixes 410 agency partners with 167
+direct clients, because rubric 0.1.0 has one rubric and applies it to everyone.
+
+### What is not settled
+
+- **The full cohort vocabulary.** The owner states there are more than the four above.
+- **Scoping the grade.** Gating rubric 0.1.0 to `agency_partner` is a rubric change and a new
+  version, not a column default.
+- **Loading the missing cohorts.** Peer communities and Friends of WLIQ need a Pipedrive pull of
+  Client Journey stage 69 plus a rule for what makes something a peer body rather than a vendor.
