@@ -51,8 +51,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
 web/        index.html — the page, one file, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
-scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_README.md) ·
-            sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
+scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an admission, the way a
+            pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
+            seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
             index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts
 ```
 

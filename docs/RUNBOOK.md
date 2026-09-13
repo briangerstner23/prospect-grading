@@ -1470,3 +1470,82 @@ crawl at page 19. Each refresh writes a `pb_runs` row (`kind = 'ingest'`, `sourc
 **Stage ids** are `pb_cj_stage_name()` and `pb_cj_stage_class()`. They are stable but not
 guaranteed; confirm with `getStages` for `pipeline_id: 9` if the classes ever look wrong. The
 rule they implement is stated once, in `scripts/seed_README.md`.
+
+## 23 · Admitting a `missing` roster-drift row into the book
+
+§22's queue proposes; this is how a person acts on a `missing` row. The rule it obeys is the one
+§22 states and does not implement: **an account arrives through the composer or it does not
+arrive.** A bare `insert into pb_accounts` produces a row with no facts, no signals and no
+contacts — an account graded on nothing, which the page will happily print an anticipated tier
+for. Worse, it skips the PRO-10 cross-check against the Client Book, which is the only thing
+standing between this book and an Agency Partner.
+
+`scripts/seed.ts --only-orgs` is that path. The whole composition still runs — the same PRO-10
+cross-check, the same Notion attach rule, the same fact precedence — and only the named
+organisations' rows are written out. Scoping is an output filter on purpose: attach decisions
+depend on the whole set, so they are made against the whole set and only the emission is
+narrowed.
+
+**1 · Take the queue.**
+
+```sql
+select pipedrive_org_id, org_name, stage_name
+from pb_roster_drift
+where status = 'open' and direction = 'missing'
+order by stage_name, org_name;
+```
+
+Decide which rows you are admitting. Unqualified/DNC rows land in the `parked` book; they are
+still admissions, just low-priority ones. Save the ids you chose to the scratchpad as JSON — a
+`pb_roster_drift` export works unchanged, `--only-orgs` reads `pipedrive_org_id` out of it.
+
+**2 · Collect the pulls.** Exactly as `scripts/seed_README.md` describes — the same eleven input
+files plus the reference pull. There is no shortcut here: the composer refuses to run without
+them, and it is the completeness of the pulls that makes the admitted account a real account
+rather than a name. Save `client_book_keys.json` into the `--out` directory first, including the
+current `pb_accounts` rows, so ids stay stable and the next step can tell a new organisation
+from one already in the book.
+
+**3 · Compose.**
+
+```bash
+node --experimental-strip-types scripts/seed.ts \
+  --in <pulls dir> --out <pulls dir>/admit --as-of <YYYY-MM-DD> \
+  --uuid-seed admit-<date> --only-orgs @<pulls dir>/drift.json
+```
+
+The run stops rather than half-doing the job when an id does not resolve, and the message says
+which it is:
+
+- *"PRO-10: the cross-check reads it as an Agency Partner"* — the answer, not an error. Dismiss
+  the drift row with that note; the card's stage and the Client Book disagree and PRO-10 wins.
+- *"not in this run's composed roster"* — the pulls do not cover it, or its most recently updated
+  open card is not in a prospect stage. Re-pull, or re-read the card.
+- *"already in pb_accounts"* — `02`/`03`/`04`/`07` are plain inserts, so applying the run would
+  duplicate that account's facts rather than update them. Drop the id. `--allow-existing` exists
+  for the case where you have decided the duplicate rows are what you want; it is rarely that.
+
+**4 · Read `admit/SUMMARY.md` before applying anything.** It is headed *Admission dry run* and
+opens with the scope table: every organisation admitted, its key, its book, and whether it was
+already a row. Check the account count is the number you meant to admit.
+
+**5 · Apply**, one `execute_sql` call per file, in lexical order, each file once (§the seed
+README's "Applying the SQL"). `01`, `05` and `06` are idempotent; the rest are plain inserts.
+
+**6 · Score, then close the queue.**
+
+```sql
+-- after a manual pb-score run (§9)
+update pb_roster_drift
+   set status = 'actioned', reviewed_by = '<you>', reviewed_at = now(),
+       note = 'admitted via scripts/seed.ts --only-orgs on <date>'
+ where direction = 'missing' and pipedrive_org_id in (…);
+```
+
+The next refresh would mark them `resolved` on its own once the account exists, but saying who
+admitted them and when is worth the one statement.
+
+**What this does not do.** It does not touch a `departed` row — that is a PRO-18 promotion in the
+owner lane, and PRO-18's confirmation lane is an open ruling. Nothing here decides cohort scoping
+either: an organisation whose card sits in a partner stage is still refused, by PRO-10, exactly as
+it was before.

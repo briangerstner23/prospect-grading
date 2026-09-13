@@ -24,6 +24,8 @@ node --experimental-strip-types scripts/seed.ts \
   --out   <dir for the SQL files>                 # default <in>/seed   (or PB_SEED_OUT)
   --as-of 2026-09-09                              # YYYY-MM-DD; default today (UTC)
   --uuid-seed <any text>                          # optional; makes account ids reproducible
+  --only-orgs <ids|@file>                         # optional; admit only these organisations
+  --allow-existing                                # with --only-orgs: permit an org already in the book
 ```
 
 | Flag | Meaning |
@@ -32,6 +34,8 @@ node --experimental-strip-types scripts/seed.ts \
 | `--out` | Directory the SQL files, `manifest.json`, `notes.txt` and `SUMMARY.md` are written to. Existing `NN_*.sql` files there are removed first. **The reference pull `client_book_keys.json` must already be in this directory** (see Inputs). |
 | `--as-of` | The seed's clock. Signals dated after it are dropped by the mappers; facts are stamped with `created_at` from this date; the engine never reads a clock, so the date must be stated. |
 | `--uuid-seed` | When given, every new `pb_accounts.id` is derived deterministically from this seed and the account key, so a re-run reproduces the same ids. Without it ids are random. |
+| `--only-orgs` | Makes the run an **admission** rather than a seed: compose everything, write out only the rows belonging to these Pipedrive organisations. A comma/whitespace list of ids, or `@<path>` to a file holding them — one per line, a JSON array of ids, or a JSON array of objects carrying `pipedrive_org_id`, which is the shape a `pb_roster_drift` export already has. See "Admitting one organisation" below. |
+| `--allow-existing` | Only meaningful with `--only-orgs`. Without it the run refuses an organisation that is already a `pb_accounts` row, because `02`/`03`/`04`/`07` are plain inserts and would duplicate its facts rather than update them. |
 
 Node 22+ (`--experimental-strip-types`). Every date in the inputs is parsed as UTC whatever
 machine runs it (`process.env.TZ = "UTC"`).
@@ -146,6 +150,41 @@ limit fails the run.
    `select started_at, status, counts from pb_runs where kind = 'seed' order by started_at desc limit 1;`.
 5. Review the merge queue (`docs/RUNBOOK.md` §12). Every row the seed could not attach on a high
    key is waiting there for a person; the seed itself never merges (PRO-18's discipline).
+
+## Admitting one organisation (`--only-orgs`)
+
+The seed ran once, on 9 September. The Client Journey did not stop moving: `pb_roster_drift`
+(migration `20260913220000`) reports every organisation whose most recently updated open card has
+since entered a prospect stage while no account points at it. Those rows have to come into the
+book the way every other account came in — through this script — and not as a bare
+`insert into pb_accounts`, which would produce an account graded on nothing and, worse, skip the
+PRO-10 cross-check.
+
+`--only-orgs` is that path. **The whole composition still runs**: the same roster rule, the same
+PRO-10 cross-check, the same high-key Notion attach, the same fact precedence, against every row
+in the pulls. Only the *emission* is narrowed, to the accounts whose `pipedrive_org_id` was named
+and their dependent contacts, facts, signals, calls, deals and candidate rows. Scoping is an
+output filter on purpose: attach and precedence decisions depend on the whole set, so they are
+made against the whole set.
+
+```bash
+node --experimental-strip-types scripts/seed.ts \
+  --in <pulls> --out <pulls>/admit --as-of 2026-09-14 \
+  --uuid-seed admit-2026-09-14 --only-orgs @<pulls>/drift.json
+```
+
+The run **stops** rather than silently writing less than you asked for when an id does not
+resolve, and the message distinguishes the three reasons: the PRO-10 cross-check read it as an
+Agency Partner (which is an answer, not a failure — dismiss the drift row); the pulls do not
+cover it or its card is not in a prospect stage; or it is already a `pb_accounts` row. `SUMMARY.md`
+is headed *Admission dry run* and opens with the scope table — the organisations admitted, their
+keys, their book, and whether each was already a row. `pb_runs.counts.scope` carries the same
+record, and `08_runs.sql` writes `source = 'admit:roster_drift'` so the run is legible later.
+
+Everything else is unchanged: read `SUMMARY.md` first, apply in lexical order one file per call,
+each file once. The operator procedure end to end is `docs/RUNBOOK.md` §23.
+
+`scripts/seed_scope_test.ts` covers this path against a synthetic pull.
 
 ## Re-running
 
