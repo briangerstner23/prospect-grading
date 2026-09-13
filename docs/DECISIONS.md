@@ -842,20 +842,40 @@ gap and was not.
 The gap is therefore not a seed defect but a missing habit: nothing re-runs the roster. A
 recurring roster sync closes it permanently; adding the five rows by hand does not.
 
-**The uncertified Notion intake is splitting the book.** Of the 39 accounts with no
-`pipedrive_org_id`, **23 duplicate a certified account already in the book under an exact name
-match**, and **5 duplicate an organisation whose card is in a partner stage** — rows PRO-10 would
-have refused had the intake carried a CRM link. This is the seed behaving as specified: §3 of
-`scripts/seed_README.md` attaches a Notion row to an existing account only on a high key (the
-contact-email domain equals the organisation domain) and deliberately creates a separate account
-on a name-only resemblance. For 23 rows the name matched exactly and the row still split, because
-the Notion row carried no email domain to match on.
+**The uncertified Notion intake splits the book, and the split is nearly closed.** Of the 39
+accounts carrying no `pipedrive_org_id`, **18 were already merged in an earlier session** —
+`pb_merge_accounts` clears the duplicate's `pipedrive_org_id` when it retires the row, so a
+count taken on that column alone reads a resolved merge as an open one. Counting live rows
+instead (`book <> 'merged'`) left **five** exact-name pairs open, the same five §14's handoff
+called ambiguous.
 
-The cost is not cosmetic. The book's 680 accounts are roughly 657 companies, with facts and
-signals divided across both halves of each pair — which is also a contributor to the chase-order
-ties §10 and §14 measured. The high-key rule itself stays as it is: rule 8 says identity never
-auto-merges below high confidence, and an exact name match with no domain is not high confidence.
-The 23 pairs are a review queue for a person, not a rule to relax.
+Ambiguous was the right word, and the reason is instructive: in all five the names matched
+exactly and the *domains did not*. Rule 8 refuses that, correctly — an exact name with a
+conflicting domain is not high confidence, it is the shape a name collision takes. Resolving
+them needed evidence about the companies, not a better string match:
+
+| Pair | Evidence | Outcome |
+|---|---|---|
+| Two domains, one Orbit client carrying both | the client row lists one domain as its website and the other in its contact address | merged |
+| Two domains, one company publishing both | the certified site publishes the other domain as its own contact address | merged |
+| Two domains, one company operating both | the company's own listings name both as its sites | merged |
+| Same name, different cities | two agencies, different states, unrelated | **not** merged |
+| Same name, different markets | two agencies, different specialisms, unrelated | **not** merged |
+
+Three merged on 13 September, moving 45 facts, 14 signals, 5 contacts and 4 identity candidates
+onto the surviving certified rows. The two collisions are recorded as `decision` rows on the
+accounts themselves so the next sweep does not re-open them.
+
+So the book is 659 live accounts and 659 companies, not 680 rows over some smaller number of
+companies: the duplication was real but had largely been worked already. Two of the five
+remaining were never duplicates at all. The high-key attach rule stays exactly as it is — the
+five it deferred were five it *should* have deferred, and two of them would have been wrong to
+merge. That is the rule earning its keep, not failing.
+
+A separate five accounts, also from the Notion intake, duplicate a Pipedrive organisation whose
+card is in a partner stage. Those are not in-book duplicates — the partner-stage organisation
+never entered the book — so they are not a merge. They are rows PRO-10 would have refused had
+the intake carried a CRM link, and what to do with them is the cohort scoping question below.
 
 ### What this does not decide
 

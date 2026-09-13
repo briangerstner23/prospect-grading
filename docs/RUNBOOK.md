@@ -1383,9 +1383,17 @@ A domain that matches an account whose `domain` column is blank is not a new com
 attribution failure on an account that already exists. 103 accounts had no domain on 13
 September. Check `pb_accounts` by name before proposing anything new.
 
-An account with no `pipedrive_org_id` came in through the uncertified Notion intake and may
-duplicate a certified account under the same name (23 such pairs on 13 September, §15). Resolving
-one of those is a merge for a person, never an insert.
+An account with no `pipedrive_org_id` is **not** reliably a Notion-intake row: `pb_merge_accounts`
+clears that column on the duplicate it retires, so every already-merged row looks like one too.
+Filter on `book <> 'merged'` or the count comes back wildly high — on 13 September it read 23 open
+duplicate pairs where five were open and eighteen had been merged in an earlier session (§15).
+
+A live Notion-intake row may still duplicate a certified account under the same name. Resolving
+one is a merge for a person, never an insert, and an exact name match is not on its own enough to
+propose one: of the five open on 13 September, the names matched exactly in all five and the
+domains agreed in none, and two turned out to be different companies that share a name. Settle
+which it is from evidence about the companies — one client record carrying both domains, a site
+publishing the other domain as its own contact address — before proposing anything.
 
 Rule 8 governs the whole exercise: identity never auto-merges below high confidence, and neither
 this procedure nor its result is permission to write an account row.
