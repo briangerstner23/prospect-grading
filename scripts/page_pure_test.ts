@@ -67,7 +67,7 @@ function eq(name: string, actual: unknown, expected: unknown): void { check(name
 function includes(name: string, actual: unknown, needle: string): void { check(name, typeof actual === "string" && actual.includes(needle), { actual, needle }); }
 
 const {
-  compareKey, orderAccounts, pickBand, coerceFactValue, overrideCapWarning, INVALID,
+  compareKey, orderAccounts, usableKey, pickBand, coerceFactValue, overrideCapWarning, INVALID,
   ageWords, strengthWords, headcountWords, ratioWords, factValueWords, safeUrl, rowMatches,
   catalogEntries, signalCatalogWords, mergeTargets, movedWords, reviewEffectWords,
   rulesWithInputs, ruleFired, evidenceUse, quoteFromNote, stalenessNote,
@@ -75,7 +75,7 @@ const {
 
 function run(): void {
 /* ---- the block exports what the page and this script expect ---- */
-for (const name of ["compareKey", "orderAccounts", "pickBand", "coerceFactValue", "overrideCapWarning", "INVALID", "factValueWords", "rowMatches", "reviewEffectWords", "mergeTargets", "evidenceUse", "quoteFromNote"]) {
+for (const name of ["compareKey", "orderAccounts", "usableKey", "pickBand", "coerceFactValue", "overrideCapWarning", "INVALID", "factValueWords", "rowMatches", "reviewEffectWords", "mergeTargets", "evidenceUse", "quoteFromNote"]) {
   check(`block declares ${name}`, name in helpers && helpers[name] !== undefined);
 }
 check("INVALID is a symbol", typeof INVALID === "symbol");
@@ -105,6 +105,47 @@ check("compareKey: 10 after 9, not before (numeric, not lexical)", compareKey([1
   eq("orderAccounts: does not mutate its input", accounts.map((a) => a.id), original);
   eq("orderAccounts: a read without a scorecard still counts as scored", orderAccounts([{ id: "a", name: "A" }, { id: "b", name: "B" }], new Map([["b", {}]])).map((a: { id: string }) => a.id), ["b", "a"]);
 }
+
+/* ---- usableKey: an absent chase key must not outrank a real one ----
+ *
+ * compareKey gives a missing element its rung, so an empty key compares ahead of
+ * everything. A read carrying no chase_rank_key would therefore sort above a Platinum.
+ * No live row does that today, but pb-score writes pb_reads in batches and tolerates a
+ * failed batch, so a half-written run can produce one.
+ */
+{
+  check("usableKey: a populated array is usable", usableKey([0, 1]) === true);
+  check("usableKey: an empty array is not", usableKey([]) === false);
+  check("usableKey: undefined is not", usableKey(undefined) === false);
+  check("usableKey: null is not", usableKey(null) === false);
+  check("usableKey: a non-array is not", usableKey("0,1") === false);
+
+  // The hazard this guards, stated as the comparator sees it.
+  check("compareKey: an empty key still compares ahead of a Platinum (why usableKey exists)", compareKey([], [-3, -4, -3, -4, "Platinum Co"]) < 0);
+
+  const accounts = [{ id: "keyless", name: "Aaa Keyless" }, { id: "platinum", name: "Zzz Platinum" }];
+  const reads = new Map<string, unknown>([
+    ["keyless", { scorecard: {} }],
+    ["platinum", { scorecard: { chase_rank_key: [-3, -4, -3, -4, "zzz platinum"] } }],
+  ]);
+  eq("orderAccounts: a read with no chase key sorts below one that has a key", orderAccounts(accounts, reads).map((a: { id: string }) => a.id), ["platinum", "keyless"]);
+
+  const bothKeyless = new Map<string, unknown>([["keyless", { scorecard: {} }], ["platinum", { scorecard: { chase_rank_key: [] } }]]);
+  eq("orderAccounts: two unusable keys fall back to the name", orderAccounts(accounts, bothKeyless).map((a: { id: string }) => a.id), ["keyless", "platinum"]);
+}
+
+/* ---- the null trap, pinned so a future nullable term cannot ship unnoticed ----
+ *
+ * typeof null === "object", so a null element misses compareKey's numeric branch and is
+ * compared as the string "null" — which sorts after every number. An unknown would rank
+ * below even the worst known value, which is the sort making unknown into evidence
+ * (rule 5). A term whose value can be absent must be emitted as a number the rubric
+ * names a position for, never as null. This test records the behaviour; it is not an
+ * endorsement of it.
+ */
+check("compareKey: a null term sorts BELOW a large positive number (rule-5 trap)", compareKey([0, null], [0, 99]) > 0);
+check("compareKey: a null term sorts BELOW a large negative number too", compareKey([0, null], [0, -99]) > 0);
+check("compareKey: a longer key orders correctly against itself", compareKey([0, 0, 0, -1, -9, "a"], [0, 0, 0, -1, -5, "a"]) < 0);
 
 /* ---- pickBand: [min, max) bands, as the rubric writes them ---- */
 {

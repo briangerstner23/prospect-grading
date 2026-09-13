@@ -92,7 +92,7 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
 9. **Evidence outranks recency.** `pb_current_facts` and `latestFactPerKey` both resolve a key by
    `evidence > inferred > unknown`, then newest written, then newest observed. The view is what
    pb-score reads and the function is what the pure path reads; they must not drift.
-9. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
+10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
 
 ## Supabase

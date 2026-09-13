@@ -362,3 +362,106 @@ coverage and catches Apollo's errors but cannot grade the reader against itself.
 is the standing measurement: confirm and reject rates per key, per extractor version, are the
 number to watch once raters are working it. A new prompt is a new `EXTRACTOR_VERSION`, which
 re-reads every note rather than silently mixing two readings.
+
+---
+
+## 10 · The chase order collapses, and the fix is not a longer key (13 September 2026)
+
+**Nothing is ruled here and no ordering changed.** This section records a diagnosis, the three
+designs that were tested against it, and why each was rejected on measurement rather than on
+taste. It exists so the next person does not re-derive it — and so that if someone does extend the
+chase key later, they do it knowing what was already tried.
+
+### The complaint
+
+Past roughly rung 34 the roster is alphabetical. The sales team's list of 613 ranked accounts
+resolves to **47 distinct chase keys**; 22 accounts sit alone, **481 (78.5%) sit in a tie of 20 or
+more**, and the bottom 206 positions are exactly two blocks of 135 and 71.
+
+### What is actually wrong — it is not a shortage of tie-breakers
+
+The key is `[tier, -facts_present, -urgency, -year1_band, name]` (`core/engine.ts:837-843`).
+
+- **The name does the ordering.** The four terms carry 3.999 bits; a total order over 613 accounts
+  needs 9.260. Walking the list top to bottom, **566 of the 612 consecutive steps are decided by
+  the agency name** — tier decides 3.
+- **Term 4 is dead weight.** Only 2 of 5 bands occur, 89% sit in one, and it is nearly a function
+  of the tier: every Bronze and every Silver account is `$6K–16K`. It adds 8 rungs and removes
+  **zero** from the largest tie group.
+- **Three of four terms are defaults, not measurements.** 613 of 613 accounts take `year1_band`
+  from the ICP prior and 613 of 613 take their base tier from the ICP class — an ordering the owner
+  measured at **r = −0.135** against observable fit (§8). The key is two live terms wearing four.
+- **The key already breaks rule 5, and it shipped.** `qualify()` counts only cells equal to
+  `present`; `absent` and `unknown` both score zero. Of 2,452 qualification slots, **67.9% are
+  `unknown` against 6.9% recorded `absent`**, and 125 of the 167 accounts at the floor of term 2
+  have all four facts unknown with no recorded negative anywhere. Term 3 leaks the same way: **222
+  of 389 Cold accounts are Cold from silence**, not from a stated "no timeline". Because Bronze and
+  Cold are index 0 of their orders, *an unresearched agency is placed below a researched bad one.*
+  Whether an unasked question should rank with a "no" is a **PRO-2r question for the register**, not
+  a fix to make in `engine.ts`. It is the largest unknown-as-evidence exposure in the live
+  instrument.
+
+### Why a longer key was rejected
+
+Three designs were built and each was judged against the rulings, the live data and the sales
+desk. All three failed on measurement:
+
+- **The material is not there.** Of the 135-account largest tie group, **exactly one** has an
+  evidence-labelled fact, none has a call, and 102 have no scoring signal. Book-wide only 33 of 613
+  accounts carry any evidence-labelled fact and 6,851 of 7,073 facts are `inferred`.
+- **The ceiling is low and the frontier only moves.** Throwing *every* unused source at the key —
+  decayed total, real-signal count, evidence-fact count, open-deal flag, Apollo headcount — takes
+  47 rungs to 182 and the largest tie from 135 to 72, and still leaves **497 of 613 (81%) inside an
+  alphabetical tie**.
+- **The best design moved 2 accounts.** Its flagship cohort, accounts with an open deal, went from
+  mean position 233 to 214; the count inside the top 50 was 3 before and 3 after — the same 3.
+- **The signals are a seed artifact.** 1,149 of 1,479 signal rows are weight-0 `prior_grade`. Of
+  the accounts with a live positive signal, 37 of 50 are `manual_note` rows from the July Notion
+  import, confined to 14–27 July 2026 and sharing one decay expiry. Ordering by signal recency
+  orders by a one-time import that expires all at once.
+- **Density is not value.** Inside the 135 group the largest silent agency is 62 employees and the
+  largest noisy one is 17. A coverage tie-break puts the 17 above the 62 and calls it order.
+- **`headroom` is `headcount × 8750`**, and headcount disagrees with Apollo on ~89% of rows where
+  both exist (r = 0.253, biased low, `inferred` on all 463). It has the cardinality to break the
+  tie and no business being trusted with it.
+
+A 135-way tie is the instrument reporting, correctly, that it cannot rank those accounts. Under
+PRO-0 an honest refusal outranks a fabricated order.
+
+### Two procedural facts found on the way
+
+- **The activation gate is blind to ordering.** Rule 4 says a new rubric version is previewed
+  before activation, but `?rubric=…&preview=1` returns only `{account_id, name, from_tier, to_tier,
+  from_status, to_status, changed}` (`_shared/score_pure.ts:95-107`). A change that reorders the
+  entire book without moving a tier previews as **no change at all**. Any future ordering work must
+  extend the preview diff first, or it ships unreviewed.
+- **Nothing stamps the engine.** `rubric_fingerprint` is `fingerprint(rubric)`, so an engine-only
+  key change writes differently-ordered reads under an identical stamp. See `docs/BASELINE.md` §1.
+
+### What actually fixes it, in order
+
+Each step is cheaper than the key change and each makes the *next* measurement of the key honest.
+
+1. **Work the identity queue** — 75 rows, 48 from Orbit, and 38 of those accounts are in the live
+   Ranked list. This is a fault in *who is on the list*, which outranks a fault in their order.
+   §7 P1 already called it the first place it pays.
+2. **Set `PB_ANTHROPIC_API_KEY`.** It lights the `fathom_call` sweep with no second credential and
+   starts producing the evidence-labelled facts any tie-break needs to be honest.
+3. **Work the 37 Dimension A fact candidates.** They move `facts_present` — a term the key already
+   has — with no rubric change at all.
+4. **Then, and only if the top-of-list complaint persists**, revisit the key. The complaint is real
+   in one place: restricted to the top 100 the material *is* there (70 carry a real signal, 54
+   carry Apollo, only 16 are featureless), and those 100 accounts get 21 rungs with a 23-way tie at
+   positions 71–93. That is the zone two raters can cover, and it is worth fixing on its own.
+
+Anyone doing step 4 must first fix a latent rule-4 violation: **the key's terms and directions are
+hard-coded in `engine.ts:837-843` while the rubric's `chase_rank_key.keys` is read only by
+`explain/generate_method.ts`** — it is documentation, not data. Changing the engine alone would
+leave `METHOD.md` §15 confidently wrong and `method_test` green, because that test asserts only
+that the rubric's five strings appear in the doc and has no engine coupling at all.
+
+And it must be **additive**: `chase_rank_key` is typed `[number, number, number, number, string]`
+(`core/prospect_types.ts:385`), and appending to that tuple is a retype, which CLAUDE.md forbids.
+A new nullable sibling key leaves the frozen order stored, recoverable and reportable as
+BASELINE §4's pre-registered ranking #1, with the refinement entered as an additional ranking
+rather than replacing it.
