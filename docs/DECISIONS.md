@@ -677,10 +677,46 @@ forecloses it. **No grade changed** — the column records which book a row belo
 can be scoped per cohort later. Today the chase list still mixes 410 agency partners with 167
 direct clients, because rubric 0.1.0 has one rubric and applies it to everyone.
 
+### The vocabulary, settled for now (owner, 13 September 2026)
+
+Start with these five and add more later:
+
+`agency_partner` · `direct_client` · `peer_community` · `friend_of_wliq` · `not_a_prospect`
+
+**Agency partner is the focus. Direct client is registered as the next cohort to be graded.**
+Peer communities and Friends of WLIQ keep collecting evidence and wait for their own grading.
+
+### Orbit is the authority on which of the two a company is
+
+The owner's instruction was to take the cohort from the labelling the source systems already
+carry. Both were read:
+
+- **Orbit `client_type`** — `Agency` (74) and `Direct Client` (26) across 601 clients, 90 of the
+  100 typed ones also carrying a website. Orbit is where the work actually ran, so it is the
+  authority on what a company is to WLIQ.
+- **Pipedrive** turned out **not** to carry a cohort. Its organisation labels are empty on the
+  rows checked, and the Client Journey deal labels are relationship qualifiers, not cohorts:
+  `Personal Relationship with Brian`, `Pending For Relationship`, `New Inquiry 2026`. "Friends of
+  WLIQ" is a *stage* in that pipeline, not a label, and it mixes peer bodies with a hosting
+  vendor and ordinary agencies — so it cannot be lifted wholesale into a cohort.
+
+46 book accounts matched a typed Orbit client on domain or exact name. **10 were corrected or
+filled**, each recorded in `pb_register` with the Orbit client id, its `client_type` and how it
+matched — four that Orbit calls an Agency were sitting outside the agency focus, and *Call to
+Freedom*, currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
+
+| cohort | accounts | ranked | confirmed by Orbit |
+|---|---|---|---|
+| agency_partner | 430 | 416 | 25 |
+| direct_client | 168 | 164 | 3 |
+| (unassigned) | 55 | 20 | — |
+| not_a_prospect | 9 | 1 | — |
+
 ### What is not settled
 
-- **The full cohort vocabulary.** The owner states there are more than the four above.
-- **Scoping the grade.** Gating rubric 0.1.0 to `agency_partner` is a rubric change and a new
-  version, not a column default.
-- **Loading the missing cohorts.** Peer communities and Friends of WLIQ need a Pipedrive pull of
-  Client Journey stage 69 plus a rule for what makes something a peer body rather than a vendor.
+- **Scoping the grade to `agency_partner`.** A rubric change and a new version, not a column
+  default. Until it lands the chase list still mixes 416 agency partners with 164 direct clients.
+- **Grading for `direct_client`** — registered as the next cohort, not yet designed.
+- **Loading `peer_community` and `friend_of_wliq`.** The 31 Friends-of-WLIQ organisations are
+  still absent from `pb_accounts`, and a peer body still has to be told apart from a vendor.
+- **The remaining 55 unassigned**, of which 20 are ranked.
