@@ -1397,3 +1397,76 @@ publishing the other domain as its own contact address — before proposing anyt
 
 Rule 8 governs the whole exercise: identity never auto-merges below high confidence, and neither
 this procedure nor its result is permission to write an account row.
+
+---
+
+## 22 · The nightly roster re-read (`pb_roster_drift`)
+
+The seed read the Client Journey once, on 9 September. §21's triage found five prospect-stage
+organisations absent from the book and one account whose card had moved the other way, and none
+of that was a seed defect — the roster is a live thing and the book had read it once. Migration
+`20260913220000` re-reads it every night.
+
+**What runs, and when.** Three cron jobs, all inside the database:
+
+| Job | UTC | What it does |
+|---|---|---|
+| `pb-roster-begin` | 05:00 | `pb_roster_crawl_reset()` — clears `pb_roster_cards`, starts a crawl |
+| `pb-roster-step` | 05:01–05:10 | `pb_roster_crawl_step()` — settles the last page, fires the next |
+| `pb-roster-report` | 05:12 | `pb_roster_drift_refresh()` — recomputes `pb_roster_drift` |
+
+It is a stepper for the same structural reason the Fathom crawl is one (§20): pg_net dispatches
+only after the calling transaction commits, so no single transaction can read its own response.
+About 950 cards is two pages at `limit=500`; the step returns immediately once `done`, so the
+eight spare ticks cost nothing. The crawl runs in Postgres so `PB_PIPEDRIVE_API_TOKEN` never
+leaves Vault — and because the build container has no route to `api.pipedrive.com` anyway.
+
+**What it reports.** `pb_roster_drift`, one open row per direction per organisation:
+
+- `missing` — the most recently updated **open** card is in a prospect stage (New, Schedule Sales
+  Call, Sales Call Done, Quoting, Quote Lost, Unqualified/DNC) and no live `pb_accounts` row
+  points at that organisation. Expect a steady trickle of Unqualified/DNC here; those belong in
+  the `parked` book, not the prospect book, so they are the least urgent rows in the table.
+- `departed` — a live account (`book in ('prospect','parked')`) whose card has moved to Active,
+  Inactive, Past or Lost Client, or to Friends of WLIQ. PRO-10 says it is no longer this book's.
+
+A row that stops drifting is marked `resolved` by the next refresh rather than deleted. Work the
+queue by setting `status` to `actioned` or `dismissed` with a `reviewed_by` and a `note`; a
+refresh leaves those alone.
+
+```sql
+select direction, stage_name, org_name, pipedrive_org_id, account_id
+from pb_roster_drift where status = 'open'
+order by direction, stage_name, org_name;
+```
+
+**It reports; it does not act, and that is deliberate.** Two rulings forbid it. PRO-18's
+confirmation lane is still open, so nothing may promote an account out of the book because a card
+moved. And the seed's PRO-10 cross-check runs against the Client Book's keys, which this
+repository may never import — a row this function invented would skip that check. So the table is
+to the roster what `pb_identity_candidates` is to identity: it proposes, a person decides.
+Acting on a `missing` row means composing it through `scripts/seed.ts` and `pb-sync` like every
+other account; acting on a `departed` row is a PRO-18 promotion in the owner lane.
+
+**Running it by hand.**
+
+```sql
+select public.pb_roster_crawl_reset();
+select * from public.pb_roster_crawl_step();   -- repeat until finished = true
+select * from public.pb_roster_drift_refresh();
+```
+
+Each call must be its own transaction — that commit is what sends the request the previous call
+queued. `pb_roster_drift_refresh()` refuses to run on an unfinished or empty crawl: half a
+roster would read as half the book having departed.
+
+**When it goes wrong.** `pb_roster_crawl.last_error` holds the reason and the step clears
+`request_id` so the next tick re-fires the same cursor. A 429 arrives as a real
+`net._http_response` row with a null body, which reads exactly like "still in flight" — the step
+asks whether the row exists before trusting the body, which is the lesson that parked the Fathom
+crawl at page 19. Each refresh writes a `pb_runs` row (`kind = 'ingest'`, `source =
+'roster_drift'`) carrying the counts.
+
+**Stage ids** are `pb_cj_stage_name()` and `pb_cj_stage_class()`. They are stable but not
+guaranteed; confirm with `getStages` for `pipeline_id: 9` if the classes ever look wrong. The
+rule they implement is stated once, in `scripts/seed_README.md`.

@@ -41,7 +41,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260912150000 nightly watchdog ·
             20260913060000 movement views ·
             20260913160000 account cohort ·
-            20260913200000 call meeting key (all applied)
+            20260913200000 call meeting key ·
+            20260913210000/210100/210200/210300 fathom back-fill (staging, stepper, retry, driver) ·
+            20260913220000 roster drift (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -111,7 +113,7 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   |---|---|---|
   | `PB_SYNC_TOKEN` | pb-sync, pb-score, pb-notes, pg_cron | **set** |
   | `PB_ANTHROPIC_API_KEY` | pb-notes (the extractor) | **set** — without it pb-notes 503s and writes no run row |
-  | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel) | not set |
+  | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel); `pb_roster_fetch_page` | **set** (12 Sep 2026) — this file said "not set" until 13 Sep, which is why the roster sync looked blocked when it was not |
   | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set — safe to add now; the redeploy they were waiting on landed as pb-notes **v9** (RUNBOOK §17) |
   | `PB_EXTRACTOR_MODEL` | pb-notes | optional — defaults to `claude-sonnet-5` |
   | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | **set** (12 Sep 2026) — `whsec_`, 24-byte key. From a webhook created in the Fathom UI; see RUNBOOK §4 |
@@ -130,11 +132,24 @@ scripts/    seed.ts (one-time seed composer → SQL files; see scripts/seed_READ
   12 Sep (RUNBOOK §15).
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
-  Three cron jobs: `pb-nightly-notes` 05:45 UTC, `pb-nightly-score` 06:15 — the sweep runs first
-  so a note read in the morning changes that morning's tier — and `pb-nightly-watchdog` 07:00,
-  which writes a `failed` `pb_runs` row for either of them if it left no finished run. It lives
-  in the database on purpose: the thing that took both jobs out on 12 Sep was the API gateway,
-  and a remedy that goes through the gateway is no remedy (migration 20260912150000).
+  Six cron jobs. Three re-read the roster, entirely inside the database:
+  `pb-roster-begin` 05:00 UTC clears the staging table and starts a crawl of the Client Journey
+  pipeline, `pb-roster-step` every minute 05:01-05:10 walks the cursor (a stepper because pg_net
+  dispatches only after the calling transaction commits; ~950 cards is two pages and the step
+  no-ops once done), and `pb-roster-report` 05:12 recomputes `pb_roster_drift`. Then
+  `pb-nightly-notes` 05:45 and `pb-nightly-score` 06:15 — the sweep runs before the score so a
+  note read in the morning changes that morning's tier, and the roster runs before both so a card
+  that moved overnight is in the same morning's queue. Last, `pb-nightly-watchdog` 07:00 writes a
+  `failed` `pb_runs` row for either nightly job if it left no finished run. The watchdog lives in
+  the database on purpose: the thing that took both jobs out on 12 Sep was the API gateway, and a
+  remedy that goes through the gateway is no remedy (migration 20260912150000).
+- **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
+  prospect-stage card with no account (`missing`), an account whose card has moved to a partner
+  stage or Friends of WLIQ (`departed`) — and writes nothing else. It may not: PRO-18's
+  confirmation lane is an open ruling, and the seed's PRO-10 cross-check needs the Client Book's
+  keys, which this repository may never import. It is to the roster what
+  `pb_identity_candidates` is to identity — it proposes, a person decides (migration
+  20260913220000, `docs/RUNBOOK.md` §22).
 - RLS is default-deny **except for reads, which are public** (10 Sep 2026, owner decision —
   `docs/DECISIONS.md` §5; it supersedes how PRO-7 was implemented and PRO-7 itself is not
   re-ruled). `anon` holds `select` on the tables the page reads and nothing else: `pb_contacts`,
