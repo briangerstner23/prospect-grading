@@ -25,6 +25,7 @@ import type {
   EvidenceLabel,
   FactState,
   IcpClass,
+  ConfidenceOverride,
   Override,
   PriorGrade,
   ProspectFeatures,
@@ -38,6 +39,9 @@ import type {
   WlSignal,
 } from "../core/prospect_types.ts";
 import { TIER_ORDER } from "../core/prospect_types.ts";
+
+/** The confidence grade scale, best → worst. Mirrors ConfidenceGrade in core/prospect_types.ts. */
+const GRADE_SCALE = ["A", "B", "C", "D", "F"] as const;
 
 /* ------------------------------------------------------------------ *
  * Row shapes (mirror the pb_* tables; extra columns are tolerated)
@@ -157,6 +161,12 @@ export interface ResolveInput {
 export interface ResolveResult {
   features: ProspectFeatures;
   override: Override | null;
+  /**
+   * A confidence-grade override, read out of the same register rows. A row is a tier override
+   * or a confidence override by what its payload names, so both live under kind `override` and
+   * neither can be mistaken for the other.
+   */
+  confidence_override: ConfidenceOverride | null;
   /** Everything that was dropped, coerced or ignored, in plain words. Never a flag. */
   notes: string[];
 }
@@ -755,8 +765,9 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     return a.deal_id < b.deal_id ? -1 : a.deal_id > b.deal_id ? 1 : 0;
   });
 
-  /* ---- override: latest live register row of kind override ---- */
+  /* ---- overrides: latest live register row of kind override, per target ---- */
   let override: Override | null = null;
+  let confidence_override: ConfidenceOverride | null = null;
   {
     const live = (input.override_rows ?? [])
       .filter((r) => r.kind === "override")
@@ -772,7 +783,17 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
         return asOfMs === null ? true : exp >= asOfMs;
       })
       .sort((a, b) => (parseMs(b.created_at) ?? 0) - (parseMs(a.created_at) ?? 0));
-    const row = live[0];
+    const names = (r: RegisterRow, key: string): boolean => {
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      return p[key] !== undefined && p[key] !== null;
+    };
+    // A row that names neither is not silently dropped — it is a register row someone wrote.
+    for (const r of live) {
+      if (!names(r, "tier") && !names(r, "confidence_grade")) {
+        notes.push(`override by ${r.made_by}: the payload names neither a tier nor a confidence_grade; not applied`);
+      }
+    }
+    const row = live.find((r) => names(r, "tier")) ?? (live.some((r) => names(r, "confidence_grade")) ? undefined : live[0]);
     if (row) {
       const payload = (row.payload ?? {}) as Record<string, unknown>;
       const tier = toEnum(payload.tier, TIER_ORDER as readonly Tier[]);
@@ -795,6 +816,37 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
           approver: String(row.made_by),
           set_at: row.created_at,
           expires_at: expRaw === undefined ? null : expRaw,
+        };
+      }
+    }
+
+    // The confidence override, read the same way and held to the same terms. The engine checks
+    // the cap and the expiry; what is checked here is only that the row says what it must.
+    const crow = live.find((r) => names(r, "confidence_grade"));
+    if (crow) {
+      const payload = (crow.payload ?? {}) as Record<string, unknown>;
+      const cgrade = toEnum(payload.confidence_grade, GRADE_SCALE as readonly string[]);
+      const ccode = toEnum(payload.reason_code ?? crow.reason_code, V.reasonCodes);
+      const creason = typeof payload.reason === "string" && payload.reason.trim().length > 0
+        ? payload.reason
+        : typeof crow.text === "string" ? crow.text : "";
+      const cexpRaw = crow.expires_at ?? (payload.expires_at as string | null | undefined) ?? null;
+      if (cgrade === null || cgrade === INVALID) {
+        notes.push(`confidence override by ${crow.made_by}: confidence_grade ${describe(payload.confidence_grade)} is not a grade; not applied`);
+      } else if (ccode === null || ccode === INVALID) {
+        notes.push(`confidence override by ${crow.made_by}: reason_code ${describe(payload.reason_code ?? crow.reason_code)} is missing or not a reason code; not applied`);
+      } else if (!crow.made_by || String(crow.made_by).trim().length === 0) {
+        notes.push("confidence override: made_by is empty; not applied");
+      } else if (creason.trim().length === 0) {
+        notes.push(`confidence override by ${crow.made_by}: no written reason; not applied`);
+      } else {
+        confidence_override = {
+          grade: cgrade as ConfidenceOverride["grade"],
+          reason_code: ccode as ConfidenceOverride["reason_code"],
+          reason: creason,
+          approver: String(crow.made_by),
+          set_at: crow.created_at,
+          expires_at: cexpRaw === undefined ? null : cexpRaw,
         };
       }
     }
@@ -874,5 +926,5 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const ignored = Array.from(facts.keys()).filter((k) => !consumed.has(k)).sort();
   if (ignored.length > 0) notes.push(`ignored non-feature fact keys: ${ignored.join(", ")}`);
 
-  return { features, override, notes };
+  return { features, override, confidence_override, notes };
 }

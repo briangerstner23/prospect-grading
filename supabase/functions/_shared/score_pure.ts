@@ -56,6 +56,11 @@ export function buildReadRow(sc: ProspectScorecard, runId: string | null, scorec
     effective_tier: sc.effective_tier,
     computed_tier: sc.fit?.computed_tier ?? null,
     confidence: sc.fit?.confidence ?? null,
+    // Null until a rubric defining confidence_grade is active (0.1.1 is a draft): an absent
+    // spec is not a grade of F.
+    confidence_grade: sc.confidence_grade ?? null,
+    computed_confidence_grade: sc.computed_confidence_grade ?? null,
+    confidence_overridden: sc.confidence_override !== null && sc.confidence_override !== undefined,
     qualification_label: sc.qualification?.label ?? null,
     facts_present: typeof sc.qualification?.present_count === "number" ? sc.qualification.present_count : null,
     ceiling: sc.potential?.ceiling ?? null,

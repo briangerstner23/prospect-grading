@@ -1549,3 +1549,74 @@ admitted them and when is worth the one statement.
 owner lane, and PRO-18's confirmation lane is an open ruling. Nothing here decides cohort scoping
 either: an organisation whose card sits in a partner stage is still refused, by PRO-10, exactly as
 it was before.
+
+## 24 · Confidence as a grade, and overriding it
+
+The book prints two confidences today — one on the fit read, one on potential — each High /
+Medium / Low. Rubric **0.1.1** adds a third thing they do not give you: one letter for the whole
+read, A to F, on a scale nobody has to be taught.
+
+**What the letter means.** It is about the INPUTS, never about the prospect. **F means the book
+knows nothing about this account yet** — rule 5 printed rather than hidden — and says nothing
+about whether the account is worth chasing. A busy, promising agency the book has never had a
+real conversation with is an F, and that is the letter doing its job.
+
+The bands are rubric data (`confidence_grade.rules`), walked top to bottom like the existing
+confidence ladders:
+
+| Grade | The rubric's band, in words |
+|---|---|
+| A | all four Dimension A facts present, ICP class on evidence, Pipedrive-certified row |
+| B | three facts on an evidence class, or four on an inferred one |
+| C | two facts and a class |
+| D | one fact |
+| F | otherwise |
+
+Change the bands by editing the rubric, never the engine. A rubric that defines no
+`confidence_grade` block produces **null**, not F.
+
+**It is a draft.** 0.1.1 is `status: DRAFT` and v0.1.0 is byte-identical to what it was — its
+pinned fingerprint still matches — so nothing in the live book has moved. Preview it the way
+§9 previews any version:
+
+```
+?rubric=0.1.1&preview=1
+```
+
+Read the diff before activating. `pb_reads.confidence_grade` stays null until it is active.
+
+**Overriding it.** A person moves the grade when they know something the book does not. It is
+deliberately not a second mechanism — it signs the same contract the tier override signs:
+
+- owner lane, and the approver is recorded;
+- a reason code from the rubric's one list (`override.reason_codes`);
+- a **written reason** — refused without one;
+- an expiry, defaulting to `confidence_grade.override.expiry_default_days`;
+- **one grade of movement**, and the engine refuses more rather than applying it.
+
+Set it on the account page, *Set confidence override* (owner lane, signed in). That writes a
+`pb_register` row of kind `override` whose payload names `confidence_grade` — which is exactly
+what tells it apart from a tier override, since both live under the same kind:
+
+```sql
+select made_by, reason_code, text, payload, expires_at, created_at
+from pb_register
+where kind = 'override' and payload ? 'confidence_grade' and account_id = '<uuid>'
+order by created_at desc;
+```
+
+Nothing changes on the spot. Rule 6 still holds: `pb_reads` is written by `pb-score` and by
+nothing else, so the grade moves on the next run — or is refused there, loudly. A refusal lands
+in the read's flags (`Confidence override refused: beyond cap`) and in the trace notes, never
+silently.
+
+**Reading the result.** `pb_reads.confidence_grade` is the letter after any override,
+`computed_confidence_grade` is what the bands produced before it, and `confidence_overridden`
+says whether a person moved it. The reason and the approver live on the register row, never on
+the read — the read records what, the register records why.
+
+```sql
+select confidence_grade, computed_confidence_grade, count(*)
+from (select distinct on (account_id) * from pb_reads order by account_id, run_at desc) l
+group by 1, 2 order by 1, 2;
+```

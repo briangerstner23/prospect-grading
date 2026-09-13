@@ -177,7 +177,7 @@ Deno.serve(async (req: Request) => {
         as_of: asOf,
         rubric: rubric.spec,
       });
-      const sc = grade(resolved.features, rubric.spec, { override: resolved.override });
+      const sc = grade(resolved.features, rubric.spec, { override: resolved.override, confidence_override: resolved.confidence_override });
       cards.push(sc);
       for (const n of resolved.notes) notes.push(`${sc.name}: ${n}`);
     } catch (e) {

@@ -863,7 +863,14 @@ $("clear").addEventListener("click", () => { state.filters = { q: "", tier: "", 
 function tierChip(read) {
   if (!read) return chip("not yet scored", "tier t-none");
   const sc = read.scorecard ?? {};
-  if (sc.effective_tier) return chip(`anticipated ${sc.effective_tier} · ${sc.fit?.confidence ?? "confidence not set"}`, "tier t-" + sc.effective_tier);
+  if (sc.effective_tier) {
+    // The letter when a rubric defining confidence_grade is active; the old three-step word
+    // otherwise. Both are about the inputs, never about the prospect.
+    const conf = sc.confidence_grade
+      ? `confidence ${sc.confidence_grade}${sc.confidence_override ? " (overridden)" : ""}`
+      : (sc.fit?.confidence ?? "confidence not set");
+    return chip(`anticipated ${sc.effective_tier} · ${conf}`, "tier t-" + sc.effective_tier);
+  }
   return chip(sc.status === "Unclassified" ? "no anticipated tier · Unclassified" : "no anticipated tier", "tier t-none");
 }
 const urgencyChip = (u) => u ? chip(u, "u-" + String(u).split(" ")[0]) : null;
@@ -1039,6 +1046,7 @@ function renderSheet(errors) {
   if (canEnterFacts()) forms.push(factForm(a), signalForm(a));
   forms.push(registerForm(a));
   if (canOverride()) forms.push(overrideForm(a, sc));
+  if (canOverride() && gradeScale().length > 0) forms.push(confidenceOverrideForm(a, sc));
   if (canReview()) forms.push(mergeForm(a));
   parts.push(group("Act", null,
     canEnterFacts() ? "Everything here is recorded under your name. Facts, signals and overrides enter the book at the next nightly run; a merge moves rows at once. A refused write shows the database's own reason." : "Any signer may raise a dispute, a proposal or a note under their own name. Facts, hand signals, overrides and merges need a rater or owner lane in pb_members.",
@@ -1097,6 +1105,13 @@ function fitRead(sc) {
     ["Computed tier", fit.computed_tier ?? "none"],
     sc.override ? ["Override", `${sc.override.tier} by ${sc.override.approver} (${sc.override.reason_code})${sc.override.expires_at ? " · expires " + fmtDate(sc.override.expires_at) : ""}${sc.override.reason ? " — " + sc.override.reason : ""}`] : null,
     ["Confidence", `${fit.confidence ?? "not set"} — ${fit.confidence_reason ?? ""}`],
+    ...(sc.confidence_grade || sc.computed_confidence_grade
+      ? [["Confidence grade", `${sc.confidence_grade ?? "—"}${
+          sc.confidence_override
+            ? ` — overridden from ${sc.computed_confidence_grade} by ${sc.confidence_override.approver} (${sc.confidence_override.reason_code}): ${sc.confidence_override.reason}`
+            : ` — ${sc.confidence_grade_reason ?? ""}`
+        }`]]
+      : []),
   ];
   const gateItems = gates.map((g) => h("div", { class: "item" },
     h("div", { class: "top" }, h("b", null, g.label), chip(g.result, g.result === "fail" ? (g.mode === "park" ? "c-bad" : "c-warn") : g.result === "pass" ? "c-good" : ""), chip(`mode ${g.mode}`), basisChip(g.basis)),
@@ -1609,6 +1624,65 @@ function overrideForm(a, sc) {
     await refreshSheet();
   });
   return group("Set override", null, null, h("div", { class: "card pad" }, form));
+}
+
+/** The active rubric's confidence-grade scale, best first. Empty when it defines no block. */
+function gradeScale() {
+  const scale = state.rubric?.confidence_grade?.scale;
+  return Array.isArray(scale) ? scale : [];
+}
+
+/**
+ * Move the confidence grade by hand. It writes a pb_register row exactly as the tier override
+ * does — the payload names confidence_grade instead of tier, which is what tells the two apart.
+ * Nothing here changes a read: the nightly run applies it, or refuses it beyond the cap.
+ */
+function confidenceOverrideForm(a, sc) {
+  const scale = gradeScale();
+  const computed = sc?.computed_confidence_grade ?? sc?.confidence_grade ?? null;
+  const cap = state.rubric?.confidence_grade?.override?.max_grades_moved;
+  const gradeSel = h("select", null, option("", "choose a grade"), ...scale.map((g) => option(g)));
+  const code = h("select", null, ...reasonCodes().map((c) => option(c)));
+  const reason = h("textarea", { placeholder: "Written reason — what you know that the book does not.", required: true });
+  const expiryDays = state.rubric?.confidence_grade?.override?.expiry_default_days;
+  const expires = h("input", { type: "date", value: typeof expiryDays === "number" ? plusDaysIso(expiryDays) : "" });
+  const capNote = h("div", { class: "notice hidden" });
+  const msg = h("div", { class: "notice hidden" });
+  const submit = h("button", { type: "submit", class: "primary" }, "Set confidence override");
+  gradeSel.addEventListener("change", () => {
+    const moved = gradeSel.value && computed ? Math.abs(scale.indexOf(gradeSel.value) - scale.indexOf(computed)) : 0;
+    if (typeof cap === "number" && moved > cap) {
+      setNotice(capNote, "warn", `${computed} → ${gradeSel.value} is ${moved} grades. The engine refuses more than ${cap} and keeps the computed grade.`);
+    } else show(capNote, false);
+  });
+  const form = h("form", { class: "form" },
+    h("div", { class: "sub" }, computed
+      ? `Computed confidence on the last read: ${computed}. The grade is about what the book KNOWS, not about the prospect — move it when you know something the book does not.`
+      : "No computed confidence on the last read: the active rubric defines no confidence_grade block."),
+    h("div", { class: "fields" }, field("Grade", gradeSel), field("Reason code", code), field("Expires", expires, typeof expiryDays === "number" ? `Default from the rubric: ${expiryDays} days.` : "Leave empty for no expiry.")),
+    field("Reason", reason),
+    capNote,
+    h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `made_by ${state.email} · owner lane`)),
+    msg);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!gradeSel.value || !reason.value.trim()) { setNotice(msg, "warn", "A grade and a written reason are both required."); return; }
+    const expiresAt = expires.value ? new Date(expires.value + "T00:00:00Z").toISOString() : null;
+    const row = {
+      kind: "override", account_id: a.id, made_by: state.email, reason_code: code.value,
+      text: reason.value.trim(),
+      payload: { confidence_grade: gradeSel.value, reason: reason.value.trim(), expires_at: expiresAt },
+      expires_at: expiresAt,
+    };
+    submit.disabled = true;
+    const { error } = await state.db.from("pb_register").insert(row);
+    submit.disabled = false;
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); return; }
+    flash("ok", `Confidence override to ${gradeSel.value} recorded under ${state.email}. The nightly run applies it — or refuses it beyond the cap — and the grade changes only then.`);
+    form.reset(); show(capNote, false);
+    await refreshSheet();
+  });
+  return group("Set confidence override", null, null, h("div", { class: "card pad" }, form));
 }
 
 /** A hand signal (source manual). Types come from the active rubric's catalog; so do weight, lifespan and decay — copied here, and taken from the catalog again by the database trigger. */
