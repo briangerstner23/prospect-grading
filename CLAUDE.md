@@ -38,7 +38,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260911150000 notes cron budget · 20260911170000 revoke anon writes ·
             20260911180000 restore view invoker · 20260912130000 score cron timeout ·
             20260912140000 revoke authenticated writes ·
-            20260912150000 nightly watchdog (all applied)
+            20260912150000 nightly watchdog ·
+            20260913060000 movement views (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;

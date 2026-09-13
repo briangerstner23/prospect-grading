@@ -677,6 +677,62 @@ rule needs a field that is null and unknown never warns, so the read is silent b
 rather than because the deals are healthy. Re-grounding the stage medians matters much less
 than pointing the read at whichever system now holds the motion.
 
+## 19 · Is the book actually moving?
+
+The grade is supposed to change as a pursuit progresses — a call lands, a note is read, a signal
+decays, tomorrow's chase order differs from today's. Nothing measured whether that happened, so
+the question needed an ad-hoc window query and in practice nobody asked it. Two views answer it
+now, both public-read like the rest of the page's data.
+
+```sql
+select * from pb_pulse;                                -- one row: alive? waiting on what?
+select run_at::timestamp(0), accounts, tier_moved, promoted, demoted, urgency_moved,
+       facts_changed, newly_ranked
+from pb_movement order by run_at desc limit 14;        -- per scoring run
+```
+
+`pb_pulse` carries: hours since the last score, what moved on that run, the inputs that arrived
+in the last 7 days (facts, signals, calls), the two review queues, and how much of the book is
+Cold. Read it as *did anything happen, and what is blocked*.
+
+**What it said on first run (13 Sep 2026), and why it matters.** Across eight scoring runs and
+three days over 680 accounts: **8, 1, 0, 0, 2 tier moves** on business evidence, and every one of
+them a **demotion**. The only promotions in the book's history are the 14 from the fact-paging
+fix on 12 Sep. Urgency moved for about a dozen accounts in total. The machinery runs nightly;
+almost nothing flows through it.
+
+That is an input problem, not an engine problem. Of the three `pb-notes` channels only
+`fathom_call` is live — `pipedrive_note` and `email` are dark for want of their credentials
+(§17) — so emails and CRM notes never reach the book. `pb_calls` holds 12 rows, because the
+Fathom webhook is future-only and the back-fill has not run. And 440 of 680 accounts read Cold,
+so most have no live signal to decay in the first place.
+
+### Two traps these views exist to document
+
+**Group by `run_id`, never `run_at`.** `pb_reads.run_at` is the row's INSERT time and pb-score
+writes in batches, so one run lands rows a second or two apart. Grouping by `run_at` splits a
+single run in two, doubling the row count and halving every movement figure. It does not error.
+
+**`coalesce(array_position(...), 0)` is load-bearing.** An Unclassified read carries
+`effective_tier` NULL; `array_position` returns NULL for it and `NULL > 2` is NULL — not false
+and never true. Without the coalesce, an Unclassified → Bronze move counts in `tier_moved` and
+in *neither* `promoted` nor `demoted`, so the columns silently fail to sum. That is the same
+NULL-comparison failure §16 records for the grants check, met a second time in a different
+place. `promoted + demoted = tier_moved` is the assertion worth re-running after any edit:
+
+```sql
+select count(*) from pb_movement where promoted + demoted <> tier_moved;   -- expect 0
+```
+
+Rank 0 for NULL also says the right thing: Unclassified sits below Bronze, and becoming
+rankable is a promotion.
+
+### What is deliberately not in these views
+
+`pb_source_watermarks`, which would say which note channels ran and when. `anon` holds nothing
+on it and both views are `security_invoker = true`, so joining it would return nothing for the
+anonymous reader the page actually uses. Channel state comes from `pb_runs` instead (§15).
+
 ## 16 · Quick health checks
 
 ```sql
