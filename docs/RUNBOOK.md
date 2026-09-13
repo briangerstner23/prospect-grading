@@ -1225,3 +1225,90 @@ If that returns rows, the phrase would have blocked facts you already accepted �
 before adding it. Change either and **bump
 `EXTRACTOR_VERSION`** — it is part of every fingerprint, so a new version re-reads every note
 instead of silently mixing two readings. Then `bash scripts/sync_shared.sh`, rebuild, redeploy.
+
+## 20 · The Fathom back-fill
+
+The webhook has only ever been told about meetings recorded since it was created on
+12 September 2026. Everything before that sits in Fathom and nowhere else — and Fathom
+is the only place the book holds a conversation rather than a CRM field.
+
+### Why it runs inside Postgres
+
+Two constraints, both load-bearing:
+
+- **The API key never leaves Vault.** The build container has no route to
+  `api.fathom.ai` in any case; Postgres does, through `pg_net`. So the crawl reads
+  `PB_FATHOM_API_KEY` through `pb_secret()` and nobody — no log line, no checked-in
+  file, no operator — ever handles it.
+- **There is no second parser.** Each staged meeting is **replayed through the live
+  `pb-fathom-webhook`** with a real Standard Webhooks signature. Domain attribution,
+  `meeting_key` and the identity-candidate rules are therefore the production ones by
+  construction, and every delivery is audited in `pb_webhook_inbox` like live traffic.
+  A back-fill that parsed payloads its own way would be a second implementation of
+  `ingest/fathom_webhook.ts`, free to drift from it silently.
+
+### Running it
+
+Three temporary `pg_cron` jobs do the whole wave. Schedule them, walk away, come back:
+
+```sql
+select cron.schedule('pb-fathom-crawl',    '10 seconds', $$select public.pb_fathom_crawl_step(50)$$);
+select cron.schedule('pb-fathom-guard',    '20 seconds', $$select public.pb_fathom_crawl_guard()$$);
+select cron.schedule('pb-fathom-backfill', '30 seconds', $$select public.pb_fathom_backfill_tick(60)$$);
+```
+
+Watch it:
+
+```sql
+select pages, done, misses, last_note,
+       (select count(*) from pb_fathom_backfill) as staged,
+       (select min(held_at) from pb_fathom_backfill)::date as oldest
+from pb_fathom_crawl;
+
+select status, count(*) from pb_fathom_backfill group by 1 order by 2 desc;
+```
+
+Take them down when `pb_fathom_backfill` holds no `pending` or `sent` row:
+
+```sql
+select cron.unschedule(jobname) from cron.job
+where jobname in ('pb-fathom-crawl','pb-fathom-guard','pb-fathom-backfill');
+```
+
+`pb-fathom-crawl` unschedules itself through the guard; the other two do not.
+
+### Two things that will bite
+
+**Ten seconds, not five.** Fathom rate-limits at roughly ten requests a minute. At
+five-second spacing the crawl spends the budget and collects 429s. It recovers — a
+spent attempt clears the request and the next step re-fires the same cursor, so
+nothing is skipped — but it wastes the run.
+
+**pg_net dispatches on commit.** A transaction can never read its own HTTP response,
+which is why the crawl is a stepper and not a loop. Waiting inside the transaction is
+precisely what guarantees the response never arrives. If you drive it by hand, one
+`select pb_fathom_crawl_step(50);` per statement, and the first call only fires — it
+lands nothing.
+
+### How far back
+
+`pb_fathom_crawl_guard()` stops the crawl twelve months back. The rubric picks the
+number: the longest signal lifespan in `core/rubric.prospect.v0.1.json` is 180 days
+(`quote_lost`) and every other signal decays inside 90, so a meeting older than half a
+year cannot contribute a live signal at all. Facts outlive signals — who decides, what
+they spend, how big they are — so twelve months buys the facts a wide margin and still
+terminates. Pass a date to widen it: `select pb_fathom_crawl_guard('2024-01-01')`.
+
+### Afterwards
+
+The replay writes `pb_calls` rows. A meeting whose external domain matches no account
+lands with `account_id` null **and** an identity candidate — no account is ever created
+by the back-fill, because identity never auto-merges (rule 8). Then:
+
+1. Work the candidate queue (§12) — that is where a company you meet with but have
+   never had a row for becomes an account.
+2. Run `pb-notes` (§17), which reads the new summaries into facts.
+3. Run `pb-score` (§9), which turns them into reads.
+
+In that order. A note read after the score is a note that changes nothing until the
+next night.

@@ -720,3 +720,74 @@ Freedom*, currently rung 5 and graded Gold as an agency prospect, is a Direct Cl
 - **Loading `peer_community` and `friend_of_wliq`.** The 31 Friends-of-WLIQ organisations are
   still absent from `pb_accounts`, and a peer body still has to be told apart from a vendor.
 - **The remaining 55 unassigned**, of which 20 are ranked.
+
+## 14 · The conversation arrives, and it changes what the CRM said (13 September 2026)
+
+The back-fill of §12's finding ran today. `pb-fathom-webhook` had only ever been told about
+meetings recorded after it was created on 12 September, so the book held thirteen calls. Fathom
+held the rest.
+
+### What ran
+
+The crawl fetched inside Postgres — `PB_FATHOM_API_KEY` never leaves Vault, and the build
+container has no route to `api.fathom.ai` in any case — and each staged meeting was then
+**replayed through the live webhook** with a genuine Standard Webhooks signature. That is the
+design decision worth keeping: attribution, `meeting_key` and the identity-candidate rules are
+the production ones by construction. A back-fill with its own parser would have been a second
+implementation of `ingest/fathom_webhook.ts`, free to drift from it in silence.
+
+| | |
+|---|---|
+| Meetings crawled | **1,800** (13 Feb → 12 Sep 2026, 180 pages, 1 rate-limit miss recovered) |
+| Replayed | 987 — every meeting with an external attendee, all verified, none failed |
+| Skipped | 813 with no external attendee |
+| Recordings → meetings | 987 rows collapsed to **807 meetings** by `meeting_key` |
+| Attributed to an account | 161 rows across **83 accounts** |
+| Read by `pb-notes` | 129 meetings, in nine runs |
+| Facts written | **263**, every one evidence-labelled, across 66 accounts |
+| Claims queued, not written | 418 fact candidates; 874 identity candidates |
+
+**Why 813 meetings were skipped.** A meeting with no external attendee cannot be attributed to
+an account, so it can carry no claim about a prospect; replayed, it would have added 813
+unattributed `pb_calls` rows that `pb-notes` never reads. They stay in `pb_fathom_backfill` with
+status `skipped` — nothing was deleted, and flipping the status replays them if internal
+meetings are ever mined for prospect mentions.
+
+### What it changed
+
+Facts that came from something a person actually said went from **88 to 320**. Accounts holding
+at least one evidence-labelled fact went from **42 to 91**.
+
+And the precedence rules did the work they were written for, out loud, in `pb_runs.errors`:
+
+- *"is_agency: the note disagrees with pipedrive — the note wins and the row is flagged."*
+- *"headcount: the note disagrees with apollo — the note wins and the row is flagged."*
+- *"timing: held by pipedrive_note (evidence) and the note disagrees — queued for review, not written."*
+- *"Note 154109412: the sentence offered for money is not in the note; the claim is kept for
+  review but can never become a fact."*
+
+The first two are a conversation overruling a CRM field. The third is evidence against evidence,
+which is a person's call and not the engine's. The fourth is §9's quote check refusing a sentence
+the model could not point to — the guarantee that an invented quote cannot reach `pb_facts`.
+
+### What it did not change
+
+**The chase order still collapses.** Ignoring the name tiebreaker, 680 accounts resolve to 61
+distinct keys, 25 of them alone, 503 accounts sitting in ties of twenty or more, and the largest
+single tie is 134. Before the back-fill it was 47 keys and a largest tie of 135. §10 said the fix
+is evidence rather than a longer key; this is the first real evidence and it moved the tie by
+almost nothing, because it landed on 66 accounts out of 680.
+
+That is not a failure of the back-fill. It is the measurement that §10 asked for, and it says the
+remaining 589 accounts are still graded on CRM fields alone.
+
+### The finding underneath
+
+Of the top forty companies by meeting count over seven months, **four are accounts in the book**.
+The busiest — 39 meetings, the most recent three days ago — is not one. Neither is Agency
+Management Institute, at twelve meetings, whose network `ADJ-REF` exists to reward.
+
+So the roster and the calendar disagree about who WLIQ's prospects are, and the calendar is the
+one with evidence behind it. 874 identity candidates across roughly 120 external domains are
+queued for review; that queue, not another rubric change, is where the next real movement is.
+Rule 8 holds — a person decides which of those domains becomes an account.
