@@ -544,3 +544,84 @@ unkeyed row is its own meeting, which is the behaviour that was there before.
 The ~175-meeting Fathom back-fill from 19 August has still never run. It goes through this same
 parser, so it will key its rows on the way in — but it must run **after** the redeploy, or it
 will import the whole history unkeyed and in bulk.
+
+---
+
+## 12 · The book is a CRM mirror, and the roster is not all agencies (13 September 2026)
+
+Asked whether the book is really reading Fathom, the notes and the other sources, the answer is
+no, and the measurements are worth keeping.
+
+### What the book is actually made of
+
+Of 7,073 facts, **5,729 are scraped Pipedrive fields** labelled `inferred`. The three most
+numerous facts in the entire book are `pipedrive_salesperson` (638), `pipedrive_cj_deal_id` (637)
+and `pipedrive_cj_stage` (637) — CRM plumbing, not knowledge about an agency. The single most
+common recorded fact about a prospect is **the name of the WLIQ salesperson assigned to them**.
+
+Facts that came from a conversation: **88**, across 25 of 680 accounts. **638 of 680 accounts
+carry no evidence-labelled fact at all.**
+
+| Source | accounts reached |
+|---|---|
+| `pipedrive_note` | 21 |
+| `fathom_call` | 7 |
+| `email` | 0 — no credential |
+| Orbit | 0 facts; identity candidates only |
+
+### Why that breaks MQL → SQL
+
+Dimension A is the qualification read. Where its four facts come from:
+
+| | someone said it | read off a CRM field |
+|---|---|---|
+| `authority` | 5 | 313 — a job title containing "VP" or "Director" |
+| `timing` | 3 | 404 — a deal stage or close date |
+| `specification` | 14 | 45 — a deal in Refine/Discussion |
+| `money` | 6 | 69 — a number typed into a deal |
+
+**97% of qualification is inference from CRM plumbing.** An agency reads `authority: present`
+because somebody's title says Vice President, not because they said they can sign. Until that
+changes, a sales-qualified label is a restatement of what Pipedrive already held.
+
+### Fathom, measured against the book
+
+The book holds 12 recordings — 9 meetings — newest 19 August. The Fathom API returns **260
+meetings between 11 August and 11 September alone**, with more behind the cursor. Among them:
+"Ridge Media LLC : Riverside GBP report Walk Through" (3 Sep, twice), "WLIQ/Image Shoppe: Weekly
+Meeting" (1 and 8 Sep), "Campfire Digital : Next Action Planning" (27 Aug). Ridge Media is
+**rung 9** of the chase list; the book had never read a word anyone said to them.
+
+### Three faults in who is on the list
+
+1. **24 duplicate agencies**, 48 rows, 37 of them in the live chase list — almost all one
+   certified Pipedrive row plus one uncertified Notion-seed row. Nettra Media occupied rungs 8
+   and 28 simultaneously.
+2. **104 accounts with no domain.** Domain is the join key for attributing a call or an email, so
+   those accounts are structurally unreachable by Fathom or Gmail however often the sweep runs.
+3. **153 of 613 ranked accounts are recorded `is_agency: false`**, and 116 are ICP-6 (direct end
+   client). A quarter of the chase list is companies WLIQ does not sell to — restaurants,
+   plumbers, shipping firms — plus rows named `Test`, `TBD`, `None`, `not yet`, `Individual`, and
+   several that are people rather than companies.
+
+### What was done
+
+- **18 duplicates merged** through `pb_merge_accounts`, each recorded in `pb_register`. The
+  certified Pipedrive row survives (PRO-6); the Notion row's facts, signals, contacts and
+  candidates move to it. 680 accounts → 662.
+- **Ridge Media LLC given its domain** (`ridgemediallc.com`), evidenced by the external attendee
+  on two Fathom recordings, and recorded in the register.
+- Re-scored: 601 ranked, 54 unclassified, 7 parked, 0 errors.
+
+### What is left, and who owns it
+
+- **5 duplicate pairs carry two different domains each** — Altitude Marketing vs Altitude
+  Marketing & Media Partners, Bloor Advisory vs Bloor Capital, Arcanum, BCom, Dynamic Marketing
+  Consultants. These may be separate companies rather than duplicates; a person decides (rule 8).
+- **Two rows named `TBD`**, both Pipedrive placeholders, are not agencies and should leave the book.
+- **85 accounts still lack a domain**, but only about 20 are real agencies. The rest are the
+  non-agency contamination above. Their contact emails are no help: 64 of them have one and every
+  single one is a personal mailbox (54 are gmail).
+- **The non-agency question is a ruling, not a cleanup.** PRO-4 keeps direct-to-client in scope
+  with a flag; whether 153 ranked non-agencies should be parked instead is the owner's call, and
+  nothing here pre-empts it.
