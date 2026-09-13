@@ -791,3 +791,75 @@ So the roster and the calendar disagree about who WLIQ's prospects are, and the 
 one with evidence behind it. 874 identity candidates across roughly 120 external domains are
 queued for review; that queue, not another rubric change, is where the next real movement is.
 Rule 8 holds — a person decides which of those domains becomes an account.
+
+---
+
+## 15 · The calendar does not disagree with the roster (13 September 2026)
+
+§14 closed by saying the roster and the calendar disagree about who WLIQ's prospects are, and
+that the calendar is the one with evidence behind it. That reading was wrong, and this section
+corrects it. The cross-reference §14 left unfinished has now been run, and it says the opposite.
+
+### What was measured
+
+Every external domain carrying an open Fathom identity candidate — 183 of them, 659 meetings over
+seven months — was matched against three sets: the Orbit client list, every Pipedrive
+organisation, and `pb_accounts`. For each domain that matched a Pipedrive organisation, the most
+recently updated **open** Client Journey card was read and its stage compared against the roster
+rule in `scripts/seed_README.md`.
+
+| Class | Domains | Meetings |
+|---|---:|---:|
+| Card in Active / Inactive / Past / Lost Client | 68 | 453 |
+| No record in Pipedrive, Orbit or the book | 69 | 93 |
+| Card in Friends of WLIQ | 9 | 39 |
+| Orbit client, no Client Journey card | 10 | 29 |
+| Pipedrive organisation, no open card | 13 | 20 |
+| Already an account, domain column blank | 4 | 14 |
+| Card in a prospect stage, absent from the book | 5 | 10 |
+| Already an account with a domain | 5 | 1 |
+
+### What it means
+
+**453 of 659 meetings — 69% — are with companies whose card is in a partner stage.** PRO-10
+excludes those by design: *cards in Active / Inactive / Past / Lost Client are Agency Partners and
+never enter.* A further 39 meetings are Friends of WLIQ, which the same rule calls not a sales
+relationship. The exclusions match the rule exactly.
+
+The check in the other direction agrees. Of the 680 accounts in the book today, **one** now sits
+in a partner stage — a card that moved on 11 September, which is a promotion to process under
+PRO-18, not a leak.
+
+So the roster is not out of step with the calendar. The calendar is mostly partner work, and this
+book is not for partner work. A busy domain is evidence of a relationship, never evidence that
+the relationship is a prospect — the same shape as rule 5, one level up: **volume is not a
+qualification.** Nothing here is a new ruling; it is PRO-10 applied to a list that looked like a
+gap and was not.
+
+### The two real gaps
+
+**Five prospect-stage cards are absent from the book.** All five postdate the 9 September seed.
+The gap is therefore not a seed defect but a missing habit: nothing re-runs the roster. A
+recurring roster sync closes it permanently; adding the five rows by hand does not.
+
+**The uncertified Notion intake is splitting the book.** Of the 39 accounts with no
+`pipedrive_org_id`, **23 duplicate a certified account already in the book under an exact name
+match**, and **5 duplicate an organisation whose card is in a partner stage** — rows PRO-10 would
+have refused had the intake carried a CRM link. This is the seed behaving as specified: §3 of
+`scripts/seed_README.md` attaches a Notion row to an existing account only on a high key (the
+contact-email domain equals the organisation domain) and deliberately creates a separate account
+on a name-only resemblance. For 23 rows the name matched exactly and the row still split, because
+the Notion row carried no email domain to match on.
+
+The cost is not cosmetic. The book's 680 accounts are roughly 657 companies, with facts and
+signals divided across both halves of each pair — which is also a contributor to the chase-order
+ties §10 and §14 measured. The high-key rule itself stays as it is: rule 8 says identity never
+auto-merges below high confidence, and an exact name match with no domain is not high confidence.
+The 23 pairs are a review queue for a person, not a rule to relax.
+
+### What this does not decide
+
+Whether a partner-stage company should be readable in this book at all is the cohort scoping
+question — rubric 0.1.1, offered on 13 September and deferred in favour of the back-fill. It
+stays a toggle, not a ruling. This section only records that the current exclusions are correct
+under PRO-10 as written, and that the roster needs re-running rather than re-deciding.

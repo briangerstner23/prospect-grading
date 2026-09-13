@@ -1312,3 +1312,80 @@ by the back-fill, because identity never auto-merges (rule 8). Then:
 
 In that order. A note read after the score is a note that changes nothing until the
 next night.
+
+---
+
+## 21 · Triaging unattributed call domains
+
+`pb_calls` rows with no `account_id` accumulate an open identity candidate per external attendee.
+The queue looks alarming — roughly 900 candidates across 180-odd domains as of 13 September — and
+most of it is not work. `docs/DECISIONS.md` §15 measured it: 69% of the meeting volume is with
+companies whose Client Journey card is in a partner stage, which PRO-10 excludes from this book.
+
+Before proposing that any of those domains become accounts, triage them. The queue is only a
+question about identity; whether the company belongs in the book at all is a roster question, and
+the roster answers it first.
+
+**Step 1 — regenerate the domain list.**
+
+```sql
+with c as (
+  select lower(source_domain) dom, count(*) candidates
+  from pb_identity_candidates
+  where status='proposed' and source='fathom' and source_domain is not null
+  group by 1),
+m as (
+  select unnest(external_domains) dom,
+         count(distinct coalesce(meeting_key, fathom_recording_id)) meetings,
+         max(held_at)::date last_met
+  from pb_calls where account_id is null group by 1)
+select c.dom, coalesce(m.meetings,0) meetings, m.last_met, c.candidates
+from c left join m on m.dom = c.dom
+where c.dom not in ('gmail.com','yahoo.com','hotmail.com','outlook.com',
+                    'icloud.com','aol.com','me.com','comcast.net')
+order by meetings desc nulls last;
+```
+
+**Step 2 — pull the three reference sets.** All read-only, all through the MCPs. None of this
+lands in the repo; work in the session scratchpad.
+
+| Set | Call | Notes |
+|---|---|---|
+| Orbit clients | `mcp__Orbit__list_clients` | ~600 rows, one call. `client_type` is sparse (about 1 in 6); match on `website_link` and `company_email` domains, fall back to name. |
+| Pipedrive organisations | `mcp__Pipedrive__getOrganizations`, `limit: 500` | Page the `next_cursor`; ~2,300 rows over five calls. `website` is populated on about 70% of them. |
+| Client Journey cards | `mcp__Pipedrive__getDeals`, `pipeline_id: 9`, `limit: 500` | Two pages, ~950 cards. Keep `org_id`, `stage_id`, `status`, `update_time`. |
+
+Each of these overflows the tool-result limit and is written to a file instead; read them with
+`jq`, never inline. Reduce to TSV first — id, name, website — and the matching is a few seconds of
+Python.
+
+**Step 3 — decide each domain by its card, not by its meeting count.** For every domain matching
+a Pipedrive organisation, take the most recently updated **open** card and read `stage_id`:
+
+| Stage ids | Stage | Verdict |
+|---|---|---|
+| 57, 58, 59, 70, 71, 66 | New, Schedule Sales Call, Sales Call Done, Quoting, Quote Lost, Unqualified/DNC | Prospect stage — belongs in the book. Absent means a genuine roster miss. |
+| 63, 64, 65, 67 | Active, Inactive, Past, Lost Client | Agency Partner. PRO-10: never enters. Close the candidates. |
+| 69 | Friends of WLIQ | Not a sales relationship. Not a prospect. |
+
+Stage ids are stable but not guaranteed; confirm with `getStages` for `pipeline_id: 9` before a
+run. The rule these implement is stated once, in `scripts/seed_README.md` — read it there rather
+than trusting this table.
+
+What is left after that — a prospect-stage card missing from the book, or a domain with real
+meeting volume and no record in Pipedrive, Orbit or `pb_accounts` — is the actual queue, and it
+is small. On 13 September it was five roster misses and one domain with double-digit meetings and
+no CRM footprint at all.
+
+**Two traps.**
+
+A domain that matches an account whose `domain` column is blank is not a new company; it is an
+attribution failure on an account that already exists. 103 accounts had no domain on 13
+September. Check `pb_accounts` by name before proposing anything new.
+
+An account with no `pipedrive_org_id` came in through the uncertified Notion intake and may
+duplicate a certified account under the same name (23 such pairs on 13 September, §15). Resolving
+one of those is a merge for a person, never an insert.
+
+Rule 8 governs the whole exercise: identity never auto-merges below high confidence, and neither
+this procedure nor its result is permission to write an account row.
