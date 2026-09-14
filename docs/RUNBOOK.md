@@ -105,7 +105,7 @@ function's own files only; the per-function file lists are in
 `supabase/functions/README.md`). Run `bash scripts/sync_shared.sh` first so the `_shared/`
 copies of `core/` and `ingest/` match their originals (`npm test` fails on drift).
 
-**All four are deployed with `verify_jwt = false`.** None of the callers presents a Supabase
+**All five are deployed with `verify_jwt = false`.** None of the callers presents a Supabase
 JWT: pb-sync and pb-score carry the Prospect Book's own bearer (`PB_SYNC_TOKEN`, checked in
 constant time inside the function) — and that is exactly the header the pg_cron job sends —
 so with `verify_jwt = true` the gateway would reject the nightly run before the function ran.
@@ -125,7 +125,7 @@ supabase functions deploy pb-pipedrive-webhook --project-ref sgagrmapuovnjwvgsxb
 ```
 
 **Deploying from a session instead of the CLI.** The MCP takes every file inline in one call, and
-the four functions' TypeScript closure is too large for that, so `bash scripts/build_functions.sh`
+each function's TypeScript closure is too large for that, so `bash scripts/build_functions.sh`
 bundles each into one ES module under `dist/functions/<fn>/index.js`; deploy that with
 `entrypoint_path = index.js`. Two things to watch, both learned the hard way:
 
@@ -139,6 +139,21 @@ bundles each into one ES module under `dist/functions/<fn>/index.js`; deploy tha
   behaves the same and boots the same — but its sha256 is not the bundle's, which is the one thing
   the recorded hash exists to prove. pb-score v6 (14 Sep) was deployed this way; its deployed bytes
   hash to `8d968901…`, the bundle to `5d922866…`.
+- **A bundle over ~30 KB will not come back from one shell read** — the harness saves it to a file
+  and shows you a 2 KB preview, which is not something you can paste. Read it in two halves
+  (`head -c N` then `tail -c +N+1`) and splice them. pb-pipedrive-webhook (38,522 bytes) needs this;
+  pb-sync (21,280) does not. Splicing by hand is the riskiest thing in this section, so treat the
+  boot check below as mandatory rather than optional after one.
+
+**Catching up a stale function (14 Sep 2026).** pb-sync and pb-pipedrive-webhook had been left on
+v1 since 12–13 Sep, both missing the `helpers.ts` / `db.ts` paging fixes. Both were rebuilt from
+`53fb656` — the bundles reproduced the recorded hashes exactly, `b189f501…` and `b8b4c1d6…`, which
+is the cheapest proof that the tree still builds what the last session said it built — and deployed
+as **v2**. Both were then boot-checked through `pg_net` (below): pb-sync answers
+`405 {"error":"POST only"}`, pb-pipedrive-webhook `200 {"ok":true,"service":"pb-pipedrive-webhook"}`.
+That proves each deployed source parsed, booted and routed. It does **not** prove byte-identity with
+the bundle, and for a hand-spliced payload nothing short of reading the deployed source back does —
+so no sha256 is recorded for these two.
 
 **Which functions are actually stale.** Comparing commit dates against the deploy date over
 `supabase/functions/<fn>` and all of `_shared/` over-reports: each function imports only part of

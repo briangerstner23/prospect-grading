@@ -126,13 +126,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
   enough to make the sweep do real work. A channel with no credential is skipped and said so in
   the run's notes.
-- Deployed versions as of **14 Sep 2026**: **pb-notes v11**, **pb-score v6** (both from commit
-  `561f289`), **pb-fathom-webhook v2**, **pb-sync v1**, **pb-pipedrive-webhook v1**. This line has
+- Deployed versions as of **14 Sep 2026**: **pb-notes v11**, **pb-score v6**, **pb-sync v2**,
+  **pb-pipedrive-webhook v2** (all four from commit `561f289`/`53fb656` — the same bundles),
+  **pb-fathom-webhook v2**. This line has
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift
-  against each function's real import closure (RUNBOOK §3). **pb-sync and pb-pipedrive-webhook are
-  still behind** their sources (the `helpers.ts` / `db.ts` paging fixes); neither is on a cron and
-  the Pipedrive webhook has no credential set, so nothing is running wrong today — but redeploy
-  both before either is used in anger. `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
+  against each function's real import closure (RUNBOOK §3). All five now carry the
+  `helpers.ts` / `db.ts` paging fixes; the last two were caught up on 14 Sep, so no function is
+  knowingly behind its source. `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
   runs *before* anything is written — so a transient gateway failure there costs the whole run
   and leaves no `pb_runs` row at all. That is not hypothetical: it took both nightly jobs out on
   12 Sep (RUNBOOK §15).
