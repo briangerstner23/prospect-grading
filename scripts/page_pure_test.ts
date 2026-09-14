@@ -71,6 +71,7 @@ const {
   ageWords, strengthWords, headcountWords, ratioWords, factValueWords, safeUrl, rowMatches,
   catalogEntries, signalCatalogWords, mergeTargets, movedWords, reviewEffectWords,
   rulesWithInputs, ruleFired, evidenceUse, quoteFromNote, stalenessNote,
+  groupFactCandidates, valueGroupKey,
 } = helpers;
 
 function run(): void {
@@ -365,6 +366,66 @@ eq("stalenessNote of a book never scored is null", stalenessNote(null, "2026-09-
 eq("stalenessNote of an unparseable date is null", stalenessNote("not a date", "2026-09-12T13:00:00Z"), null);
 eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
    stalenessNote("2026-09-13T06:15:00Z", "2026-09-12T13:00:00Z"), null);
+
+/* ---- groupFactCandidates: the bulk-reject view's arithmetic ----
+ * The numbers this returns are what a reader reads before rejecting a batch, so an
+ * over-count here is a person rejecting more than they meant to.
+ */
+{
+  const cand = (id: string, key: string, value: unknown, extra: Record<string, unknown> = {}) =>
+    ({ id, key, value, status: "proposed", account_id: "a1", ...extra });
+
+  eq("groupFactCandidates of nothing is empty", groupFactCandidates([]), []);
+  eq("groupFactCandidates tolerates a non-array", groupFactCandidates(null), []);
+  eq("groupFactCandidates ignores rows that are not proposed",
+     groupFactCandidates([cand("1", "timing", "now", { status: "rejected" }), cand("2", "timing", "now", { status: "confirmed" })]), []);
+  check("groupFactCandidates drops a row with no id",
+        groupFactCandidates([{ key: "timing", value: "now", status: "proposed" }]).length === 0);
+
+  // The real shape: relationship_type as it stood on 14 Sep — 22 agency, 17 reseller, 6 direct,
+  // 3 referral. The two the book cannot hold have to come out as their own groups.
+  const rows = [
+    ...Array.from({ length: 17 }, (_, i) => cand(`r${i}`, "relationship_type", "reseller", { account_id: `acc${i % 5}`, source: "fathom_call" })),
+    ...Array.from({ length: 3 }, (_, i) => cand(`f${i}`, "relationship_type", "referral", { account_id: "acc9", source: "pipedrive_note" })),
+    ...Array.from({ length: 6 }, (_, i) => cand(`t${i}`, "timing", "now", { account_id: "acc1" })),
+  ];
+  const grouped = groupFactCandidates(rows);
+  eq("groupFactCandidates puts the biggest key first", grouped.map((g: { key: string }) => g.key), ["relationship_type", "timing"]);
+  eq("groupFactCandidates totals a key across its values", grouped[0].total, 20);
+  eq("groupFactCandidates counts distinct accounts, not rows", grouped[0].accountCount, 6);
+  eq("groupFactCandidates splits a key by the value proposed", grouped[0].values.map((v: { count: number }) => v.count), [17, 3]);
+  eq("groupFactCandidates names the values biggest first",
+     grouped[0].values.map((v: { value: unknown }) => v.value), ["reseller", "referral"]);
+  eq("groupFactCandidates gathers every id in the group", grouped[0].values[0].ids.length, 17);
+  eq("groupFactCandidates reports the sources behind a value", grouped[0].values[0].sources, ["fathom_call"]);
+  eq("groupFactCandidates counts a value's accounts", grouped[0].values[0].accountCount, 5);
+  eq("groupFactCandidates carries the account ids for naming", grouped[0].values[1].accountIds, ["acc9"]);
+
+  // A batch is only as safe as its id list: every id must appear exactly once, or a reader who
+  // selects two overlapping groups rejects a row twice and the tally lies.
+  const allIds = grouped.flatMap((g: { values: { ids: string[] }[] }) => g.values.flatMap((v) => v.ids));
+  eq("groupFactCandidates emits each id exactly once", allIds.length, new Set(allIds).size);
+  eq("groupFactCandidates emits every proposed id", allIds.length, rows.length);
+
+  // Conflicts and missing quotes are the two things that should slow a reader down.
+  const flagged = groupFactCandidates([
+    cand("x1", "money", 1000, { conflicts: true, quote: "they said a thousand" }),
+    cand("x2", "money", 1000, {}),
+  ]);
+  eq("groupFactCandidates counts the ones that disagree with the book", flagged[0].values[0].conflicts, 1);
+  eq("groupFactCandidates counts the ones with a sentence behind them", flagged[0].values[0].quoted, 1);
+
+  // Values are jsonb, so grouping has to work on shape, not on identity.
+  eq("valueGroupKey folds null and undefined together", valueGroupKey(null), valueGroupKey(undefined));
+  check("valueGroupKey separates the string 'true' from the boolean", valueGroupKey("true") !== valueGroupKey(true));
+  check("valueGroupKey separates the string '1' from the number", valueGroupKey("1") !== valueGroupKey(1));
+  eq("groupFactCandidates does not merge a boolean with its spelling",
+     groupFactCandidates([cand("b1", "no_inhouse_dev_team", true), cand("b2", "no_inhouse_dev_team", "true")])[0].values.length, 2);
+  eq("groupFactCandidates groups two rows holding the same value",
+     groupFactCandidates([cand("b1", "no_inhouse_dev_team", true), cand("b2", "no_inhouse_dev_team", true)])[0].values.length, 1);
+  eq("groupFactCandidates keeps a null value as its own group",
+     groupFactCandidates([cand("n1", "timing", null)])[0].values[0].value, null);
+}
 
 /* ---- the page itself: data reaches the DOM as text only ---- */
 check("page never assigns innerHTML / outerHTML", !/\.(inner|outer)HTML\s*=/.test(page));

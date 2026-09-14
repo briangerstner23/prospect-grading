@@ -243,6 +243,7 @@ footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;fle
     </section>
 
     <section id="sheet" class="sheet hidden"></section>
+    <section id="queue" class="sheet hidden"></section>
   </div>
 
   <footer>
@@ -638,6 +639,67 @@ function stalenessNote(readAt, now) {
   return `${nights} night${nights === 1 ? "" : "s"} not scored`;
 }
 
+/**
+ * The fact queue, grouped for a reader holding hundreds of proposals and one afternoon.
+ *
+ * One claim per row is the right shape for CONFIRMING — writing a fact deserves its own look,
+ * its own quote, its own decision. It is the wrong shape for rejecting a class of them: 17
+ * `reseller` proposals for `relationship_type` are not seventeen judgements, they are one
+ * judgement made seventeen times. So group by key, then by the value proposed, and let a
+ * reader decide a group at a time.
+ *
+ * Pure: no clock, no DOM, no formatting. The caller renders `value`; this counts and sorts.
+ * Only `proposed` rows group — a decided candidate is history and never joins a batch.
+ */
+function groupFactCandidates(cands) {
+  const keys = new Map();
+  for (const c of Array.isArray(cands) ? cands : []) {
+    if (!c || c.status !== "proposed" || typeof c.id !== "string") continue;
+    const key = typeof c.key === "string" && c.key.length ? c.key : "(no key)";
+    let g = keys.get(key);
+    if (!g) { g = { key, total: 0, accounts: new Set(), values: new Map() }; keys.set(key, g); }
+    g.total++;
+    if (c.account_id) g.accounts.add(c.account_id);
+    const vk = valueGroupKey(c.value);
+    let v = g.values.get(vk);
+    if (!v) { v = { valueKey: vk, value: c.value ?? null, ids: [], accounts: new Set(), sources: new Set(), conflicts: 0, quoted: 0 }; g.values.set(vk, v); }
+    v.ids.push(c.id);
+    if (c.account_id) v.accounts.add(c.account_id);
+    if (typeof c.source === "string" && c.source.length) v.sources.add(c.source);
+    if (c.conflicts) v.conflicts++;
+    if (c.quote) v.quoted++;
+  }
+  // Biggest group first — that is where the reader's afternoon goes — then alphabetical, so the
+  // order is stable across reloads rather than shuffling under a half-made selection.
+  const bigFirst = (an, bn, at, bt) => bn - an || (at < bt ? -1 : at > bt ? 1 : 0);
+  return [...keys.values()]
+    .map((g) => ({
+      key: g.key,
+      total: g.total,
+      accountCount: g.accounts.size,
+      values: [...g.values.values()]
+        .map((v) => ({
+          valueKey: v.valueKey,
+          value: v.value,
+          count: v.ids.length,
+          accountCount: v.accounts.size,
+          sources: [...v.sources].sort(),
+          conflicts: v.conflicts,
+          quoted: v.quoted,
+          ids: v.ids.slice().sort(),
+          accountIds: [...v.accounts].sort(),
+        }))
+        .sort((a, b) => bigFirst(a.count, b.count, a.valueKey, b.valueKey)),
+    }))
+    .sort((a, b) => bigFirst(a.total, b.total, a.key, b.key));
+}
+
+/** A stable grouping key for a jsonb value: two claims group exactly when the book would hold the same thing. */
+function valueGroupKey(v) {
+  if (v === null || v === undefined) return "null";
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+
 /* @pure-end -------------------------------------------------------- */
 
 /* ------------------------------------------------------------------ *
@@ -689,6 +751,7 @@ const state = {
   rubric: null, rubricVersion: null, accounts: [], reads: new Map(), lastRun: null,
   filters: { q: "", tier: "", status: "", flag: "", source: "", queue: "" },
   pending: new Map(), // account_id → open fact claims; empty for a reader who cannot see the queue
+  queueRows: [], // every proposed fact claim, loaded only when #queue is open
   booted: false, current: null, flash: null,
 };
 const tiersBestFirst = () => (state.rubric?.vocabulary?.tiers ?? TIER_ORDER).slice().reverse();
@@ -840,8 +903,9 @@ async function loadBook() {
  * ------------------------------------------------------------------ */
 function route() {
   const m = /^#account=([A-Za-z0-9-]+)$/.exec(window.location.hash);
-  if (m) openSheet(m[1]);
-  else { state.current = null; show($("sheet"), false); show($("roster"), true); renderRoster(); }
+  if (m) { show($("queue"), false); openSheet(m[1]); }
+  else if (window.location.hash === "#queue") { state.current = null; show($("sheet"), false); openQueue(); }
+  else { state.current = null; show($("sheet"), false); show($("queue"), false); show($("roster"), true); renderRoster(); }
 }
 
 /* ------------------------------------------------------------------ *
@@ -899,6 +963,12 @@ function renderRoster() {
   );
   // A stale book looks exactly like a current one unless it says so.
   if (stale) $("count").append(" ", chip(stale, "c-warn"));
+  // The queue is spread over dozens of sheets, so the roster is the only place a reader would
+  // learn how much of it there is. Reviewers only: a viewer cannot decide any of it.
+  const waiting = [...(state.pending?.values() ?? [])].reduce((n, p) => n + p.open, 0);
+  if (waiting && canReview()) {
+    $("count").append(" · ", h("a", { href: "#queue" }, `${waiting} claim${waiting === 1 ? "" : "s"} waiting on a person`));
+  }
 
   const rows = $("rows");
   if (!shown.length) {
@@ -1466,6 +1536,140 @@ function fmtFactValue(v) {
   if (typeof v === "number") return String(v);
   if (typeof v === "string") return v;
   return JSON.stringify(v);
+}
+
+/* ---- the whole fact queue, grouped (#queue) ----
+ * The per-account queue above answers "what is waiting on THIS agency". It cannot answer "an
+ * extractor proposed a value the book cannot hold — clear them out", because those rows are
+ * spread across dozens of sheets and the reader would have to open every one.
+ *
+ * This view groups every proposed claim by key and by the value proposed, and rejects a group
+ * at a time. It rejects ONLY. There is no bulk confirm and there should never be one: rule 8
+ * is that nothing a machine read becomes a fact on a machine's say-so, and one click writing a
+ * hundred facts is precisely what that refuses. Rejection writes nothing, so the argument does
+ * not run the other way — the worst a wrong rejection costs is a proposal the sweep re-offers.
+ */
+const queueSelection = new Set();
+const selectionId = (key, valueKey) => key + "\u0000" + valueKey;
+
+async function openQueue() {
+  show($("roster"), false);
+  const el = $("queue");
+  show(el, true);
+  const back = () => h("a", { class: "back", href: "#" }, "← Roster");
+  if (!canReview()) {
+    el.replaceChildren(back(), h("div", { class: "notice warn" }, "The queue is a reviewer's view. The owner and rater lanes decide what the book believes; your lane reads it."));
+    return;
+  }
+  el.replaceChildren(back(), h("div", { class: "sub" }, "Loading the queue…"));
+  const { data, error } = await state.db.from("pb_fact_candidates").select("*").eq("status", "proposed").order("created_at");
+  if (window.location.hash !== "#queue") return; // the reader moved on
+  if (error) {
+    el.replaceChildren(back(), h("div", { class: "notice bad" }, "Could not read the queue: " + error.message, h("pre", null, errorDetail(error))));
+    return;
+  }
+  state.queueRows = data ?? [];
+  drawQueue();
+}
+
+function drawQueue() {
+  const el = $("queue");
+  const groups = groupFactCandidates(state.queueRows ?? []);
+  const total = groups.reduce((n, g) => n + g.total, 0);
+  const accountName = (id) => state.accounts.find((a) => a.id === id)?.name ?? "(not on your roster)";
+
+  // A selection made before a reload can name rows that are no longer proposed. Keep only what
+  // is still on screen, so the count never promises more than the batch can deliver.
+  const live = new Set();
+  for (const g of groups) for (const v of g.values) live.add(selectionId(g.key, v.valueKey));
+  for (const s of [...queueSelection]) if (!live.has(s)) queueSelection.delete(s);
+
+  const idsSelected = () => {
+    const out = [];
+    for (const g of groups) for (const v of g.values) if (queueSelection.has(selectionId(g.key, v.valueKey))) out.push(...v.ids);
+    return out;
+  };
+
+  const msg = h("div", { class: "notice hidden" });
+  const tally = h("span");
+  const note = h("input", { type: "text", placeholder: "Why (optional)", "aria-label": "Rejection note" });
+  const reject = h("button", { type: "button", class: "danger" }, "Reject selected");
+  const clear = h("button", { type: "button", class: "ghost" }, "Clear selection");
+  const retally = () => {
+    const n = idsSelected().length;
+    tally.replaceChildren(n ? `${n} claim${n === 1 ? "" : "s"} selected` : "Nothing selected");
+    reject.disabled = n === 0;
+    clear.disabled = n === 0;
+  };
+
+  clear.addEventListener("click", () => { queueSelection.clear(); drawQueue(); });
+  reject.addEventListener("click", async () => {
+    const ids = idsSelected();
+    if (!ids.length) return;
+    if (!window.confirm(`Reject ${ids.length} claim${ids.length === 1 ? "" : "s"}?\n\nNothing is written to the book. Each rejection is recorded in the register under your name, and the sweep may propose the same claim again.`)) return;
+    reject.disabled = true;
+    const { data, error } = await state.db.rpc("pb_reject_fact_candidates", { p_candidates: ids, p_note: note.value.trim() || null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); retally(); return; }
+    queueSelection.clear();
+    const left = data?.skipped ? ` ${data.skipped} had already been decided by someone else and were left alone.` : "";
+    flash("ok", `Rejected ${data?.rejected ?? 0} claim${data?.rejected === 1 ? "" : "s"} under ${state.email}; nothing was written to the book.${left} Every rejection is in the register.`);
+    await loadBook();  // the per-account counts on the roster changed
+    await openQueue(); // and so did the queue
+  });
+
+  const valueRow = (g, v) => {
+    const id = selectionId(g.key, v.valueKey);
+    const box = h("input", { type: "checkbox", "aria-label": `Select ${g.key} = ${fmtFactValue(v.value)}` });
+    box.checked = queueSelection.has(id);
+    box.addEventListener("change", () => { if (box.checked) queueSelection.add(id); else queueSelection.delete(id); retally(); });
+    const names = v.accountIds.map(accountName).sort();
+    return h("div", { class: "item" },
+      h("div", { class: "top" },
+        h("label", null, box, h("span", { class: "mono" }, fmtFactValue(v.value))),
+        chip(`${v.count} claim${v.count === 1 ? "" : "s"}`),
+        chip(`${v.accountCount} account${v.accountCount === 1 ? "" : "s"}`),
+        v.conflicts ? chip(`${v.conflicts} disagree${v.conflicts === 1 ? "s" : ""} with the book`, "c-bad") : null,
+        v.quoted < v.count ? chip(`${v.count - v.quoted} with no sentence behind them`, "c-warn") : null,
+      ),
+      h("div", { class: "sub" }, [
+        v.sources.length ? `from ${v.sources.join(", ")}` : null,
+        names.length ? names.slice(0, 6).join(", ") + (names.length > 6 ? ` and ${names.length - 6} more` : "") : null,
+      ].filter(Boolean).join(" · ")),
+    );
+  };
+
+  const parts = [h("a", { class: "back", href: "#" }, "← Roster")];
+  if (state.flash) {
+    parts.push(h("div", { class: "notice " + state.flash.kind, role: "status" }, state.flash.text, state.flash.detail ? h("pre", null, state.flash.detail) : null));
+    state.flash = null;
+  }
+  parts.push(
+    h("header", { class: "sheet-head" },
+      h("h2", null, "The fact queue"),
+      h("div", { class: "sub" }, total
+        ? `${total} claim${total === 1 ? "" : "s"} waiting on a person, grouped by what was proposed. Rejecting a group writes nothing to the book and records one register row per claim, under your name.`
+        : "Nothing is waiting on a person."),
+    ),
+    h("div", { class: "notice info" },
+      "This view rejects only. Confirming a claim writes a fact, and a fact is written one at a time with its sentence in front of you — open the agency's sheet to do that.",
+    ),
+  );
+  for (const g of groups) {
+    parts.push(group(
+      g.key,
+      `${g.total}`,
+      `${g.total} claim${g.total === 1 ? "" : "s"} across ${g.accountCount} account${g.accountCount === 1 ? "" : "s"}, by the value proposed.`,
+      list(g.values.map((v) => valueRow(g, v)), "Nothing proposed for this key."),
+    ));
+  }
+  if (total) {
+    parts.push(h("div", { class: "card pad" },
+      h("div", { class: "inline" }, tally, note, reject, clear),
+      msg,
+    ));
+  }
+  el.replaceChildren(...parts);
+  retally();
 }
 
 /* ---- merge queue (pb_identity_candidates) ---- */

@@ -401,6 +401,32 @@ Afterwards run a manual score (§9) and check `select started_at, status, counts
 where kind = 'seed' order by started_at desc limit 1;`. The seed never merges: everything it
 could not attach on a high key is in the merge queue (§12).
 
+## 11b · Clearing a class of fact claims at once (`#queue`)
+
+The per-account sheet asks "what is waiting on **this** agency", which is the right question
+when you are confirming a claim and the wrong one when an extractor has proposed a value the
+book cannot hold across forty sheets. The page's **`#queue`** view (linked from the roster's
+count line, reviewers only) groups every `proposed` row in `pb_fact_candidates` by key and then
+by the value proposed, and rejects a group at a time through
+**`pb_reject_fact_candidates(p_candidates uuid[], p_note text default null)`**.
+
+**It rejects only, and that asymmetry is the point.** Rule 8 says nothing a machine read becomes
+a fact on a machine's say-so, so there is no bulk confirm and there should never be one —
+confirming stays one claim at a time, with its sentence in front of you, on the agency's sheet.
+Rejecting writes no fact, so the same objection does not run in reverse; the worst a wrong
+rejection costs is a proposal the next sweep offers again.
+
+What it keeps from the one-at-a-time path: the same owner/rater lane check, `proposed` rows
+only, and **one register row per claim** — deciding twenty at once makes the clicking cheaper,
+not the record thinner. Each row's payload carries a shared `batch_id` and `batch_size`, so the
+register can still say these went together. A candidate someone else decided in the meantime is
+skipped and counted in the return value rather than failing the batch, and at most 1000 go in
+one call.
+
+The worked example this was built for: on 14 Sep 2026 the queue held 17 `reseller` and 3
+`referral` proposals for `relationship_type`, values `resolve_features` rejects, from the
+extractor prompt fixed in `e053ff7` and deployed as pb-notes v11. Twenty rows, two clicks.
+
 ## 12 · Reviewing the merge queue
 
 `pb_identity_candidates` holds every match below `high` confidence, plus the Orbit and Fathom
