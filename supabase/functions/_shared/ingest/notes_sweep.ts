@@ -34,7 +34,9 @@ import type { ExtractedClaim, NoteExtraction, PipedriveNote } from "./written_re
 type Shape =
   | { kind: "boolean" }
   | { kind: "integer"; min: number; max: number }
-  | { kind: "enum"; values: readonly string[] };
+  | { kind: "enum"; values: readonly string[] }
+  /** A set drawn from a closed vocabulary. Order is not meaningful; duplicates collapse. */
+  | { kind: "enum_list"; values: readonly string[]; max: number };
 
 /**
  * The only keys the sweep may write, and the only values each may take. A ProspectFeatures
@@ -58,6 +60,19 @@ export const EXTRACTABLE: Readonly<Record<string, Shape>> = {
   money: { kind: "enum", values: ["present", "absent"] },
   authority: { kind: "enum", values: ["present", "absent"] },
   specification: { kind: "enum", values: ["present", "absent"] },
+
+  /* Climb evidence — engagement depth, which is what a prospect can show instead of revenue
+     history (rubric 0.1.2, owner ruling 14 Sep 2026). Every one of these is a QUOTABLE EVENT,
+     not an impression: a second person joined, they offered the executive meeting, they said
+     "when we roll this out", the deadline is March. "Seemed keen" is a judgement and the
+     lexicon will catch it. The canonical spellings are the rubric's; resolve_features maps the
+     aliases. Retired signals (2nd project scoped, Referred someone) are deliberately absent —
+     they need a delivered engagement, so a prospect's record cannot honestly carry them. */
+  climb_signals: {
+    kind: "enum_list",
+    max: 5,
+    values: ["2nd person engaged", "Champion identified", "Structural break", "Future-state language", "Strategy question asked"],
+  },
   timing: { kind: "enum", values: ["within_1_week", "within_1_month", "within_3_months", "no_timeline"] },
 };
 
@@ -411,6 +426,17 @@ function coerce(shape: Shape, v: unknown): unknown {
   if (v === null) return undefined; // unknown is never evidence; say nothing instead
   if (shape.kind === "boolean") return typeof v === "boolean" ? v : undefined;
   if (shape.kind === "enum") return typeof v === "string" && shape.values.includes(v) ? v : undefined;
+  if (shape.kind === "enum_list") {
+    if (!Array.isArray(v) || v.length === 0 || v.length > shape.max) return undefined;
+    const out: string[] = [];
+    for (const item of v) {
+      // One bad member spoils the claim rather than being quietly dropped: a partial list read
+      // as a whole one would understate the evidence and there is no way to tell from the row.
+      if (typeof item !== "string" || !shape.values.includes(item)) return undefined;
+      if (!out.includes(item)) out.push(item);
+    }
+    return out;
+  }
   if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
   const n = Math.round(v);
   return n >= shape.min && n <= shape.max ? n : undefined;
@@ -435,7 +461,7 @@ function describe(v: unknown): string {
  * string, so a new prompt re-reads every note rather than silently mixing two readings.
  */
 /** The instruction's own version. Bump it whenever EXTRACTABLE or the prompt below changes. */
-export const PROMPT_VERSION = "notes@v3";
+export const PROMPT_VERSION = "notes@v4";
 
 /**
  * Who read this record — the prompt AND the model together.
@@ -463,6 +489,8 @@ export function extractionPrompt(): string {
       ? "true or false"
       : s.kind === "enum"
       ? s.values.map((v) => `"${v}"`).join(" or ")
+      : s.kind === "enum_list"
+      ? `a list (max ${s.max}) drawn from ${s.values.map((v) => `"${v}"`).join(", ")}`
       : `a whole number ${s.min}-${s.max}`;
     return `  ${k}: ${shape}`;
   }).join("\n");
@@ -486,6 +514,13 @@ export function extractionPrompt(): string {
     "- sells_build_work and no_inhouse_dev_team are about what the agency SELLS and whether it can BUILD it, not what industry it is in.",
     "- client_budget_size is about the agency's CLIENTS' budgets, not the agency's own size.",
     "- money, authority, specification: use \"absent\" ONLY when the record says it is missing (\"they have no budget this year\"). A record that simply does not mention it is silence — leave the key out. Not mentioned is not the same as not there.",
+    "- climb_signals records ENGAGEMENT EVENTS, one entry per event the record actually describes. Each is an event with a sentence behind it, never an impression — \"they seemed interested\" is a judgement about the relationship and belongs nowhere in this list:",
+    "    \"2nd person engaged\"       a second person on their side joins a call or thread. Their name or role appears alongside the first.",
+    "    \"Champion identified\"      someone spends political capital for us: offers the executive meeting, shares the internal decision criteria, or warns us of objections we would not otherwise hear. Somebody who is merely helpful or well-informed is NOT this — that is a coach, and it is not a climb signal.",
+    "    \"Structural break\"         a dated forcing function: a budget cycle, compliance deadline, launch, funding round, a departure that leaves work uncovered.",
+    "    \"Future-state language\"    they speak as though the decision is made — \"when we roll this out\", \"our team would use it for\". Quote the words themselves.",
+    "    \"Strategy question asked\"  they ask how to approach the problem rather than what it costs.",
+    "  Omit the key entirely when none of these happened. An empty or padded list is worse than silence.",
     "- One claim per key at most.",
   ].join("\n");
 }

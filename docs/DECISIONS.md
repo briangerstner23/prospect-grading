@@ -951,3 +951,89 @@ no longer dark. `PB_PIPEDRIVE_WEBHOOK_BASIC` is still unset, which is a differen
 enough to publish a tier — the rule-5 leak §8 identified is unchanged and unruled. Nothing here
 activates 0.2.0 or moves a threshold. It measures the two directions §8 offered so the owner can
 choose between them with the numbers in hand.
+
+## 17 · Climb evidence is engagement depth, not revenue history (owner ruling, 14 September 2026)
+
+**Ruled.** This settles the climb-evidence requirement, one of the five July elements the ledger
+records as never ruled. It stays a rubric toggle; what changes is that it now has an answer and a
+reason rather than an inherited default.
+
+### What prompted it
+
+The owner asked why the book showed only two anticipated Platinum rows. The funnel explains it:
+Platinum requires adjusted tier Gold **and** a Partner ceiling **and** three of four Dimension A
+facts, and adjustments are barred from reaching Platinum on their own. 106 accounts clear the
+first. **Six** clear the second. The binding constraint is the ceiling, and the ceiling is capped
+to Project without climb evidence — which 9 accounts of 680 carry, all of them from the original
+Notion seed's "proof of growth" field. 228 rows are explicitly flagged `Ceiling capped: no climb
+evidence`.
+
+So the tier was not a judgement about those agencies. It was the absence of a recorded input.
+
+### The ruling
+
+The owner's reasoning: a prospect cannot show revenue history, because by definition it has not
+invoiced. What it *can* show is **engagement depth** — expressed interest, evidenced.
+
+Half of the inherited list asked for the wrong thing, and the published work on B2B selling names
+the right ones precisely:
+
+| Signal | Weight | Basis |
+|---|---|---|
+| 2nd person engaged | strong | Stakeholder expansion is the best-attested predictor of close in B2B — multi-threading is repeatedly measured at multiples of the single-threaded win rate (Gong, Demandbase) |
+| Champion identified | strong | MEDDICC's champion test: someone spends political capital when we are not in the room. Good intel alone is a *coach*, not a champion |
+| Structural break | strong | SPICED's Critical Event — a dated forcing function |
+| Future-state language | weak | Gong: speaking as though the decision is made |
+| Strategy question asked | weak | Coach-level interest; real, but demoted from its previous equal footing |
+| ~~2nd project scoped~~ | retired | Requires a first project |
+| ~~Referred someone~~ | retired | Requires a delivered outcome |
+
+**One strong signal lifts the ceiling, or two weak ones** (`lift_requires: {strong: 1, weak: 2}`).
+Previously any one signal lifted it, which put a strategy question on the same footing as a
+champion.
+
+Every surviving signal is a **quotable event** — a second person joined, they offered the executive
+meeting, they said "when we roll this out", the deadline is March. None is an impression. That is
+deliberate: the sweep's existing rails (verbatim quote, and the observation/judgement lexicon) then
+do the quality control for free, and "seemed keen" cannot become evidence.
+
+### What it changes, measured before activating
+
+Only a row carrying climb evidence can move, so the blast radius is exactly those 9. Applying the
+new rule to the current reads: **two rows change, both because `2nd project scoped` is retired.**
+One drops from a Partner ceiling to Project and loses Platinum; one drops a Partner ceiling to
+Project and keeps its tier. The other seven are unchanged — six carry a strong signal, one already
+sat at Project.
+
+**Anticipated Platinum therefore goes from two to one.** That is the honest short-term cost of the
+ruling and it is recorded here rather than discovered later. The route back up is the extractor:
+`climb_signals` is now extractable from the written record (`notes_sweep.ts`, prompt `notes@v4`), so
+multi-threading and champion behaviour can be read from calls instead of waiting on a seed field
+nobody fills.
+
+### Where it lives, and what is not done
+
+`core/rubric.prospect.v0.1.2.json`, registered in `pb_rubric_versions` as **draft**, spec sha256
+`8e1e9207…`, rubric fingerprint `d8bc859e`. The stored spec was derived from the stored 0.1.0 by
+patching the one path, and verified to differ from it in exactly `version` and
+`potential.climb_evidence` and to match the repo file.
+
+The engine picks its shape from what the rubric carries — `potential.climb_evidence.lift_requires`
+present means weighted, absent means any-one-lifts — the same way the base tier picks between
+`base_tier_from_fit` and `base_tier_from_icp`. **0.1.0 scores exactly as it did**, which is what
+keeps the frozen baseline reproducible. `docs/BASELINE.md` warns that nothing in the data stamps
+the engine, so an engine change has to be written down by hand: this is that record.
+
+Not done, and each is deliberate:
+
+- **Not activated.** 0.1.2 is a draft. And it must not be previewed against the deployed
+  `pb-score` until that function carries this engine — §8 records exactly this trap, where a
+  preview of 0.2.0 failed because the deployed function predated the branch that read its new
+  key. A preview run before the redeploy would report the old any-one-lifts behaviour and mean
+  nothing.
+- **0.2.0 still carries the old climb block.** If the fit-criteria draft is ever activated it would
+  silently restore the retired signals and the flat weighting. The two drafts need reconciling
+  before either is activated.
+- **The strong/weak split is a first setting, not a finding.** One strong or two weak is a
+  judgement about relative evidential worth; the queue's confirm and reject rates per signal are
+  what would turn it into a measurement.

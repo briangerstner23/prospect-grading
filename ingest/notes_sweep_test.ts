@@ -365,7 +365,7 @@ const DEAL = plannedOf({
  * ------------------------------------------------------------------ */
 
 {
-  eq("extractorId names the prompt and the model", extractorId("claude-sonnet-5"), "notes@v3+claude-sonnet-5");
+  eq("extractorId names the prompt and the model", extractorId("claude-sonnet-5"), "notes@v4+claude-sonnet-5");
   check("two models are two different readers", extractorId("claude-sonnet-5") !== extractorId("claude-haiku-4-5"));
   check("two prompts are two different readers", extractorId("claude-sonnet-5", "notes@v4") !== extractorId("claude-sonnet-5", "notes@v3"));
   eq("the prompt version defaults to the current one", extractorId("m"), `${PROMPT_VERSION}+m`);
@@ -466,6 +466,121 @@ const DEAL = plannedOf({
 /* ------------------------------------------------------------------ *
  * report
  * ------------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------------ *
+ * 6 · climb signals — engagement events, never impressions
+ *
+ * Rubric 0.1.2 (owner ruling, 14 Sep 2026) made climb evidence the prospect's substitute for
+ * revenue history, so the sweep has to be able to propose it. The list shape is the only
+ * multi-valued key the extractor may write, and it is the one most able to flatter a deal, so
+ * it is held to the vocabulary exactly.
+ * ------------------------------------------------------------------ */
+
+const CLIMB_PROSE =
+  "<p>Second call. Their operations lead joined alongside the founder. She offered to set up " +
+  "time with their CFO and warned us procurement will push back on the deposit. They asked how " +
+  "we would sequence the rollout, and said when we roll this out to the whole team it has to be " +
+  "ready before the March compliance deadline.</p>";
+
+const climbPlanned = planSweep({
+  ...BASE,
+  notes: [note({ content: CLIMB_PROSE })],
+}).read[0];
+
+{
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: ["2nd person engaged", "Champion identified"],
+      quote: "She offered to set up time with their CFO and warned us procurement will push back on the deposit.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("a quoted list of climb events is kept", r.extraction.claims.length, 1);
+  eq("and it keeps every member", (r.extraction.claims[0].value as string[]).length, 2);
+}
+
+{
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: ["2nd person engaged", "They seemed very keen"],
+      quote: "Their operations lead joined alongside the founder.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("one member outside the vocabulary spoils the whole list", r.extraction.claims.length, 0);
+  eq("and it is counted out of shape", r.counters.value_out_of_shape, 1);
+}
+
+{
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: ["2nd project scoped"],
+      quote: "Their operations lead joined alongside the founder.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("a signal retired for prospects cannot be proposed at all", r.extraction.claims.length, 0);
+}
+
+{
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: "2nd person engaged",
+      quote: "Their operations lead joined alongside the founder.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("a bare string where a list belongs is dropped", r.extraction.claims.length, 0);
+}
+
+{
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: [],
+      quote: "Their operations lead joined alongside the founder.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("an empty list says nothing and is dropped", r.extraction.claims.length, 0);
+}
+
+{
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: ["2nd person engaged", "2nd person engaged"],
+      quote: "Their operations lead joined alongside the founder.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("duplicates collapse", (r.extraction.claims[0].value as string[]).length, 1);
+}
+
+{
+  // The guarantee holds for lists exactly as it does for scalars.
+  const r = verifyClaims(climbPlanned, {
+    claims: [{
+      key: "climb_signals",
+      value: ["Champion identified"],
+      quote: "She said she would personally push this through the board.",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("an invented sentence strips the quote from a climb claim too", r.extraction.claims[0].quote, null);
+  eq("and it is counted", r.counters.quote_not_in_note, 1);
+}
+
+{
+  check("climb_signals is offered to the model", extractionPrompt().includes("climb_signals"));
+  check("and the champion test is spelled out, since it is the one most easily flattered", extractionPrompt().includes("political capital"));
+  check("and the retired signals are not offered", !extractionPrompt().includes("2nd project scoped"));
+}
 
 const total = passed + failures.length;
 if (failures.length > 0) {

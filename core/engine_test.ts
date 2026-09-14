@@ -41,7 +41,10 @@ const load = (p: string) => JSON.parse(readFileSync(join(here, p), "utf8"));
 
 // deno-lint-ignore no-explicit-any
 type Rubric = any;
-const RUBRICS: Record<string, Rubric> = { "0.1.0": load("rubric.prospect.v0.1.json") };
+const RUBRICS: Record<string, Rubric> = {
+  "0.1.0": load("rubric.prospect.v0.1.json"),
+  "0.1.2": load("rubric.prospect.v0.1.2.json"),
+};
 const R: Rubric = RUBRICS["0.1.0"];
 const FIXTURES: Array<{ id: string; description: string; features: ProspectFeatures; options?: { override?: unknown }; expected: Record<string, unknown> }> =
   load("../fixtures/golden.json");
@@ -87,7 +90,7 @@ function without(path: string): Rubric {
  * rubric, re-read the fixtures, then re-record the hash here in the same change. A rubric
  * edit that arrives without this line moving is an accident.
  */
-const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2" };
+const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2", "0.1.2": "d8bc859e" };
 
 /* ------------------------------------------------------------------ *
  * a synthetic base record
@@ -348,6 +351,47 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("pot: alias maps to a canonical climb signal", p({ climb_signals: ["multi_thread"] }).climb_evidence, ["2nd person engaged"]);
   eq("pot: unknown climb strings are not counted", p({ headcount: 40, wl_signal: "High", climb_signals: ["they seemed keen"] }).ceiling, "Project");
   eq("pot: Project ceiling needs no climb evidence", p({ headcount: 3, wl_signal: "Low" }).ceiling_capped_reason, null);
+
+  /* Weighted climb evidence (rubric 0.1.2, owner ruling 14 Sep 2026).
+   * One strong signal lifts the ceiling, or two weak ones. 0.1.0 is asserted above and must be
+   * unchanged by any of this — that is what keeps the frozen baseline reproducible. */
+  {
+    const R2 = RUBRICS["0.1.2"];
+    const q = (o: Partial<ProspectFeatures>) => grade(base({ headcount: 40, wl_signal: "High", ...o }), R2).potential;
+    eq("climb 0.1.2: one strong lifts", q({ climb_signals: ["Champion identified"] }).ceiling, "Partner");
+    eq("climb 0.1.2: 2nd person engaged is strong", q({ climb_signals: ["2nd person engaged"] }).ceiling, "Partner");
+    eq("climb 0.1.2: structural break is strong", q({ climb_signals: ["Structural break"] }).ceiling, "Partner");
+    eq("climb 0.1.2: one weak does not lift", q({ climb_signals: ["Strategy question asked"] }).ceiling, "Project");
+    eq("climb 0.1.2: future-state alone does not lift", q({ climb_signals: ["Future-state language"] }).ceiling, "Project");
+    eq("climb 0.1.2: two weak lift", q({ climb_signals: ["Strategy question asked", "Future-state language"] }).ceiling, "Partner");
+    eq(
+      "climb 0.1.2: one weak is recorded even though it does not lift",
+      q({ climb_signals: ["Strategy question asked"] }).climb_evidence,
+      ["Strategy question asked"],
+    );
+    check(
+      "climb 0.1.2: the capped reason counts the evidence",
+      (q({ climb_signals: ["Strategy question asked"] }).ceiling_capped_reason ?? "").includes("0 strong, 1 weak"),
+    );
+    // Retired: both need a delivered engagement, so a prospect cannot honestly carry them.
+    eq("climb 0.1.2: 2nd project scoped is retired", q({ climb_signals: ["2nd project scoped"] }).ceiling, "Project");
+    eq("climb 0.1.2: referred someone is retired", q({ climb_signals: ["Referred someone"] }).ceiling, "Project");
+    eq("climb 0.1.2: retired signals are not recorded", q({ climb_signals: ["Referred someone"] }).climb_evidence, []);
+    // SPICED's name for the same event reaches the canonical one.
+    eq("climb 0.1.2: 'Critical event' aliases to Structural break", q({ climb_signals: ["Critical event"] }).climb_evidence, ["Structural break"]);
+    eq("climb 0.1.2: critical_event alias lifts", q({ climb_signals: ["critical_event"] }).ceiling, "Partner");
+    eq("climb 0.1.2: champion alias", q({ climb_signals: ["champion"] }).climb_evidence, ["Champion identified"]);
+    // A signal the rubric names but does not grade is a rubric fault, not a data fault.
+    const bent = JSON.parse(JSON.stringify(R2));
+    delete bent.potential.climb_evidence.strength["Champion identified"];
+    let threw = "";
+    try {
+      grade(base({ headcount: 40, wl_signal: "High", climb_signals: ["Champion identified"] }), bent);
+    } catch (e) {
+      threw = e instanceof Error ? e.message : String(e);
+    }
+    check("climb 0.1.2: a signal with no strength is a RubricError", threw.includes("potential.climb_evidence.strength.Champion identified"));
+  }
   // < $35K: 3 × 175,000 × 0.1 × 0.5 × 0.5 = 13,125
   eq("pot: small headroom band", p({ headcount: 3, wl_signal: "Low" }).headroom_band, "< $35K");
   // headroom unknown → stated ceiling

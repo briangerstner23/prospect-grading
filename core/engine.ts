@@ -449,14 +449,48 @@ function potentialOf(
   }
   climb.sort();
 
+  /* Does the evidence lift the ceiling?
+   *
+   * Two shapes, chosen by what the rubric carries — never by a flag, the same way the base tier
+   * picks between `base_tier_from_fit` and `base_tier_from_icp`:
+   *   lift_requires present (0.1.2+)  signals are weighted: N strong OR M weak lift the ceiling
+   *   absent           (0.1.0/0.1.1)  any one signal lifts it
+   * Keeping both is what lets the frozen v0.1.0 baseline stay reproducible (docs/BASELINE.md);
+   * adding the weights to the rubric must not change what 0.1.0 scored.
+   */
+  const tiered = rubricAt(rubric, "potential.climb_evidence.lift_requires") !== undefined;
+  let lifts: boolean;
+  let shortOf = "";
+  if (tiered) {
+    const strengthOf = reqObj(rubric, "potential.climb_evidence.strength") as Record<string, unknown>;
+    const needStrong = reqNum(rubric, "potential.climb_evidence.lift_requires.strong");
+    const needWeak = reqNum(rubric, "potential.climb_evidence.lift_requires.weak");
+    let strong = 0;
+    let weak = 0;
+    for (const c of climb) {
+      const s = strengthOf[c];
+      if (s === "strong") strong++;
+      else if (s === "weak") weak++;
+      else throw new RubricError(rubric, `potential.climb_evidence.strength.${c}`, "\"strong\" or \"weak\" for every signal in potential.climb_evidence.signals", s);
+    }
+    lifts = strong >= needStrong || weak >= needWeak;
+    shortOf = `${strong} strong, ${weak} weak; needs ${needStrong} strong or ${needWeak} weak`;
+  } else {
+    lifts = climb.length > 0;
+    shortOf = "no climb evidence";
+  }
+
   let ceiling: Ceiling = "Project";
   let cappedReason: string | null = null;
   if (proposed === null) {
     notes.push("Ceiling defaults to Project: headroom unknown and no stated ceiling.");
-  } else if (CEILING_ORDER.indexOf(proposed) > 0 && climb.length === 0) {
+  } else if (CEILING_ORDER.indexOf(proposed) > 0 && !lifts) {
     ceiling = "Project";
-    cappedReason = "no climb evidence";
+    cappedReason = tiered ? `climb evidence below the lift (${shortOf})` : "no climb evidence";
     flags.add("Ceiling capped: no climb evidence");
+    if (tiered && climb.length > 0) {
+      notes.push(`Ceiling capped at Project: ${shortOf}. The evidence is recorded, it does not yet lift.`);
+    }
   } else {
     ceiling = proposed;
   }
