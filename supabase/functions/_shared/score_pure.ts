@@ -84,6 +84,8 @@ export interface CurrentRead {
   account_id: string;
   effective_tier: string | null;
   status: string | null;
+  /** Null on every row written before rubric 0.1.1, and on any read from a rubric without the block. */
+  confidence_grade?: string | null;
 }
 
 export interface DiffEntry {
@@ -93,13 +95,23 @@ export interface DiffEntry {
   to_tier: string | null;
   from_status: string | null;
   to_status: string;
+  from_confidence_grade: string | null;
+  to_confidence_grade: string | null;
   changed: boolean;
 }
 
 /** One preview line: the current read (or nothing) against the draft scorecard. */
+/**
+ * One preview line. The confidence grade is part of `changed` on purpose: a rubric whose only
+ * difference IS the grade — 0.1.1 is exactly that — would otherwise preview as "0 changed" and
+ * rule 4's look-before-you-activate step would report that nothing happens when every account
+ * gets a grade.
+ */
 export function diffEntry(sc: ProspectScorecard, current: CurrentRead | null): DiffEntry {
   const from_tier = current?.effective_tier ?? null;
   const from_status = current?.status ?? null;
+  const from_confidence_grade = current?.confidence_grade ?? null;
+  const to_confidence_grade = sc.confidence_grade ?? null;
   return {
     account_id: sc.account_id,
     name: sc.name,
@@ -107,7 +119,11 @@ export function diffEntry(sc: ProspectScorecard, current: CurrentRead | null): D
     to_tier: sc.effective_tier,
     from_status,
     to_status: sc.status,
-    changed: from_tier !== sc.effective_tier || from_status !== sc.status,
+    from_confidence_grade,
+    to_confidence_grade,
+    changed: from_tier !== sc.effective_tier
+      || from_status !== sc.status
+      || from_confidence_grade !== to_confidence_grade,
   };
 }
 

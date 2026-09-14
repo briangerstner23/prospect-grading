@@ -316,20 +316,24 @@ function confidenceFrom(rubric: Rubric, path: string, ctx: WhenContext): Confide
   throw new RubricError(rubric, path, "a ladder ending in an { otherwise: true } rule", rules.map((r) => r.label));
 }
 
-const GRADE_WORDS = ["A", "B", "C", "D", "F"] as const;
-
 /**
  * Walk `rubric.confidence_grade.rules` the way confidenceFrom walks a confidence ladder:
  * top to bottom, first `when` that holds names the grade, ending in `{ otherwise: true }`.
  * Returns the grade and the rule that produced it, so the read can say why in the rubric's
  * own words rather than in the engine's.
+ *
+ * The vocabulary is `confidence_grade.scale`, read from the rubric — the same list the override
+ * cap measures distance along. One source of truth, or the ladder and the cap can disagree about
+ * what a grade even is (rule 4).
  */
 function confidenceGradeFrom(rubric: Rubric, ctx: WhenContext): { grade: ConfidenceGrade; why: string } {
   const path = "confidence_grade.rules";
+  const scale = reqArr<string>(rubric, "confidence_grade.scale") as readonly ConfidenceGrade[];
+  if (scale.length === 0) throw new RubricError(rubric, "confidence_grade.scale", "a non-empty list of grades", scale);
   const rules = reqArr<Record<string, unknown>>(rubric, path);
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
-    const grade = reqOneOfIn(rubric, rule, "grade", `${path}[${i}]`, GRADE_WORDS);
+    const grade = reqOneOfIn(rubric, rule, "grade", `${path}[${i}]`, scale);
     if (rule.otherwise === true) return { grade, why: "otherwise" };
     const expr = reqStrIn(rubric, rule, "when", `${path}[${i}]`);
     const ok = expr.includes(" OR ") ? expr.split(" OR ").some((part) => evalWhen(part, ctx)) : evalWhen(expr, ctx);
@@ -911,6 +915,9 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
         notes.push(`Confidence override expired ${cexp.expires_at}${cexp.source === "derived" ? ` (set_at ${cov.set_at} + ${covExpiryDays} days)` : ""}; computed grade ${computedConfidenceGrade} stands.`);
       } else if (!scale.includes(cov.grade)) {
         notes.push(`Confidence override ignored: '${String(cov.grade)}' is not one of ${scale.join(", ")}.`);
+      } else if (!scale.includes(computedConfidenceGrade)) {
+        // indexOf would return -1 and the distance arithmetic would wave any override through.
+        notes.push(`Confidence override ignored: the computed grade '${computedConfidenceGrade}' is not on confidence_grade.scale (${scale.join(", ")}).`);
       } else if (Math.abs(scale.indexOf(cov.grade) - scale.indexOf(computedConfidenceGrade)) > maxMovedGrades) {
         flags.add("Confidence override refused: beyond cap");
         notes.push(`Confidence override to ${cov.grade} refused: more than ${maxMovedGrades} grade from computed ${computedConfidenceGrade}.`);

@@ -1272,10 +1272,21 @@ function dealsList(deals, sc) {
 }
 
 /* ---- register (pb_register) ---- */
+
+/** What a register row overrode, and until when. Null when the row overrides nothing. */
+function overrideLine(r) {
+  const expiry = r.expires_at || r.payload?.expires_at ? " · expires " + fmtDate(r.expires_at ?? r.payload.expires_at) : "";
+  if (r.payload?.tier) return h("div", { class: "sub" }, `tier → anticipated ${r.payload.tier}${expiry}`);
+  if (r.payload?.confidence_grade) return h("div", { class: "sub" }, `confidence → ${r.payload.confidence_grade}${expiry}`);
+  return r.expires_at ? h("div", { class: "sub" }, "expires " + fmtDate(r.expires_at)) : null;
+}
+
 function registerList(entries) {
   const items = entries.map((r) => h("div", { class: "item" },
     h("div", { class: "top" }, chip(r.kind, r.kind === "override" ? "c-warn" : r.kind === "dispute" ? "c-bad" : r.kind === "promotion" ? "c-good" : "c-info"), h("b", null, r.made_by), h("span", { class: "sub" }, fmtDateTime(r.created_at)), r.reason_code ? chip(r.reason_code) : null),
-    r.payload?.tier ? h("div", { class: "sub" }, `override to anticipated ${r.payload.tier}${r.expires_at || r.payload.expires_at ? " · expires " + fmtDate(r.expires_at ?? r.payload.expires_at) : ""}`) : (r.expires_at ? h("div", { class: "sub" }, "expires " + fmtDate(r.expires_at)) : null),
+    // One kind carries two targets, so the line has to name which — otherwise the register, which
+    // is the whole audit trail, cannot tell a tier override from a confidence override.
+    overrideLine(r),
     h("div", { class: "body" }, r.text ?? ""),
   ));
   return group("Register", `${entries.length}`, "Every decision that touches a grade lives here, never in a read.", list(items, "No register entry for this account."));
@@ -1650,7 +1661,13 @@ function confidenceOverrideForm(a, sc) {
   const msg = h("div", { class: "notice hidden" });
   const submit = h("button", { type: "submit", class: "primary" }, "Set confidence override");
   gradeSel.addEventListener("change", () => {
-    const moved = gradeSel.value && computed ? Math.abs(scale.indexOf(gradeSel.value) - scale.indexOf(computed)) : 0;
+    if (!gradeSel.value) { show(capNote, false); return; }
+    // No computed grade to measure from — say so rather than going quiet, which reads as "fine".
+    if (!computed || scale.indexOf(computed) < 0) {
+      setNotice(capNote, "warn", "The last read carries no computed confidence grade, so the cap cannot be checked here. The engine will refuse the override until a rubric defining confidence_grade is active.");
+      return;
+    }
+    const moved = Math.abs(scale.indexOf(gradeSel.value) - scale.indexOf(computed));
     if (typeof cap === "number" && moved > cap) {
       setNotice(capNote, "warn", `${computed} → ${gradeSel.value} is ${moved} grades. The engine refuses more than ${cap} and keeps the computed grade.`);
     } else show(capNote, false);

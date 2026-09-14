@@ -377,6 +377,40 @@ check("grade: a scorecard came back", SC.account_id === ACCOUNT.id && SC.anticip
   check("buildReadRow: reason and flags", row.reason === SC.reason && Array.isArray(row.flags));
   check("buildReadRow: scorecard + sha", row.scorecard === SC && row.scorecard_sha256 === sha && /^[0-9a-f]{64}$/.test(sha));
   eq("listingPatch", listingPatch(SC), { status: SC.status, effective_tier: SC.effective_tier, cell: SC.cell });
+
+  // The confidence-grade columns. Under a rubric with no confidence_grade block these are null —
+  // an absent spec is not a grade of F — and the column names must match the migration exactly,
+  // because a mismatch fails every pb_reads insert and takes the whole nightly score with it.
+  eq("buildReadRow: the grade columns exist and are null under a rubric without the block",
+    [row.confidence_grade, row.computed_confidence_grade, row.confidence_overridden],
+    [null, null, false]);
+  check("buildReadRow: the grade column names are exactly the migration's",
+    ["confidence_grade", "computed_confidence_grade", "confidence_overridden"].every((k) => k in row),
+    Object.keys(row).join(","));
+
+  // A scorecard that DOES carry a grade must put it on the row, and flag an override.
+  const graded = { ...SC, confidence_grade: "B", computed_confidence_grade: "C", confidence_override: { grade: "B", reason_code: "other", reason: "r", approver: "o@example.test" } };
+  const gradedRow = buildReadRow(graded as typeof SC, "run-2", sha);
+  eq("buildReadRow: a graded scorecard carries its letter and what it moved from",
+    [gradedRow.confidence_grade, gradedRow.computed_confidence_grade, gradedRow.confidence_overridden],
+    ["B", "C", true]);
+}
+
+{
+  // diffEntry must notice a grade change on its own. Rubric 0.1.1's ONLY difference from 0.1.0 is
+  // the confidence grade, so a diff that compares tier and status alone previews it as "0 changed"
+  // and rule 4's look-before-you-activate step reports that nothing happens.
+  const sameTier = { ...SC, confidence_grade: "B" };
+  const d = diffEntry(sameTier as typeof SC, { account_id: SC.account_id, effective_tier: SC.effective_tier, status: SC.status, confidence_grade: "C" });
+  check("diffEntry: a grade change alone counts as changed", d.changed === true, JSON.stringify(d));
+  eq("diffEntry: it reports both letters", [d.from_confidence_grade, d.to_confidence_grade], ["C", "B"]);
+
+  const noChange = diffEntry(sameTier as typeof SC, { account_id: SC.account_id, effective_tier: SC.effective_tier, status: SC.status, confidence_grade: "B" });
+  check("diffEntry: an identical grade is not a change", noChange.changed === false, JSON.stringify(noChange));
+
+  // A read written before the grade existed carries no confidence_grade at all.
+  const firstTime = diffEntry(sameTier as typeof SC, { account_id: SC.account_id, effective_tier: SC.effective_tier, status: SC.status });
+  check("diffEntry: null → a letter is a change", firstTime.changed === true, JSON.stringify(firstTime));
 }
 
 {
@@ -386,7 +420,7 @@ check("grade: a scorecard came back", SC.account_id === ACCOUNT.id && SC.anticip
   check("diffEntry: same → unchanged", !same.changed);
   const moved = diffEntry(SC, { account_id: SC.account_id, effective_tier: "Bronze", status: SC.status });
   check("diffEntry: tier move → changed", moved.changed && moved.from_tier === "Bronze");
-  eq("diffEntry: shape", Object.keys(d0), ["account_id", "name", "from_tier", "to_tier", "from_status", "to_status", "changed"]);
+  eq("diffEntry: shape", Object.keys(d0), ["account_id", "name", "from_tier", "to_tier", "from_status", "to_status", "from_confidence_grade", "to_confidence_grade", "changed"]);
 }
 
 {

@@ -458,6 +458,62 @@ function run(partial: Partial<ResolveInput> = {}) {
     expires_at: "2026-12-01T00:00:00Z",
   });
 }
+/* ------------------------------------------------------------------ *
+ * 5b · Confidence override: the same register kind, told apart by the payload
+ *
+ * One kind ('override') carries two targets. A row is a TIER override or a CONFIDENCE override
+ * by what its payload names — so the two must never shadow each other, and a pre-existing tier
+ * override must behave exactly as it did before confidence overrides existed.
+ * ------------------------------------------------------------------ */
+{
+  const r = run({
+    override_rows: [overrideRow({
+      created_at: "2026-09-06T00:00:00Z",
+      payload: { confidence_grade: "B", reason_code: "relationship_known", reason: "Known from three prior builds", expires_at: null },
+      expires_at: null,
+    })],
+  });
+  eq("a confidence override is resolved from the payload", r.confidence_override, {
+    grade: "B",
+    reason_code: "relationship_known",
+    reason: "Known from three prior builds",
+    approver: "owner@example.test",
+    set_at: "2026-09-06T00:00:00Z",
+    expires_at: null,
+  });
+  eq("...and it is not mistaken for a tier override", r.override, null);
+}
+{
+  // Both targets set: each is read independently, neither shadows the other.
+  const r = run({
+    override_rows: [
+      overrideRow({ created_at: "2026-09-07T00:00:00Z", payload: { confidence_grade: "A", reason_code: "data_wrong", reason: "we know this one", expires_at: null }, expires_at: null }),
+      overrideRow({ created_at: "2026-09-05T10:00:00Z" }),
+    ],
+  });
+  eq("a newer confidence override does not suppress an older tier override", r.override?.tier, "Gold");
+  eq("...and both are resolved", r.confidence_override?.grade, "A");
+}
+{
+  const r = run({ override_rows: [overrideRow({ payload: { confidence_grade: "Z", reason_code: "other", reason: "x" } })] });
+  eq("a grade outside the scale is not applied", r.confidence_override, null);
+  check("...and it says so", r.notes.some((n) => n.includes("is not a grade")), r.notes.join(" | "));
+}
+{
+  const r = run({ override_rows: [overrideRow({ payload: { confidence_grade: "B", reason_code: "other", reason: "   " }, text: "" })] });
+  eq("a confidence override with no written reason is not applied", r.confidence_override, null);
+  check("...and it says so", r.notes.some((n) => n.includes("no written reason")), r.notes.join(" | "));
+}
+{
+  const r = run({ override_rows: [overrideRow({ expires_at: "2026-09-01T00:00:00Z", payload: { confidence_grade: "B", reason_code: "other", reason: "x", expires_at: "2026-09-01T00:00:00Z" } })] });
+  eq("an expired confidence override is not applied", r.confidence_override, null);
+}
+{
+  const r = run({ override_rows: [overrideRow({ payload: { note: "neither target" } })] });
+  eq("a row naming neither target applies nothing", [r.override, r.confidence_override], [null, null]);
+  check("...and is reported rather than dropped", r.notes.some((n) => n.includes("neither a tier nor a confidence_grade")), r.notes.join(" | "));
+}
+
 {
   const r = run({ override_rows: [overrideRow({ expires_at: "2026-09-01T00:00:00Z", payload: { tier: "Gold", reason_code: "other", reason: "x", expires_at: "2026-09-01T00:00:00Z" } })] });
   eq("an expired override is not applied", r.override, null);
