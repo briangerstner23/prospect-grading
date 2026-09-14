@@ -1017,6 +1017,25 @@ check("determinism: input is not mutated", (() => {
   const twoFacts = base({ icp_class: "ICP-2", icp_class_label: "inferred", money: "present", authority: "present", timing: null, specification: null });
   eq("0.1.1: two facts and a class → C", grade(twoFacts, V11).confidence_grade, "C");
 
+  // The B band is the only rule in the ladder with an ` OR ` split, so it is the only one whose
+  // evaluation differs structurally from the rest — and it was the one band with no test.
+  const threeEvidence = base({
+    icp_class: "ICP-2", icp_class_label: "evidence", roster_certified: true,
+    money: "present", authority: "present", timing: "within_1_month", specification: null,
+  });
+  eq("0.1.1: three facts on an evidence class → B (first arm of the OR)", grade(threeEvidence, V11).confidence_grade, "B");
+
+  const fourInferred = base({
+    icp_class: "ICP-2", icp_class_label: "inferred", roster_certified: true,
+    money: "present", authority: "present", timing: "within_1_month", specification: "present",
+  });
+  eq("0.1.1: four facts on an inferred class → B (second arm of the OR)", grade(fourInferred, V11).confidence_grade, "B");
+
+  // Both arms must be live: a ladder that only ever evaluated the first would still pass the two
+  // checks above if the second arm's inputs happened to satisfy the first. They do not — this one
+  // satisfies ONLY the second arm.
+  check("0.1.1: the second arm is reached on its own", grade(fourInferred, V11).confidence_grade_reason.includes("OR"), grade(fourInferred, V11).confidence_grade_reason);
+
   const full = base({
     icp_class: "ICP-2", icp_class_label: "evidence", roster_certified: true,
     money: "present", authority: "present", timing: "within_1_month", specification: "present",

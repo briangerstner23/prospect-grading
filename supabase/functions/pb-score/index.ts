@@ -147,13 +147,14 @@ Deno.serve(async (req: Request) => {
 
     if (preview) {
       // distinct on (account_id), so account_id is unique here — and it is already selected.
-      const current = await selectIn(db, "pb_current_reads", "account_id", ids, "account_id,effective_tier,status", 100, "account_id");
+      const current = await selectIn(db, "pb_current_reads", "account_id", ids, "account_id,effective_tier,status,confidence_grade", 100, "account_id");
       currentBy = new Map();
       for (const r of current) {
         currentBy.set(String(r.account_id), {
           account_id: String(r.account_id),
           effective_tier: toStr(r.effective_tier),
           status: toStr(r.status),
+          confidence_grade: toStr(r.confidence_grade),
         });
       }
     }

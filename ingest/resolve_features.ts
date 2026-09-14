@@ -40,8 +40,17 @@ import type {
 } from "../core/prospect_types.ts";
 import { TIER_ORDER } from "../core/prospect_types.ts";
 
-/** The confidence grade scale, best → worst. Mirrors ConfidenceGrade in core/prospect_types.ts. */
-const GRADE_SCALE = ["A", "B", "C", "D", "F"] as const;
+/**
+ * The confidence grade scale, best → worst. Read from the rubric the caller passed, never from a
+ * constant here: the engine measures the override cap along `confidence_grade.scale`, and a
+ * resolver with its own copy would silently drop a valid override the moment the two differ
+ * (rule 4). Falls back to the contract's own vocabulary only when the rubric defines no block,
+ * in which case the engine refuses the override anyway and says why.
+ */
+function gradeScaleOf(rubric: Rubric): readonly string[] {
+  const scale = (rubric as unknown as { confidence_grade?: { scale?: unknown } })?.confidence_grade?.scale;
+  return Array.isArray(scale) && scale.length > 0 ? scale.map((g) => String(g)) : ["A", "B", "C", "D", "F"];
+}
 
 /* ------------------------------------------------------------------ *
  * Row shapes (mirror the pb_* tables; extra columns are tolerated)
@@ -825,7 +834,7 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     const crow = live.find((r) => names(r, "confidence_grade"));
     if (crow) {
       const payload = (crow.payload ?? {}) as Record<string, unknown>;
-      const cgrade = toEnum(payload.confidence_grade, GRADE_SCALE as readonly string[]);
+      const cgrade = toEnum(payload.confidence_grade, gradeScaleOf(input.rubric));
       const ccode = toEnum(payload.reason_code ?? crow.reason_code, V.reasonCodes);
       const creason = typeof payload.reason === "string" && payload.reason.trim().length > 0
         ? payload.reason
