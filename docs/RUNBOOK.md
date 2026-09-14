@@ -410,11 +410,23 @@ count line, reviewers only) groups every `proposed` row in `pb_fact_candidates` 
 by the value proposed, and rejects a group at a time through
 **`pb_reject_fact_candidates(p_candidates uuid[], p_note text default null)`**.
 
-**It rejects only, and that asymmetry is the point.** Rule 8 says nothing a machine read becomes
-a fact on a machine's say-so, so there is no bulk confirm and there should never be one —
-confirming stays one claim at a time, with its sentence in front of you, on the agency's sheet.
-Rejecting writes no fact, so the same objection does not run in reverse; the worst a wrong
-rejection costs is a proposal the next sweep offers again.
+**Open a group and you get the claims themselves** — each with its verbatim sentence, the
+agency (linked to its sheet), the source, the extractor, the date, what the book currently holds
+where they disagree, a link to the source, and its own **Confirm** and **Reject** buttons calling
+`pb_review_fact_candidate`. The grouping is for scanning and for bulk rejection; the judgement
+still happens one claim at a time, which is the only way it can happen.
+
+**Only rejection goes in bulk, and that asymmetry is the point.** Rule 8 says nothing a machine
+read becomes a fact on a machine's say-so, so there is no bulk confirm and there should never be
+one — confirming stays one claim at a time with its sentence in front of you. Rejecting writes no
+fact, so the same objection does not run in reverse; the worst a wrong rejection costs is a
+proposal the next sweep offers again.
+
+Selection is **per claim**, not per group. A group's checkbox is a select-all for its claims and
+shows an indeterminate state when only some are taken, so fifteen of seventeen is a normal thing
+to do and a partly-taken group never looks whole. This matters: the first cut of this view
+selected whole groups only and showed no sentences, which made it impossible to tell what you
+were agreeing to — the complaint that produced this paragraph.
 
 What it keeps from the one-at-a-time path: the same owner/rater lane check, `proposed` rows
 only, and **one register row per claim** — deciding twenty at once makes the clicking cheaper,

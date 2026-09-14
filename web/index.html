@@ -1549,8 +1549,9 @@ function fmtFactValue(v) {
  * hundred facts is precisely what that refuses. Rejection writes nothing, so the argument does
  * not run the other way — the worst a wrong rejection costs is a proposal the sweep re-offers.
  */
-const queueSelection = new Set();
-const selectionId = (key, valueKey) => key + "\u0000" + valueKey;
+const queueSelection = new Set();   // candidate ids, so a reader can take 15 of 17
+const queueOpen = new Set();        // which value groups are expanded, kept across redraws
+const groupId = (key, valueKey) => key + "\u0000" + valueKey;
 
 async function openQueue() {
   show($("roster"), false);
@@ -1574,37 +1575,38 @@ async function openQueue() {
 
 function drawQueue() {
   const el = $("queue");
-  const groups = groupFactCandidates(state.queueRows ?? []);
+  const rows = state.queueRows ?? [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const groups = groupFactCandidates(rows);
   const total = groups.reduce((n, g) => n + g.total, 0);
   const accountName = (id) => state.accounts.find((a) => a.id === id)?.name ?? "(not on your roster)";
 
   // A selection made before a reload can name rows that are no longer proposed. Keep only what
   // is still on screen, so the count never promises more than the batch can deliver.
-  const live = new Set();
-  for (const g of groups) for (const v of g.values) live.add(selectionId(g.key, v.valueKey));
-  for (const s of [...queueSelection]) if (!live.has(s)) queueSelection.delete(s);
-
-  const idsSelected = () => {
-    const out = [];
-    for (const g of groups) for (const v of g.values) if (queueSelection.has(selectionId(g.key, v.valueKey))) out.push(...v.ids);
-    return out;
-  };
+  for (const id of [...queueSelection]) if (!byId.has(id)) queueSelection.delete(id);
 
   const msg = h("div", { class: "notice hidden" });
   const tally = h("span");
   const note = h("input", { type: "text", placeholder: "Why (optional)", "aria-label": "Rejection note" });
   const reject = h("button", { type: "button", class: "danger" }, "Reject selected");
   const clear = h("button", { type: "button", class: "ghost" }, "Clear selection");
+  const boxes = []; // [checkbox, ids] for every box on screen, so one change re-syncs the others
+
   const retally = () => {
-    const n = idsSelected().length;
-    tally.replaceChildren(n ? `${n} claim${n === 1 ? "" : "s"} selected` : "Nothing selected");
+    const n = queueSelection.size;
+    tally.replaceChildren(n ? `${n} claim${n === 1 ? "" : "s"} selected — rejecting writes nothing to the book` : "Nothing selected");
     reject.disabled = n === 0;
     clear.disabled = n === 0;
+    for (const [box, ids] of boxes) {
+      const picked = ids.filter((id) => queueSelection.has(id)).length;
+      box.checked = picked > 0 && picked === ids.length;
+      box.indeterminate = picked > 0 && picked < ids.length; // a partly-taken group must not look whole
+    }
   };
 
-  clear.addEventListener("click", () => { queueSelection.clear(); drawQueue(); });
+  clear.addEventListener("click", () => { queueSelection.clear(); retally(); });
   reject.addEventListener("click", async () => {
-    const ids = idsSelected();
+    const ids = [...queueSelection];
     if (!ids.length) return;
     if (!window.confirm(`Reject ${ids.length} claim${ids.length === 1 ? "" : "s"}?\n\nNothing is written to the book. Each rejection is recorded in the register under your name, and the sweep may propose the same claim again.`)) return;
     reject.disabled = true;
@@ -1617,12 +1619,67 @@ function drawQueue() {
     await openQueue(); // and so did the queue
   });
 
+  /** One claim, with the sentence that produced it. This is the unit a person actually judges. */
+  const claimRow = (c) => {
+    const box = h("input", { type: "checkbox", "aria-label": `Select the ${c.source} claim about ${c.key} for ${accountName(c.account_id)}` });
+    box.addEventListener("change", () => { if (box.checked) queueSelection.add(c.id); else queueSelection.delete(c.id); retally(); });
+    boxes.push([box, [c.id]]);
+
+    const rowMsg = h("div", { class: "notice hidden" });
+    const buttons = [];
+    const decide = async (decision) => {
+      for (const b of buttons) b.disabled = true;
+      const { data, error } = await state.db.rpc("pb_review_fact_candidate", { p_candidate: c.id, p_decision: decision, p_note: null });
+      if (error) { setNotice(rowMsg, "bad", "Refused: " + error.message, errorDetail(error)); for (const b of buttons) b.disabled = false; return; }
+      const also = data?.superseded ? ` ${data.superseded} other proposal${data.superseded === 1 ? "" : "s"} for ${c.key} closed with it.` : "";
+      flash("ok", decision === "confirmed"
+        ? `${c.key} is now a fact on record for ${accountName(c.account_id)} under ${state.email}, dated ${fmtDate(c.observed_at)} from the source.${also} It reaches the grade at the next nightly run.`
+        : `Rejected the ${c.source} claim about ${c.key} for ${accountName(c.account_id)}; nothing was written.`);
+      queueSelection.delete(c.id);
+      await loadBook();
+      await openQueue();
+    };
+    buttons.push(
+      h("button", { type: "button", class: "primary", onclick: () => decide("confirmed") }, c.quote ? "Confirm — write the fact" : "Confirm anyway"),
+      h("button", { type: "button", class: "danger", onclick: () => decide("rejected") }, "Reject"),
+    );
+
+    return h("div", { class: "item" },
+      h("div", { class: "top" },
+        box,
+        h("a", { href: "#account=" + encodeURIComponent(c.account_id) }, accountName(c.account_id)),
+        c.conflicts ? chip("disagrees with the book", "c-bad") : null,
+        c.confidence ? chip(`${c.confidence} confidence`, c.confidence === "high" ? "c-good" : "") : null,
+      ),
+      c.quote
+        ? h("blockquote", { class: "quote" }, "“", c.quote, "”")
+        : h("div", { class: "sub" }, "No sentence was offered for this claim — read the source before confirming it."),
+      h("div", { class: "sub" }, [
+        c.conflicts ? `the book holds ${fmtFactValue(c.current_value)}` : null,
+        c.source ? `from ${c.source}` : null,
+        c.extractor ? `read by ${c.extractor}` : null,
+        c.observed_at ? `said ${fmtDate(c.observed_at)}` : null,
+      ].filter(Boolean).join(" · ")),
+      c.evidence_url ? h("div", { class: "sub" }, h("a", { href: c.evidence_url, target: "_blank", rel: "noopener noreferrer" }, "Open the source")) : null,
+      h("div", { class: "form", style: "margin-top:.4rem" }, h("div", { class: "inline" }, ...buttons), rowMsg),
+    );
+  };
+
+  /** A value group: the headline a reader scans, and the claims underneath once they open it. */
   const valueRow = (g, v) => {
-    const id = selectionId(g.key, v.valueKey);
-    const box = h("input", { type: "checkbox", "aria-label": `Select ${g.key} = ${fmtFactValue(v.value)}` });
-    box.checked = queueSelection.has(id);
-    box.addEventListener("change", () => { if (box.checked) queueSelection.add(id); else queueSelection.delete(id); retally(); });
+    const gid = groupId(g.key, v.valueKey);
+    const open = queueOpen.has(gid);
+    const box = h("input", { type: "checkbox", "aria-label": `Select all ${v.count} claims proposing ${fmtFactValue(v.value)} for ${g.key}` });
+    box.addEventListener("change", () => {
+      for (const id of v.ids) { if (box.checked) queueSelection.add(id); else queueSelection.delete(id); }
+      retally();
+    });
+    boxes.push([box, v.ids]);
+
+    const toggle = h("button", { type: "button", class: "ghost", onclick: () => { if (open) queueOpen.delete(gid); else queueOpen.add(gid); drawQueue(); } },
+      open ? "Hide the claims" : `Read the ${v.count} claim${v.count === 1 ? "" : "s"}`);
     const names = v.accountIds.map(accountName).sort();
+
     return h("div", { class: "item" },
       h("div", { class: "top" },
         h("label", null, box, h("span", { class: "mono" }, fmtFactValue(v.value))),
@@ -1630,11 +1687,13 @@ function drawQueue() {
         chip(`${v.accountCount} account${v.accountCount === 1 ? "" : "s"}`),
         v.conflicts ? chip(`${v.conflicts} disagree${v.conflicts === 1 ? "s" : ""} with the book`, "c-bad") : null,
         v.quoted < v.count ? chip(`${v.count - v.quoted} with no sentence behind them`, "c-warn") : null,
+        toggle,
       ),
       h("div", { class: "sub" }, [
         v.sources.length ? `from ${v.sources.join(", ")}` : null,
         names.length ? names.slice(0, 6).join(", ") + (names.length > 6 ? ` and ${names.length - 6} more` : "") : null,
       ].filter(Boolean).join(" · ")),
+      open ? h("div", { class: "card list", style: "margin-top:.5rem" }, ...v.ids.map((id) => byId.get(id)).filter(Boolean).map(claimRow)) : null,
     );
   };
 
@@ -1647,11 +1706,13 @@ function drawQueue() {
     h("header", { class: "sheet-head" },
       h("h2", null, "The fact queue"),
       h("div", { class: "sub" }, total
-        ? `${total} claim${total === 1 ? "" : "s"} waiting on a person, grouped by what was proposed. Rejecting a group writes nothing to the book and records one register row per claim, under your name.`
+        ? `${total} claim${total === 1 ? "" : "s"} waiting on a person, grouped by what was proposed. Open a group to read the sentence behind every claim and answer them one by one, or tick whole groups and reject them together.`
         : "Nothing is waiting on a person."),
     ),
     h("div", { class: "notice info" },
-      "This view rejects only. Confirming a claim writes a fact, and a fact is written one at a time with its sentence in front of you — open the agency's sheet to do that.",
+      h("b", null, "What the two answers mean. "),
+      "Confirm writes the fact under your name, dated by the note rather than by today, and it reaches the grade at the next nightly run — so it is offered one claim at a time, with the sentence in front of you. ",
+      "Reject writes nothing at all: the claim is closed, the decision is recorded in the register, and the sweep may propose it again tomorrow. Because rejecting writes nothing, it is the only answer that can be given in bulk.",
     ),
   );
   for (const g of groups) {
