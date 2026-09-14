@@ -44,7 +44,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260913200000 call meeting key ·
             20260913210000/210100/210200/210300 fathom back-fill (staging, stepper, retry, driver) ·
             20260913220000 roster drift ·
-            20260914150000 bulk reject fact candidates (all applied)
+            20260914150000 bulk reject fact candidates ·
+            20260914210000 pipedrive field map (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -121,7 +122,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | **set** (12 Sep 2026) — `whsec_`, 24-byte key. From a webhook created in the Fathom UI; see RUNBOOK §4 |
   | `PB_FATHOM_API_KEY` | nothing — operator only | **set** (12 Sep 2026). Creates/deletes the Fathom webhook via `api.fathom.ai` from `pg_net`. No edge function reads it; safe to delete once the webhook is settled |
   | `PB_PIPEDRIVE_WEBHOOK_BASIC` | pb-pipedrive-webhook | **set** (14 Sep 2026) — `pbhook:<24 random bytes, hex>`, generated in-database. The four Pipedrive webhooks carry the same pair as HTTP Basic; RUNBOOK §5 |
-  | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set — custom fields pass through unlabelled, which is a note on the run, not an error |
+  | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | **set** (14 Sep 2026) — 69 custom fields (28 deal, 13 organization, 28 person, 0 activity), collected from Pipedrive's own `/v1/*Fields` by `pb_pipedrive_field_map_begin()` / `_finish()`. A **snapshot**: a field renamed in Pipedrive keeps its old label here until the pair is re-run. RUNBOOK §5 |
 
   pb-notes sweeps three channels, each behind its own credential and its own watermark row. The
   `fathom_call` channel needs **no credential of its own** — it reads `pb_calls`, which the

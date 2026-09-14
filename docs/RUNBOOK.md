@@ -307,17 +307,49 @@ was true when it was written and is not any more.
    the Vault value; the delivery is recorded in the inbox as unverified (once the secret is
    set, only a hash of the body is kept). Fix the pair; the next delivery verifies.
 
-**Custom-field labels (`PB_PIPEDRIVE_FIELD_MAP`).** Pipedrive keys custom fields by a 40-hex
-hash. The webhook parser never hard-codes one: it takes a field map passed in from the Vault
-secret `PB_PIPEDRIVE_FIELD_MAP` (JSON `{deals:{<hash>:{label,options}}, organizations:{…},
-persons:{…}}`). The new MCP has no field-definitions endpoint, so that map cannot be
-collected in-session yet; until an API token exists (§1) and the collector reads
-`/v2/dealFields`, `/v1/organizationFields` and `/v1/personFields`, leave the secret unset.
-Webhook deliveries still land and are processed; custom fields pass through unlabelled and the
-Grade label is not surfaced on webhook deals. The one-time **seed** does not use this map: its
-keys are the inferred set in `ingest/pipedrive_seed.ts` (`PipedriveKeys`, overridable per run
-through `opts.keys`) — the Grade field `79d0a04a…` (High 414 / Medium 415 / Low 416) is
-confirmed live on the Client Journey cards.
+**Custom-field labels (`PB_PIPEDRIVE_FIELD_MAP`) — collected, 14 Sep 2026.** Pipedrive keys
+custom fields by a 40-hex hash. The webhook parser never hard-codes one: it labels them from a
+map handed in through this Vault secret, shaped `{deals:{<hash>:{label,options}},
+organizations:{…}, persons:{…}, activities:{…}}`, where `options` maps an option id to its text
+so an enum arrives as "High" rather than `414`.
+
+This section used to say the map "cannot be collected in-session" because the MCP has no
+field-definitions endpoint. That is still true of the MCP and has been irrelevant since 12 Sep:
+the REST API has `/v1/dealFields` and `PB_PIPEDRIVE_API_TOKEN` is in Vault. Migration
+`20260914210000` adds an operator-only pair that does it entirely inside the database:
+
+```sql
+select public.pb_pipedrive_field_map_begin();              -- returns four pg_net request ids
+-- then, in a SEPARATE statement (pg_net dispatches only after the first one commits):
+select public.pb_pipedrive_field_map_finish(array[<the four ids>]::bigint[]);
+-- → {"ok":true,"stored":true,"counts":{"deals":28,"organizations":13,"persons":28,"activities":0}}
+```
+
+Two steps for the same reason the roster crawl is a stepper: a single function's own requests
+have not left the database when it returns. `_finish` refuses rather than storing a half-map if
+any reply is missing, non-200, `success:false`, or paginated; pass `p_store => false` to see
+what it would write without writing it. Re-run the pair after fields are added or renamed — the
+secret is a snapshot, not a subscription.
+
+**Proving the webhook picked it up without touching the CRM:** post an ignorable body to our own
+endpoint with the Basic header and read the run notes. While the map is unset, every run carries
+`PB_PIPEDRIVE_FIELD_MAP is not set; custom fields are unlabelled`; once it is stored that note
+disappears, which is the cheapest evidence the function reads and parses it.
+
+```sql
+select net.http_post(
+  url := '<FN>/pb-pipedrive-webhook',
+  body := '{"meta":{"action":"change","entity":"note"},"data":{}}'::jsonb,
+  headers := jsonb_build_object('Content-Type','application/json',
+    'Authorization','Basic ' || replace(encode(convert_to(
+      public.pb_secret('PB_PIPEDRIVE_WEBHOOK_BASIC'),'UTF8'),'base64'), chr(10), '')));
+-- → verified true, processed true, ignored 1, and nothing written to the book
+```
+
+The one-time **seed** does not use this map: its keys are the inferred set in
+`ingest/pipedrive_seed.ts` (`PipedriveKeys`, overridable per run through `opts.keys`) — the Grade
+field `79d0a04a…` (High 414 / Medium 415 / Low 416) is confirmed live on the Client Journey
+cards, and the collected map now agrees with it exactly.
 
 ## 6 · Enable GitHub Pages and publish the page
 
