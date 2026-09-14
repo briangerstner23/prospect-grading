@@ -49,7 +49,15 @@ export const EXTRACTABLE: Readonly<Record<string, Shape>> = {
   recurring_work_shape: { kind: "boolean" },
   competitive_overlap: { kind: "boolean" },
   client_budget_size: { kind: "enum", values: ["buys_real_projects", "local_small"] },
-  relationship_type: { kind: "enum", values: ["agency", "direct", "reseller", "referral"] },
+  /* Only what the book can actually hold. `reseller` and `referral` were offered here until
+     14 Sep 2026 and neither is a RelationshipType: resolve_features accepts `agency` and
+     `direct` (plus two aliases) and treats anything else as unknown. So a confirmed `reseller`
+     wrote a fact labelled `evidence`, outranked the existing `inferred` `agency` under the
+     precedence rule, and then resolved to NULL — the confirmation silently erased a working
+     value and changed PRO-4 handling with it. One such candidate was sitting in the review
+     queue when this was found. Whether the book should model a reseller relationship at all is
+     an owner question; until it can, the extractor must not propose one. */
+  relationship_type: { kind: "enum", values: ["agency", "direct"] },
   headcount: { kind: "integer", min: 1, max: 5000 },
   client_evidence_count: { kind: "integer", min: 0, max: 100000 },
 

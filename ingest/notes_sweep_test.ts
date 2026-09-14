@@ -582,6 +582,32 @@ const climbPlanned = planSweep({
   check("and the retired signals are not offered", !extractionPrompt().includes("2nd project scoped"));
 }
 
+
+/* ------------------------------------------------------------------ *
+ * 7 · the extractor may only propose values the resolver can hold
+ *
+ * A confirmed candidate is written labelled `evidence`, which outranks an `inferred` row for
+ * the same key. So proposing a value resolve_features treats as out-of-vocabulary does not
+ * merely fail to help — it WINS the key and then resolves to null, erasing whatever was there.
+ * relationship_type was offering "reseller" and "referral", neither of which is a
+ * RelationshipType. Found live in the review queue, 14 Sep 2026.
+ * ------------------------------------------------------------------ */
+
+{
+  const rel = EXTRACTABLE.relationship_type;
+  eq("relationship_type is an enum", rel.kind, "enum");
+  eq("and it offers exactly what resolve_features accepts", [...rel.values].sort().join(","), "agency,direct");
+  const r = verifyClaims(P, {
+    claims: [{
+      key: "relationship_type",
+      value: "reseller",
+      quote: "is a full-service agency in Vermont",
+      confidence: "high", kind: "observation",
+    }],
+  });
+  eq("a value the book cannot hold is refused before it can erase one", r.extraction.claims.length, 0);
+}
+
 const total = passed + failures.length;
 if (failures.length > 0) {
   console.error(`notes_sweep_test: ${failures.length} of ${total} checks FAILED`);
