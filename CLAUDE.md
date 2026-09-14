@@ -115,7 +115,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   | `PB_SYNC_TOKEN` | pb-sync, pb-score, pb-notes, pg_cron | **set** |
   | `PB_ANTHROPIC_API_KEY` | pb-notes (the extractor) | **set** — without it pb-notes 503s and writes no run row |
   | `PB_PIPEDRIVE_API_TOKEN` | pb-notes (`pipedrive_note` channel); `pb_roster_fetch_page` | **set** (12 Sep 2026) — this file said "not set" until 13 Sep, which is why the roster sync looked blocked when it was not |
-  | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set — safe to add now; the redeploy they were waiting on landed as pb-notes **v9** (RUNBOOK §17) |
+  | `PB_GMAIL_REFRESH_TOKEN` + `_CLIENT_ID` + `_CLIENT_SECRET` | pb-notes (`email` channel) | not set — safe to add now; the redeploy they were waiting on landed as pb-notes **v9** (RUNBOOK §17), and v11 carries it too |
   | `PB_EXTRACTOR_MODEL` | pb-notes | optional — defaults to `claude-sonnet-5` |
   | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | **set** (12 Sep 2026) — `whsec_`, 24-byte key. From a webhook created in the Fathom UI; see RUNBOOK §4 |
   | `PB_FATHOM_API_KEY` | nothing — operator only | **set** (12 Sep 2026). Creates/deletes the Fathom webhook via `api.fathom.ai` from `pg_net`. No edge function reads it; safe to delete once the webhook is settled |
@@ -126,8 +126,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
   enough to make the sweep do real work. A channel with no credential is skipped and said so in
   the run's notes.
-- Deployed versions as of 12 Sep 2026: **pb-notes v9**, **pb-score v3**, pb-sync and both
-  webhooks v1. `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
+- Deployed versions as of **14 Sep 2026**: **pb-notes v11**, **pb-score v6** (both from commit
+  `561f289`), **pb-fathom-webhook v2**, **pb-sync v1**, **pb-pipedrive-webhook v1**. This line has
+  been wrong more than once — read it from `list_edge_functions`, not from here, and check drift
+  against each function's real import closure (RUNBOOK §3). **pb-sync and pb-pipedrive-webhook are
+  still behind** their sources (the `helpers.ts` / `db.ts` paging fixes); neither is on a cron and
+  the Pipedrive webhook has no credential set, so nothing is running wrong today — but redeploy
+  both before either is used in anger. `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
   runs *before* anything is written — so a transient gateway failure there costs the whole run
   and leaves no `pb_runs` row at all. That is not hypothetical: it took both nightly jobs out on
   12 Sep (RUNBOOK §15).

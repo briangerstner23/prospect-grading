@@ -134,6 +134,28 @@ bundles each into one ES module under `dist/functions/<fn>/index.js`; deploy tha
   decoded to the character it names. The function still behaves identically, but its deployed
   bytes no longer match the bundle, so the sha256 you recorded stops identifying what is running.
 - Emitting ~24–66 KB verbatim is the failure-prone step. Verify the deploy, don't assume it.
+- **A trailing newline is easy to drop and worth keeping.** esbuild ends each bundle with `\n`;
+  omit it from the payload and the function is byte-identical apart from that one character, so it
+  behaves the same and boots the same — but its sha256 is not the bundle's, which is the one thing
+  the recorded hash exists to prove. pb-score v6 (14 Sep) was deployed this way; its deployed bytes
+  hash to `8d968901…`, the bundle to `5d922866…`.
+
+**Which functions are actually stale.** Comparing commit dates against the deploy date over
+`supabase/functions/<fn>` and all of `_shared/` over-reports: each function imports only part of
+`_shared/`, so a change to a file it never imports is not drift. Ask esbuild what the function
+really imports, then ask git what changed in exactly those files since it was deployed:
+
+```bash
+npx esbuild@0.24.2 supabase/functions/<fn>/index.ts --bundle --format=esm --platform=neutral \
+  --target=esnext --external:'jsr:*' --external:'npm:*' --external:'https://*' --external:'node:*' \
+  --metafile=/tmp/meta.json --outfile=/dev/null
+git log --oneline --since=<deploy timestamp, from list_edge_functions updated_at> -- \
+  $(python3 -c "import json;print(' '.join(json.load(open('/tmp/meta.json'))['inputs']))")
+```
+
+`updated_at` on `list_edge_functions` is epoch **milliseconds**. Pass the timestamp to `--since` as
+a whole quoted string: splitting `fn:2026-09-13T14:09:52Z` on the last `:` in shell leaves `--since
+52`, which git accepts as an approxidate and silently answers the wrong question.
 
 Redeploy any function whose `_shared/` copy of a `core/` or `ingest/` module changed.
 
