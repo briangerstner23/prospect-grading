@@ -120,7 +120,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   | `PB_EXTRACTOR_MODEL` | pb-notes | optional — defaults to `claude-sonnet-5` |
   | `PB_FATHOM_WEBHOOK_SECRET` | pb-fathom-webhook | **set** (12 Sep 2026) — `whsec_`, 24-byte key. From a webhook created in the Fathom UI; see RUNBOOK §4 |
   | `PB_FATHOM_API_KEY` | nothing — operator only | **set** (12 Sep 2026). Creates/deletes the Fathom webhook via `api.fathom.ai` from `pg_net`. No edge function reads it; safe to delete once the webhook is settled |
-  | `PB_PIPEDRIVE_WEBHOOK_BASIC`, `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set |
+  | `PB_PIPEDRIVE_WEBHOOK_BASIC` | pb-pipedrive-webhook | **set** (14 Sep 2026) — `pbhook:<24 random bytes, hex>`, generated in-database. The four Pipedrive webhooks carry the same pair as HTTP Basic; RUNBOOK §5 |
+  | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | not set — custom fields pass through unlabelled, which is a note on the run, not an error |
 
   pb-notes sweeps three channels, each behind its own credential and its own watermark row. The
   `fathom_call` channel needs **no credential of its own** — it reads `pb_calls`, which the

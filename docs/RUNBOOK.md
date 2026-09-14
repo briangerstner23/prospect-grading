@@ -238,15 +238,57 @@ from pb_webhook_inbox where source = 'fathom' order by received_at desc limit 5;
 
 ## 5 · Register the Pipedrive webhook
 
-Pipedrive is connected (9 Sep, ~17:15 UTC, through a new Pipedrive MCP; the old server is
-gone). **Webhooks cannot be created through the MCP** — an operator creates them in the
-Pipedrive UI, after `pb-pipedrive-webhook` is deployed (§3) and `PB_PIPEDRIVE_WEBHOOK_BASIC`
-is in Vault (§1). No Pipedrive API token is involved.
+**Done, 14 Sep 2026.** Four webhooks exist — `Prospect Book - deal` / `- organization` /
+`- person` / `- activity`, ids 3167379 / 3167377 / 3167378 / 3167376 — all `event_action = *`,
+version 2.0, pointing at `<FN>/pb-pipedrive-webhook` with HTTP Basic. The receiver was proved to
+verify the stored pair before any real delivery: a deliberately ignorable body
+(`{"meta":{"action":"change","entity":"note"},"data":{}}`) posted from `pg_net` with the Basic
+header came back `verified: true, processed: true, ignored: 1` and wrote nothing.
 
-1. Generate the Basic pair and store it as one Vault secret, `user:pass`
-   (`select vault.create_secret('<user>:<pass>', 'PB_PIPEDRIVE_WEBHOOK_BASIC', …)`).
-2. In Pipedrive: **Settings → Tools and apps → Webhooks → Create new webhook**. One webhook
-   per entity, four in all, each with:
+Pipedrive is connected (9 Sep, ~17:15 UTC, through a new Pipedrive MCP; the old server is
+gone). **The MCP has no webhook tool** — but `PB_PIPEDRIVE_API_TOKEN` has been in Vault since
+12 Sep, and Pipedrive's REST API does, so the whole thing runs from the database and nobody
+has to fill in four forms. This section used to say "no Pipedrive API token is involved"; that
+was true when it was written and is not any more.
+
+1. Generate the Basic pair and store it as one Vault secret, `user:pass`. Use hex, so the value
+   contains exactly one colon and splits unambiguously on the first one:
+
+   ```sql
+   select vault.create_secret('pbhook:' || encode(gen_random_bytes(24), 'hex'),
+                              'PB_PIPEDRIVE_WEBHOOK_BASIC', '<why and when>');
+   ```
+
+2. Create the four webhooks from the database, reading both secrets through `pb_secret()` so
+   neither is ever typed out (`x-api-token` as a header, not in the URL, so the token stays out
+   of any request log):
+
+   ```sql
+   with cred as (
+     select public.pb_secret('PB_PIPEDRIVE_WEBHOOK_BASIC') as pair,
+            public.pb_secret('PB_PIPEDRIVE_API_TOKEN')     as token
+   ), parts as (
+     select split_part(pair, ':', 1) as usr,
+            substring(pair from position(':' in pair) + 1) as pwd, token from cred
+   ), objs as (select unnest(array['deal','organization','person','activity']) as obj)
+   select o.obj, net.http_post(
+     url := 'https://api.pipedrive.com/v1/webhooks',
+     body := jsonb_build_object(
+       'name', 'Prospect Book - ' || o.obj,
+       'subscription_url', '<FN>/pb-pipedrive-webhook',
+       'event_action', '*', 'event_object', o.obj, 'version', '2.0',
+       'http_auth_user', p.usr, 'http_auth_password', p.pwd),
+     headers := jsonb_build_object('Content-Type','application/json','x-api-token', p.token))
+   from objs o cross join parts p;
+   -- then read net._http_response for the four ids: 201 each, with the new webhook id in the body
+   ```
+
+   `GET https://api.pipedrive.com/v1/webhooks` first — the account already carries an unrelated
+   `Orbit deal sync` webhook pointing at the PM system, and the point of looking is to not
+   disturb it.
+
+   **Or, by hand if the token is ever withdrawn:** Pipedrive **Settings → Tools and apps →
+   Webhooks → Create new webhook**. One webhook per entity, four in all, each with:
    - **Version**: 2 (v2 payloads: `{meta, data, previous}`).
    - **Event action**: `*` · **Event object**: `deal`, then `organization`, then `person`,
      then `activity` (i.e. `deal.*`, `organization.*`, `person.*`, `activity.*`).
