@@ -283,6 +283,14 @@ const FACT_KEYS = [
   { key: "deal_size_estimate", group: "Dimension B · fit", kind: "money" },
   { key: "hourly_rate_accepted", group: "Dimension B · fit", kind: "bool" },
   { key: "broker_character", group: "Dimension B · fit", kind: "enum", options: ["pass", "flag"], hint: "Flag only — never a grading input (PRO-2r)." },
+  // The six observable criteria rubric 0.2.0 grades on (docs/FIT-v0.2-CRITERIA.md). is_agency and
+  // headcount are already above; these four had no field at all, which is why two of them sit near
+  // zero coverage — there was nowhere to put the answer. Unread is not the same as answered "no".
+  { key: "sells_build_work", group: "Dimension B · fit (0.2.0 criteria)", kind: "bool", hint: "Do they SELL what we build — sites, web apps, custom development, e-commerce? Not what industry they are in." },
+  { key: "no_inhouse_dev_team", group: "Dimension B · fit (0.2.0 criteria)", kind: "bool", hint: "True when no developer sits in the building. Employing developers for something else still counts as having a team." },
+  { key: "client_budget_size", group: "Dimension B · fit (0.2.0 criteria)", kind: "enum", options: ["buys_real_projects", "local_small"], hint: "Their CLIENTS' budgets, not the agency's own size. Who the clients are sets the ticket." },
+  { key: "client_evidence_count", group: "Dimension B · fit (0.2.0 criteria)", kind: "int", hint: "How many of their clients you could actually identify. Guards the answer above against a thin read." },
+  { key: "recurring_work_shape", group: "Dimension B · fit (0.2.0 criteria)", kind: "bool", hint: "Retainers, care plans, managed services — does the work repeat? Rarely visible from outside." },
   { key: "referral_from_network", group: "Adjustment inputs", kind: "bool" },
   { key: "icp4_vertical_proven", group: "Adjustment inputs", kind: "bool" },
   { key: "recurring_revenue_share", group: "Adjustment inputs", kind: "ratio" },
