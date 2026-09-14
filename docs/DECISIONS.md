@@ -1037,3 +1037,70 @@ Not done, and each is deliberate:
 - **The strong/weak split is a first setting, not a finding.** One strong or two weak is a
   judgement about relative evidential worth; the queue's confirm and reject rates per signal are
   what would turn it into a measurement.
+
+## 18 · Three owner answers on sequencing, the lift bar, and what a vendor count means (14 September 2026)
+
+Put to the owner after §17 was measured. Recorded here because two are rulings on how the book
+proceeds and the third is a challenge to a locked method that this session did not resolve.
+
+### 1 · Settle the fit read before spending on climb evidence — RULED
+
+The measurement behind §17 turned up something that reframes it. **Every Gold row in the book is
+Gold because of a stated ICP label, not an observation**: `criteria_answered` is 0 on all 659 live
+rows, and all 100 Gold rows carry `base_tier_source = icp` with `icp_derivation = stated`. The
+Platinum door needs fit Gold, so every Platinum-capable row rests on that label.
+
+Draft 0.2.0 retires ICP as the fit read and needs 5 of 6 observable criteria for Gold; a score of 0
+lands in the lowest band. Only 3 live accounts hold facts for five or more of the six, and one
+criterion (`size_band_fit`) is recorded for none. So **under the fit ruling already drafted, at most
+3 accounts could be Gold at all** — and therefore at most 3 could ever be Platinum, however much
+climb evidence is gathered.
+
+Ruled: settle 0.2.0 before any climb-evidence campaign. Collecting engagement evidence to unlock
+Platinum rows denominated in a label already marked for withdrawal is work that may not survive its
+own premise.
+
+### 2 · The one-strong-or-two-weak bar was intended — CONFIRMED
+
+§17 raised the bar as well as retiring two signals: under 0.1.0 any single signal lifted a ceiling,
+under 0.1.2 a single weak one does not. That was put to the owner explicitly, together with the
+observation that a keyword proxy over the call summaries finds strategy-question language in 87 of
+158, against 29 for champion or second-person language and 12 for a dated forcing event — so the
+rule halves the weight of what the calls most often contain.
+
+Confirmed as ruled. A strategy question is coach-level interest, and the bar stands. 0.1.2 needs no
+change.
+
+### 3 · A vendor count is potential, not only dilution — OPEN, and the method is wrong as written
+
+The owner was asked whether to start recording vendor rank, on the grounds that all 143
+Partner-proposed rows run on a defaulted `winnable_share` of 0.5 and there is not one vendor-rank
+fact in the book. He rejected the framing, and the arithmetic supports him.
+
+The wallet-allocation rule is `winnable = (1 − our_rank/(n_vendors+1)) × (2/n_vendors)`. Holding
+rank at #1:
+
+| Vendors | Our share at rank 1 |
+|---|---|
+| 2 | 0.667 |
+| 3 | 0.500 |
+| 4 | 0.400 |
+| 5 | 0.333 |
+| 6 | 0.286 |
+
+The wallet it multiplies is `headcount × revenue_per_head × outsourceable_share × serviceable_share`
+and **does not contain `n_vendors` at all**. So vendor count enters the model once, as a divisor.
+An agency buying the work we sell from six vendors scores lower headroom than one buying from two,
+even when we are its first choice — although using six vendors for this work is itself evidence that
+it buys a great deal of it.
+
+The owner's reading: multiple vendors means they are selling a lot of what we do, which is more
+opportunity, not less; and being second is a position that can be improved, not a fixed property.
+Both are about a PROSPECT, where we may not be a vendor at all yet and rank is a starting point.
+
+**Not resolved here.** The headroom method is locked (PRO-16) and this is a change to it, so it is a
+ruling and not a patch. What the next session needs to decide: whether `n_vendors` should also raise
+the wallet (as evidence of outsourcing volume) rather than only divide our share of it, and whether
+`our_rank` should be read as a current position with a climb path rather than a fixed allocation.
+Until then, the defaulted 0.5 stands on all 143 rows and the ceiling it produces should be read as an
+assumption, not a finding.
