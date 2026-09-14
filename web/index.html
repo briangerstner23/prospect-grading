@@ -1675,7 +1675,7 @@ function confidenceOverrideForm(a, sc) {
   const form = h("form", { class: "form" },
     h("div", { class: "sub" }, computed
       ? `Computed confidence on the last read: ${computed}. The grade is about what the book KNOWS, not about the prospect — move it when you know something the book does not.`
-      : "No computed confidence on the last read: the active rubric defines no confidence_grade block."),
+      : "No computed confidence on the last read yet — this account has not been scored under a rubric that defines confidence_grade. The override is recorded either way and applies on the next run."),
     h("div", { class: "fields" }, field("Grade", gradeSel), field("Reason code", code), field("Expires", expires, typeof expiryDays === "number" ? `Default from the rubric: ${expiryDays} days.` : "Leave empty for no expiry.")),
     field("Reason", reason),
     capNote,
