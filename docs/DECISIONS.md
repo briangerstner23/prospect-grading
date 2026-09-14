@@ -883,3 +883,71 @@ Whether a partner-stage company should be readable in this book at all is the co
 question — rubric 0.1.1, offered on 13 September and deferred in favour of the back-fill. It
 stays a toggle, not a ruling. This section only records that the current exclusions are correct
 under PRO-10 as written, and that the roster needs re-running rather than re-deciding.
+
+## 16 · What actually blocks rubric 0.2.0, measured (14 September 2026)
+
+§8 left 0.2.0 unactivated for a stated reason: the six fit criteria are unanswered for most of
+the roster, so activating would "restate the roster's ignorance as a demotion". That was the
+right call, and it named two directions without measuring either. This section measures both.
+
+The count is over the 659 accounts with `book in (prospect, parked)`, against `pb_current_facts`.
+
+### Per-criterion coverage
+
+| Criterion | Accounts answered | Share | Of which `evidence` |
+|---|---|---|---|
+| `is_agency` | 565 | 85.7% | 44 |
+| `headcount` | 454 | 68.9% | 10 |
+| `sells_build_work` | 189 | 28.7% | 34 |
+| `no_inhouse_dev_team` | 175 | 26.6% | 30 |
+| `recurring_work_shape` | 20 | 3.0% | 20 |
+| `client_budget_size` | 6 | 0.9% | 6 |
+
+The shortfall is not spread evenly — it is concentrated in **two criteria**. Gold needs
+`min_yes >= 5` of 6, and two of the six are recorded for under 3% of the book, so the Gold band
+is closed by arithmetic to all but **13 accounts (2.0%)**. That is the whole of §8's finding,
+located: it is not that the roster reads badly, it is that `client_budget_size` and
+`recurring_work_shape` are almost entirely unrecorded.
+
+Answered-count distribution today: 6 answered — 3 accounts; 5 — 10; 4 — 153; 3 — 23; 2 — 267;
+1 — 126; 0 — 77.
+
+### What clearing the review queue would do — and would not
+
+`pb_fact_candidates` holds **418 proposed rows**, and they are weighted towards exactly the two
+thin criteria: `client_budget_size` 44 proposals over 36 accounts, `recurring_work_shape` 37 over
+33, `sells_build_work` 50 over 37, `no_inhouse_dev_team` 46 over 35. So the extractor is finding
+these; nothing is being collected badly.
+
+Confirming **every** proposed candidate would move the book to:
+
+| | ≥ 5 answered (Gold reachable) | ≥ 3 answered (Silver reachable) | < 3 answered |
+|---|---|---|---|
+| today | 13 | 189 | 470 |
+| whole queue confirmed | 54 | 202 | 457 |
+
+That is the number worth having. Clearing the queue **quadruples** the rows that can reach Gold
+and barely moves everything else: 457 of 659 (69%) would still have fewer than three of six
+answered. **Clearing the queue is necessary and not sufficient.** Activating 0.2.0 on the far
+side of a fully-worked queue would still demote most of the book for want of evidence, so §8's
+conclusion stands on measured ground rather than on estimate.
+
+### The queue has nobody to work it
+
+418 proposed, and **3 candidates have ever been reviewed**. `pb_members` holds 2 owners and
+**0 raters**. The review queue and its UI were built, and then no one was given the lane to use
+them. This is the cheapest unblock on the list and it is not a code change.
+
+### One stale note corrected
+
+§8 records `pipedrive_note` and `email` as "dark for want of their credentials".
+`PB_PIPEDRIVE_API_TOKEN` went into Vault on 12 September and the sweep has been running since —
+`pb_facts` 7,007 → 7,305 and candidates 10 → 418 over the three days. The Pipedrive channel is
+no longer dark. `PB_PIPEDRIVE_WEBHOOK_BASIC` is still unset, which is a different gap.
+
+### What this does not decide
+
+`unclassified_when_answered_below` stays a toggle at **1**, and one answered criterion is still
+enough to publish a tier — the rule-5 leak §8 identified is unchanged and unruled. Nothing here
+activates 0.2.0 or moves a threshold. It measures the two directions §8 offered so the owner can
+choose between them with the numbers in hand.
