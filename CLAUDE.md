@@ -48,7 +48,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260914210000 pipedrive field map ·
             20260915090000 website reads ·
             20260915120000 fact source precedence ·
-            20260915130000 website team pages (all applied)
+            20260915130000 website team pages ·
+            20260915140000 website retry window (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;

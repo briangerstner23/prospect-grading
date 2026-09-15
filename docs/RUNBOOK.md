@@ -1769,3 +1769,58 @@ select confidence_grade, computed_confidence_grade, count(*)
 from (select distinct on (account_id) * from pb_reads order by account_id, run_at desc) l
 group by 1, 2 order by 1, 2;
 ```
+
+## 25 · Reading the agencies' own sites
+
+Two in-database functions, no edge function and no redeploy. They fetch pages and store the
+stripped text; **they write no facts** — extraction is pb-notes' job, behind the quote check and
+`pb_fact_candidates` (rule 8).
+
+They are a stepper for the reason the roster crawl is: `pg_net` dispatches only after the calling
+transaction commits, so nothing can fetch and harvest in one statement.
+
+```sql
+-- 1 · front pages, in batches of at most 200
+select public.pb_website_fetch_begin(200, 30, '{/}');
+-- 2 · wait ~20s, then harvest. Repeat until still_in_flight is 0.
+select public.pb_website_fetch_step();
+-- 3 · repeat 1–2 until begin returns 0.
+
+-- 4 · then the pages that actually carry a headcount. Only queued for an account whose
+--     front page already returned 200, so this spends nothing on dead domains.
+select public.pb_website_fetch_begin(200, 30, '{/about,/team}');
+select public.pb_website_fetch_step();
+-- 5 · and the spellings the first pass missed
+select public.pb_website_fetch_begin(200, 30, '{/about-us,/our-team}');
+```
+
+`step()` returns `{harvested, failed, still_in_flight, lost}`. **A batch takes longer than it
+looks** — the per-request timeout is 15s and a slow host spends all of it, so a batch of 200 can
+need three or four `step()` calls a minute apart. `lost` counts rows whose reply `pg_net` reaped
+before it was harvested; they are closed with an error rather than left in flight forever, which
+would block that page from ever being queued again.
+
+Where it stood after the first full pass (15 Sep 2026): 451 of 499 prospects carry a domain, 397
+front pages answered 200, 377 with usable text. `/about` answered for 256 of the 397, 240 of them
+usable — the signal worth extracting, because a role list separates "eleven people" from "eleven
+people, two of whom build things" (`delivery_headcount`, DECISIONS §21).
+
+**`p_stale_days` counts from the last ANSWER, not the last success** (20260915140000). The first
+cut tested `last_ok`, the newest 200 — so a page that 404s never set it, stayed due forever, and
+every batch re-queued the same dead URLs. It produced 742 completed `/about` rows across 397
+accounts and never got as far as `/team`. A 404 is an answer: that path does not exist on that
+site, and asking again tomorrow will not change it.
+
+Watch the strip regex if you ever touch `pb_website_fetch_step`. PostgreSQL takes the greediness
+of the **whole** expression from its **first** quantifier, so `<script[^>]*>.*?</script>` matches
+from the first `<script>` to the *last* `</script>` and swallows the page. The first cut of this
+function did exactly that — 424 KB of HTML reduced to zero characters, filed as "probably a
+client-rendered page". Every pattern in there starts with its own non-greedy quantifier; the
+regression test is in the function's own comment.
+
+### Known gap
+
+Paths are guessed. An agency whose team page lives at `/who-we-are` or `/people` is missed, and
+the fix is to keep the `href`s: the stripper drops all tags, so the front page's own link to its
+team page is thrown away before anyone can follow it. Harvesting links on the `/` pass and queuing
+the real URL would beat guessing. Not built.
