@@ -190,6 +190,82 @@ function run(partial: Partial<ResolveInput> = {}) {
   eq("inferred outranks unknown", r.features.headcount, 12);
 }
 {
+  // Source precedence sits BETWEEN the label and recency. 111 accounts carry a headcount from
+  // both Apollo and Pipedrive; 38 of them land on opposite sides of the 12-person Partner
+  // threshold, and before migration 20260915120000 the winner was whichever seed ran last.
+  // Re-running the Pipedrive seed would have flipped all of them.
+  const r = run({
+    facts: [
+      factRow("headcount", 30, { evidence_label: "inferred", source: "pipedrive", created_at: "2026-09-14T00:00:00Z" }),
+      factRow("headcount", 11, { evidence_label: "inferred", source: "apollo", created_at: "2026-09-11T00:00:00Z" }),
+    ],
+  });
+  eq("a newer Pipedrive row does not beat an older Apollo one", r.features.headcount, 11);
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 11, { evidence_label: "inferred", source: "apollo", created_at: "2026-09-14T00:00:00Z" }),
+      factRow("headcount", 15, { evidence_label: "inferred", source: "website", created_at: "2026-09-01T00:00:00Z" }),
+    ],
+  });
+  eq("the agency's own site outranks third-party enrichment", r.features.headcount, 15);
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 15, { evidence_label: "inferred", source: "website", created_at: "2026-09-14T00:00:00Z" }),
+      factRow("headcount", 12, { evidence_label: "inferred", source: "rater", created_at: "2026-08-01T00:00:00Z" }),
+    ],
+  });
+  eq("a person in the rater lane outranks every machine", r.features.headcount, 12);
+}
+{
+  // An unlisted source sorts last, so adding a collector never silently outranks a person.
+  const r = run({
+    facts: [
+      factRow("headcount", 99, { evidence_label: "inferred", source: "some_new_scraper", created_at: "2026-09-20T00:00:00Z" }),
+      factRow("headcount", 12, { evidence_label: "inferred", source: "pipedrive", created_at: "2026-08-01T00:00:00Z" }),
+    ],
+  });
+  eq("an unknown source ranks below every named one", r.features.headcount, 12);
+}
+{
+  // The label still wins over the source: a call beats a site, but so does any evidence row.
+  const r = run({
+    facts: [
+      factRow("headcount", 15, { evidence_label: "inferred", source: "rater", created_at: "2026-09-20T00:00:00Z" }),
+      factRow("headcount", 100, { evidence_label: "evidence", source: "fathom_call", created_at: "2026-08-01T00:00:00Z" }),
+    ],
+  });
+  eq("evidence still outranks source precedence", r.features.headcount, 100);
+}
+{
+  // Rule 9: the view and latestFactPerKey must not drift. Read the order straight out of the
+  // migration's CASE and compare it to SOURCE_ORDER's observable behaviour, so renaming a source
+  // in one place and not the other fails here rather than in a nightly run.
+  const sql = readFileSync(join(here, "../supabase/migrations/20260915120000_prospect_book_fact_source_precedence.sql"), "utf8");
+  const block = sql.slice(sql.indexOf("case source"), sql.indexOf("else 7"));
+  const fromSql = [...block.matchAll(/when\s+'([a-z_]+)'\s+then\s+(\d+)/g)]
+    .sort((a, b) => Number(a[2]) - Number(b[2]))
+    .map((m) => m[1]);
+  // Probe the resolver: for each adjacent pair the earlier source must win on an older row.
+  const wins = fromSql.every((src, i) => {
+    if (i === 0) return true;
+    const better = fromSql[i - 1];
+    const res = run({
+      facts: [
+        factRow("headcount", 2, { evidence_label: "inferred", source: src, created_at: "2026-09-20T00:00:00Z" }),
+        factRow("headcount", 1, { evidence_label: "inferred", source: better, created_at: "2026-01-01T00:00:00Z" }),
+      ],
+    });
+    return res.features.headcount === 1;
+  });
+  eq("the migration lists seven sources", fromSql.length, 7);
+  check("latestFactPerKey ranks sources in the same order as the pb_current_facts view", wins,
+    `view order: ${fromSql.join(" > ")}`);
+}
+{
   const r = run({
     facts: [
       factRow("headcount", 12, { evidence_label: "evidence", created_at: "2026-08-01T00:00:00Z" }),

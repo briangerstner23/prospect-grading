@@ -426,11 +426,34 @@ function labelRank(label: unknown): number {
 }
 
 /**
+ * Source precedence, best → worst, ranked by how close a source is to someone who actually knows.
+ * Mirrors the CASE in the pb_current_facts view (migration 20260915120000); the two must not
+ * drift, and resolve_features_test.ts pins this list against that file.
+ *
+ * `website` above `apollo` and `pipedrive` is the point of the order. Apollo's headcount counts
+ * LinkedIn profiles claiming the employer, so it carries alumni and contractors — against the
+ * nine accounts where a headcount was stated on a recorded call it is exact twice, within 25%
+ * four times of seven, and 4× high once. A team page is a claim the agency makes about itself.
+ */
+const SOURCE_ORDER: readonly string[] = [
+  "rater", "fathom_call", "pipedrive_note", "website", "notion_master", "apollo", "pipedrive",
+];
+
+/** Lower wins. An unlisted source sorts last, so a new collector never silently outranks a person. */
+function sourceRank(source: unknown): number {
+  const i = SOURCE_ORDER.indexOf(String(source ?? ""));
+  return i < 0 ? SOURCE_ORDER.length : i;
+}
+
+/**
  * Winning row per key, in the same order as the pb_current_facts view: evidence outranks
- * inferred outranks unknown, then newest written, then newest observed.
+ * inferred outranks unknown, then source precedence, then newest written, then newest observed.
  *
  * Recency alone is not quality. A quote-backed sentence from a 2025 call note beats a machine
  * guess made this morning, and under a pure created_at sort the next sweep would overwrite it.
+ * Within one label, write order is not a judgement either: 111 accounts carry a headcount from
+ * both Apollo and Pipedrive, 38 of them land on opposite sides of the 12-person Partner
+ * threshold, and which one won was decided by the order the two seeds happened to run.
  * The view and this function must stay in step — pb-score reads one, the pure path the other.
  */
 function latestFactPerKey(facts: FactRow[]): Map<string, FactRow> {
@@ -440,6 +463,9 @@ function latestFactPerKey(facts: FactRow[]): Map<string, FactRow> {
       const la = labelRank(a.f.evidence_label);
       const lb = labelRank(b.f.evidence_label);
       if (la !== lb) return la - lb;
+      const sa = sourceRank(a.f.source);
+      const sb = sourceRank(b.f.source);
+      if (sa !== sb) return sa - sb;
       const ca = parseMs(a.f.created_at) ?? -Infinity;
       const cb = parseMs(b.f.created_at) ?? -Infinity;
       if (ca !== cb) return cb - ca;

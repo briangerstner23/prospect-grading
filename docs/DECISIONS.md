@@ -1358,3 +1358,78 @@ numbers are unchanged — the same trap as `build_demand_exceeds_capacity` in §
 portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and Tomahawk's
 own note already carries the latter unextracted. The collector is the next build, and until it
 exists this ruling is potential rather than effect.
+
+## 22 · Which source wins, and reading the agency's own site (15 September 2026)
+
+### What was wrong
+
+`pb_current_facts` resolved a contested key by `evidence_label`, then `created_at desc`. Within
+one label that made **write order** the tiebreak — not a judgement about quality, an accident of
+which seed ran last.
+
+Measured across the prospect book on 15 September:
+
+| | |
+|---|---|
+| accounts carrying a headcount from **both** Apollo and Pipedrive | 111 |
+| of those, the two agree | 12 |
+| median Apollo ÷ Pipedrive | **2.00** (upper quartile 9.25) |
+| disagree by 2× or more | 69 |
+| **land on opposite sides of the 12-person Partner threshold** | **38** |
+
+Apollo wins 109 of the 111 today. Not because it is better: the Apollo seed ran 11 September and
+the Pipedrive seed 9 September. Re-running the Pipedrive seed — which is how an account is
+admitted (RUNBOOK §23) — writes rows dated today and silently flips all 109 back, moving 38
+ceilings across a band. The rule below is a latch, not a repair: today's answer is right by luck.
+
+### Ruled
+
+One order, stated once, ranking a source by how close it is to someone who actually knows.
+It sits **between** the evidence label and recency, so nothing here weakens rule 9's first clause.
+
+```
+rater  >  fathom_call  >  pipedrive_note  >  website  >  notion_master  >  apollo  >  pipedrive  >  (anything else)
+```
+
+An unlisted source sorts **last**, so adding a collector never silently outranks a person.
+
+Apollo above Pipedrive is the one placement resting on evidence rather than principle, and the
+evidence is thin — nine accounts have a headcount someone stated on a recorded call:
+
+| Stated on the call | Apollo | Pipedrive |
+|---|---|---|
+| 100 | 400 | — |
+| 16 | 17 | — |
+| 15 | 36 | — |
+| 15 | 9 | — |
+| 11 | 11 | 30 |
+| 4 | 3 | 6 |
+| 1 | 1 | — |
+
+Apollo is exact twice and within 25% four times of the seven it covers; Pipedrive overcounts both
+of the two it covers. Both errors that matter are **overcounts**, which is the LinkedIn mechanism
+showing through — Apollo's headcount counts profiles claiming the employer, so it carries alumni
+and contractors. Since headroom is `headcount × $8,750` (§20), an overcounting source inflates
+the whole book. n = 7 is a default, not a finding; it is written down so the next nine calls can
+overturn it.
+
+Effect on the book: twelve headcounts changed hands (Notion master list 12 → 24 winners, Apollo
+163 → 154, Pipedrive 189 → 186). Nine changed value. Small, which is the point — the rule exists
+for the flip that had not happened yet.
+
+### The site is the source that should win
+
+The owner, 15 September: *"use the site and do what is needed for accuracy."*
+
+A team page is the number an agency will defend in public, and unlike LinkedIn it shows **roles** —
+which is what separates "eleven people" from "eleven people, two of whom build things", i.e.
+`delivery_headcount` (§21). So `website` is ranked above Apollo and Pipedrive and below anything a
+person said.
+
+Migration 20260915130000 gives `pb_website_reads` a `path` column, so one row is one page, and
+lets the caller name which paths to try. Sub-pages are only queued for an account whose front page
+already returned 200 — no point spending five requests on a domain that does not resolve.
+
+Nothing here writes a fact. The fetch stores text; extraction stays with pb-notes, behind the
+quote check, the judgement check and `pb_fact_candidates` (rule 8). A machine reading a team page
+proposes; a person decides.

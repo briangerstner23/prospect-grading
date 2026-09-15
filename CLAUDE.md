@@ -46,7 +46,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260913220000 roster drift ·
             20260914150000 bulk reject fact candidates ·
             20260914210000 pipedrive field map ·
-            20260915090000 website reads (all applied)
+            20260915090000 website reads ·
+            20260915120000 fact source precedence ·
+            20260915130000 website team pages (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -97,9 +99,14 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
    `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
    `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
-9. **Evidence outranks recency.** `pb_current_facts` and `latestFactPerKey` both resolve a key by
-   `evidence > inferred > unknown`, then newest written, then newest observed. The view is what
-   pb-score reads and the function is what the pure path reads; they must not drift.
+9. **Evidence outranks recency, and a named source outranks write order.** `pb_current_facts`
+   and `latestFactPerKey` both resolve a key by `evidence > inferred > unknown`, then by source
+   (`rater > fathom_call > pipedrive_note > website > notion_master > apollo > pipedrive >`
+   anything else), then newest written, then newest observed. Without the middle step the
+   tiebreak is which seed ran last — 38 accounts flip across the Partner threshold on that alone
+   (`docs/DECISIONS.md` §22). The view is what pb-score reads and the function is what the pure
+   path reads; they must not drift, and `resolve_features_test.ts` pins the list against the
+   migration.
 10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
 
