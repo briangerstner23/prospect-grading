@@ -924,6 +924,63 @@ check("determinism: input is not mutated", (() => {
 
 
 /* ------------------------------------------------------------------ *
+ * rubric 0.3.0 · potential stops depending on engagement
+ *
+ * Owner ruling 15 Sep 2026 (DECISIONS §20). "Project" is a SIZE band and "Cold" is a
+ * BEHAVIOUR; the climb-evidence cap welded them together, so an agency nobody had called
+ * recently could not hold a ceiling above Project however big it was. On 14 Sep that held 492
+ * of 499 prospects at Project while 139 carried headroom over $100K.
+ *
+ * Two deletions: the cap comes off the ceiling, and the qualification count comes out of the
+ * Platinum gate (it already raises CONFIDENCE, so it was one input doing two jobs). Both
+ * default to the old behaviour so the frozen 0.1.0 baseline stays reproducible.
+ * ------------------------------------------------------------------ */
+{
+  const V3: Rubric = load("rubric.prospect.v0.3.json");
+
+  // Big agency, no climb signal, never called. Under 0.1.0 this is capped to Project and can
+  // never be Platinum; under 0.3.0 it is exactly what it is — a large potential, unengaged.
+  const bigCold = base({
+    icp_class: "ICP-1", headcount: 40, wl_signal: "High",
+    climb_signals: [], money: null, authority: null, timing: null, specification: null,
+  });
+  const c1 = grade(bigCold, R);
+  const c3 = grade(bigCold, V3);
+  eq("0.1.0: a cold 40-person agency is capped at Project", c1.potential.ceiling, "Project");
+  check("0.1.0: …and flagged as capped", c1.flags.some((f) => f.includes("no climb evidence")));
+  eq("0.3.0: the same agency keeps the ceiling its headroom earns", c3.potential.ceiling, "Partner");
+  check("0.3.0: …and is no longer flagged as capped", !c3.flags.some((f) => f.includes("no climb evidence")));
+  eq("0.3.0: climb evidence is still computed and still empty", c3.potential.climb_evidence.length, 0);
+
+  // Platinum is potential: no qualification facts required.
+  eq("0.3.0: Platinum needs no qualification facts", c3.qualification.present_count, 0);
+  check("0.3.0: a never-contacted agency can reach Platinum", c3.effective_tier === "Platinum" || c3.fit.adjusted_tier !== "Gold");
+
+  // …but qualification still raises CONFIDENCE, which is where deal reality belongs.
+  const qualified = base({
+    icp_class: "ICP-1", headcount: 40, wl_signal: "High", climb_signals: [],
+    money: "present", authority: "present", specification: "present", timing: "within_1_month",
+  });
+  const cq = grade(qualified, V3);
+  check("0.3.0: qualification facts still raise confidence", cq.fit.confidence !== c3.fit.confidence || cq.qualification.present_count > c3.qualification.present_count);
+  eq("0.3.0: …and are still counted", cq.qualification.present_count >= 3, true);
+
+  // A small agency is still small: the ruling removes a cap, it does not inflate anyone.
+  const smallCold = base({ icp_class: "ICP-1", headcount: 1, wl_signal: "High", climb_signals: [] });
+  eq("0.3.0: a one-person agency still ceilings at Project", grade(smallCold, V3).potential.ceiling, "Project");
+
+  // The frozen baseline is untouched: 0.1.0 has no caps_ceiling key and must cap exactly as before.
+  eq("0.1.0: still caps — the toggle defaults to the old behaviour", grade(bigCold, R).potential.ceiling, "Project");
+  throws("0.3.0: a non-boolean caps_ceiling throws and names the path", () => {
+    const broken = structuredClone(V3);
+    broken.potential.climb_evidence.caps_ceiling = "no";
+    return grade(bigCold, broken);
+  }, "potential.climb_evidence.caps_ceiling");
+
+  eq("0.3.0: grading twice is byte-identical", canonicalJson(grade(bigCold, V3)), canonicalJson(grade(bigCold, V3)));
+}
+
+/* ------------------------------------------------------------------ *
  * rubric 0.2.0 · the observable fit criteria carry Dimension B
  *
  * Owner decision 11 Sep 2026: ICP is retired as the fit read and kept as a label. These cases

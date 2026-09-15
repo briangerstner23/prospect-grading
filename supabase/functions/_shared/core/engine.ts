@@ -57,6 +57,7 @@ import {
   reqOneOf,
   reqOneOfIn,
   optStrIn,
+  optBoolIn,
   rubricAt,
   reqStr,
   reqStrIn,
@@ -503,10 +504,29 @@ function potentialOf(
     shortOf = "no climb evidence";
   }
 
+  /* Does climb evidence CAP the ceiling, or only describe the relationship?
+   *
+   * Under 0.1.x it caps: no climb signal, no ceiling above Project. That welds two different
+   * words together — "Project" is a SIZE (a headroom band) and "Cold" is a BEHAVIOUR — and the
+   * effect is that engagement decides potential. On 14 Sep 2026 it held 492 of 499 prospects at
+   * Project while 139 of them carried headroom above $100K, purely because no climb signal had
+   * ever been recorded anywhere in the book.
+   *
+   * Owner ruling, 15 Sep 2026 (DECISIONS §20): potential is what they could be worth, and an
+   * agency's capacity does not depend on whether anyone has logged a second conversation.
+   * Climb evidence stays — it is still computed, still traced, and still belongs to the
+   * relationship — it simply stops capping the size.
+   *
+   * Defaults to TRUE so 0.1.0 scores exactly as it always did (docs/BASELINE.md). */
+  const capsCeiling = optBoolIn(rubric, reqObj(rubric, "potential.climb_evidence") as Record<string, unknown>, "caps_ceiling", "potential.climb_evidence", true);
+
   let ceiling: Ceiling = "Project";
   let cappedReason: string | null = null;
   if (proposed === null) {
     notes.push("Ceiling defaults to Project: headroom unknown and no stated ceiling.");
+  } else if (!capsCeiling) {
+    ceiling = proposed;
+    if (!lifts) notes.push("Ceiling set from headroom alone; climb evidence describes the relationship here, it does not cap the size (DECISIONS §20).");
   } else if (CEILING_ORDER.indexOf(proposed) > 0 && !lifts) {
     ceiling = "Project";
     cappedReason = tiered ? `climb evidence below the lift (${shortOf})` : "no climb evidence";

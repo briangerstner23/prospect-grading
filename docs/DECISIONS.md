@@ -1177,3 +1177,102 @@ Miranda's own three facts were recorded during the session that produced this ru
 `client_budget_size = buys_real_projects`, `sells_build_work = true`, `no_inhouse_dev_team = false`
 — the last with the reasoning above in its note, so the record shows why a false there is not the
 mark against them it looks like.
+
+## 20 · Potential stopped depending on engagement (owner ruling, 15 September 2026)
+
+### What was wrong
+
+Two words had been welded together. **"Project" is a size** — a headroom band under $35K.
+**"Cold" is a behaviour** — and it changes the moment someone engages. The climb-evidence rule
+joined them:
+
+> The ceiling may not exceed Project without at least one observed climb signal.
+
+Basis: `unruled_default`. Never ruled; adopted by the build from the July stage notes.
+
+Measured on 14 September, across 499 prospects:
+
+| Platinum gate | Passing |
+|---|---|
+| adjusted tier = Gold | 95 |
+| qualification present_count ≥ 3 | 38 |
+| **ceiling = Partner** | **6** |
+| all three → Platinum | **2** |
+
+492 accounts sat at a Project ceiling — including accounts carrying **$9.6M of headroom** — and
+**139 had headroom above the $100K Partner band**. They were not small. They were capped because
+no climb signal had ever been recorded: the book holds 1,479 signals across nine types and **not
+one** of the five the rule wants (2nd person engaged, Strategy question asked, 2nd project scoped,
+Referred someone, Structural break).
+
+So a gate that was never ruled, fed by a signal type nothing collects, was deciding how big every
+prospect in the book could be. The owner's words: *"cold does not mean Project, cold is changed
+based on engagement"*, and *"this is preventing me from properly assessing the potential of
+prospects"*.
+
+### Ruled
+
+**Platinum is potential, not deal reality.** Owner, 15 September: *"platinum does not mean the deal
+is real, it means that they have the potential to reach this level."*
+
+Three axes, and each answers its own question:
+
+| Axis | Question | Where it lives |
+|---|---|---|
+| **Tier** — Bronze → Platinum | What could they be worth? | `effective_tier` |
+| **Confidence** — High / Medium / Low | How well do we know them? | `dimension_b.confidence` |
+| **Engagement** — Super Hot → Cold | Are they live right now? | `signals.urgency` |
+
+Interactions, calls and climb signals raise **confidence** and drive **engagement**. Neither touches
+potential.
+
+### The change, which is two deletions
+
+1. `potential.climb_evidence.caps_ceiling: false`. Climb evidence is still computed, still traced,
+   still part of the relationship — it no longer caps the size. The key defaults to **true** when
+   absent, so 0.1.0 scores exactly as it always did (docs/BASELINE.md).
+2. `qualification.present_count >= 3` removed from `dimension_b.platinum_rule`. It was already an
+   input to `dimension_b.confidence` (High requires `present_count >= 3`) and already the second
+   element of `chase_rank_key`. Gating the tier on it made one input do three jobs, and the tier
+   job was the wrong one: it made Platinum unreachable for any agency we had not yet called.
+
+Nothing was added. Both gates came out.
+
+### What it produces, computed from the stored scorecards
+
+Headroom and adjusted tier are unchanged by this ruling, so the new distribution is exact rather
+than estimated:
+
+| | 0.1.0 | 0.3.0 |
+|---|---|---|
+| Partner ceiling | 6 | **139** |
+| Platinum | 2 | **66** |
+
+The 66, by engagement: **7** Super Hot or Hot, **9** Warm, **50** Cold.
+
+That last number is the point of the ruling. Fifty agencies with Platinum-level potential that
+nobody has called, which the book previously displayed as Silver and Bronze. They are not a sales
+queue — the owner: *"the cold prospect is more of a signal to invest in nurturing"*. Engagement
+decides who to call; potential decides who is worth the nurture spend.
+
+### What this does NOT change
+
+- **A small agency is still small.** A one-person shop still ceilings at Project; an engine test
+  pins it. The ruling removes a cap, it does not inflate anyone.
+- **The chase order.** `chase_rank_key` still reads tier → qualification → urgency → year-one band,
+  so a qualified Platinum still outranks a cold one.
+- **`stated_timing_wins`.** Still true: an agency that said "no timeline" is still Cold even if it
+  has since asked a strategy question. That was put to the owner and not answered, so it stands
+  unchanged rather than being decided here.
+- **PRO-8.** Every tier still prints UNVALIDATED. Sixty-six Platinums on an unvalidated rubric are
+  sixty-six hypotheses, not sixty-six wins.
+
+### Still open after this
+
+- **Nothing collects climb signals**, so engagement and confidence are both thinner than they
+  should be. §18 measured strategy-question language in 87 of 158 call summaries; none of it is
+  extracted as a signal. That is now the highest-value collector to build.
+- **`urgency` is the wrong name** for what it computes — a decayed sum of the prospect's behaviour.
+  It describes *them*, not our obligation. Renaming it `engagement` was proposed and is not ruled.
+- 0.3.0 is a **draft**. It is not activated, and `pb-score` must be redeployed before it can be
+  previewed live — the deployed bundle predates `caps_ceiling` and would ignore it.

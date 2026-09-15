@@ -121,6 +121,18 @@ export function optStrIn(rubric: Rubric, obj: Record<string, unknown>, key: stri
   return v;
 }
 
+/**
+ * An optional boolean in a rubric object: absent or null takes `fallback`, anything that is
+ * not a boolean throws. Used for toggles that must default to the OLD behaviour so a frozen
+ * baseline stays reproducible when the toggle is added (docs/BASELINE.md).
+ */
+export function optBoolIn(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string, fallback: boolean): boolean {
+  const v = obj[key];
+  if (v === undefined || v === null) return fallback;
+  if (typeof v !== "boolean") throw new RubricError(rubric, `${path}.${key}`, "true or false when present", v);
+  return v;
+}
+
 export function reqOneOfIn<T extends string>(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string, options: readonly T[]): T {
   const v = obj[key];
   if (typeof v !== "string" || !(options as readonly string[]).includes(v)) {
