@@ -604,6 +604,13 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const icp_class_label = labelOf("icp_class", icp_class);
   const headcount = fact("headcount", (v) => toInt(v, 0));
   const headcount_label = labelOf("headcount", headcount);
+  /* Delivery capacity and maturity (DECISIONS §21). Both are portfolio-readable — a team page
+   * gives the first, a "founded 1998" line the second — and both resolve like any other fact.
+   * The wallet's fallback to headcount lives in the ENGINE, so the trace can say which was used. */
+  const delivery_headcount = fact("delivery_headcount", (v) => toInt(v, 0));
+  const delivery_headcount_label = labelOf("delivery_headcount", delivery_headcount);
+  const years_operating = fact("years_operating", (v) => toInt(v, 0));
+  const years_operating_label = labelOf("years_operating", years_operating);
 
   const agency_type = fact<AgencyType>("agency_type", (v) => toEnum<AgencyType>(v, AGENCY_TYPES, AGENCY_TYPE_ALIASES));
 
@@ -892,6 +899,11 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     deal_size_estimate: fact("deal_size_estimate", toMoney),
     hourly_rate_accepted: fact("hourly_rate_accepted", toBool),
     broker_character: fact("broker_character", (v) => toEnum(v, BROKER)),
+
+    delivery_headcount,
+    delivery_headcount_label,
+    years_operating,
+    years_operating_label,
 
     sells_build_work,
     sells_build_work_label,

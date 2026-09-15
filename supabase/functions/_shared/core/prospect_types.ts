@@ -167,6 +167,31 @@ export interface ProspectFeatures {
     | null;
   headcount: number | null;
   headcount_label: EvidenceLabel;
+  /**
+   * The people who actually deliver the work — employees PLUS regular contractors.
+   *
+   * `revenue_per_head` is benchmarked per person DOING the work (Promethean $163K, SPI $168K),
+   * so headcount was only ever a proxy for that. It stops being one the moment the model is two
+   * employees and thirty contractors: the wallet reads 2 and the agency delivers like 32. Added
+   * 15 Sep 2026 (owner ruling, DECISIONS §21) after 191 prospects at five people or fewer proved
+   * arithmetically unable to reach the Partner band.
+   *
+   * The wallet prefers this and falls back to `headcount`, so nothing already collected is lost
+   * and an account with this unrecorded scores exactly as it did before.
+   */
+  delivery_headcount: number | null;
+  delivery_headcount_label: EvidenceLabel;
+  /**
+   * Years the agency has been operating. RECORDED, NOT AN INPUT (DECISIONS §21).
+   *
+   * Maturity does not make an agency bigger — a twenty-year-old solo shop is not a larger wallet
+   * than a two-year-old one, and where it has larger clients `client_budget_size` already says
+   * so. What it plausibly predicts is delivery risk, rate tolerance and whether a partnership
+   * lasts. It is printed and traced so those can be checked against outcomes before anyone wires
+   * it into a number.
+   */
+  years_operating: number | null;
+  years_operating_label: EvidenceLabel;
   revenue_band: "<1M" | "1-5M" | "5-10M" | "10-25M" | ">25M" | null;
   vertical_depth: "deep_single_vertical" | "generalist" | null;
   wl_signal: WlSignal | null;

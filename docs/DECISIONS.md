@@ -1276,3 +1276,85 @@ decides who to call; potential decides who is worth the nurture spend.
   It describes *them*, not our obligation. Renaming it `engagement` was proposed and is not ruled.
 - 0.3.0 is a **draft**. It is not activated, and `pb-score` must be redeployed before it can be
   previewed live — the deployed bundle predates `caps_ceiling` and would ignore it.
+
+## 21 · Headcount was the wrong number (owner ruling, 15 September 2026)
+
+### What was wrong
+
+The wallet is `headcount × revenue_per_head × outsourceable_share × serviceable_share`, and
+`revenue_per_head` is benchmarked at $150–200K from *"Promethean $163K avg, SPI $168K"* — revenue
+per person **doing the work**. So the term headcount multiplies has always meant delivery capacity;
+headcount was a proxy for it, and a good one while agency people were employees.
+
+The owner: *"1 person can still be platinum, i have had 1 person clients that have a large client,
+also, up top is 2 people with 30 contractors, agency models are changing, the difference is maturity
+in the 1 person and their experience in running an agency."*
+
+A two-person agency with thirty contractors delivers like a thirty-two-person shop and reads as 2.
+The proxy is off by sixteen times, and it is off in exactly the direction the market has moved.
+
+Measured across 499 prospects:
+
+| Payroll | Agencies | Reach Gold | Partner-band headroom |
+|---|---|---|---|
+| 1–2 | 154 | 6 | **0** |
+| 3–5 | 37 | 7 | **0** |
+| 6–10 | 32 | 7 | 3 |
+| 11–30 | 83 | 21 | 69 |
+| 31+ | 67 | 44 | 67 |
+| unknown | 126 | 10 | 0 |
+
+**191 agencies at five people or fewer, none of which can reach the Partner band at any setting of
+the other terms** — at the blended rate a five-person shop caps near $65K against a $100K threshold.
+A further 126 have no headcount at all and so get no wallet.
+
+### Ruled
+
+**A. Delivery capacity replaces payroll in the wallet. Maturity is recorded, not an input.**
+
+`delivery_headcount` — employees plus regular contractors, the people who actually deliver — is a
+new nullable feature. The wallet prefers it and **falls back to `headcount`**, so every account
+already scored is unaffected and nothing collected is lost. The trace carries `capacity_from` so a
+reader can see which number was used.
+
+`years_operating` is recorded, traced and printed, and **changes no number**.
+
+### Why maturity is not a wallet input
+
+Maturity does not make an agency bigger. A twenty-year-old solo shop is not a larger wallet than a
+two-year-old one; where it has larger clients, `client_budget_size` already says so, and putting
+maturity into the wallet would count that twice. What maturity plausibly predicts is delivery risk,
+rate tolerance and whether a partnership lasts — ceiling-type, economics and confidence questions,
+not size ones. It is recorded so those can be tested against outcomes before anyone wires it into
+an arithmetic.
+
+This also resolves an apparent contradiction in the same session. Of More Better Design Studio (one
+person) the owner said *"they're really small too for one person… not quite meet the goal for
+platinum"*, and of one-person agencies in general, *"1 person can still be platinum"*. Both hold: a
+solo operator with a thirty-strong bench and enterprise clients has Platinum capacity; a solo
+operator with neither has a good small business. Experience makes them a good client, not a big one.
+
+### Why this is not a change to PRO-16
+
+PRO-16 locks the headroom **method**. The formula is untouched — same terms, same order, same
+shares. What changed is which measurement fills the capacity term, and the change restores the
+method's own stated basis (revenue per person doing the work) rather than departing from it.
+
+Deliberately **not** bundled with §18.3, the open vendor-count question. That one would change the
+formula's shape — whether `n_vendors` should multiply the wallet as well as divide our share — and
+folding a correction into a redesign is how a locked method quietly stops meaning anything.
+
+### A test that was wrong, and is now right
+
+§20 pinned *"a one-person agency still ceilings at Project"* as a guardrail against the ceiling
+ruling inflating anyone. It encoded precisely the assumption this ruling rejects. It now reads: one
+on payroll **with no capacity recorded** ceilings at Project. The cap comes from not knowing, never
+from being small.
+
+### Still open
+
+Nothing collects either fact yet, so every account resolves through the fallback and today's
+numbers are unchanged — the same trap as `build_demand_exceeds_capacity` in §19. Both are
+portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and Tomahawk's
+own note already carries the latter unextracted. The collector is the next build, and until it
+exists this ruling is potential rather than effect.

@@ -417,9 +417,21 @@ function potentialOf(
 
   const serviceable: number = isNum(f.serviceable_share) ? f.serviceable_share : reqNum(rubric, "potential.serviceable_share_default");
 
+  /* Capacity, not payroll.
+   *
+   * revenue_per_head is benchmarked per person doing the work, so the term this multiplies has
+   * always meant "people who deliver". `headcount` is a proxy for that and a poor one wherever
+   * the model is a small core plus a contractor bench. Prefer the measured capacity; fall back
+   * to headcount so every account already scored is unaffected (DECISIONS §21). */
+  const capacity: number | null = isNum(f.delivery_headcount) ? f.delivery_headcount : (isNum(f.headcount) ? f.headcount : null);
+  const capacityFrom = isNum(f.delivery_headcount) ? "delivery_headcount" : (isNum(f.headcount) ? "headcount" : null);
+
   let wallet: number | null = null;
-  if (isNum(f.headcount)) {
-    wallet = f.headcount * revenuePerHead * outsourceable * serviceable;
+  if (capacity !== null) {
+    wallet = capacity * revenuePerHead * outsourceable * serviceable;
+    if (capacityFrom === "delivery_headcount" && isNum(f.headcount) && f.delivery_headcount !== f.headcount) {
+      notes.push(`Wallet sized on delivery capacity ${f.delivery_headcount}, not payroll ${f.headcount}: revenue per head is benchmarked per person doing the work (DECISIONS §21).`);
+    }
   }
 
   // Full precision drives the math; the reported share is rounded for display only.
@@ -577,6 +589,8 @@ function potentialOf(
     confidence,
     inputs: {
       headcount: f.headcount,
+      ...(isNum(f.delivery_headcount) ? { delivery_headcount: f.delivery_headcount, capacity_from: capacityFrom } : {}),
+      ...(isNum(f.years_operating) ? { years_operating: f.years_operating } : {}),
       archetype,
       revenue_per_head: revenuePerHead,
       wl_signal: f.wl_signal,

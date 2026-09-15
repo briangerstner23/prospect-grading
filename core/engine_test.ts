@@ -965,9 +965,36 @@ check("determinism: input is not mutated", (() => {
   check("0.3.0: qualification facts still raise confidence", cq.fit.confidence !== c3.fit.confidence || cq.qualification.present_count > c3.qualification.present_count);
   eq("0.3.0: …and are still counted", cq.qualification.present_count >= 3, true);
 
-  // A small agency is still small: the ruling removes a cap, it does not inflate anyone.
-  const smallCold = base({ icp_class: "ICP-1", headcount: 1, wl_signal: "High", climb_signals: [] });
-  eq("0.3.0: a one-person agency still ceilings at Project", grade(smallCold, V3).potential.ceiling, "Project");
+  /* A one-person PAYROLL is not a one-person agency.
+   *
+   * This block first asserted "a one-person agency still ceilings at Project" as a guardrail
+   * against the ruling inflating anyone. That was wrong, and the owner said so: "1 person can
+   * still be platinum, i have had 1 person clients that have a large client... up top is 2
+   * people with 30 contractors... agency models are changing". The cap has to come from not
+   * knowing the capacity, never from the payroll being small (DECISIONS §21).
+   */
+  const soloUnknownCapacity = base({ icp_class: "ICP-1", headcount: 1, wl_signal: "High", climb_signals: [] });
+  eq("0.3.0: one on payroll and no capacity recorded still ceilings at Project",
+     grade(soloUnknownCapacity, V3).potential.ceiling, "Project");
+
+  const soloWithBench = base({ icp_class: "ICP-1", headcount: 1, delivery_headcount: 31, wl_signal: "High", climb_signals: [] });
+  const sb = grade(soloWithBench, V3);
+  eq("§21: one owner with a 31-strong bench sizes on the bench", sb.potential.inputs.delivery_headcount, 31);
+  eq("§21: …and the trace says which number was used", sb.potential.inputs.capacity_from, "delivery_headcount");
+  eq("§21: …so the ceiling is Partner, not Project", sb.potential.ceiling, "Partner");
+  check("§21: …and the wallet reflects 31 people, not 1", (sb.potential.wallet ?? 0) > 31 * 100000 * 0.3 * 0.5 * 0.9);
+
+  // The fallback: capacity unrecorded scores exactly as before, so nothing already graded moves.
+  const payrollOnly = base({ icp_class: "ICP-1", headcount: 40, wl_signal: "High", climb_signals: [] });
+  eq("§21: capacity unrecorded falls back to headcount", grade(payrollOnly, V3).potential.inputs.headcount, 40);
+  check("§21: …and adds no delivery_headcount to the trace", grade(payrollOnly, V3).potential.inputs.delivery_headcount === undefined);
+  eq("§21: …so the wallet is unchanged by the ruling",
+     grade(payrollOnly, V3).potential.wallet, grade(payrollOnly, R).potential.wallet);
+
+  // Maturity is recorded and traced, and changes no number (DECISIONS §21).
+  const mature = base({ icp_class: "ICP-1", headcount: 1, delivery_headcount: 31, years_operating: 24, wl_signal: "High", climb_signals: [] });
+  eq("§21: maturity is traced", grade(mature, V3).potential.inputs.years_operating, 24);
+  eq("§21: …and moves no number", grade(mature, V3).potential.wallet, sb.potential.wallet);
 
   // The frozen baseline is untouched: 0.1.0 has no caps_ceiling key and must cap exactly as before.
   eq("0.1.0: still caps — the toggle defaults to the old behaviour", grade(bigCold, R).potential.ceiling, "Project");
