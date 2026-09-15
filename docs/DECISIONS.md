@@ -1104,3 +1104,76 @@ the wallet (as evidence of outsourcing volume) rather than only divide our share
 `our_rank` should be read as a current position with a climb path rather than a fixed allocation.
 Until then, the defaulted 0.5 stands on all 143 rows and the ceiling it produces should be read as an
 assumption, not a finding.
+
+## 19 · The fit read asked the wrong question about developers (owner ruling, 15 September 2026)
+
+Found while working the fact queue by hand, one claim at a time — which is the only reason it was
+found at all.
+
+### What happened
+
+Miranda Creative is a thirty-year-old Connecticut agency. Brian was on site on 20 August; their
+web/ops director closed the meeting with *"I'm ready to go. I'm sold."* They run dozens of sites,
+their workload swings between 5 and 500 hours a month, and they had just been burned by an offshore
+vendor. They are, by any sales reading, one of the better prospects in the book.
+
+While confirming their facts the owner supplied one more: **they have a developer, plus a new hire
+to lead the dev team.** Recorded honestly, that is `no_inhouse_dev_team = false` — and under draft
+0.2.0 it scores AGAINST them. Gold needs five of six criteria; this took one away from an agency
+that had just said it was sold.
+
+The rubric predicted this in its own words. The criterion's `failure_mode` read:
+
+> The strongest single predictor in the July research and the easiest to get wrong: a two-person
+> dev team can mean overflow need, not no need.
+
+Miranda is that sentence, live. The criterion asked *"is there a developer in the building"* when
+the thing that predicts a sale is *"do they have more build work than they can absorb"*. Miranda
+answers no to the first and yes to the second.
+
+### Ruled
+
+Re-word the criterion, before 0.2.0 is activated. Put to the owner as three options — leave it,
+re-word it, or park it as an open ruling — and re-wording was chosen, on the grounds that the
+failure mode had just been demonstrated on a live prospect and 0.2.0 is not yet active, so the
+change costs nothing today.
+
+### How it was implemented, and the one constraint that shaped it
+
+`core/prospect_types.ts` takes **additive, nullable changes only** — never rename, retype or
+repurpose an existing key (§8). So the criterion could not simply be re-read against
+`no_inhouse_dev_team` with a new meaning. That would have silently changed what 175 already
+collected facts assert.
+
+Instead:
+
+- a NEW nullable feature, `build_demand_exceeds_capacity`, asks the question that predicts a sale;
+- `no_inhouse_dev_team` keeps its meaning, its facts and its resolver untouched;
+- the criterion (now keyed `build_capacity_gap`) reads the new feature and declares
+  `fallback_feature: "no_inhouse_dev_team"`. The engine reads the fallback **only** when the
+  primary is null, never as an override, and the trace records `answered_by` so a reader can
+  always tell a direct answer from a stand-in.
+
+Having no developer at all is one way to have a capacity gap. It is not the only one, and it was
+never the interesting one.
+
+The fallback is resolved in the ENGINE, not in `resolve_features.ts`, on purpose: resolving it in
+both places would collapse the distinction between "they told us demand overruns them" and "we
+inferred it because nobody is listed on the team page", which is exactly the distinction this
+ruling exists to preserve.
+
+Rule 5 is untouched: if both features are null the criterion is unanswered, scores nothing, and
+counts neither way.
+
+### What this does not settle
+
+The new feature has no collector yet. Every account answers this criterion through the fallback
+until someone records `build_demand_exceeds_capacity` — so in practice 0.2.0 behaves today exactly
+as it did before the re-wording, and improves only as the new fact is gathered. The obvious source
+is the portfolio read discussed the same day: an agency that lists build services while
+outsourcing them, or advertises for developers it cannot keep, is telling you about its capacity.
+
+Miranda's own three facts were recorded during the session that produced this ruling:
+`client_budget_size = buys_real_projects`, `sells_build_work = true`, `no_inhouse_dev_team = false`
+— the last with the reasoning above in its note, so the record shows why a false there is not the
+mark against them it looks like.

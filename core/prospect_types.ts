@@ -193,6 +193,19 @@ export interface ProspectFeatures {
   /** Do they need someone to build? True when no developer sits in the building. */
   no_inhouse_dev_team: boolean | null;
   no_inhouse_dev_team_label: EvidenceLabel;
+  /**
+   * Do they have more build work than they can absorb? True when they outsource build work
+   * today, turn work away, or run a dev team small enough that demand overruns it.
+   *
+   * Added 15 Sep 2026 (owner ruling, DECISIONS §19) because `no_inhouse_dev_team` asks a
+   * narrower question than the one that predicts a sale. An agency with two developers and
+   * a workload swinging 5→500 hours a month answers "no" to "is there a developer here" and
+   * "yes" to "do they need us" — and the rubric's own failure_mode warned of exactly that.
+   * A SEPARATE key, not a re-reading of the old one: `no_inhouse_dev_team` keeps its meaning
+   * and its facts (the contract is additive only).
+   */
+  build_demand_exceeds_capacity: boolean | null;
+  build_demand_exceeds_capacity_label: EvidenceLabel;
   /** Who are their clients? The client's client sets the ticket size and the technical depth. */
   client_budget_size: "buys_real_projects" | "local_small" | null;
   client_budget_size_label: EvidenceLabel;

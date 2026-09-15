@@ -618,6 +618,12 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const no_inhouse_dev_team_label = no_inhouse_dev_team_direct !== null
     ? labelOf("no_inhouse_dev_team", no_inhouse_dev_team_direct)
     : labelOf("inhouse_dev_team", inhouse_dev_team);
+  /* The capacity gap is its own fact and does NOT fall back here: the engine does that, so the
+   * trace can say which question was actually answered. Resolving a fallback in both places
+   * would hide the difference between "they told us demand overruns them" and "we inferred it
+   * because nobody is listed on the team page". */
+  const build_demand_exceeds_capacity = fact("build_demand_exceeds_capacity", toBool);
+  const build_demand_exceeds_capacity_label = labelOf("build_demand_exceeds_capacity", build_demand_exceeds_capacity);
   const client_budget_size = fact("client_budget_size", (v) => toEnum(v, CLIENT_BUDGET_SIZES));
   const client_budget_size_label = labelOf("client_budget_size", client_budget_size);
   const recurring_work_shape = fact("recurring_work_shape", toBool);
@@ -891,6 +897,8 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     sells_build_work_label,
     no_inhouse_dev_team,
     no_inhouse_dev_team_label,
+    build_demand_exceeds_capacity,
+    build_demand_exceeds_capacity_label,
     client_budget_size,
     client_budget_size_label,
     client_evidence_count: fact("client_evidence_count", (v) => toInt(v, 0)),

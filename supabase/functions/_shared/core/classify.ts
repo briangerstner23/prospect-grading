@@ -109,6 +109,18 @@ export function reqStrIn(rubric: Rubric, obj: Record<string, unknown>, key: stri
   return v;
 }
 
+/**
+ * An optional string in a rubric object: absent or null is null, anything else must still be a
+ * non-empty string. A missing key is a legitimate spec, a malformed one never is — a typo'd
+ * `fallback_feature` should fail loudly rather than silently mean "no fallback".
+ */
+export function optStrIn(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string): string | null {
+  const v = obj[key];
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string" || v.trim().length === 0) throw new RubricError(rubric, `${path}.${key}`, "a non-empty string when present", v);
+  return v;
+}
+
 export function reqOneOfIn<T extends string>(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string, options: readonly T[]): T {
   const v = obj[key];
   if (typeof v !== "string" || !(options as readonly string[]).includes(v)) {

@@ -56,6 +56,7 @@ import {
   reqObj,
   reqOneOf,
   reqOneOfIn,
+  optStrIn,
   rubricAt,
   reqStr,
   reqStrIn,
@@ -216,16 +217,38 @@ function runFitCriteria(
     const kind = reqOneOfIn(rubric, def, "kind", path, ["boolean", "range", "equals"] as const);
     const ruleText = reqStrIn(rubric, def, "rule", path);
     const basis = reqOneOfIn(rubric, def, "basis", path, ["ruled", "unruled_default", "reasoned"] as const);
-    const raw = bag[feature];
+
+    /* An optional second feature, read ONLY when the first is unknown.
+     *
+     * A criterion can be re-asked without throwing away the answers already collected under
+     * the question it replaces: `build_capacity_gap` asks whether demand overruns their build
+     * capacity, and falls back to `no_inhouse_dev_team` — having no developer at all is one
+     * way to have a capacity gap, just not the only one. The fallback never overrides a
+     * recorded primary, and the trace names which feature answered, so a reader can always
+     * tell a direct answer from a stand-in (DECISIONS §19).
+     *
+     * Unknown is still never evidence (rule 5): if both are null the criterion is unanswered
+     * and scores nothing, exactly as before. */
+    const fallback = optStrIn(rubric, def, "fallback_feature", path);
+    let answeredBy = feature;
+    let raw = bag[feature];
+    if ((raw === null || raw === undefined) && fallback !== null) {
+      raw = bag[fallback];
+      if (raw !== null && raw !== undefined) answeredBy = fallback;
+    }
 
     let answer: "yes" | "no" | "unknown";
-    const inputs: Record<string, unknown> = { [feature]: raw ?? null };
+    const inputs: Record<string, unknown> = { [feature]: bag[feature] ?? null };
+    if (fallback !== null) {
+      inputs[fallback] = bag[fallback] ?? null;
+      inputs.answered_by = answeredBy;
+    }
 
     if (raw === null || raw === undefined) {
       answer = "unknown";
     } else if (kind === "boolean") {
       if (typeof raw !== "boolean") {
-        notes.push(`Fit criterion ${key}: ${feature} is not a boolean; treated as unknown.`);
+        notes.push(`Fit criterion ${key}: ${answeredBy} is not a boolean; treated as unknown.`);
         answer = "unknown";
       } else answer = raw ? "yes" : "no";
     } else if (kind === "range") {
@@ -234,7 +257,7 @@ function runFitCriteria(
       inputs.min = min;
       inputs.max = max;
       if (typeof raw !== "number" || !Number.isFinite(raw)) {
-        notes.push(`Fit criterion ${key}: ${feature} is not a number; treated as unknown.`);
+        notes.push(`Fit criterion ${key}: ${answeredBy} is not a number; treated as unknown.`);
         answer = "unknown";
       } else answer = raw >= min && raw <= max ? "yes" : "no";
     } else {

@@ -988,6 +988,67 @@ check("determinism: input is not mutated", (() => {
   eq("0.1.0: …whereas it did buy Gold", grade(tooBig, R).fit.base_tier, "Gold");
   eq("0.2.0: the size criterion reads headcount and answers no", scB.fit.criteria.find((c) => c.key === "size_band_fit")?.answer, "no");
 
+  /* ---- build_capacity_gap: the re-worded criterion and its fallback ----
+   *
+   * Owner ruling 15 Sep 2026 (DECISIONS §19). The criterion used to ask "is there a developer
+   * in the building", which scored AGAINST a live prospect running two developers and a
+   * workload swinging 5 to 500 hours a month — overflow need, and a better buyer than an
+   * agency with no build practice at all. It now asks whether demand overruns their capacity,
+   * and falls back to the old question so the facts already collected still answer it.
+   */
+  {
+    const crit = (sc: ProspectScorecard) => sc.fit.criteria.find((c) => c.key === "build_capacity_gap");
+
+    // The case that forced the change: they HAVE developers, and they still need us.
+    const overflow = base({
+      icp_class: "ICP-1", is_agency: true, headcount: 20, sells_build_work: true,
+      no_inhouse_dev_team: false, build_demand_exceeds_capacity: true,
+      client_budget_size: "buys_real_projects", recurring_work_shape: true,
+    });
+    const scO = grade(overflow, V2);
+    eq("0.2.0: a dev team with overflow answers yes", crit(scO)?.answer, "yes");
+    eq("0.2.0: …and the primary feature is what answered", crit(scO)?.inputs.answered_by, "build_demand_exceeds_capacity");
+    eq("0.2.0: …so six yeses still reach Gold", scO.fit.base_tier, "Gold");
+    // Under the old wording this same agency lost the point; that is the whole reason for §19.
+    eq("0.2.0: the old question is still traced beside it", crit(scO)?.inputs.no_inhouse_dev_team, false);
+
+    // Nothing recorded for the new key → the old fact answers, and the trace says so.
+    const legacy = base({
+      icp_class: "ICP-1", is_agency: true, headcount: 20, sells_build_work: true,
+      no_inhouse_dev_team: true, build_demand_exceeds_capacity: null,
+      client_budget_size: "buys_real_projects", recurring_work_shape: true,
+    });
+    const scL = grade(legacy, V2);
+    eq("0.2.0: falls back to no_inhouse_dev_team when the new key is unknown", crit(scL)?.answer, "yes");
+    eq("0.2.0: …and the trace names the fallback as the answer", crit(scL)?.inputs.answered_by, "no_inhouse_dev_team");
+    eq("0.2.0: …so the 175 facts already collected keep counting", scL.fit.criteria_answered, 6);
+
+    // The primary always wins; a fallback never overrides a recorded answer.
+    const conflict = base({
+      icp_class: "ICP-1", is_agency: true, headcount: 20, sells_build_work: true,
+      no_inhouse_dev_team: true, build_demand_exceeds_capacity: false,
+      client_budget_size: "buys_real_projects", recurring_work_shape: true,
+    });
+    eq("0.2.0: a recorded primary beats the fallback", crit(grade(conflict, V2))?.answer, "no");
+
+    // Both unknown stays unknown — rule 5 is untouched by the fallback.
+    const neither = base({
+      icp_class: "ICP-1", is_agency: true, headcount: 20, sells_build_work: true,
+      no_inhouse_dev_team: null, build_demand_exceeds_capacity: null,
+      client_budget_size: "buys_real_projects", recurring_work_shape: true,
+    });
+    const scX = grade(neither, V2);
+    eq("0.2.0: both unknown leaves the criterion unanswered", crit(scX)?.answer, "unknown");
+    eq("0.2.0: …and it counts neither way", scX.fit.criteria_answered, 5);
+
+    // A malformed fallback_feature is a loud failure, not a silent "no fallback".
+    throws("0.2.0: a non-string fallback_feature throws and names the path", () => {
+      const broken = structuredClone(V2);
+      broken.dimension_b.base_tier_from_fit.criteria[1].fallback_feature = 42;
+      return grade(legacy, broken);
+    }, "dimension_b.base_tier_from_fit.criteria[1].fallback_feature");
+  }
+
   // Nothing observable at all → Unclassified, not Bronze. A tier on zero evidence is a fabrication.
   const blank = base({
     icp_class: "ICP-2",
