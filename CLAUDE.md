@@ -45,7 +45,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260913210000/210100/210200/210300 fathom back-fill (staging, stepper, retry, driver) ·
             20260913220000 roster drift ·
             20260914150000 bulk reject fact candidates ·
-            20260914210000 pipedrive field map (all applied)
+            20260914210000 pipedrive field map ·
+            20260915090000 website reads (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
