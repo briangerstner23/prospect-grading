@@ -1440,16 +1440,20 @@ proposes; a person decides.
 **Not a ruling. A breach of an existing one, found and repaired here so it is on the record.**
 
 Rule 2 says no prospect data in this repository, because the repository is public. On 16 September
-a check against the account roster found **fifteen agency names, one third-party staff name, and
-two per-account dollar figures** in tracked files:
+a check against the account roster found **26 distinct agencies, two real people, two agency
+domains and two per-account deal values** in tracked files:
 
 | Where | What | Since |
 |---|---|---|
-| `docs/PLAN.md` | eleven agency names, a $47,955 deal, a $117–141K deal, a staff name | 16 Sep |
-| `docs/RUNBOOK.md` §26 | two agency names with their headcounts | 16 Sep |
+| `docs/PLAN.md` | fifteen agencies, a $47,955 deal, a $117–141K deal, a colleague's first name | 16 Sep |
+| `docs/RUNBOOK.md` §26 | two agencies with their headcounts | 16 Sep |
 | `20260916090100` (comment) | the same two | 16 Sep |
-| `docs/DECISIONS.md` §§13, 19, 21 | six agency names, one domain, one meeting title | 11–13 Sep |
-| `ingest/fathom_webhook_test.ts`, `notes_sweep_test.ts` | a real WLIQ staff name and a lightly disguised agency domain in a fixture | 11 Sep |
+| `docs/DECISIONS.md` §§4, 13, 19, 21 | thirteen agencies, one domain, three meeting titles, a colleague's first name | 11–13 Sep |
+| `ingest/fathom_webhook_test.ts`, `notes_sweep_test.ts` | a real colleague's full name against a barely disguised agency domain, in a fixture | 11 Sep |
+
+*(The first count written here said "fifteen agency names", which was the PLAN.md figure read as
+the total. The number is 26 across all five rows. Counting by hand is how it got to 26 in the first
+place; the script below is the count.)*
 
 Every one is removed at this commit. The passages keep their substance — an example becomes "a
 counted 35 rather than Apollo's 68", a fixture becomes a genuinely invented name — because the

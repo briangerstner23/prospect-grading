@@ -89,8 +89,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
 2. **No prospect data in this repo.** It is public. No agency names, dollar bands, seed
    exports, gate reports, staff names or build-kit documents. Fixtures are synthetic
    (invented agency names). People appear only as roles. This was broken for five days by
-   fifteen agency names that entered as *examples* in prose (DECISIONS §23) — so the check is
-   now mechanical: `scripts/no_prospect_names.ts` against the live roster, RUNBOOK §27. Shape
+   agency names that entered as *examples* in prose (DECISIONS §23) — so the check is
+   now mechanical: `scripts/no_prospect_names.ts` against the live roster, RUNBOOK §27 — 26
+   agencies reached the repo before anyone ran a check, and a hand count of them was wrong too.
+   Shape
    the example ("an agency Apollo listed at 68 with 35 on its team page"), never name it.
 3. **The engine is pure.** `grade(features, rubric, options) → scorecard`, deterministic,
    every fired rule in the trace with its basis (`ruled` / `unruled_default` / `reasoned`).
