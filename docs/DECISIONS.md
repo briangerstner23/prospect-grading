@@ -1875,3 +1875,92 @@ Across §27, §28 and §29, on 849 accounts:
 498 accounts still read `unknown`, and that is honest: most are Apollo-sourced names nobody has
 ever contacted. The difference is that it is now a statement about them rather than a statement
 about what the book had bothered to read.
+
+## §30 — The chase board, rebuilt on evidence
+
+**16 Sep 2026.** The owner asked for the top 100 rebuilt on what is recorded rather than on stage
+labels, and for "a substantive increase in the confidence and quality of these choices." This is
+that board: `pb_chase_board`, every one of the 849 accounts ranked, migration 20260916220000.
+
+### What the old list was actually ranking
+
+The old chase list held **146 rows** — the accounts that happened to have been researched. Ranking
+them was ranking the book's own reading history. The stage label underneath was no better. Of the
+**184 accounts sitting in "Schedule Sales Call", 7 are in live contact and 140 have nothing ever
+recorded against them**; "Sales Call Done" holds 155 with 67 in the same state; "Unqualified/DNC"
+holds 160, of which 4 have replied to something in the last 90 days. A stage tells you what
+somebody once filed. It does not tell you whether anyone is talking to us.
+
+**20 of that old top 100 survive into the new one.** Twenty-eight of them now score zero or less.
+
+### What it ranks on instead
+
+Ten signals, all drawn from recorded contact (§24, §28, §29), scored against the owner's rulings
+in §26:
+
+| signal | points | why |
+|---|---:|---|
+| quote open (≤60d) | 50 | the hottest state an account can be in |
+| replied ≤30d | 40 | they answered, recently |
+| replied ≤90d | 25 | they answered |
+| quoted ≤180d | 20 | including a loss — "a no is a positive sign" |
+| delivering now | 18 | a client is still a prospect |
+| a recorded call exists | 12 | they gave us time |
+| contact ≤180d, no reply | 8 | re-engage |
+| more than one channel | 6 | |
+| written to, never answered | −5 | |
+| contact exists, nothing in six months | −10 | |
+| **CRM stage** | **0** | **deliberately** |
+
+The weights are **data, not SQL** (rule 4): `pb_chase_weights`, version `chase-evidence-0.1`.
+Reordering the chase is an insert and a new version, never an edit to the view.
+
+The stage still appears on every row, at zero points, as `cj_stage`. A board that hides the number
+it refuses to use cannot be argued with, and the owner should be able to see the disagreement.
+
+### Two ranks, because one number cannot answer both questions
+
+Ranked purely on contact, **91 of the top 100 are companies we already deliver for**. That is the
+§26 ruling working exactly as stated — delivery is a relationship, and the handover is the moment
+to nurture hardest — and it is also a board that would quietly starve new-logo work. Both things
+are true.
+
+So the view carries `new_logo_rank`: the same score over the **612 accounts with no active
+delivery work**. The top 50 of that list all score positive. Neither rank is a filter someone has
+to remember to apply, and neither is the "real" one.
+
+The other thing the board shows about itself: **66 of the top 100 have no grade at all** and 67
+have no Pipedrive stage. They arrived through the delivery system (§27) and the engine has never
+read them. That is the queue for the next scoring run, and it is a better queue than the one the
+research pass chose by hand.
+
+### Three bugs, and the one that matters
+
+`filter` attaches only to an aggregate, never to a scalar subquery — the weights are now read
+through a one-row view. And `pb_mdm_resolution` is per **record**, not per company, so joining it
+directly fanned the board out to **852 rows for 849 accounts**, with one company appearing twice in
+the top ten. A fan-out inside a ranked list is the worst-shaped bug available: the total is barely
+wrong, the duplicates sort adjacent so they read as a tie, and the thing being multiplied is the
+thing being counted.
+
+The third is the one worth the section. The view's first cut had a column called `stage_label`
+holding `pb_accounts.status` — the book's own lifecycle (Ranked / Unclassified / Merged / Parked),
+which is not a stage at all. Every check of the board's headline claim ran against that column and
+came back plausible: "66 of the top 100 are Cold or Unclassified" was 66 rows of `Unclassified`
+and zero rows of `Cold`, because no row anywhere in the database says `Cold`. **A `count(*) filter
+(where x in ('Cold','Unclassified'))` over a column with no `Cold` in it returns a number, not an
+error.** The real stage lives in the `pipedrive_cj_stage` fact; the board now reads it there and
+surfaces the lifecycle separately as `account_status`.
+
+The finding survived the correction — the stage genuinely does not predict contact, and the real
+numbers are stronger than the ones that were wrong. That is luck, not method. A filter naming a
+value the column cannot hold is an assertion nobody is checking, and it should be written as a
+test that fails when the value set changes, not as a predicate in a report.
+
+### Twenty-five companies entered twice
+
+`pb_duplicate_accounts` (migration 20260916220100) names them. Most are a Notion/Pipedrive
+double-load where one record carries the domain and the other does not. Two are the same company
+entered twice from the delivery system under one domain — which is what made 16 recorded calls
+unattributable in §29, and what the chase board's fan-out was a second symptom of. Merging is an
+identity decision, so rule 8 governs: the view proposes, a person decides.

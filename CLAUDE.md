@@ -64,7 +64,11 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             (DECISIONS §28) ·
             20260916210000/210100/210200 attribute orphan calls (+ the per-call review
             queue) · 20260916210250/210300/210500 company-name normaliser + orbit quote
-            sweep + contact events from it (DECISIONS §29) (all applied)
+            sweep + contact events from it (DECISIONS §29) ·
+            20260916220000 chase board — pb_chase_weights (weights as data) +
+            pb_chase_board (chase_rank over all 849, new_logo_rank over the 612 with no
+            delivery work; the CRM stage is carried at zero points) ·
+            20260916220100 duplicate accounts (DECISIONS §30) (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
