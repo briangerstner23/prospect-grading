@@ -68,7 +68,11 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260916220000 chase board — pb_chase_weights (weights as data) +
             pb_chase_board (chase_rank over all 849, new_logo_rank over the 612 with no
             delivery work; the CRM stage is carried at zero points) ·
-            20260916220100 duplicate accounts (DECISIONS §30) (all applied)
+            20260916220100 duplicate accounts (DECISIONS §30) ·
+            20260916230000 quote match by exact domain ·
+            20260916230100 pb_company_engagement + the chase board grouped by company
+            (824 companies over 849 records; the union is over EVENTS, never over the
+            derived flags — DECISIONS §31) (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;

@@ -1943,19 +1943,44 @@ the top ten. A fan-out inside a ranked list is the worst-shaped bug available: t
 wrong, the duplicates sort adjacent so they read as a tie, and the thing being multiplied is the
 thing being counted.
 
-The third is the one worth the section. The view's first cut had a column called `stage_label`
-holding `pb_accounts.status` — the book's own lifecycle (Ranked / Unclassified / Merged / Parked),
-which is not a stage at all. Every check of the board's headline claim ran against that column and
-came back plausible: "66 of the top 100 are Cold or Unclassified" was 66 rows of `Unclassified`
-and zero rows of `Cold`, because no row anywhere in the database says `Cold`. **A `count(*) filter
-(where x in ('Cold','Unclassified'))` over a column with no `Cold` in it returns a number, not an
-error.** The real stage lives in the `pipedrive_cj_stage` fact; the board now reads it there and
-surfaces the lifecycle separately as `account_status`.
+The third is the one worth the section, and the first account of it written here was **also
+wrong** — corrected below, same day.
 
-The finding survived the correction — the stage genuinely does not predict contact, and the real
-numbers are stronger than the ones that were wrong. That is luck, not method. A filter naming a
-value the column cannot hold is an assertion nobody is checking, and it should be written as a
-test that fails when the value set changes, not as a predicate in a report.
+The view's first cut had a column called `stage_label` holding `pb_accounts.status` — the book's
+own lifecycle (Ranked / Unclassified / Merged / Parked), which is not a stage at all. Every check
+of the board's headline claim ran against that column and came back plausible: "66 of the top 100
+are Cold or Unclassified" was 66 rows of `Unclassified` and zero rows of `Cold`.
+
+The conclusion drawn from that zero was that **no row anywhere in the database says `Cold`**. It
+was written into this section as the moral of the story. It is false. `Cold` is one of five values
+in `pb_reads.urgency`, surfaced as `pb_engagement.stage_label`, and 458 accounts carry it.
+
+So there are **three different columns** a reader could reasonably call "the stage", and the first
+cut of the board picked the wrong one of the three, then read a null result off it as proof that
+the second one did not exist:
+
+| column | what it actually is | values |
+|---|---|---|
+| `pb_reads.urgency` | the CRM's heat read | Super Hot · Hot · Warm · Cold |
+| `pipedrive_cj_stage` (fact) | the pipeline stage | New · Schedule Sales Call · Sales Call Done · Quoting · Quote Lost · Unqualified/DNC |
+| `pb_accounts.status` | the book's own lifecycle | Ranked · Unclassified · Merged · Parked |
+
+The board now carries the first two, both at zero points, as `crm_urgency` and `cj_stage`, and
+surfaces the third as `account_status`.
+
+Read against the right column, the finding is stronger than either wrong version of it. Of the
+**62 accounts marked Hot or Super Hot, 17 are in live contact and 15 have nothing ever recorded**.
+Of the **458 marked Cold, 33 are in live contact** — twice as many live conversations as Hot and
+Super Hot combined. And the **151 accounts carrying no label at all hold 57 of them**, more live
+contact than all 683 labelled accounts put together.
+
+Two lessons, and the second is the one that nearly got away. A filter naming a value its column
+cannot hold returns a number rather than an error, so it should be a test that fails when the
+value set changes, not a predicate in a report. But the worse error was inferring from `count = 0`
+that the *value* does not exist, when all it establishes is that it does not exist **in the column
+queried**. A zero is evidence about the query, not about the world, and this repository's own
+rule 5 already says so — unknown is never evidence. It applies to the book's readings of itself
+exactly as it applies to the accounts.
 
 ### Twenty-five companies entered twice
 
@@ -1964,3 +1989,60 @@ double-load where one record carries the domain and the other does not. Two are 
 entered twice from the delivery system under one domain — which is what made 16 recorded calls
 unattributable in §29, and what the chase board's fan-out was a second symptom of. Merging is an
 identity decision, so rule 8 governs: the view proposes, a person decides.
+
+## §31 — The board ranks companies, not account records
+
+**16 Sep 2026.** Owner instruction, on being shown that the top 100 listed four companies twice:
+*"collapse duplicates."*
+
+### What the duplicates were doing
+
+25 companies are in the book twice (§30, `pb_duplicate_accounts`). Ranking their records
+separately is not a cosmetic problem. Seven of the pairs have a **30-point-plus gap between their
+two records**, because the evidence is split: one record holds the reply, the other holds the
+quote. Seven pairs touch the top 100. On **two of them the records contradict each other** — one
+resolved to `quote_open`, the other to `pursued`, so the board printed "quote open" on one row and
+"never answered" on another, for the same company, nine ranks apart. Both rows understated the
+relationship and neither was the company.
+
+`pb_chase_board` now groups by normalised name: **824 companies over 849 records**, every record
+accounted for, no company appearing twice.
+
+### The union is over events, never over flags
+
+OR-ing the two records' derived flags is the obvious shortcut and it manufactures states that
+cannot exist — `engaged` and `pursued` together, "replied <30d · never answered" on one line.
+Engagement is a case expression over dated observations, so the only correct way to merge two
+records' engagement is to merge their **observations** and evaluate the expression once.
+
+`pb_company_engagement` is `pb_engagement`'s derivation verbatim, grouped one level up. The
+thresholds are not restated; if they move in `pb_engagement` they must move here, and that
+duplication is the price of not inventing a second definition of "engaged". Checked after
+applying: zero rows carry a contradictory pair.
+
+### This is not a merge
+
+Nothing is written to `pb_accounts` and no identity is asserted. Every grouped row carries
+`records` and `duplicate_records`, so the duplication stays visible instead of being quietly
+absorbed — the owner asked for the ranking to be right, not for the problem to disappear. The 25
+merges remain in `pb_duplicate_accounts` for a person (rule 8). If the grouping is wrong for some
+pair, the remedy is to drop a view rather than to unpick a write.
+
+One number moved for the right reason: **quote_open fell from 22 to 19**. Three of the 22 were the
+same quote counted under both records of a pair. 19 is the number of companies with an open quote;
+22 was never a fact about the world.
+
+### A quote carried under a domain
+
+The quote sweep left three unmatched names (§29). One was not a spelling variant at all — the
+delivery system carries the company under its **domain** instead of its name, which no amount of
+name normalisation will ever reach. An exact domain match is the `high` confidence bar rule 8
+sets and the same test the Fathom webhook already applies, so the join now also matches
+`lower(client_name) = lower(domain)`, as a **rule** rather than a hand-entered alias row. Nothing
+asserts that two names mean the same company; only that a string which is exactly an account's
+domain identifies that account. One quote attached, and that company moved from #62 to #27.
+
+The remaining two stay unmatched on purpose: a one-character typo in the source, and a
+parenthetical naming the agency behind a sub-brand. Both are probably right; neither is mechanical.
+A regex loose enough to catch a typo is loose enough to merge two companies that differ by a
+letter, and the book would have no way to tell which it had done.
