@@ -49,7 +49,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260915090000 website reads ·
             20260915120000 fact source precedence ·
             20260915130000 website team pages ·
-            20260915140000 website retry window (all applied)
+            20260915140000 website retry window ·
+            20260916090000 research log (pb_account_reads · pb_briefs · pb_chase_scores) ·
+            20260916090100 candidates from reads (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -189,8 +191,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   Check after adding a table. `authenticated` legitimately writes where a policy says so, so
   its expected set is not simply `SELECT`: insert on `pb_facts`, `pb_signals`, `pb_register`
   and `pb_promotions`; update on `pb_fact_candidates` and `pb_identity_candidates`; select
-  elsewhere; and nothing at all on `pb_apollo_enrichment`, `pb_source_watermarks` or
-  `pb_webhook_inbox`. This returns nothing when the book is in order:
+  elsewhere; and nothing at all on `pb_apollo_enrichment`, `pb_source_watermarks`,
+  `pb_webhook_inbox` or `pb_website_reads`. The three research tables
+  (`pb_account_reads`, `pb_briefs`, `pb_chase_scores`) are `authenticated` **select only and
+  `anon` nothing** — deliberately narrower than `pb_facts`, because they carry candid judgements
+  about named companies (who is price-sensitive, whose owner is retiring) rather than facts.
+  Opening them to `anon` is the owner's call, not a default. This returns nothing when the book
+  is in order:
 
   ```sql
   select grantee, table_name, privs, expected

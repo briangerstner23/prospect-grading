@@ -1834,3 +1834,45 @@ Paths are guessed. An agency whose team page lives at `/who-we-are` or `/people`
 the fix is to keep the `href`s: the stripper drops all tags, so the front page's own link to its
 team page is thrown away before anyone can follow it. Harvesting links on the `/` pass and queuing
 the real URL would beat guessing. Not built.
+
+## 26 · The research log
+
+Three tables hold what we have learned about an account, separately from what the engine computes:
+
+| Table | One row is | Written by |
+|---|---|---|
+| `pb_account_reads` | one structured read of one account — every field with the verbatim quote behind it, and the checker's verdict beside it | an agent run, loaded by hand |
+| `pb_briefs` | one written sales assessment, versioned by `generated_at` | same |
+| `pb_chase_scores` | one account's place in one ranking run, with the full breakdown and the weights version | same |
+
+`pb_current_research` joins the live read to the live brief, one row per account: what we currently
+believe and how sure we are.
+
+**None of these is a fact and none reaches the engine.** `pb_reads` is still written only by
+pb-score and `pb_facts` only through the candidate queue. A read here proposes; a person decides.
+
+### Turning reads into a review queue
+
+```sql
+select public.pb_candidates_from_reads();            -- all live reads
+select public.pb_candidates_from_reads(now() - interval '7 days');
+```
+
+It proposes a `pb_fact_candidates` row only where the read carries a quote, survived the checker,
+is not null, **and differs from what is already on file**. Confirming what we already knew is
+logged but does not ask for anyone's attention. Idempotent — the fingerprint covers
+(account, key, value, `website`), so a re-run proposes nothing twice.
+
+That split is deliberate and worth keeping: **the record is complete, the queue is selective.**
+431 candidates were already unreviewed on 16 Sep; queueing all ~1,600 read field-values would have
+buried the reviewer and nothing would have been decided.
+
+Source precedence (DECISIONS §22) is what makes confirming one worthwhile: `website` outranks
+`apollo` and `pipedrive`, so a confirmed team-page headcount beats an inflated LinkedIn-derived
+one the moment it lands — Gorilla 76 at 35 rather than Apollo's 68, Verdin at 10 rather than 30.
+
+### Superseding
+
+A newer read does not delete an older one. Set `superseded_at` on the old row instead; the history
+is how confidence in an account is seen to grow (or not). `pb_current_research` and the candidate
+derivation both ignore superseded rows.
