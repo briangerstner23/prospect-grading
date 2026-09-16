@@ -1784,3 +1784,94 @@ non-breaking space (U+00A0) where a reader sees an ordinary one, and it had been
 ASCII on the way to disk. One byte in 826 names. A hand count would never have found it; the
 checksum found it in two queries. This is the §23 lesson holding: the script is the count, and the
 checksum is the count of the thing the script counts.
+
+## §29 — The orphan calls were never orphans, and the quote history
+
+**16 Sep 2026.** Two sweeps finishing the work §27 and §28 started.
+
+### 826 recorded calls with no account
+
+`pb_calls` held 987 conversations and 826 of them were attached to nothing. The obvious reading
+is that call attribution is broken. It was not. Every one of those calls has an external domain;
+the accounts those domains belong to simply **were not in the book**. They are delivery calls
+with companies the Prospect Book had never heard of, because the Prospect Book only knew
+Pipedrive.
+
+Admitting 151 companies from the delivery system (§27) made **582 of the 826 matchable by exact
+domain**, and the proof that the diagnosis was right is that **every single match lands on a
+`roster_source = 'orbit'` account**. Not one lands on a Pipedrive account. The calls were never
+unmatched prospects; they were unrecorded relationships.
+
+**558 attached, 65 accounts, 24 refused.** Attribution is an identity decision, so rule 8 governs
+it: exactly one matching account attaches (the same exact-domain rule the Fathom webhook already
+applies at ingest), more than one never does. The 24 refusals split into two shapes, and the shape
+matters:
+
+- **16** where one company sits in the book under **two account records sharing one domain**. Had
+  the function taken "the first" match these would all have been silently given to whichever row
+  sorted first, and half that company's history would be filed under a record nobody reads.
+- **8** genuinely **multi-party** — a call with two different agencies present. There is no right
+  single answer, so there is no answer.
+
+Nothing here reads a transcript or proposes a fact. It says which account a conversation belongs
+to. The facts inside remain pb-notes' job, through `pb_fact_candidates`, where a person approves
+them.
+
+### A review queue that dropped the harder half
+
+The first cut of `pb_call_attribution_candidates` grouped by **(call, domain)** and asked whether
+that domain matched more than one account. That finds the duplicate-record shape and is blind to
+the multi-party one: two different domains on one call each match exactly one account, so
+per-domain grouping calls both unambiguous while the call as a whole is not. The view reported
+16; the function, which groups per call, refused 24.
+
+The function was never wrong. The *queue* was, and that is the worse failure — a wrong count is
+visible, a review queue that quietly omits a category looks complete. It now groups per call and
+names which shape each row is.
+
+### Three bugs that `create function` accepted
+
+`pb_attribute_orphan_calls` was created cleanly three times with `group by <uuid> and not
+exists (…)`, then with `min(uuid)` (which is not a Postgres function), then with two pb_register
+column names that do not exist. Postgres does not fully resolve a plpgsql body at CREATE time.
+
+The part worth keeping is why the **dry run did not catch any of them**: the dry-run branch
+returns before it reaches the insert. Three clean dry runs, three broken write paths. A dry run
+that does not exercise the write path is not a rehearsal of the write path — it is a rehearsal of
+the count.
+
+### The quote history
+
+All 11 pages of quote-stage work in the delivery system: **213 projects, 80 distinct companies**.
+The owner's ruling (§26) is that a quote is engagement of the strongest kind, an open quote is the
+hottest state an account can be in, and a lost quote is still a signal — *"a no is a positive
+sign."* So the whole history loads, not just the fresh end.
+
+**86 quote events across 94 accounts. 22 accounts have a quote open (≤60 days), 56 were quoted
+within six months** — against 10 quoted accounts before.
+
+Names came in the delivery system's spelling, not the book's. `pb_norm_company` handles what is
+mechanical — ampersand for "and", a leading "The", a trailing legal suffix — and **five companies
+still missed**. Two were spelling and the normaliser now covers them. The remaining **three are
+aliases**: a typo in the source, a brand name against a legal name, and a parenthetical naming
+the agency behind a sub-brand. Those stay in `pb_orbit_quote_unmatched` for a person.
+
+A regex loose enough to match those three would also silently match companies that are genuinely
+different. The normaliser deliberately stops where spelling stops and identity begins.
+
+### Where engagement stands
+
+Across §27, §28 and §29, on 849 accounts:
+
+| | before today | now |
+|---|---|---|
+| `unknown` engagement | 603 | **498** |
+| `engaged` (replied ≤30d) | — | **64** |
+| `responsive` (replied ≤90d) | — | **52** |
+| quote open (≤60d) | — | **22** |
+| calls attached to an account | 161 | **719** |
+| contact events | 224 | **1,349** |
+
+498 accounts still read `unknown`, and that is honest: most are Apollo-sourced names nobody has
+ever contacted. The difference is that it is now a statement about them rather than a statement
+about what the book had bothered to read.

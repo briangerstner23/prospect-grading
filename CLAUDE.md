@@ -61,7 +61,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260916180000 orbit clients snapshot + pb_orbit_overlap ·
             20260916190000/190100 admit from orbit (+ roster_source 'orbit') ·
             20260916200000/200100 gmail sweep staging + contact events from it
-            (DECISIONS §28) (all applied)
+            (DECISIONS §28) ·
+            20260916210000/210100/210200 attribute orphan calls (+ the per-call review
+            queue) · 20260916210250/210300/210500 company-name normaliser + orbit quote
+            sweep + contact events from it (DECISIONS §29) (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
