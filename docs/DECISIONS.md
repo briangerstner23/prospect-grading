@@ -1358,3 +1358,76 @@ numbers are unchanged — the same trap as `build_demand_exceeds_capacity` in §
 portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and Tomahawk's
 own note already carries the latter unextracted. The collector is the next build, and until it
 exists this ruling is potential rather than effect.
+
+## 22 · The research was never checked against the build (16 September 2026)
+
+**Not a ruling.** This section records a measurement and creates a standing check. Every gap it
+names is a candidate for a ruling and none of them is one. Where this section and the register
+disagree, the register wins.
+
+### What prompted it
+
+The owner asked whether what was built still matched the research it came from. The research —
+an external document of 9 September, ~150 sources read and ~80 cited — closes with **ten
+requirements written for whoever built this repo** and **seven decisions it asked the owner to
+make**. Nothing in this repository has ever referenced them. No session has read that document.
+
+That turns out to have cost real work. §16 measured the coverage shortfall that R4's calibration
+loop was designed to expose. §19 and §21 each ended on "nothing collects this yet" for features
+the research had already named as collectable. Three sessions independently rediscovered ground
+the research had mapped, because the map was not in the repo.
+
+### What was measured
+
+Ten requirements, scored against the code: **R1 met · R2, R3, R4, R6, R8, R9, R10 partial ·
+R5 divergent · R7 not met.** The six "do not build" prohibitions are honoured six for six,
+the composite-score one structurally rather than by intention. Of the seven decisions, three are
+answered, one was answered further than asked (ICP retired entirely as the fit read, §8), and
+three are open — including **who rates**, which is the constraint currently binding the book.
+
+Three findings are worth naming here rather than leaving in the ledger.
+
+**Every significant gap is the same gap.** R4's calibration loop, R9's three measurement rituals
+and R6's thresholds are all the *measuring* half of the design. The scoring half was built well;
+the half that tells you whether the scoring is any good was not built at all. The research is
+explicit that a score without calibration is a dashboard nobody actions, and PRO-8's UNVALIDATED
+stamp has been correct the whole time for exactly this reason.
+
+**Two of the four gates do not gate.** The research names four — service shape, economics, broker
+character, geography. `broker_character` runs in `flag` mode because PRO-2r-a is unruled, which is
+recorded and deliberate. **`geography` runs in `off` mode, and nothing records why.** That is not a
+ruling and not an open item anywhere; it is a switch nobody has looked at.
+
+**The strongest predictor in WLIQ's own data is not in the fit read.** The research calls the
+white-label signal "the single strongest predictor you found" — roughly an 80% active rate. In
+this repo `wl_signal` only sets the outsourceable share inside Potential. It has never been
+proposed as a fit criterion, and never rejected as one. Rubric 0.2's narrowing from twelve
+researched attributes to six answerable criteria is defensible; this particular omission looks
+like an accident rather than a choice, and it deserves a ruling either way.
+
+### What was done
+
+`docs/RESEARCH-CONFORMANCE.md` is a standing ledger: one row per requirement, per prohibition and
+per decision, with its state and what is missing. It carries aggregate counts only, no external
+document identifiers, per rule 2.
+
+`scripts/conformance_test.ts` runs the ledger's machine-checkable claims on every `npm test`.
+The design point is that each check states what is true **today, including the gaps** — so closing
+a gap fails the build until the ledger is updated to say so, and a gap that quietly reopens fails
+it too. Drift is caught in both directions. Fourteen claims are checked automatically; eight
+cannot be answered from the repo (a credential, a row count, a person) and are printed on every
+run with the date they were last verified, never failing the build.
+
+### The limit of this, stated plainly
+
+**The Grading Register has still never been read by this repo.** It is a Claude artifact rather
+than a file, and every PRO-number claim in `docs/` — including in this section — is second-hand
+through earlier sessions. The research is advisory and the register governs, so the one input
+that actually binds is the one no conformance check can see. Getting the register into a form a
+session can read is a larger unblock than anything in the ledger.
+
+### What this does not decide
+
+No threshold moves. No gate mode changes. No rubric is activated. Geography stays `off`, the
+white-label signal stays out of the fit read, and decision 4 stays unanswered — all three are now
+written down where the next session will trip over them instead of rediscovering them.

@@ -54,6 +54,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
 web/        index.html — the page, one file, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
+            RESEARCH-CONFORMANCE.md — how the build compares to the 9 Sep research's ten
+            requirements; ADVISORY (the register governs). Its fenced JSON block is run by
+            scripts/conformance_test.ts on every npm test, so closing a gap OR reopening one
+            fails the build until the ledger says so. Read it before adding a read or a rule.
 scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an admission, the way a
             pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
