@@ -2124,3 +2124,61 @@ and diffing them against `dist/`. That diff should be the standard last step of 
 deploy, and it is the only thing that distinguishes "the API accepted it" from "the right code
 is running." The restored v8 differs from the built bundle by one trailing newline and nothing
 else.
+
+## §33 — The prospect board ranks potential; engagement is a column
+
+**16 Sep 2026.** Owner: *"If you have platinum potential, then it doesn't matter about the
+engagement… the engagement is different than their potential. Is that correct?"* It is, it was
+already ruled in §20, and the board I had built contradicted it.
+
+### What the contact board got wrong
+
+`pb_chase_board` ranks on recorded contact. Measured against the 61 highest-potential
+prospects, it put **one** of them in its top 100. The worst sat at rank **816**. Thirty-five
+scored zero or less and did not appear at all.
+
+Three faults, and only the first was visible:
+
+1. **It ranked on engagement.** §20 says potential is what they could be worth and engagement
+   is whether they are live right now. A board that folds one into the other answers neither
+   question.
+2. **It invented an ordering.** The rubric already defines the chase order — `chase_rank_key`:
+   tier, then qualification facts present, then urgency, then year-one band — and `grade()`
+   writes it into every scorecard. Rule 4 says the rubric is data. A `pb_chase_weights` table
+   competing with the rubric's own key is a second source of truth for one decision, and the
+   one I wrote scored tier, headroom and deal size at **zero**.
+3. **It produced a composite number.** 126, 111, 96. The book's first line is four reads
+   *never summed*, output as a rank and bands, never a number (PRO-0). I summed them.
+
+### What replaced it
+
+`pb_prospect_board` sorts on the five elements of the engine's `chase_rank_key`, read out of
+the scorecard. It defines no ordering of its own: change the chase order by editing the rubric
+and re-scoring, and this view does not move.
+
+Worth noticing what that key already does with engagement — **urgency is the third element**,
+after tier and qualification. Liveness breaks ties between equals; it is never a reason to
+outrank a bigger prospect. §20 was expressed as an ordering in the rubric the whole time.
+
+One row per company (§31), and a company's potential is the **best-evidenced read among its
+records**, picked by the same key rather than by whichever record leads on contact. That
+promotes one company whose Platinum read sits on its non-lead record.
+
+### What it shows
+
+599 prospect companies. **89 of the top 100 are Gold or Platinum** — against one before. Every
+one of the top 25 is `Platinum × Partner`. **43 of the top 100 have never had a single recorded
+contact**, and an `untouched_high_potential` flag names the 42 Gold-or-better companies in that
+state, because "real size, nobody has ever tried" is the most actionable row in the book and
+was the least visible.
+
+The contact board stays. It is genuinely useful — it is the answer to "who do I call today,"
+and the account managers want it. It is simply not the answer to "who are the best prospects,"
+and giving one list to both questions is what made the top 100 wrong.
+
+### The third axis is empty, and that is the next job
+
+§20's three axes are tier, **confidence**, and engagement. Confidence reads Medium on 380
+companies and Low on 147 — and **High on none of them**, because High needs three of four
+qualification facts and the average is 1.01. The ranking is sound and the confidence behind it
+is thin everywhere. That is not a scoring problem; it is 548 recorded calls nobody has read.

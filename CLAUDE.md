@@ -74,7 +74,12 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260916230000 quote match by exact domain ·
             20260916230100 pb_company_engagement + the chase board grouped by company
             (824 companies over 849 records; the union is over EVENTS, never over the
-            derived flags — DECISIONS §31) (all applied)
+            derived flags — DECISIONS §31) ·
+            20260916240000 pb_prospect_board — prospects ranked by POTENTIAL, sorted on the
+            engine's own chase_rank_key read out of the scorecard (the rubric defines the
+            order, SQL never restates it); engagement is a COLUMN, never the rank; no
+            composite number (DECISIONS §33). pb_chase_board stays as the contact-ordered
+            "who do I call today" board — a different question (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
