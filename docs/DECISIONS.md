@@ -1593,3 +1593,73 @@ which makes it a proposal to the registry's steward, not an edit. Same posture a
 
 The registry's own questions carry over and are not ours to answer: the QuickBooks connector and
 a domain-only join (R3), the Phase C load order, and role-scoped billing visibility.
+
+
+## 26 · Nine owner rulings on how the chase list should behave (16 September 2026)
+
+Answers to the six questions raised in the 16 September diagnosis, plus three more the owner
+volunteered. Several **reverse** what had just been built, and the reversals are the valuable part.
+
+### 1 · Delivery is not a disqualification — REVERSES what was built
+
+The proposal was: an account with an active Orbit project leaves the chase list for a promotion
+queue. Ruled the opposite, for three reasons:
+
+- an Orbit project is very often a **quote**, which means they are mid-decision — *"that means
+  they're even hotter and deserve even more attention"*;
+- after signature the account hands to an account manager, and **that transition is the moment of
+  maximum exposure**: *"we've invested so much money in them at this point"*;
+- a client buying one line is a prospect for **every line they are not already buying**.
+
+So an Orbit project changes the **lane**, never membership. `pb_mdm_resolution.lane` says how to
+work an account and removes nothing (migration 20260916170000). The view had already shipped with
+the wrong advice in it; that text is replaced, not amended.
+
+### 2 · A live quote outranks conversation
+
+`pb_engagement_shape` adds `quote_state`: a quote raised in the last 60 days is `quote_open` and
+means mid-decision. Measured immediately: of ten accounts with an open quote, **four read `Cold`
+in the CRM** and one read `Warm`. Reported beside engagement rather than folded into it, so the
+two can disagree visibly.
+
+### 3 · A lost quote is not a lost client
+
+*"Just because a quote is lost does not mean we have lost the client. A no is a positive sign."*
+A priced conversation is an asset: it can be re-shaped, and the loss may have been our scoping
+rather than their budget. `Quote Lost` must never become a terminal state, and a price refusal
+is a dated event with a reason, not a permanent exclusion.
+
+### 4 · The stage label means nothing unless confirmed
+
+Confirms §24. The dropdown is a tiebreak at most.
+
+### 5 · Chase-list size: up to 100
+
+*"I said 60 because that seemed like a good number… I have capacity to chase 100 at the highest
+volume right now."* So the target is the top 100 and the tuning bias is **recall over precision**
+— missing a live account costs more than carrying an extra one. That is a reversal of how the
+60-row list was built, which optimised for neither.
+
+### 6 · What makes a fact
+
+*"Facts happen in our engagement when we actually learn something from talking to them — through
+email, through Fathom calls, through conversations, through our own discussions."* A fact is
+learned in contact. A field copied from a CRM is a record, not a fact; this is why `rater` outranks
+every machine source in rule 9, and why three rater facts in the system's lifetime is the ceiling
+on everything else.
+
+### 7 · Identity work continues across every source
+
+Domains and call attribution are to be dug out of email, the calendar, Fathom invitee lists, Orbit
+attachments and the Notion prospecting lists — not from a single field. For the unattached calls
+the owner names the method: **match the agency name and URL, not the email domain alone.**
+
+### 8 · One screen per account
+
+Approved in principle; the design is open and the owner has offered to answer questions on it.
+
+### 9 · Connected systems are the source now
+
+Orbit, Gmail and Fathom are reachable over MCP in session. A missing Vault secret blocks the
+*nightly* job, not the work — and asking for a credential that is already in hand was the wrong
+answer on 16 September.
