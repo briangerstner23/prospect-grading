@@ -52,7 +52,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260915140000 website retry window ·
             20260916090000 research log (pb_account_reads · pb_briefs · pb_chase_scores) ·
             20260916090100 candidates from reads ·
-            20260916100000 candidate source from method (all applied)
+            20260916100000 candidate source from method ·
+            20260916140000 contact events + pb_engagement (DECISIONS §24) ·
+            20260916140100 engagement counts a meeting they attended (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;

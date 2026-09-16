@@ -1480,3 +1480,70 @@ not named. A useful example is "an agency Apollo listed at 68 with 35 people on 
 **The check is now mechanical.** Pull `pb_accounts.name`, match every tracked text file against it
 case-sensitively on word boundaries, and expect nothing. Run it before any commit that adds prose
 to `docs/` or a comment to a migration. It found all fifteen in one pass and it costs one query.
+
+
+## 24 · Engagement is recorded contact, not a stage label (owner ruling, 16 September 2026)
+
+**Ruled.** The owner, 16 September, on the proposal to stop deriving engagement from the CRM
+stage: *"for 5 and the stage labels, yes make this change, it does not seem accurate."*
+
+### What was wrong
+
+`urgency` came from a Pipedrive dropdown — Super Hot / Hot / Warm / Cold — and it was the heaviest
+single input in every chase ordering. It carries no date, no direction and no source. Measured
+against what is actually recorded:
+
+| The CRM says | engaged | responsive | pursued | fading | dormant | nothing on file |
+|---|---|---|---|---|---|---|
+| Super Hot (15) | 2 | 5 | 0 | 5 | 3 | 0 |
+| Hot (47) | 3 | 2 | 1 | 7 | 4 | 30 |
+| Warm (178) | 3 | 1 | 0 | 5 | 1 | 168 |
+| Cold (458) | 5 | 12 | 2 | 29 | 5 | 405 |
+
+Two readings, both damaging. Of the 62 accounts the CRM calls Hot or Super Hot, **five are in live
+contact**; twelve are fading, seven dormant and thirty have nothing recorded at all. And of the 458
+it calls Cold, **seventeen are in live contact** — five of them inside the last thirty days.
+
+The worst individual cases are the ones that motivated the ruling: an account that had ended its
+relationship with WLIQ read `Hot` and ranked second on the chase list, its last recorded contact
+195 days old; the account ranked *first* read `Super Hot` on a single touch 106 days ago; and an
+account in active conversation read `Cold`.
+
+### What replaces it
+
+`pb_contact_events` (migration 20260916140000): one row per **recorded** contact — a call, an
+email, a CRM note, a quote — each with a date, a direction and a traceable source id. It is an
+observation, never a judgement.
+
+`pb_engagement` derives the label:
+
+| Label | Means |
+|---|---|
+| `engaged` | they replied, or attended a call, within 30 days |
+| `responsive` | the same within 90 days |
+| `pursued` | we contacted them within 30 days and they have not come back |
+| `fading` | some contact within 180 days |
+| `dormant` | nothing for 180 days |
+| `unknown` | **nothing recorded** — which is not the same as cold |
+
+Three properties the stage label did not have: a date, so it decays honestly; a direction, so a
+reply outranks a send; a source id, so any row can be re-checked.
+
+**`unknown` is the important one.** Rule 5 says unknown is never evidence, and the old label broke
+that by rendering "nobody has written anything down" as `Cold`. Those are different claims. Today
+603 accounts are `unknown`, and most of that is a sweep that has not been run yet, not an absence
+of contact — so `unknown` must never be scored as a negative.
+
+### A correction made during the build
+
+The first cut tested `direction = 'inbound'` for "they came back to us". A recorded call is stored
+as `mutual` — both sides showed up — so an account with nineteen calls and no email read as
+`pursued`. Attending a call is at least as strong as replying to an email. Both now count
+(`last_engaged`), and `last_reply` is kept separately for anyone who wants the stricter test.
+
+### What is NOT ruled here
+
+The stage label is not deleted. `pb_engagement.stage_label` carries it alongside, so the two can be
+compared rather than swapped, and so a stale label is visible as a stale label. Whether the label
+should break ties, and what weight `engagement` carries in the chase ordering, remain the open
+`stated_timing_wins` question and the unruled chase weights (PRO decisions 1 and 5).
