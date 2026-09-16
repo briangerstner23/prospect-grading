@@ -1547,3 +1547,49 @@ The stage label is not deleted. `pb_engagement.stage_label` carries it alongside
 compared rather than swapped, and so a stale label is visible as a stale label. Whether the label
 should break ties, and what weight `engagement` carries in the chase ordering, remain the open
 `stated_timing_wins` question and the unruled chase weights (PRO decisions 1 and 5).
+
+
+## 25 · The identity registry is mirrored, not re-derived (16 September 2026)
+
+The `wliq-mdm` identity registry maintains what this book has been guessing at: which company is
+which, which Orbit and Notion records belong to it, what it has been called, and what must never
+become a company at all. Version 0.5.1 covers 29 companies and 53 source records, every one
+re-read against the live system on 3 and 13 September.
+
+It is mirrored here (migration 20260916160000) rather than re-derived, because re-deriving it is
+exactly how this book got the following wrong:
+
+- **An account filed under WLIQ's own domain**, carrying 53 of our own projects. The registry
+  lists WLIQ by name as junk; this book reached it by domain, so a name-only check missed it.
+  `pb_mdm_junk` now accepts a `domain` kind and the account is reported by `pb_mdm_junk_hits`.
+- **Two accounts that are one company** — a row titled with a person's name and a row titled with
+  the company's. The registry rules the company canonical and keeps the person as a
+  *non-authoritative* alias so the source row still resolves.
+- **An account under a project label** rather than a company name, with the same treatment.
+- **A pair the registry has ruled are different companies**, scored 0.978 on fuzzy name match.
+  Both halves are in this book. `pb_mdm_poison_pairs` stores the score precisely as the proof that
+  no similarity threshold is merge-safe.
+
+### What the mirror must not discard
+
+**Review state is data.** Rows are green (re-verified against a live system), yellow (documented,
+with an open question) or white (name only): 22 / 6 / 1. A yellow row is not a confirmed row.
+
+**Notion Client IDs are reference only** (registry rule R4). They are stored for traceability and
+`pb_mdm_resolution` must never join on them — it matches domain, then alias, then canonical name.
+
+**The registry is not signed off.** Its own review sheet says nothing changes until the owner
+answers per company. `signed_off_at` stays null and the resolution view reports `pending_signoff`,
+so no downstream job can mistake a draft for a ruling.
+
+### Direction of travel
+
+This book **reads** the registry and never writes to it. Where this book observes something the
+registry has not seen — the junk domain above — the row is marked `origin = 'prospect-book'`,
+which makes it a proposal to the registry's steward, not an edit. Same posture as
+`pb_roster_drift`: it reports, a person decides.
+
+### Still open
+
+The registry's own questions carry over and are not ours to answer: the QuickBooks connector and
+a domain-only join (R3), the Phase C load order, and role-scoped billing visibility.

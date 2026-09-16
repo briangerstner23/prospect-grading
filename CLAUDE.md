@@ -54,7 +54,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260916090100 candidates from reads ·
             20260916100000 candidate source from method ·
             20260916140000 contact events + pb_engagement (DECISIONS §24) ·
-            20260916140100 engagement counts a meeting they attended (all applied)
+            20260916140100 engagement counts a meeting they attended ·
+            20260916160000 identity registry mirror (pb_mdm_*, DECISIONS §25) ·
+            20260916160100 junk by domain + origin (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
