@@ -51,7 +51,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260915130000 website team pages ·
             20260915140000 website retry window ·
             20260916090000 research log (pb_account_reads · pb_briefs · pb_chase_scores) ·
-            20260916090100 candidates from reads (all applied)
+            20260916090100 candidates from reads ·
+            20260916100000 candidate source from method (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -62,7 +63,9 @@ docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · R
 scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an admission, the way a
             pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
-            index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts
+            index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts ·
+            no_prospect_names.ts (rule 2 made mechanical — takes the roster from outside the repo;
+            run it before any commit that adds prose. DECISIONS §23, RUNBOOK §27)
 ```
 
 ## Conventions
@@ -85,7 +88,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    open item landed.
 2. **No prospect data in this repo.** It is public. No agency names, dollar bands, seed
    exports, gate reports, staff names or build-kit documents. Fixtures are synthetic
-   (invented agency names). People appear only as roles.
+   (invented agency names). People appear only as roles. This was broken for five days by
+   fifteen agency names that entered as *examples* in prose (DECISIONS §23) — so the check is
+   now mechanical: `scripts/no_prospect_names.ts` against the live roster, RUNBOOK §27. Shape
+   the example ("an agency Apollo listed at 68 with 35 on its team page"), never name it.
 3. **The engine is pure.** `grade(features, rubric, options) → scorecard`, deterministic,
    every fired rule in the trace with its basis (`ruled` / `unruled_default` / `reasoned`).
 4. **The rubric is data.** Every threshold, band, weight and lifespan is read from the active

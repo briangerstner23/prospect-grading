@@ -13,7 +13,7 @@ build proceeds on. Nothing here is a new ruling.
 | 1 | Tier-1 size: plan against 15–20, hold the rest of the 46 as Tier-2 candidates? | Not ruled. PRO-0 says the grade orders the chase list; tier sizing is Brian's allocation ("grading ≠ organizing", ruled July). | The engine outputs a `chase_rank_key`; no capacity cap is applied in the grade. The tier→play table is configuration for Phase 3. |
 | 2 | ICP changes: floor ICP-3 at $10K, drop ICP-6, add recurring / niche / AM-PM / AI-positive as scored attributes? | **PRO-4: ICP-6 stays in scope, flagged**, excluded from agency-only weights. PRO-15: keep the six ICPs and the July structure; test each piece as data arrives. | ICP-6 rows graded, flagged "Direct-to-client", agency-only adjustments skipped. The ICP-3 floor and the four research attributes are **named adjustment rules with basis `reasoned`**, toggleable, inside the ruled one-grade net cap. |
 | 3 | Weights: run the lift analysis first, or equal weights and calibrate after a quarter? | PRO-12: enrichment first, then fit. PRO-8: pre-registered rank agreement ≥ 0.5; the cohort test on tier vs year-one ran and **did not meet it** (ρ = 0.270, **CI [−0.142, 0.647], n = 31, clients only**); the pre-signing harvest has not run. The interval spans zero, so the test did not distinguish a useless model from a good one — see `docs/BASELINE.md` §5. UNVALIDATED stands; "not yet shown to work" is not "shown not to work". | v0.1 ships **UNVALIDATED (PRO-8)** on every scorecard, with equal (±1 rung) adjustments and every basis labelled. The fit runs when the harvest exists; it is not in this repo's Phase 1. |
-| 4 | Who rates prospects and holds the override lane? | **PRO-5 (revised):** the two sales raters rate their own rows; Brian may stand in, recorded as a stand-in; **Brian alone overrides**. Deepak's lane is retired. PRO-2r: there are no judgment questions — raters enter **facts**. | `pb_members.role` = owner / rater / viewer; `pb_facts.entered_by` + `stand_in`; override insert policy is owner-only; per-rater comparison is a first-class report (later phase). |
+| 4 | Who rates prospects and holds the override lane? | **PRO-5 (revised):** the two sales raters rate their own rows; Brian may stand in, recorded as a stand-in; **Brian alone overrides**. A third rater lane is retired. PRO-2r: there are no judgment questions — raters enter **facts**. | `pb_members.role` = owner / rater / viewer; `pb_facts.entered_by` + `stand_in`; override insert policy is owner-only; per-rater comparison is a first-class report (later phase). |
 | 5 | SPICED as the shared qualification record, MEDDIC-lite above $35K/yr? | Not ruled. PRO-2r's Dimension A (money, authority, timing, specification) is the ruled qualification test. | Dimension A is the qualification read. SPICED's fields (pain, impact, critical event, decision) are the Fathom call-extraction schema, which feeds Dimension A and deal health; nothing is scored on them. |
 | 6 | Pipedrive stays the deal-motion record with write-back, or the Prospect Book becomes the record? | **PRO-6: Pipedrive is the source of truth for the roster, until it is not.** The Orbit CRM and the sales spreadsheet are uncertified. The database is still the grading record (the brief's architecture rule, not contradicted). | `pb_accounts.roster_certified` is true only for rows Pipedrive carries. Every other list seeds rows flagged "Roster source uncertified" and still graded (a grade is labelled, never withheld). Write-back is Phase 3. |
 | 7 | Share the Prospect Book publicly like the Client Book, or keep it private? | **PRO-7: anyone at WLIQ who signs in.** Not public. | **Superseded on 10 Sep 2026 by Brian's instruction: the book reads publicly.** See §5. Writes are unchanged and still by lane (PRO-5). |
@@ -587,15 +587,15 @@ changes, a sales-qualified label is a restatement of what Pipedrive already held
 ### Fathom, measured against the book
 
 The book holds 12 recordings — 9 meetings — newest 19 August. The Fathom API returns **260
-meetings between 11 August and 11 September alone**, with more behind the cursor. Among them:
-"Ridge Media LLC : Riverside GBP report Walk Through" (3 Sep, twice), "WLIQ/Image Shoppe: Weekly
-Meeting" (1 and 8 Sep), "Campfire Digital : Next Action Planning" (27 Aug). Ridge Media is
+meetings between 11 August and 11 September alone**, with more behind the cursor. Among them a
+report walk-through with a chase-list agency (3 Sep, twice), a weekly meeting with another
+(1 and 8 Sep), and a next-action planning call with a third (27 Aug). The first of those is
 **rung 9** of the chase list; the book had never read a word anyone said to them.
 
 ### Three faults in who is on the list
 
 1. **24 duplicate agencies**, 48 rows, 37 of them in the live chase list — almost all one
-   certified Pipedrive row plus one uncertified Notion-seed row. Nettra Media occupied rungs 8
+   certified Pipedrive row plus one uncertified Notion-seed row. One agency occupied rungs 8
    and 28 simultaneously.
 2. **104 accounts with no domain.** Domain is the join key for attributing a call or an email, so
    those accounts are structurally unreachable by Fathom or Gmail however often the sweep runs.
@@ -609,15 +609,16 @@ Meeting" (1 and 8 Sep), "Campfire Digital : Next Action Planning" (27 Aug). Ridg
 - **18 duplicates merged** through `pb_merge_accounts`, each recorded in `pb_register`. The
   certified Pipedrive row survives (PRO-6); the Notion row's facts, signals, contacts and
   candidates move to it. 680 accounts → 662.
-- **Ridge Media LLC given its domain** (`ridgemediallc.com`), evidenced by the external attendee
-  on two Fathom recordings, and recorded in the register.
+- **One account given its domain**, evidenced by the external attendee on two Fathom recordings,
+  and recorded in the register.
 - Re-scored: 601 ranked, 54 unclassified, 7 parked, 0 errors.
 
 ### What is left, and who owns it
 
-- **5 duplicate pairs carry two different domains each** — Altitude Marketing vs Altitude
-  Marketing & Media Partners, Bloor Advisory vs Bloor Capital, Arcanum, BCom, Dynamic Marketing
-  Consultants. These may be separate companies rather than duplicates; a person decides (rule 8).
+- **5 duplicate pairs carry two different domains each** — in three of them one name is a
+  lengthened form of the other (an agency and an agency "& Media Partners"), in the rest the two
+  names share a first word only. These may be separate companies rather than duplicates; a person
+  decides (rule 8).
 - **Two rows named `TBD`**, both Pipedrive placeholders, are not agencies and should leave the book.
 - **85 accounts still lack a domain**, but only about 20 are real agencies. The rest are the
   non-agency contamination above. Their contact emails are no help: 64 of them have one and every
@@ -1112,7 +1113,7 @@ found at all.
 
 ### What happened
 
-Miranda Creative is a thirty-year-old Connecticut agency. Brian was on site on 20 August; their
+One account is a thirty-year-old New England agency. The owner was on site on 20 August; their
 web/ops director closed the meeting with *"I'm ready to go. I'm sold."* They run dozens of sites,
 their workload swings between 5 and 500 hours a month, and they had just been burned by an offshore
 vendor. They are, by any sales reading, one of the better prospects in the book.
@@ -1328,8 +1329,8 @@ rate tolerance and whether a partnership lasts — ceiling-type, economics and c
 not size ones. It is recorded so those can be tested against outcomes before anyone wires it into
 an arithmetic.
 
-This also resolves an apparent contradiction in the same session. Of More Better Design Studio (one
-person) the owner said *"they're really small too for one person… not quite meet the goal for
+This also resolves an apparent contradiction in the same session. Of a one-person studio the
+owner said *"they're really small too for one person… not quite meet the goal for
 platinum"*, and of one-person agencies in general, *"1 person can still be platinum"*. Both hold: a
 solo operator with a thirty-strong bench and enterprise clients has Platinum capacity; a solo
 operator with neither has a good small business. Experience makes them a good client, not a big one.
@@ -1433,3 +1434,45 @@ already returned 200 — no point spending five requests on a domain that does n
 Nothing here writes a fact. The fetch stores text; extraction stays with pb-notes, behind the
 quote check, the judgement check and `pb_fact_candidates` (rule 8). A machine reading a team page
 proposes; a person decides.
+
+## 23 · Rule 2 was broken for five days, and what that costs (16 September 2026)
+
+**Not a ruling. A breach of an existing one, found and repaired here so it is on the record.**
+
+Rule 2 says no prospect data in this repository, because the repository is public. On 16 September
+a check against the account roster found **fifteen agency names, one third-party staff name, and
+two per-account dollar figures** in tracked files:
+
+| Where | What | Since |
+|---|---|---|
+| `docs/PLAN.md` | eleven agency names, a $47,955 deal, a $117–141K deal, a staff name | 16 Sep |
+| `docs/RUNBOOK.md` §26 | two agency names with their headcounts | 16 Sep |
+| `20260916090100` (comment) | the same two | 16 Sep |
+| `docs/DECISIONS.md` §§13, 19, 21 | six agency names, one domain, one meeting title | 11–13 Sep |
+| `ingest/fathom_webhook_test.ts`, `notes_sweep_test.ts` | a real WLIQ staff name and a lightly disguised agency domain in a fixture | 11 Sep |
+
+Every one is removed at this commit. The passages keep their substance — an example becomes "a
+counted 35 rather than Apollo's 68", a fixture becomes a genuinely invented name — because the
+point each was making was never the identity.
+
+**Removing them from `HEAD` does not remove them from history.** The repository is public
+(`visibility: public`, confirmed by API, not assumed), so those commits have been fetchable since
+11 September and remain so. Three options, and the choice is the owner's:
+
+1. **Make the repository private.** One switch, closes everything at once, including history.
+   It does not un-publish what has already been fetched, but nothing new can be.
+2. **Rewrite the branch history** and force-push. Removes the names from the commits; GitHub still
+   serves an orphaned commit by its SHA for a while, and anyone with a clone keeps theirs.
+3. **Leave history as it is** and hold the line from here. Defensible — these are company names and
+   public headcounts, not secrets — but it is a decision, not a default.
+
+Nothing here rewrites history on its own; that is an outward-facing, irreversible action on a
+public branch.
+
+**Why it kept happening:** every one of these entered as an *example* — the concrete case that made
+a ruling legible. That instinct is right and the examples should stay; they just have to be shaped,
+not named. A useful example is "an agency Apollo listed at 68 with 35 people on its team page".
+
+**The check is now mechanical.** Pull `pb_accounts.name`, match every tracked text file against it
+case-sensitively on word boundaries, and expect nothing. Run it before any commit that adds prose
+to `docs/` or a comment to a migration. It found all fifteen in one pass and it costs one query.

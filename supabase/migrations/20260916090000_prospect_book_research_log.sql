@@ -6,7 +6,7 @@
 -- briefs — and every one of those artefacts lived in a session scratch directory that dies with
 -- the container. `select count(*) from pb_facts where source = 'website'` returned 0.
 --
--- His instruction: *"I need all of our research to be logged in an accurate and responsible way,
+-- The instruction: *"I need all of our research to be logged in an accurate and responsible way,
 -- we do not want to lose what we know or [stop] growing in confidence."*
 --
 -- Three tables, and the split between them is the whole design:

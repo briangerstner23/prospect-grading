@@ -1,37 +1,26 @@
--- WLIQ Prospect Book — turning a logged read into a reviewable proposal.
+-- WLIQ Prospect Book — a candidate's source is where the sentence came from, not where the read ran.
 --
--- `pb_account_reads` (20260916090000) holds every structured read WHOLE: each field with the
--- verbatim quote behind it and the checker's verdict beside it. That is the record and it is kept
--- complete. This is the other half — the part a person can actually work.
+-- 20260916090100 stamped every candidate `source = 'website'`, because the pass that produced the
+-- reads was a site crawl. That is true of the pass and false of thirteen of the values.
 --
--- The distinction is the point. Logging everything and queueing everything are different jobs.
--- 431 fact candidates were already unreviewed before today; proposing all ~1,600 field-values from
--- 146 reads would bury the queue and nothing would get decided. So:
+-- The reads carry the distinction themselves. A `headcount_named` field records how it was got:
 --
---   the RECORD is complete   — pb_account_reads, nothing filtered, nothing lost
---   the QUEUE is selective   — only a value that would CHANGE what the engine believes
+--   named_people_on_team_page   52   faces counted on the agency's own /team page
+--   stated_number               10   a number written on the agency's own site ("we are 40")
+--   call_stated                 13   a founder said it to us, on a recorded WLIQ call
 --
--- A read whose value already matches what is on file is still logged; it just does not ask for
--- anyone's attention. Confirmation of what we already knew is not free information, but it is not
--- a decision either.
+-- Under rule 9 the source is not a label, it is precedence: `fathom_call` outranks `website`,
+-- which outranks `apollo` and `pipedrive`. Filing a founder's own number under `website` puts it
+-- one rank below where it belongs, and when two inferred facts disagree the wrong one wins. That
+-- is the same class of bug as DECISIONS §22 — the tiebreak deciding a tier — so it is worth the
+-- migration rather than a note.
 --
--- Rule 8 is untouched: this writes to pb_fact_candidates, never pb_facts. A machine read a page,
--- it proposes with its quote, a person decides. Rule 5 too: a null is never proposed, because
--- unknown is not evidence of anything.
---
--- Source precedence (DECISIONS §22) is what makes this worth doing. `website` outranks `apollo`
--- and `pipedrive`, so a confirmed team-page headcount immediately beats an inflated LinkedIn-
--- derived one — a counted 35 rather than Apollo's 68, a counted 10 rather than 30.
---
--- Idempotent: `fingerprint` is unique per (account, key, value, source), so re-running proposes
--- nothing twice.
+-- What does NOT change: `evidence_label` stays `inferred` for every row this function proposes.
+-- A model read the sentence. A founder stating a headcount on a call is stronger testimony than a
+-- team page, and a reviewer may well promote it to `evidence` when they confirm it — but the model
+-- does not get to make that call about its own reading. Rule 8's shape is unchanged: it proposes
+-- with its quote, a person decides.
 
-/**
- * Derive fact candidates from logged reads.
- *
- * `p_since` limits to reads logged at or after a timestamp; null means all live reads.
- * Returns the number of candidates inserted.
- */
 create or replace function public.pb_candidates_from_reads(p_since timestamptz default null)
 returns int
 language plpgsql
@@ -60,6 +49,12 @@ begin
            m.fact_key      as key,
            r.fields -> m.field_key -> 'value'  as value,
            r.fields -> m.field_key ->> 'quote' as quote,
+           -- Where the sentence came from, field by field. Only headcount_named carries a method
+           -- today; every other field is read off the page, so the default is the page.
+           case r.fields -> m.field_key ->> 'method'
+             when 'call_stated' then 'fathom_call'
+             else 'website'
+           end             as source,
            r.reader,
            r.read_at,
            r.confidence,
@@ -91,8 +86,8 @@ begin
     select w.account_id,
            w.key,
            w.value,
-           'inferred',                       -- a machine read a public page; never 'evidence'
-           'website',
+           'inferred',                       -- a model read a sentence; never 'evidence'
+           w.source,
            w.read_id::text,
            left(w.quote, 2000),
            w.read_at::date,
@@ -100,14 +95,17 @@ begin
            w.reader,
            encode(sha256(convert_to(
              w.account_id::text || '|' || w.key || '|' ||
-             coalesce(w.value::text, 'null') || '|website', 'UTF8')), 'hex'),
+             coalesce(w.value::text, 'null') || '|' || w.source, 'UTF8')), 'hex'),
            w.current_value,
            (w.current_value is not null and w.current_value is distinct from w.value),
            'proposed',
-           case when w.current_value is null
-                then 'Read off the agency''s own site; nothing on file for this key.'
-                else 'Read off the agency''s own site; disagrees with what is on file ('
-                     || w.current_value::text || ').' end
+           (case when w.source = 'fathom_call'
+                 then 'Stated by the agency on a recorded WLIQ call'
+                 else 'Read off the agency''s own site' end)
+           || (case when w.current_value is null
+                    then '; nothing on file for this key.'
+                    else '; disagrees with what is on file (' || w.current_value::text || ').'
+               end)
       from worth_asking w
     on conflict (fingerprint) do nothing
     returning 1
@@ -120,4 +118,4 @@ end $function$;
 revoke all on function public.pb_candidates_from_reads(timestamptz) from public, anon, authenticated;
 
 comment on function public.pb_candidates_from_reads(timestamptz) is
-  'Propose fact candidates from logged reads: quoted, non-null, checker-approved values that differ from what is on file. Idempotent. Never writes pb_facts (rule 8).';
+  'Propose fact candidates from logged reads: quoted, non-null, checker-approved values that differ from what is on file. Source follows the field''s own method (call_stated -> fathom_call, else website), which is what rule 9 breaks ties on. Idempotent. Never writes pb_facts (rule 8).';

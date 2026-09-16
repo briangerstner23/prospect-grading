@@ -59,8 +59,8 @@ with `source = 'website'`, the verbatim quote in `quote`, the skeptic's verdict 
 
 Two rules make this safe and they are already in the book: rule 8 (a machine proposes, a person
 decides) and the source precedence ruled on 15 September (`website` outranks `apollo` and
-`pipedrive`). So a confirmed counted headcount immediately beats Apollo's inflated one — Gorilla 76
-35 against Apollo's 68, Verdin 10 against 30, Hawthorn's call-stated 15 against 36.
+`pipedrive`). So a confirmed counted headcount immediately beats Apollo's inflated one — a counted
+35 against Apollo's 68, a counted 10 against 30, a call-stated 15 against 36.
 
 **Do not dump all of them.** 431 candidates are already unreviewed; adding 900 more makes the queue
 useless. Propose only fields that would *change* something: a value that differs from what is on
@@ -85,7 +85,7 @@ Today the ranking that decides who gets called lives in a Python file nobody can
 engine has its own `chase_rank_key`. Two rankings, one of them undocumented. Rule 4 says the rubric
 is data: make the chase weights `core/rubric.chase.v0.1.json` with a `pb_rubric_versions` row, so
 they are versioned, previewable and diffable like every other threshold in the book. Then
-"why is Kal first" is answered by a spec, not by a script in a temp directory.
+"why is this one first" is answered by a spec, not by a script in a temp directory.
 
 ### Move 4 — take the first snapshot · **the actual answer to "are we learning"**
 
@@ -102,7 +102,7 @@ insert.
 
 ### Move 5 — outcomes write back
 
-`pb_promotions` is empty while The Image Shoppe, Ridge Media and FTEyes are already delivering with
+`pb_promotions` is empty while three accounts in our own top seven are already delivering with
 WLIQ — the chase list found that out by reading call notes, not because the book knew. Close the
 edge: a won deal or a promotion writes a row, and an account that becomes a client leaves the chase
 list automatically instead of being caught by a critic.
@@ -113,16 +113,17 @@ list automatically instead of being caught by a critic.
 
 1. *Apollo headcounts run high.* ~39 accounts have a counted team-page number from the reads.
    Part of Move 1; fixes itself the moment those candidates are confirmed.
-2. *`is_agency` null lets non-agencies through* (CartikTech, Ascent, K+E were never flagged).
+2. *`is_agency` null lets non-agencies through* — three in the top 60 were never flagged.
    Part of Move 1 — the reads have it quoted for most of them.
-3. *Deals contradicting themselves.* EVR sits at stage "Quote Lost" with a $47,955 deal still open.
-   `pb_deals` has `stage_entered_at`, `status`, `value` — a nightly exception report is a view, not
-   a project. Add it to the movement views.
-4. *Stale live deals.* Kal's June quote, Avnat's $117–141K since August, EGC/Nettra/EVR promised
-   quotes with no delivery recorded. Same exception report: open deal, no stage movement in N days.
-5. *pb-notes filing WLIQ's own numbers as prospect facts* — RentPro `headcount = 100` quoting
-   "WL IQ is a 100-person team". Already specified: a subject check in `notes_sweep.ts`, a phrase
-   pre-filter as rubric data, and a migration lowering the three bad rows to `unknown`.
+3. *Deals contradicting themselves.* One account sits at stage "Quote Lost" with a five-figure
+   deal still open. `pb_deals` has `stage_entered_at`, `status`, `value` — a nightly exception
+   report is a view, not a project. Add it to the movement views.
+4. *Stale live deals.* A quote promised in June and never sent, a six-figure deal untouched since
+   August, three more promised quotes with no delivery recorded. Same exception report: open deal,
+   no stage movement in N days.
+5. *pb-notes filing WLIQ's own numbers as prospect facts* — one account carries `headcount = 100`
+   quoting "WL IQ is a 100-person team". Already specified: a subject check in `notes_sweep.ts`, a
+   phrase pre-filter as rubric data, and a migration lowering the three bad rows to `unknown`.
 
 **Needs a ruling from you**
 
@@ -136,7 +137,7 @@ list automatically instead of being caught by a critic.
 **Cannot be fixed with data**
 
 7. *The 22 missing calls.* I checked: 826 calls in `pb_calls` have no account attached, but only
-   **one** matches a prospect domain — the rest are Client Book calls. Deepak's calls were not
+   **one** matches a prospect domain — the rest are Client Book calls. Those calls were never
    recorded. No amount of re-attribution recovers them. The fix is that the call gets recorded,
    or the outcome gets typed into Pipedrive, at the time. Until that changes, roughly a third of
    the chase list will keep resting on a stage label with nothing behind it.

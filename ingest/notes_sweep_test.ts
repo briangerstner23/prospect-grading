@@ -424,7 +424,7 @@ const DEAL = plannedOf({
  * ids, four recorders, one meeting.
  * ------------------------------------------------------------------ */
 {
-  const MK = "2026-06-29|caitlin sims and hartford matthews|hm@brainjar.example";
+  const MK = "2026-06-29|robin vale and dana fox|df@northgate.example";
   const call = (rid: string, mk: string | null, acc = "acc-1") => ({ id: `row-${rid}`, fathom_recording_id: rid, account_id: acc, meeting_key: mk });
 
   const four = [call("159150499", MK), call("159151383", MK), call("159154228", MK), call("159155689", MK)];
@@ -443,7 +443,7 @@ const DEAL = plannedOf({
     oneRecordingPerMeeting([call("159150499", MK), call("9001", MK)]).kept[0].fathom_recording_id, "9001");
 
   // Different meetings are never merged.
-  const two = oneRecordingPerMeeting([call("1", MK), call("2", "2026-07-06|caitlin sims and hartford matthews|hm@brainjar.example")]);
+  const two = oneRecordingPerMeeting([call("1", MK), call("2", "2026-07-06|robin vale and dana fox|df@northgate.example")]);
   eq("oneRecordingPerMeeting: the same call a week later is a separate meeting", two.kept.length, 2);
   const acrossAccounts = oneRecordingPerMeeting([call("1", MK, "acc-1"), call("2", MK, "acc-2")]);
   eq("oneRecordingPerMeeting: the same key on two accounts stays two meetings", acrossAccounts.kept.length, 2);

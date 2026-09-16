@@ -1861,18 +1861,121 @@ select public.pb_candidates_from_reads(now() - interval '7 days');
 It proposes a `pb_fact_candidates` row only where the read carries a quote, survived the checker,
 is not null, **and differs from what is already on file**. Confirming what we already knew is
 logged but does not ask for anyone's attention. Idempotent — the fingerprint covers
-(account, key, value, `website`), so a re-run proposes nothing twice.
+(account, key, value, source), so a re-run proposes nothing twice.
 
 That split is deliberate and worth keeping: **the record is complete, the queue is selective.**
 431 candidates were already unreviewed on 16 Sep; queueing all ~1,600 read field-values would have
 buried the reviewer and nothing would have been decided.
 
+**The source is per field, not per pass** (migration 20260916100000). The crawl was a site crawl,
+but thirteen `headcount_named` values carry `method = call_stated` — a founder said the number to
+us on a recorded call. Those file under `fathom_call`, which outranks `website`. The first version
+of the function stamped every row `website` and would have filed a founder's own number one rank
+below where it belongs. `evidence_label` stays `inferred` either way: a model read the sentence,
+and a reviewer may promote it when they confirm it.
+
 Source precedence (DECISIONS §22) is what makes confirming one worthwhile: `website` outranks
 `apollo` and `pipedrive`, so a confirmed team-page headcount beats an inflated LinkedIn-derived
-one the moment it lands — Gorilla 76 at 35 rather than Apollo's 68, Verdin at 10 rather than 30.
+one the moment it lands — a counted 35 rather than Apollo's 68, a counted 10 rather than 30.
+
+### What the first run found (16 Sep 2026)
+
+146 reads → 1,460 mapped field-values → 731 quoted and checker-approved → **473 proposed**, 258
+dropped as agreeing with what is already on file. A second run inserted 0, which is the
+idempotency check.
+
+| Key | Proposed | Disagrees with file | Fills a gap |
+|---|---|---|---|
+| `agency_type` | 78 | 40 | 38 |
+| `client_budget_size` | 70 | 1 | 69 |
+| `headcount` | 61 | 54 | 7 |
+| `years_operating` | 51 | 0 | 51 |
+| `recurring_work_shape` | 49 | 0 | 49 |
+| `build_demand_exceeds_capacity` | 44 | 0 | 44 |
+| `sells_build_work` | 39 | 13 | 26 |
+| `wl_signal` | 39 | 4 | 35 |
+| `delivery_headcount` | 36 | 0 | 36 |
+| `is_agency` | 6 | 2 | 4 |
+
+The headcount column is the one with money attached. Of 54 disagreements the read is **lower in
+44**, median 8.5 people lower; **13 accounts fall below the 12-person Partner floor** and 2 rise
+above it. Confirmed in full, that is **$16.1M of headroom removed** from the book at the
+`headcount × $8,750` rate. Nothing is confirmed by running the function — this is the size of the
+question the queue is asking.
+
+### Loading a batch of reads by hand
+
+The 16 Sep load was 22 SQL files written by a generator, run through the MCP by three agents.
+Two traps, both hit:
+
+**`standard_conforming_strings` is `on`.** A backslash is *not* special inside a `'...'` literal,
+so JSON's own escaping passes through untouched and only `'` needs doubling. Doubling backslashes
+— which is correct for `E'...'` — corrupts the JSON: some rows fail outright with
+`Token "..." is invalid`, and the rest load *silently wrong*, storing `\n` as two characters and
+leaving stray backslashes inside the `quote` fields that rule 8 exists to keep verbatim. Loud
+failure on some rows is the only reason the silent ones were caught. Prove the round-trip before
+loading a batch:
+
+```sql
+select current_setting('standard_conforming_strings')    as scs,                  -- on
+       E'a\nb' = (('"a\nb"'::jsonb)  #>> '{}')          as single_backslash,       -- true
+       E'a\nb' = (('"a\\nb"'::jsonb) #>> '{}')          as doubled_backslash,      -- false
+       ('"a\\nb"'::jsonb) #>> '{}'                      as what_doubling_stores;   -- a\nb
+```
+
+**Verify the load byte for byte, not by row count.** Row counts matched while one statement was
+still wrong: a transcription slip prefixed a sentence from the previous account's statement onto
+`fields->build_capacity_gap->dropped`. Check with a rollup md5 computed the same way on both
+sides — locally from the source files, and in the database:
+
+```sql
+select md5(string_agg(e.key || chr(31) || coalesce(e.value->>'quote','~') || chr(31)
+        || coalesce(e.value->>'dropped','~'), chr(30) order by e.key collate "C"))
+from public.pb_account_reads r, lateral jsonb_each(r.fields) e
+group by r.account_id;   -- then md5 the per-account list, ordered by account_id
+```
+
+Use `collate "C"` on both orderings so the database's locale cannot change the answer. On 16 Sep
+this found exactly one mismatch in 146 reads; after the fix all three rollups matched their local
+values (reads `d858c5f9…` / 146, briefs `2fbf7cd5…` / 80, chase `97d098c3…` / 146).
 
 ### Superseding
 
 A newer read does not delete an older one. Set `superseded_at` on the old row instead; the history
 is how confidence in an account is seen to grow (or not). `pb_current_research` and the candidate
 derivation both ignore superseded rows.
+
+## 27 · Checking rule 2 before you commit
+
+The repository is public and the roster is not in it, so the check needs the roster handed to it.
+Pull the names, run the script, expect nothing:
+
+```sql
+-- in the Supabase SQL editor / MCP
+select string_agg(name, E'\n' order by name) from public.pb_accounts where name is not null;
+```
+
+Save that to a file **outside the repository** (a scratch directory — never `./`), then:
+
+```bash
+node --experimental-strip-types scripts/no_prospect_names.ts /tmp/roster.txt
+```
+
+Exit 0 is clean, 1 means a name is in a tracked file, **2 means no roster was given** — the script
+refuses to report a clean run it did not perform, because a check that passes when handed nothing
+is worse than no check.
+
+Run it before any commit that adds prose to `docs/`, a comment to a migration, or a fixture to a
+test. Every breach so far arrived as an *example*: the concrete case that makes a ruling legible.
+Keep the example and drop the name — "an agency Apollo listed at 68 with 35 people on its team
+page" carries the whole point and identifies nobody. Same for money: "a five-figure deal still
+open", not the invoice number.
+
+Matching is case-sensitive on word boundaries, and a short list of account names that are ordinary
+English (`Agency`, `Momentum`, `Snap`, `Test`, `None`…) is skipped in the script. If the roster
+grows a name that is a common word, add it there rather than letting the check cry wolf — a noisy
+check is one nobody runs.
+
+**What the script cannot do:** it reads the working tree, not history. A name already pushed stays
+in the commits that carried it until someone rewrites history or the repository goes private, and
+both are the owner's call (DECISIONS §23).
