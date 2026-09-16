@@ -1800,10 +1800,20 @@ need three or four `step()` calls a minute apart. `lost` counts rows whose reply
 before it was harvested; they are closed with an error rather than left in flight forever, which
 would block that page from ever being queued again.
 
-Where it stood after the first full pass (15 Sep 2026): 451 of 499 prospects carry a domain, 397
-front pages answered 200, 377 with usable text. `/about` answered for 256 of the 397, 240 of them
-usable — the signal worth extracting, because a role list separates "eleven people" from "eleven
-people, two of whom build things" (`delivery_headcount`, DECISIONS §21).
+Where the first full pass landed (15 Sep 2026). 451 of 499 prospects carry a domain; 2,043
+requests across five paths:
+
+| Path | Tried | 200 | Usable text |
+|---|---|---|---|
+| `/` | 455 | 397 | 377 |
+| `/about` | 397 | 256 | 240 |
+| `/about-us` | 397 | 116 | 102 |
+| `/team` | 397 | 91 | 77 |
+| `/our-team` | 397 | 61 | 48 |
+
+**380 accounts now hold usable text, 290 of them from an about or team page, and 291 name job
+titles** — which is the signal worth extracting, because a role list separates "eleven people"
+from "eleven people, two of whom build things" (`delivery_headcount`, DECISIONS §21).
 
 **`p_stale_days` counts from the last ANSWER, not the last success** (20260915140000). The first
 cut tested `last_ok`, the newest 200 — so a page that 404s never set it, stayed due forever, and
