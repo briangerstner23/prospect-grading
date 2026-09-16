@@ -1939,6 +1939,30 @@ Use `collate "C"` on both orderings so the database's locale cannot change the a
 this found exactly one mismatch in 146 reads; after the fix all three rollups matched their local
 values (reads `d858c5f9…` / 146, briefs `2fbf7cd5…` / 80, chase `97d098c3…` / 146).
 
+### When the published page is the only surviving copy
+
+On 16 Sep the brief writers ran twice and the second pass overwrote the first on disk, minutes
+before the copy that went into `pb_briefs` was made. The database therefore held the *second*
+pass, and the artifact published earlier held the first — which was the fuller one. Of 446 brief
+fields, 96 differed and **93 were longer in the published copy**, and what the shorter pass had
+dropped was fact, not padding: one prospect's demand for Net 60/90 against 100%-upfront pricing
+and its request that WLIQ carry liability; another's clients, and what its own CRM log said.
+
+This was found only because the Artifact tool refuses to publish over a version this session has
+not read, and hands back the live source instead. That refusal is a feature — treat it as one.
+**Before republishing any page that carries research, diff the live copy against the new build and
+account for every chunk that exists only in the live one.** A `difflib` pass over the two files,
+split on tag boundaries, gets it to a handful of lines to read by eye.
+
+The recovery: parse the published HTML back into brief objects, overlay them onto the on-disk set,
+insert the result as a new `pb_briefs` row per affected account with an author that says where it
+came from, and set `superseded_at` on the row it replaces. 21 accounts, 109 fields. `pb_briefs`
+already had the shape for this — a row per (account, generated_at) with `superseded_at` — so no
+schema change was needed, and both passes are still on file.
+
+The general lesson is the one the table was built for: **a published artifact is a copy of the
+record, and sometimes the only one.** Do not treat it as disposable output.
+
 ### Superseding
 
 A newer read does not delete an older one. Set `superseded_at` on the old row instead; the history
