@@ -652,10 +652,12 @@ now; the other cohorts' grading is later work.
 null 81), which covers two of them. Nothing for peer communities or Friends of WLIQ.
 
 And the gap is not theoretical: **all 31 Friends-of-WLIQ organisations in Pipedrive are absent
-from `pb_accounts` entirely** — among them *Agency Management Institute*, AMIN Worldwide,
-Predictive ROI, Sakas and Company, Agency Builders and Dynamic Agency OS. The rubric carries an
-adjustment, `ADJ-REF`, that rewards a "referral from the Brian / AMI / BABA network", and it fires
-on real accounts — while the network it names is tracked nowhere in the book.
+from `pb_accounts` entirely** — the owner's peer network: the agency-owner membership body he
+belongs to, two agency-buyer networks, a research partner, a consultancy and two operator
+communities. The rubric carries an adjustment, `ADJ-REF`, that rewards a referral from exactly
+that network, and it fires on real accounts — while the network it names is tracked nowhere in
+the book. (Named here originally; shaped on 16 Sep when those organisations entered the roster
+and rule 2 began to bite — see the note at the end of §28.)
 
 That stage also mixes cohorts: peer bodies sit beside vendors (WP Engine) and ordinary agencies
 (Spindustry, SJ Innovation, B Squared Media). "Friends of WLIQ" is a journey stage, not a cohort,
@@ -1356,8 +1358,8 @@ from being small.
 
 Nothing collects either fact yet, so every account resolves through the fallback and today's
 numbers are unchanged — the same trap as `build_demand_exceeds_capacity` in §19. Both are
-portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and Tomahawk's
-own note already carries the latter unextracted. The collector is the next build, and until it
+portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and at least
+one account's own note already carries the latter unextracted. The collector is the next build, and until it
 exists this ruling is potential rather than effect.
 
 ## 22 · Which source wins, and reading the agency's own site (15 September 2026)
@@ -1707,3 +1709,78 @@ as `pb_roster_drift` does for the Pipedrive roster.
 
 `roster_source` gains `orbit`. Additive, and `core/prospect_types.ts` gains the same member in the
 same commit so the type and the check constraint cannot drift (DECISIONS §8).
+
+## §28 — The email sweep: every prospect domain, read once
+
+**16 Sep 2026.** Owner instruction, twice: *"YES SWEEP EMAL ALSO"*, then *"yes"* to running it
+to completion. Email was the largest hole in the book. `pb_facts` was 78% a Pipedrive mirror and
+held **nothing** from email, so 603 of 849 accounts read `unknown` on engagement — not because
+no one had ever talked to them, but because nobody had looked.
+
+### What ran
+
+Every distinct domain on `pb_accounts` — **709** of them — queried against the mailbox as
+`{from:DOMAIN to:DOMAIN} newer_than:3y`, in batches, newest-first. Our own domain and one
+known junk domain were excluded, leaving 707 swept.
+
+**273 domains had email. 195 had a reply from them. 91 had a reply inside 90 days.**
+
+That is the headline: **more than a third of the book had an email history nobody had read**,
+and for 91 of them the other side answered this quarter.
+
+### What a sweep row asserts, and what it does not
+
+`pb_gmail_sweep` holds a domain, a last-inbound date, a last-outbound date, a thread count and
+`truncated`. `truncated` is **true on every row**, and that is not a defect to fix later — it is
+the honest label. The sweep reads page 1 of each query, newest first, which is exactly what
+recency needs and is useless for volume. So a null date means *nothing recent was found*, never
+*nothing exists*. Rule 5 holds: unknown is not evidence.
+
+A row asserts that mail crossed between us and that domain on that date. It does not say who,
+what about, or that it concerned buying anything. It is evidence of **contact**, which is what
+`pb_engagement` reads. It is never a fact about the company, and nothing here reaches `pb_facts`.
+
+### Why the load is a staging table and not a direct insert
+
+The sweep runs outside the database and comes back keyed by *domain*. Which account a domain
+belongs to is a join. Joins run in the database. This is the rule that `20260916180000` was
+written to record after a hand-typed domain list was contaminated by merging in names from a
+different source and produced a wrong headline number. `pb_gmail_sweep` carries the domain and
+the two dates and nothing else; `pb_accounts` decides the account, inside
+`pb_contact_events_from_gmail()`.
+
+The local domain list was verified before any query ran: `md5` of the sorted list on disk against
+`md5(string_agg(...))` in the database. Same digest, same count. A checksum, not a hand count —
+the lesson from §23.
+
+### What it changed
+
+448 email events across 277 accounts. `unknown` engagement fell from 603 to **536**; 49 accounts
+read `engaged` and 51 `responsive`, so **100 accounts have a live reply** where the book
+previously had nothing at all.
+
+### What is still not known
+
+Volume, and anything older than page 1. Both are recoverable by paginating the same queries, and
+neither changes a recency read. Body text was never fetched, so the sweep proposes no facts and
+needs no `pb_fact_candidates` review.
+
+### A note rule 2 only learned today: the roster grows under the prose
+
+Running `scripts/no_prospect_names.ts` against the **current** roster caught two occurrences in
+`docs/DECISIONS.md` that were clean when they were written. They became breaches because the
+companies they named entered `pb_accounts` later — one through the Orbit admission (§27), one
+through the peer-community cohort work itself.
+
+So rule 2 is not a thing you pass once. A sentence that was safe in August can be a breach in
+September without a single character changing, because **the check's other input moved**. The
+script must be re-run against the live roster before every commit that adds prose, not only when
+prose looks risky. Both occurrences are now shaped rather than named, and the run is clean.
+
+The roster file the check reads is itself pulled from the database and verified by checksum
+before use — `md5` of the sorted names on disk against `md5(string_agg(...))` in the database,
+per chunk. That caught a real transcription error on the first attempt: one account name carries a
+non-breaking space (U+00A0) where a reader sees an ordinary one, and it had been flattened to
+ASCII on the way to disk. One byte in 826 names. A hand count would never have found it; the
+checksum found it in two queries. This is the §23 lesson holding: the script is the count, and the
+checksum is the count of the thing the script counts.
