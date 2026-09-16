@@ -2188,7 +2188,8 @@ is thin everywhere. That is not a scoring problem; it is 548 recorded calls nobo
 > `claude/amazing-mayer-umftf0`. The two branches ran in parallel and both numbered from §22, so on
 > merge the later set was shifted by six. Any reference to §22–§31 written before 17 September
 > means the 16 September set; every reference in this file and in the 17 September documents has
-> been corrected to the numbers used here. See §38.
+> been corrected to the numbers used here. §38 was recovered from a third branch. Why eleven
+> branches existed at all, and the wrong claim it caused, is §39.
 
 ## 28 · The research was never checked against the build (16 September 2026)
 
@@ -2701,3 +2702,99 @@ an example.
 **Privacy note for the owner, not a ruling:** the 16 Sep artifact is shared by link and carries
 contact names and staff names in its dossiers. The database keeps `pb_contacts` closed to the
 public on purpose. The live page should follow the database, not the artifact.
+
+## 38 · What the redeploy changes, measured, and four things to settle before the collector lands (16 September 2026)
+
+pb-score v6 (built from `53fb656`) predates the four commits of 15 Sep that touch its import
+closure (§19 fit fallback, §20 `caps_ceiling`, §21 delivery capacity, §22 source precedence in
+`latestFactPerKey`). Before redeploying, the question was whether the new engine changes a single
+read under the ACTIVE rubric. It was measured rather than argued: the exact inputs pb-score reads
+(the `pb_current_facts` view rows, `pb_signals`, `pb_deals`, `pb_register`, the scorable accounts,
+the stored specs) were pulled and the pure engine run locally at `53fb656` and at `e9fdfd1` with
+one `as_of`.
+
+| Comparison | Result |
+|---|---|
+| old vs new engine, rubric 0.1.0, 677 accounts | **677 / 677 byte-identical scorecards** |
+| old engine replayed at the 15 Sep run's `as_of` vs the stored reads | 644 / 659 byte-identical; the 7 tier moves are §22's precedence view flipping a headcount source, not code |
+| new engine, 0.1.0 → 0.3.0 | Platinum 2 → 67 (Super Hot 1 · Hot 5 · Warm 11 · Cold 50); Partner ceiling 5 → 143 |
+| new engine, 0.1.0 → 0.2.0 | Platinum 3, Gold 27, Silver 130, Bronze 406; 293 tier changes — §16 still stands |
+| **old** engine under 0.3.0 | Platinum 3 — v6 ignores `caps_ceiling`, which is why §20 puts the redeploy before any preview |
+
+The identity is a property of the data, not of code equivalence: every 0.1.0-reachable difference
+is dormant because the active spec carries neither toggle and no account holds a
+`delivery_headcount`, `years_operating` or `build_demand_exceeds_capacity` fact. Two adversarial
+reviews of the diff and of the replica found nothing that fires a gate, an adjustment or a
+criterion from a null, and four things that are real once the data arrives. **None is ruled here.**
+
+1. **The confidence ladder still reads payroll.** `potential.confidence` rules, the
+   `Headcount unknown` flag and the revenue-per-head audit read `headcount` / `headcount_label`,
+   while the wallet now reads `delivery_headcount` first. An inferred bench of 40 behind an
+   evidence payroll of 5 prints **High**; a measured capacity of 31 with no payroll prints
+   **Low** and flags headcount unknown while a wallet was computed. Fix before any collector
+   writes the key: feed the ladder the capacity actually used, and let the draft that names
+   `delivery_headcount` say so in its confidence rules.
+2. **Which feature fills the capacity term is decided in code, not by the rubric** — the
+   opposite treatment from `caps_ceiling`, which was gated to keep 0.1.0 reproducible. The first
+   `delivery_headcount` fact recorded moves a 0.1.0 wallet with an unchanged
+   `rubric_fingerprint`; `docs/BASELINE.md` §1 already warns nothing stamps the engine. Either
+   read the capacity feature from the spec (absent → `headcount`) and set it only in a draft, or
+   record that §21 is knowingly not baseline-safe and keep the collector behind an activated
+   version.
+3. **A `delivery_headcount` of 0 is accepted and zeroes a known payroll's wallet.** The resolver
+   coerces with `toInt(v, 0)` and the engine prefers any finite number. A zero from a team-page
+   reader means "nobody listed" — the very inference §19 names — and rule 5 says it may not act
+   as evidence. Coerce with a floor of 1 and fall back to `headcount` with a note.
+4. **The fit fallback answers in both directions.** With `build_demand_exceeds_capacity`
+   unrecorded and `no_inhouse_dev_team` false, the criterion answers **no** — so the case §19
+   cites as its motivation still loses the point under 0.2.0. The rubric sentence names the
+   fallback and is silent on direction; the engine reproduces the silence faithfully. An owner
+   question: is a fallback "no" evidence, or unknown? Encode the answer as rubric data.
+
+Smaller: a misspelled `fallback_feature` name is silent (only a wrong type throws);
+`answered_by` names the primary when nothing answered; the page's fact-source vocabulary offers
+`fathom` where the precedence list says `fathom_call`, and `email` is unranked; the resolver's
+handling of the three new keys is unpinned by any test. Recorded so the next person does not
+rediscover them.
+
+Redeploying v7 changes no read tonight. The stored 0.2.0 draft is also older than the repo file
+(`flags.vocabulary` 18 vs 21 entries) and 0.3.0 has no row yet; both are refreshed as drafts at
+deploy time, previewed, and activated by nobody but the owner.
+
+## 39 · Eleven branches, one database, and a claim that was wrong because of it (17 September 2026)
+
+**Not a ruling — a correction and a standing rule.** The owner asked why so many branches exist,
+who is managing them, and how we got here. The answer, measured:
+
+**How it happened.** Every remote Claude Code session is handed its own branch by the harness
+(`Develop on branch claude/<name>`) and is told to push only there. Eleven sessions produced
+eleven branches. Nobody chose that; no human was managing it; and no session ever merged its
+work back, because each was told where to push and nothing told it to look sideways. The one
+thing every session *did* share was the database — one Supabase project — so the running system
+accumulated all of the work while the git history fragmented.
+
+**What that cost.** The 17 September session reported, repeatedly and in the ledger, that **29
+applied migrations had no file**. That was true of the branch it was standing on and false of the
+repository: 24 of those files were committed on `claude/new-session-glwxzh` the day before. The
+reconcile check built that same day (§34) compares the database to *the working tree*, which is
+exactly the blind spot that produced the wrong claim. A check that reads one branch cannot see
+work on another.
+
+**Measured on 17 Sep, after fetching every branch.** Eleven branches. Eight were fully contained
+in `claude/amazing-mayer-umftf0` (nothing to recover). Two were not: `claude/new-session-glwxzh`
+(19 commits — the whole 16 Sep boards system) and `claude/gracious-albattani-grgu0k` (one commit,
+§38). One is an intentional orphan snapshot, `baseline-v0.1.0`, which is not a line of work and
+stays where it is. Both divergent branches are merged into this one by the commits above; nothing
+was discarded in the conflict resolutions, and the merge is recorded commit by commit there.
+
+**The standing rules this creates.**
+
+1. **One line of work.** New sessions continue the branch that carries the newest commit, and
+   merge before they build. A session that is handed a fresh branch name merges the current head
+   into it as its first act, and says so.
+2. **Before claiming anything is missing, fetch every branch.** `git fetch --all` and check
+   containment (`git merge-base --is-ancestor`) before writing "has no file" anywhere.
+3. **`scripts/reconcile.ts` is extended to say which branch it read** and to warn when
+   `origin/*` carries commits the working tree does not, so the blind spot announces itself.
+4. **The default branch must be the line of work** (owner decision 5). Until it is, GitHub runs
+   no scheduled reconcile at all, which is the same blindness on a timer.
