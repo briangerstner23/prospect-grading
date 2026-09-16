@@ -19,7 +19,9 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ```
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
-            rubric.prospect.v0.1.json (active) · rubric.prospect.v0.2.json (draft, spec as data)
+            rubric.prospect.v0.1.json (RETIRED 16 Sep) · rubric.prospect.v0.1.3.json (ACTIVE —
+            0.1.0 plus the two §20 deletions: platinum_rule loses present_count >= 3, and
+            climb_evidence.caps_ceiling = false) · rubric.prospect.v0.2.json (draft, spec as data)
             engine.ts (pure grade()) · classify.ts · decay.ts · reason.ts · engine_test.ts
 fixtures/   golden.json — synthetic accounts with expected scorecards per rubric version
 ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes.ts
@@ -177,7 +179,15 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
   enough to make the sweep do real work. A channel with no credential is skipped and said so in
   the run's notes.
-- Deployed versions as of **14 Sep 2026**: **pb-notes v11**, **pb-score v6**, **pb-sync v2**,
+- **pb-score is v8 (16 Sep 2026), built from commit `f265702`.** It carries §19
+  (`build_demand_exceeds_capacity`) and §20 (`caps_ceiling`); v6 predated both, so two ruled
+  changes sat unshipped for a day (DECISIONS §32). **A ruling is applied when the deployed
+  artefact contains it — not when it is written down and not when the code is merged.** After
+  any MCP deploy, fetch the function back with `get_edge_function` and diff it against
+  `dist/functions/<fn>/index.js`; the API reports success for any syntactically valid payload,
+  including one that is not the bundle. A v7 deployed from a placeholder string took pb-score
+  down on 16 Sep and only that diff proved v8 was right.
+- Deployed versions as of **14 Sep 2026**: **pb-notes v11**, ~~pb-score v6~~ (now v8), **pb-sync v2**,
   **pb-pipedrive-webhook v2** (all four from commit `561f289`/`53fb656` — the same bundles),
   **pb-fathom-webhook v2**. This line has
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift

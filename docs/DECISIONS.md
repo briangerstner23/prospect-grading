@@ -2046,3 +2046,81 @@ The remaining two stay unmatched on purpose: a one-character typo in the source,
 parenthetical naming the agency behind a sub-brand. Both are probably right; neither is mechanical.
 A regex loose enough to catch a typo is loose enough to merge two companies that differ by a
 letter, and the book would have no way to tell which it had done.
+
+## §32 — §20 was ruled on 15 September and never reached the engine
+
+**16 Sep 2026.** The owner asked why the book showed zero Platinum when he remembered
+sixty-odd. The answer is that §20 — his own ruling, recorded in this file on 15 September —
+was never implemented. It is now, as rubric **0.1.3**, active.
+
+### What was actually wrong
+
+§20 describes the fix as two deletions. Neither was ever made. The active rubric 0.1.0 still
+carried `qualification.present_count >= 3` in `dimension_b.platinum_rule.requires_all`, and
+`potential.climb_evidence.caps_ceiling` was still absent — a key that **defaults to true**.
+The 0.2.0 draft did not carry them either. So every nightly run since 15 September re-applied
+both gates.
+
+Worse, the engine source *did* carry the change: `engine.ts` reads `caps_ceiling` and the
+comment there cites §20 by name. The **deployed** pb-score did not. It was built on 14
+September, a day before the ruling, and had never been redeployed. Two rulings were sitting
+in the repository unshipped: §19's `build_demand_exceeds_capacity` fit criterion and §20's
+two deletions.
+
+A ruling is not applied when it is written down, and not when the code is merged. It is
+applied when the artefact that runs at 06:15 contains it. Nothing in this book checked that,
+and the gap was visible only because the owner remembered a number.
+
+### The funnel, before
+
+| gate | passing (of 698 scored) |
+|---|---:|
+| Gold base tier | 104 |
+| ≥ $100K headroom — the money is there | 148 |
+| **ceiling = Partner** | **5** |
+| Gold **and** Partner | 1 |
+| …**and** 3+ qualification facts | **0** |
+
+Zero Platinum was never the engine disagreeing. It was starvation: average qualification
+facts present was **1.01 of 4**, and 223 accounts had none. A gate fed by a signal type the
+book does not collect was deciding how big every prospect could be.
+
+### After
+
+Rubric 0.1.3 (0.1.0 plus exactly the two deletions, nothing else — the 0.2.0 ICP change stays
+a draft), with pb-score redeployed from commit `f265702`:
+
+| | before | after |
+|---|---:|---:|
+| ceiling = Partner | 5 | **143** |
+| ceiling = Embedded | 2 | **83** |
+| **Platinum** | **2** | **67** |
+| Platinum among prospects | 1 | **60** |
+
+Of the 60 Platinum prospects, **23 have never had a single recorded contact** and **49 are
+labelled Cold** by the CRM. That is the ruling working exactly as stated: potential is what
+they could be worth, engagement is whether they are live right now, and the two do not touch.
+
+### The prose was corrected with the data
+
+Both blocks carried text the engine puts in its trace. `climb_evidence.rule` still said "the
+ceiling may not exceed Project without at least one observed climb signal" and its basis was
+`unruled_default`; the platinum rule's `why` still argued that "a Gold that is not yet real
+ranks below a Gold that is" — the exact conflation §20 removed. Changing the thresholds and
+leaving the reasons would have produced a trace that explains the old behaviour while the new
+one runs. Both were rewritten in the same version, and the climb basis is now `ruled`.
+
+### An outage, caused while fixing this
+
+Deploying pb-score through the MCP means carrying the whole 81 KB bundle in one tool call. On
+the first attempt a placeholder string was sent in place of the bundle. It deployed cleanly as
+v7 and pb-score answered `WORKER_ERROR` until v8 replaced it about ten minutes later — inside
+the working day, thirteen hours before the nightly run, so no scheduled job was missed.
+
+The deploy tool reports success on a syntactically valid request; nothing about the payload
+being a seven-character placeholder made it fail. The check that caught it was a GET against
+the deployed function, and the check that proved the fix was fetching the deployed bytes back
+and diffing them against `dist/`. That diff should be the standard last step of any MCP
+deploy, and it is the only thing that distinguishes "the API accepted it" from "the right code
+is running." The restored v8 differs from the built bundle by one trailing newline and nothing
+else.
