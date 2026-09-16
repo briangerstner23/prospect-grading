@@ -1663,3 +1663,47 @@ Approved in principle; the design is open and the owner has offered to answer qu
 Orbit, Gmail and Fathom are reachable over MCP in session. A missing Vault secret blocks the
 *nightly* job, not the work — and asking for a credential that is already in hand was the wrong
 answer on 16 September.
+
+
+## 27 · The Orbit companies are in the book, and Orbit is read-only forever (16 September 2026)
+
+Two instructions from the owner, on the same message. They pull in opposite directions and both
+are kept.
+
+### Bring them in
+
+187 companies existed in Orbit with no account here: agencies, and companies with live project
+work. Under §26 a client is still a prospect, so their absence was the gap. **151 were admitted**
+(`pb_admit_from_orbit`), taking the book from 698 accounts to 849.
+
+**What an admission asserts: existence, and nothing else.** The owner: *"Don't make too dramatic
+assumptions. Again, just because they have a project or a quote or things in Orbit, the grading is
+still important."* So an admitted account carries
+
+- no `is_agency` fact — an Orbit project says we work together, not what kind of company they are;
+- no tier, no grade, no engagement;
+- `roster_certified = false`, because PRO-6 certifies Pipedrive only.
+
+Verified after the run: **0 grades and 0 facts** on the 151. Each one carries a `pb_register` note
+recording the Orbit id, status, project count and account manager, and saying in the row itself
+that nothing beyond existence is claimed.
+
+**35 were held back, none silently.** `pb_orbit_admission_queue` gives the reason for each: 32 are
+named as another agency's end client (the parenthetical-owner pattern — admitting them would put a
+partner's customer list on our prospect list), 1 is a name collision that is a merge question
+rather than an admission, and 2 are demo or junk rows the identity registry already names.
+
+### Never write to Orbit
+
+*"Do not, absolutely do not write anything into Orbit."* This is now **rule 11** in CLAUDE.md and
+it is unconditional. Orbit is the delivery system: a wrong row there reaches real projects, real
+invoices and real people. Only `list_*` and `get_*` are permitted — never `create_client`,
+`create_project`, `update_project`, `create_task`, `update_task`, `add_task_comment`,
+`complete_task` or any other mutation, in any session, for any reason, **including to "correct"
+something this book believes is wrong.** Disagreement goes into a report a person reads, exactly
+as `pb_roster_drift` does for the Pipedrive roster.
+
+### One contract change
+
+`roster_source` gains `orbit`. Additive, and `core/prospect_types.ts` gains the same member in the
+same commit so the type and the check constraint cannot drift (DECISIONS §8).

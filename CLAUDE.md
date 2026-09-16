@@ -58,7 +58,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260916160000 identity registry mirror (pb_mdm_*, DECISIONS §25) ·
             20260916160100 junk by domain + origin ·
             20260916170000 a client is still a prospect; quote_state (DECISIONS §26) ·
-            20260916180000 orbit clients snapshot + pb_orbit_overlap (all applied)
+            20260916180000 orbit clients snapshot + pb_orbit_overlap ·
+            20260916190000/190100 admit from orbit (+ roster_source 'orbit') (all applied)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -126,6 +127,15 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    migration.
 10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
+11. **Orbit is read, never written.** Owner instruction, 16 Sep 2026: *"Do not, absolutely do not
+   write anything into Orbit."* Orbit is the delivery system and the system of record for work in
+   flight; a wrong row there reaches real projects, real invoices and real people. Only
+   `list_*` / `get_*` are permitted. **Never** call `create_client`, `create_project`,
+   `update_project`, `create_task`, `update_task`, `add_task_comment`, `complete_task`,
+   `change_*_due_date` or any other Orbit mutation, in any session, for any reason — including to
+   "correct" something this book believes is wrong. Drift goes in a report a person reads
+   (`pb_orbit_admission_queue`, `pb_orbit_overlap`), the same posture as `pb_roster_drift`.
+   `pb_orbit_clients` is a snapshot filled from the read endpoints and nothing else.
 
 ## Supabase
 

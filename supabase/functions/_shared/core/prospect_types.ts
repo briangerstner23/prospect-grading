@@ -84,7 +84,14 @@ export type RosterSource =
   | "gotham"
   | "brian_trip"
   | "client_book_lapsed"
-  | "manual";
+  | "manual"
+  /**
+   * Admitted from the delivery system: a company WLIQ has quoted or is delivering to, that had
+   * no account here. Uncertified like every non-Pipedrive source (PRO-6), and it asserts nothing
+   * beyond existence — an Orbit project says we do work together, not what kind of company they
+   * are. See DECISIONS §27.
+   */
+  | "orbit";
 
 /** A signal as the engine sees it: already resolved from pb_signals, weight and lifespan attached. */
 export interface SignalInput {
