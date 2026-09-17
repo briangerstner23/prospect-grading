@@ -3342,3 +3342,96 @@ the same drift independently — which is the check working exactly as §35 inte
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository (RECON-register-
 unread: no session has read them directly). This entry records the owner's ruling as made; the
 Grading Register should be updated to match, and if it ever disagrees, **the register wins**.
+
+---
+
+## §50 — The agency's own website becomes a channel of the nightly sweep (17 Sep 2026)
+
+**What was found.** 255 accounts had raw page text sitting in `pb_website_reads` and no reading of
+it at all. The pages were fetched on 15–16 September; a research pass read 146 accounts' worth and
+stopped. Everything after that has been paid for and untouched.
+
+Two measurements framed the work, and one of them corrected a claim this session had been about to
+make:
+
+- **The fetcher is not broken.** 1,192 of 2,043 stored rows carry an error, which reads as a 56%
+  failure rate, and the plan was going to start by fixing it. 1,056 of those errors are HTTP 404,
+  and the 404s are four GUESSED paths (`/about`, `/about-us`, `/team`, `/our-team`) tried on every
+  domain. The homepage itself succeeds 83% of the time (377 of 455). `/about` hits 60%, `/team`
+  19%, `/our-team` 12%. There is nothing wrong with fetching; there is something wrong with
+  guessing, and the remedy is to read links off the homepage rather than to rebuild the fetcher.
+- **Five engine inputs sit at literally 0% coverage** across the whole book: `vertical_depth`,
+  `revenue_band`, `avg_project_size`, `delivery_headcount`, `inhouse_dev_team`.
+
+**The ruling.** Reading a site becomes a CHANNEL of `pb-notes`, not a thing a session does by hand.
+The one-off pass is why 255 accounts stalled: it ran once, it ran out, and nothing scheduled
+picked up where it stopped. A channel resumes on a watermark every night whether anyone is
+watching or not.
+
+It needs no credential. The fetcher went to a domain that was already on an account, so every
+stored page already knows whose it is — the same property that lets the `fathom_call` channel read
+`pb_calls` instead of Fathom. This is the one channel where "which account is this about", the hard
+question everywhere else in `record_sources.ts`, was answered before the text existed.
+
+**It reads a site the book has NEVER read.** An account with a live `pb_account_reads` row was
+already read by the research pass, which produced 469 candidates across 126 accounts. Sweeping
+those sites again under a different extractor id would propose the same claims a second time and
+put two of everything in front of a person — against an owner who has said plainly that the review
+queue is already too long. Superseding the read row brings a site back into scope, which makes a
+re-read a deliberate act rather than an accident of scheduling.
+
+**It asks a narrower set of keys.** `money`, `authority`, `specification`, `timing` and the climb
+signals are withheld from the site prompt entirely. Every one of them is about a DEAL — whether
+this opportunity has a budget, a decision-maker, a scope, a date — and no homepage can witness one.
+A model asked the question would answer from marketing copy: "we work with enterprise clients" is
+not a budget. The keys are WITHHELD rather than left to the model's restraint, because a key that
+is never offered cannot be wrongly claimed. `relationship_type` is withheld for the same reason and
+one more: §9's `reseller` incident is exactly what happens when a key reaches the extractor before
+the book can hold every value it might return.
+
+The prompt and the verifier both take their key set from `keysFor(source)`. That is not tidiness:
+the first session to add a channel and update only one of them would have a model answering
+questions the verifier then silently dropped, or worse, the reverse.
+
+**Two keys are added to EXTRACTABLE.** `delivery_headcount` and `vertical_depth`. Both are real
+engine inputs at 0% coverage, and both are QUOTABLE off a site — a team page names the people who
+build, a positioning line says whether the work is confined to one industry.
+
+`revenue_band` and `avg_project_size` are the same kind of gap and are deliberately NOT added. No
+agency states either on its website, so a model asked for them would reach for the nearest proxy —
+a client logo wall, a "$50M in revenue driven" marketing figure — and that is exactly the inference
+the whitelist exists to refuse. They come from a call or from a person.
+
+**A website carries its own prompt version, `site@v1`.** Every fingerprint is built from the
+extractor id, so folding the site read into `notes@v…` would have bumped the notes version too and
+re-read every Pipedrive note and Fathom call in the book under a new id — a second copy of a review
+queue that is already the thing the owner does not want more of. The id is computed per RECORD, not
+per run, for the same reason.
+
+**`siteText()` makes the stored text quotable.** The quote rule compares the model's sentence
+against this exact string, which makes every transformation a correctness question rather than a
+cosmetic one:
+
+- HTML entities beyond the six `stripHtml` knows. A sentence copied out with `&rsquo;` in it
+  reaches the dossier with `&rsquo;` in it, quoted to the owner as what the agency said. Named and
+  numeric spellings are folded to the same characters, so a page does not read differently
+  depending on which one its CMS emitted.
+- Letter-spaced headings, which arrive one character at a time and cannot be usefully quoted. Runs
+  of six or more single letters are rejoined, with word gaps preserved; an initialism is left alone.
+- A length cap applied to what the model reads AND to what quotes are checked against, so a quote
+  from past the cut fails rather than verifying against text nobody saw.
+
+**Proved before it was trusted.** A dry run over six pages: 24 quotes offered, **24 verified, none
+refused** — the cleaning holds. 22 observations, 2 judgements caught, 9 facts written and 15 queued.
+Four claims per page, at a cost of a few cents each. The channel pulls 567 pages across **257
+accounts**, skips 296 pages belonging to accounts already read, and skips 51 that hold less than
+120 characters — a fetch that succeeded and returned a cookie banner.
+
+**What this does not do.** It fills FACTS, which is what moves a grade. It does not write
+`pb_account_reads` — the wedge, the red flags, the named clients, the WLIQ overlap. Those are a
+narrative artifact and still need a research pass; the dossier renders an honest empty state until
+one exists. Nor does it fetch anything: the 336 accounts with a domain and no stored page at all
+need the link-following fetcher above before this channel has anything of theirs to read.
+
+**Deployed.** pb-notes **v13**, a pinned-commit entrypoint at `30e6b11` (RUNBOOK §3),
+`verify_jwt: false` confirmed in the deploy response.
