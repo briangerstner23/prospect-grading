@@ -1727,6 +1727,13 @@ What this does not do: read the Grading Register, decide anything about the boar
 red reconcile go green by itself. A red reconcile means the system and the record disagree; the
 fix is to the system, or to the record with a reason here.
 
+**Addendum, 17 Sep 07:10 UTC.** The on-push reconcile works (CI runs #1–#6 green). The
+six-hourly *scheduled* one has never fired: GitHub evaluates `schedule` triggers only against the
+workflow file on the repository's default branch, and the default is still
+`claude/new-session-8qkstx`, which has no `ci.yml`. So "every 6 h" above is true only once this
+branch is the default or merged into it — REPAIR-PLAN decision 5. Until then drift between pushes
+goes unchecked, which is exactly the window the schedule exists to close.
+
 ## 29 · METHOD.md described a rubric nothing ran; now it is generated from the active file and held there (17 September 2026)
 
 `docs/METHOD.md` is the page a salesperson quotes. Until today it was generated from

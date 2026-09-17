@@ -689,7 +689,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "GitHub → Actions → 'Prospect Book CI' on the latest push: test and reconcile both green? deploy skipped-with-notice until the secret exists.",
-      "claim": "Run #1 (17 Sep, commit e89c1ed) green: 'Repo agrees with itself' passed, 'Record agrees with the running system' reached pb_reconcile_state over HTTPS from GitHub's runner with the anon key and reported 0 failures, 2 warnings (29 held migrations; Fathom proof pending). The deploy job was skipped: this branch is not the repository's default branch, and SUPABASE_ACCESS_TOKEN is not set."
+      "claim": "Run #1 (17 Sep, commit e89c1ed) green: 'Repo agrees with itself' passed, 'Record agrees with the running system' reached pb_reconcile_state over HTTPS from GitHub's runner with the anon key and reported 0 failures, 2 warnings (29 held migrations; Fathom proof pending). The deploy job was skipped: this branch is not the repository's default branch, and SUPABASE_ACCESS_TOKEN is not set. CAVEAT found 17 Sep 07:10 UTC: the 6-hourly SCHEDULED reconcile has never fired — GitHub runs `schedule` triggers only from the workflow file on the repository's DEFAULT branch, which is claude/new-session-8qkstx and carries no ci.yml. Until the owner makes this branch the default (or merges it there), the reconcile runs on push only. Owner decision 5 in docs/REPAIR-PLAN.md."
     }
   ],
   "reconcile": {

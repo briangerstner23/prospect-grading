@@ -292,3 +292,10 @@ project: long-horizon, many sources, judgment about what is settled versus vendo
 4. **Does the gate bite?** Broker character is a flag, geography is `off`, and you park 7 of 829.
    Outside practice attributes real win-rate lift to disqualification that actually disqualifies.
    Free to decide, and it changes what the book is for.
+
+5. **Which branch is the repository's default?** It is `claude/new-session-8qkstx` today, and all of
+   17 Sep's work is on `claude/amazing-mayer-umftf0`. Two things depend on the answer and neither
+   is a session's to fix: GitHub fires `schedule` triggers only from the default branch's workflow
+   file, so the six-hourly reconcile has **never run** (only the on-push one has); and the deploy
+   job is gated to the default branch by design. Make this branch the default, or merge it there.
+   Found 07:10 UTC on 17 Sep when the 06:17 schedule did not fire.
