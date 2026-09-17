@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Prospect Book</title>
+<!--
+  THE WORKING SURFACE (DECISIONS §37). This is the 16 September board, codified.
+
+  The board it replaces was a snapshot: 100 rows of JSON baked into a file, rubric 0.1.3,
+  frozen at the moment it was written. This page reads the database on every load, so what it
+  shows is whatever the last nightly scoring run decided — which is the owner's requirement in
+  his own words: "I always want the best, most accurate, most confident data to be displayed
+  on these screens."
+
+  It reads the board through pb_board(), a SECURITY DEFINER function returning exactly the
+  board's own columns — so nothing beneath the view becomes readable to publish a page.
+
+  What it may show is what `anon` may read (§5): the account, its anticipated tier, its cell and
+  bands, its status and flags — ordered by the engine's own chase_rank_key, which the rubric
+  defines and grade() computes. The page never re-ranks and never computes a score of its own;
+  it renders `rank` as the view hands it over (rule 4, PRO-0). People, briefs and research reads
+  stay behind sign-in on index.html and are not fetched here.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#eef1f4; --surface:#fbfcfd; --surface-2:#f4f6f8; --surface-3:#eaeef2;
+  --ink:#121920; --ink-2:#48545f; --ink-3:#77838d;
+  --rule:#d5dbe1; --rule-2:#e4e9ed;
+  --steel:#2f6c8b;
+  --plat:#2f6c8b; --plat-bg:#dfeaf1; --plat-line:#8fb6c9;
+  --gold:#8a6510; --gold-bg:#f3e9d2; --gold-line:#cfae62;
+  --silver:#5c6874; --silver-bg:#e6eaee; --silver-line:#aab4bf;
+  --bronze:#8f5330; --bronze-bg:#f2e3da; --bronze-line:#c99a7d;
+  --none:#79848d; --none-bg:#eceff1; --none-line:#c2cad1;
+  --alert:#a3341f; --alert-bg:#f7e5e1;
+  --go:#2f6f4f; --go-bg:#dfeee6; --go-line:#8fbda6;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#0f1418; --surface:#161d23; --surface-2:#1b232a; --surface-3:#202932;
+  --ink:#e6ebef; --ink-2:#a4b0ba; --ink-3:#7a868f;
+  --rule:#2a343d; --rule-2:#222b32; --steel:#6fb3d4;
+  --plat:#7cbede; --plat-bg:#14313f; --plat-line:#3b7b9c;
+  --gold:#dcb45e; --gold-bg:#3a2f14; --gold-line:#8d7028;
+  --silver:#9dabb8; --silver-bg:#252e36; --silver-line:#4d5a66;
+  --bronze:#d29066; --bronze-bg:#3a2519; --bronze-line:#8a5735;
+  --none:#8b959d; --none-bg:#222a30; --none-line:#454f57;
+  --alert:#e5836b; --alert-bg:#37201b;
+  --go:#77c49c; --go-bg:#16301f; --go-line:#3c6e51;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1418; --surface:#161d23; --surface-2:#1b232a; --surface-3:#202932;
+  --ink:#e6ebef; --ink-2:#a4b0ba; --ink-3:#7a868f;
+  --rule:#2a343d; --rule-2:#222b32; --steel:#6fb3d4;
+  --plat:#7cbede; --plat-bg:#14313f; --plat-line:#3b7b9c;
+  --gold:#dcb45e; --gold-bg:#3a2f14; --gold-line:#8d7028;
+  --silver:#9dabb8; --silver-bg:#252e36; --silver-line:#4d5a66;
+  --bronze:#d29066; --bronze-bg:#3a2519; --bronze-line:#8a5735;
+  --none:#8b959d; --none-bg:#222a30; --none-line:#454f57;
+  --alert:#e5836b; --alert-bg:#37201b;
+  --go:#77c49c; --go-bg:#16301f; --go-line:#3c6e51;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px}
+h1,h2,h3{font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-weight:700;letter-spacing:-.022em;margin:0;text-wrap:balance}
+h1{font-size:clamp(26px,5vw,42px);line-height:1.05}
+h2{font-size:clamp(18px,2.6vw,23px);line-height:1.2}
+p{margin:0}
+a{color:var(--steel)}
+.eyebrow{font-family:"Roboto Mono",monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.mono{font-family:"Roboto Mono",monospace;font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+
+header.top{background:var(--surface);border-bottom:1px solid var(--rule)}
+.mast{display:flex;flex-direction:column;gap:12px;padding-block:28px 24px}
+.lede{font-size:clamp(15px,2vw,18px);color:var(--ink-2);max-width:62ch;line-height:1.48}
+.lede em{font-style:normal;color:var(--ink);font-weight:600}
+.srcline{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:"Roboto Mono",monospace;font-size:11px;color:var(--ink-3);padding-top:2px}
+
+.dist{padding-block:24px 28px;display:flex;flex-direction:column;gap:10px}
+.bar{display:flex;height:24px;overflow:hidden;background:var(--surface-2)}
+.bar span{display:block;height:100%}
+.b-Platinum{background:var(--plat)} .b-Gold{background:var(--gold)}
+.b-Silver{background:var(--silver)} .b-Bronze{background:var(--bronze)} .b-Ungraded{background:var(--none-line)}
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.tier{display:inline-flex;align-items:center;gap:7px;font-family:"Roboto Mono",monospace;font-size:11.5px;
+  font-weight:500;letter-spacing:.04em;padding:3px 9px;border:1px solid;
+  background:var(--none-bg);color:var(--none);border-color:var(--none-line)}
+.tier .n{font-size:11px;opacity:.72}
+.t-Platinum{background:var(--plat-bg);color:var(--plat);border-color:var(--plat-line)}
+.t-Gold{background:var(--gold-bg);color:var(--gold);border-color:var(--gold-line)}
+.t-Silver{background:var(--silver-bg);color:var(--silver);border-color:var(--silver-line)}
+.t-Bronze{background:var(--bronze-bg);color:var(--bronze);border-color:var(--bronze-line)}
+button.tier{cursor:pointer}
+button.tier[aria-pressed="false"]{background:transparent;color:var(--ink-3);border-color:var(--rule);text-decoration:line-through}
+
+section{padding-block:30px;border-top:1px solid var(--rule)}
+.sechead{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;max-width:64ch}
+.sechead p{color:var(--ink-2);font-size:14.5px}
+.axes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:2px}
+.axis{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:5px}
+.axis em{font-style:normal;font-family:"Roboto Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.axis h3{font-size:15px} .axis p{font-size:13.5px;color:var(--ink-2)}
+.axis.is-rank{box-shadow:inset 3px 0 0 var(--steel)}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-bottom:12px}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-family:"Roboto Mono",monospace;font-size:11.5px;
+  color:var(--ink-2);cursor:pointer;padding:3px 9px;border:1px solid var(--rule);background:var(--surface)}
+.controls input[type=search]{flex:1 1 170px;min-width:0;padding:5px 10px;font:inherit;font-size:13px;
+  background:var(--surface);color:var(--ink);border:1px solid var(--rule)}
+.count{margin-left:auto;font-family:"Roboto Mono",monospace;font-size:12px;color:var(--ink-3)}
+
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;min-width:800px}
+thead tr.grp th{font-family:Archivo,sans-serif;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--steel);font-weight:600;text-align:left;padding:9px 11px 3px;background:var(--surface-2)}
+thead tr.grp th.g-contact{color:var(--ink-3);border-left:2px solid var(--rule)}
+thead tr.cols th{font-family:"Roboto Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;text-align:left;padding:3px 11px 9px;background:var(--surface-2);
+  border-bottom:1px solid var(--rule);white-space:nowrap}
+thead th.divide{border-left:2px solid var(--rule)}
+tbody td{padding:9px 11px;border-bottom:1px solid var(--rule-2);vertical-align:top}
+tbody tr.untouched td:first-child{box-shadow:inset 3px 0 0 var(--alert)}
+td.rank{font-family:"Roboto Mono",monospace;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;width:1%;white-space:nowrap}
+td.co{font-weight:600;min-width:180px;line-height:1.3}
+td.co .dup{display:block;font-family:"Roboto Mono",monospace;font-size:10.5px;font-weight:400;color:var(--alert);margin-top:2px}
+td.cell,td.band,td.facts,td.eng{font-family:"Roboto Mono",monospace;font-size:12px;color:var(--ink-2);white-space:nowrap}
+td.facts{font-variant-numeric:tabular-nums} td.facts .of{color:var(--ink-3)}
+td.eng{white-space:normal;min-width:120px}
+td.eng .never{color:var(--alert)}
+td.divide{border-left:2px solid var(--rule)}
+td.flags{min-width:150px}
+.fl{display:inline-block;font-family:"Roboto Mono",monospace;font-size:10px;padding:1px 6px;margin:1px 2px 1px 0;
+  border:1px solid var(--none-line);background:var(--none-bg);color:var(--ink-2)}
+.fl.u{border-color:var(--alert);color:var(--alert);background:var(--alert-bg)}
+.empty,.loading{padding:26px 16px;text-align:center;color:var(--ink-3);font-size:14px}
+.err{margin:16px 0;padding:14px 16px;border:1px solid var(--alert);background:var(--alert-bg);color:var(--alert);
+  font-size:14px;line-height:1.5}
+.note{margin-top:14px;font-size:14px;color:var(--ink-2);border-left:2px solid var(--steel);padding-left:13px;max-width:66ch}
+.note.warn{border-left-color:var(--alert)}
+footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Roboto Mono",monospace;
+  font-size:11.5px;color:var(--ink-3);line-height:1.65}
+@media (max-width:640px){ section{padding-block:24px} .mast{padding-block:22px 18px} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap"><div class="mast">
+  <p class="eyebrow" id="asof">WLIQ Prospect Book · loading…</p>
+  <h1>The Prospect Book</h1>
+  <p class="lede">Agencies we are <em>not</em> delivering for, ranked by what they could be worth.
+    Tier sets the order. Whether anyone has called them is a column, not a position.</p>
+  <div class="srcline" id="srcline"><span>source: pb_board()</span><span>live read</span></div>
+</div></div></header>
+
+<div class="wrap">
+  <div id="fatal"></div>
+
+  <div class="dist">
+    <p class="eyebrow" id="distlabel">by anticipated tier</p>
+    <div class="bar" id="bar"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <section>
+    <div class="sechead"><h2>Three axes that never touch</h2>
+      <p>The owner's ruling, 15 September: <em>"platinum does not mean the deal is real, it means
+      that they have the potential to reach this level."</em></p></div>
+    <div class="axes">
+      <div class="axis is-rank"><em>sets the rank</em><h3>Tier</h3>
+        <p>What could they be worth? Changes when their business changes — never when someone answers an email.</p></div>
+      <div class="axis"><em>a column</em><h3>Confidence</h3><p id="ax-conf">How well do we know them?</p></div>
+      <div class="axis"><em>a column</em><h3>Engagement</h3><p id="ax-eng">Are they live right now?</p></div>
+    </div>
+    <p class="note" id="scarcity"></p>
+  </section>
+
+  <section>
+    <div class="sechead"><h2>The board</h2>
+      <p>Rows with a red edge are <strong>Gold or better and never contacted</strong> — the most
+      actionable thing in the book. Every figure comes from the last scoring run; this page
+      computes nothing of its own.</p></div>
+    <div class="controls" id="controls">
+      <span class="eyebrow" style="margin-right:2px">tier</span>
+      <span id="tierbtns"></span>
+      <label class="toggle" for="untouchedOnly"><input type="checkbox" id="untouchedOnly"> never contacted only</label>
+      <label class="toggle" for="flaggedOnly"><input type="checkbox" id="flaggedOnly"> flagged only</label>
+      <input type="search" id="filter" placeholder="Filter by name…" aria-label="Filter by name">
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead>
+        <tr class="grp"><th colspan="2"></th><th colspan="4">Potential</th><th colspan="2" class="g-contact">Contact</th><th></th></tr>
+        <tr class="cols">
+          <th scope="col">#</th><th scope="col">Company</th>
+          <th scope="col">Tier</th><th scope="col">Cell</th><th scope="col">Year one</th><th scope="col">Facts</th>
+          <th scope="col" class="divide">Engagement</th><th scope="col">They replied</th>
+          <th scope="col">Flags</th>
+        </tr>
+      </thead>
+      <tbody id="tb"><tr><td colspan="9" class="loading">Reading the book…</td></tr></tbody>
+    </table></div>
+    <p class="empty" id="empty" hidden>Nothing matches those filters.</p>
+  </section>
+
+  <footer>
+    <div>Every tier is <strong>anticipated</strong> and carries a confidence (PRO-1r), and is stamped
+      UNVALIDATED (PRO-8) until the pre-registered test is run and passed. A company with nothing on
+      file reads <em>unknown</em>, never <em>cold</em> — absence of contact is not evidence.</div>
+    <div style="margin-top:7px" id="footnote"></div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // The publishable key. Every read is behind RLS; this page can see only what `anon` may select.
+  var SUPABASE_URL = "https://sgagrmapuovnjwvgsxbp.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_Rwx3FbwsjnVFx9MUVQX0EA_wm2F52sC";
+
+  var TIERS = ["Platinum", "Gold", "Silver", "Bronze", "Ungraded"];
+  var rows = [], off = {}, meta = {};
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;";
+    });
+  }
+  function el(id) { return document.getElementById(id); }
+  function tierOf(r) { return r.effective_tier || "Ungraded"; }
+
+  function req(path, opts) {
+    var o = opts || {};
+    return fetch(SUPABASE_URL + "/rest/v1/" + path, {
+      method: o.method || "GET",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json"
+      },
+      body: o.method === "POST" ? "{}" : undefined
+    }).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(res.status + " " + t.slice(0, 200)); });
+      return res.json();
+    });
+  }
+  function get(path) { return req(path); }
+  // The board comes through a SECURITY DEFINER function, not the view. The view runs
+  // security-invoker over seventeen objects — the chase weights, the identity registry, the Orbit
+  // snapshot — and opening those to read a board would publish far more than the board. pb_board()
+  // returns the board's own columns and nothing else (migration 20260917210000).
+  function rpc(fn) { return req("rpc/" + fn, { method: "POST" }); }
+
+  /* ---------- distribution ---------- */
+  function renderDist() {
+    var counts = {}, total = rows.length;
+    rows.forEach(function (r) { var t = tierOf(r); counts[t] = (counts[t] || 0) + 1; });
+    el("distlabel").textContent = "all " + total + " prospects by anticipated tier";
+    el("bar").innerHTML = TIERS.map(function (t) {
+      var n = counts[t] || 0;
+      if (!n) return "";
+      return '<span class="b-' + t + '" style="width:' + (n / total * 100).toFixed(4) + '%" title="' +
+        t + ": " + n + '"></span>';
+    }).join("");
+    el("legend").innerHTML = TIERS.map(function (t) {
+      var n = counts[t] || 0;
+      if (!n) return "";
+      return '<button type="button" class="tier t-' + t + ' tf" data-tier="' + t +
+        '" aria-pressed="true">' + t + '<span class="n">' + n + "</span></button>";
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".tf"), function (b) {
+      b.addEventListener("click", function () {
+        var t = b.dataset.tier, on = b.getAttribute("aria-pressed") === "true";
+        b.setAttribute("aria-pressed", on ? "false" : "true");
+        off[t] = on;
+        render();
+      });
+    });
+
+    // Scarcity, as ruled (DECISIONS §40): the tier is a size label; the head of the chase order
+    // is the thing to plan against. Both numbers are shown so neither can be mistaken for the other.
+    var plat = counts.Platinum || 0, gold = counts.Gold || 0;
+    var head = rows.filter(function (r) {
+      return r.effective_tier === "Platinum" && (r.facts_present || 0) >= 3;
+    }).length;
+    el("scarcity").innerHTML =
+      "<strong>" + plat + "</strong> Platinum and <strong>" + gold + "</strong> Gold. Platinum is a " +
+      "<strong>size</strong> label — what an agency could be worth — so it is not meant to be scarce " +
+      "(owner ruling, 17 September). The scarce thing to plan against is the head of this list: " +
+      "<strong>" + head + "</strong> " + (head === 1 ? "prospect is" : "prospects are") +
+      " Platinum <em>and</em> qualified on three or more of the four facts.";
+
+    var conf = {}, eng = {};
+    rows.forEach(function (r) {
+      conf[r.confidence || "none"] = (conf[r.confidence || "none"] || 0) + 1;
+      eng[r.engagement || "unknown"] = (eng[r.engagement || "unknown"] || 0) + 1;
+    });
+    el("ax-conf").textContent = "How well do we know them? " +
+      ["High", "Medium", "Low"].map(function (k) { return (conf[k] || 0) + " " + k.toLowerCase(); }).join(", ") +
+      ". The engine needs three of four qualification facts for High.";
+    var never = eng.unknown || 0;
+    el("ax-eng").textContent = "Are they live right now? " + never +
+      " of " + total + " have no recorded contact at all, which says nothing about their size.";
+  }
+
+  /* ---------- table ---------- */
+  function render() {
+    var q = el("filter").value.trim().toLowerCase();
+    var onlyU = el("untouchedOnly").checked, onlyF = el("flaggedOnly").checked;
+    var list = rows.filter(function (r) {
+      if (off[tierOf(r)]) return false;
+      if (onlyU && !r.untouched_high_potential) return false;
+      if (onlyF && !(r.flags && r.flags.length)) return false;
+      if (q && String(r.name || "").toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    el("count").textContent = list.length + " of " + rows.length;
+    el("empty").hidden = list.length > 0;
+    el("tb").innerHTML = list.map(function (r) {
+      var flags = (r.flags || []).map(function (f) {
+        var urgent = /UNVALIDATED/.test(f) ? "" : " u";
+        return '<span class="fl' + (/UNVALIDATED|Anticipated/.test(f) ? "" : urgent) + '">' + esc(f) + "</span>";
+      }).join("");
+      var replied = r.they_last_replied
+        ? '<span class="mono">' + esc(r.they_last_replied) + "</span>"
+        : '<span class="never">never</span>';
+      return '<tr' + (r.untouched_high_potential ? ' class="untouched"' : "") + ">" +
+        '<td class="rank">' + esc(r.rank) + "</td>" +
+        '<td class="co">' + esc(r.name) +
+          (r.duplicate_records ? '<span class="dup">' + esc(r.records) + " records for this company</span>" : "") +
+        "</td>" +
+        '<td class="cell"><span class="tier t-' + tierOf(r) + '">' + esc(tierOf(r)) + "</span></td>" +
+        '<td class="cell">' + esc(r.cell || "—") + "</td>" +
+        '<td class="band">' + esc(r.year1_band || "unknown") + "</td>" +
+        '<td class="facts">' + esc(r.facts_present == null ? "—" : r.facts_present) +
+          '<span class="of"> of 4</span></td>' +
+        '<td class="eng divide">' + esc(r.engagement || "unknown") +
+          (r.signal_urgency ? '<br><span class="mono" style="font-size:10.5px">' + esc(r.signal_urgency) + "</span>" : "") +
+        "</td>" +
+        '<td class="eng">' + replied + "</td>" +
+        '<td class="flags">' + flags + "</td>" +
+      "</tr>";
+    }).join("");
+  }
+
+  /* ---------- load ---------- */
+  function fail(msg) {
+    el("fatal").innerHTML = '<div class="err"><strong>The board could not be read.</strong><br>' +
+      esc(msg) + "<br><br>Nothing is shown rather than something stale: an empty board is an " +
+      "honest answer, a cached one is not.</div>";
+    el("tb").innerHTML = '<tr><td colspan="9" class="loading">—</td></tr>';
+  }
+
+  Promise.all([
+    rpc("pb_board"),
+    get("pb_rubric_versions?select=version,activated_at&status=eq.active"),
+    get("pb_runs?select=finished_at,counts&source=eq.pb-score&status=eq.success&order=finished_at.desc&limit=1")
+  ]).then(function (out) {
+    rows = out[0] || [];
+    meta.rubric = (out[1] || [])[0] || {};
+    meta.run = (out[2] || [])[0] || {};
+    if (!rows.length) { fail("The view returned no rows."); return; }
+
+    var when = meta.run.finished_at ? new Date(meta.run.finished_at) : null;
+    el("asof").textContent = "WLIQ Prospect Book · scored " +
+      (when ? when.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "date unknown");
+    el("srcline").innerHTML =
+      "<span>source: pb_board()</span>" +
+      "<span>rubric " + esc(meta.rubric.version || "?") + "</span>" +
+      "<span>order: the engine's chase_rank_key</span>" +
+      "<span>" + rows.length + " companies</span>" +
+      "<span>live read — not a snapshot</span>";
+    el("footnote").textContent =
+      "pb_prospect_board is a view over the nightly scoring run; this page reads it live, so it is " +
+      "never older than the last run. The nightly runs at 06:15 UTC.";
+    renderDist();
+    render();
+  }).catch(function (e) { fail(e.message || String(e)); });
+
+  el("filter").addEventListener("input", render);
+  el("untouchedOnly").addEventListener("change", render);
+  el("flaggedOnly").addEventListener("change", render);
+})();
+</script>
+</body>
+</html>

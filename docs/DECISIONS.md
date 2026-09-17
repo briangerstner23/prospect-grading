@@ -2876,3 +2876,48 @@ day is `distinct on (account_id, taken_at) … order by created_at desc` — the
 made that day. The frozen snapshot at promotion is still the newest row with
 `taken_at <= pb_promotions.first_invoice_at` under that same selection. Nothing is deleted; both
 claims stay, because which rubric produced an estimate is exactly what calibration needs to know.
+
+## 41 · The board goes live, and a grant that would have published the plumbing (17 September 2026)
+
+§37 ruled the 16 September board to be *the page*. This builds it: `web/board.html`, a live read
+of the database rather than a snapshot. The owner's requirement, in his words — *"I always want
+the best, most accurate, most confident data to be displayed on these screens"* — is met
+structurally, not by discipline: the page holds no data of its own, so what it shows is whatever
+the last scoring run decided, and it cannot go stale without the book going stale.
+
+**What it shows.** The board's own columns: rank, company, anticipated tier, cell, year-one band,
+facts present, engagement, when they last replied, flags. It renders `rank` exactly as the view
+hands it over — the rubric defines the order and `grade()` computes it, so the page never sorts
+and never scores (rule 4, PRO-0). `scripts/board_page_test.ts` pins that: a `.sort(` or a score
+field read off a row fails the build.
+
+**The grant that would have published the plumbing.** The first migration (`20260917200000`)
+granted `select` on `pb_prospect_board` to `anon` and reasoned that this was consistent with §5,
+because the view carries no column `pb_accounts` and `pb_current_reads` do not already expose.
+That reasoning was right about the columns and wrong about the mechanism, and the check that
+caught it was running the page's own queries **as `anon`**: `permission denied for table
+pb_mdm_aliases`.
+
+Views in this book run **security-invoker** (migration `20260911180000`, deliberately: a definer
+view bypasses RLS on everything beneath it). `pb_prospect_board` sits on a chain of **seventeen**
+objects — `pb_chase_board`, `pb_chase_weights` and `_active`, `pb_company_engagement`,
+`pb_contact_events`, `pb_engagement`, the four `pb_mdm_*` tables, `pb_orbit_clients`, and the
+facts and reads below those. So the grant was necessary and not sufficient: to make the page work
+it would have taken eleven more grants, each publishing something nobody ruled public — the chase
+**weights**, the identity registry's aliases, the Orbit delivery snapshot, raw contact events.
+
+**The fix, and the general rule.** `pb_board()`, a `SECURITY DEFINER` function returning exactly
+the board's columns, granted to `anon`; the view's grant is revoked. Same pattern as
+`pb_reconcile_state` (§34). The page reads the board; nothing underneath becomes readable; and
+adding a column to the page is now an edit to a function a person reviews, which is the point.
+
+**The rule this makes standing: a grant on a view is not a decision about the view.** It is a
+decision about everything the view reads. Before granting one, walk the dependency chain and
+count. Where the answer is more than the thing being published, use a definer function that
+returns the columns and nothing else. And prove it by running the queries **as the role that will
+run them** — `set role anon` found this in one statement, while reading the migration did not.
+
+**Not shipped here.** The dossier — people, briefs, research reads — stays behind sign-in on
+`web/index.html`, because `pb_contacts`, `pb_briefs` and `pb_account_reads` are closed and should
+stay closed (they carry candid judgements about named companies). The board answers "who is worth
+chasing"; the dossier answers "what do we know about them", and only the first is public.
