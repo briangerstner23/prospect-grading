@@ -130,6 +130,8 @@ the book is right.
 
 ## 4 · Build the three reconciliation checks and turn on CI
 
+*Executed 17 Sep — DECISIONS §28. `pb_reconcile_state()` + `scripts/reconcile.ts` + `.github/workflows/ci.yml`. The deploy job waits on `SUPABASE_ACCESS_TOKEN` as a repository secret (owner).*
+
 > This is the item that makes everything else permanent. `docs/RESEARCH-CONFORMANCE.md` has a
 > `RECON-checks-unbuilt` row recording that these do not exist.
 >

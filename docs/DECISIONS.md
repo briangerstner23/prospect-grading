@@ -1686,3 +1686,43 @@ hand: production reads are unaffected, since pb-score feeds the view's already-r
 the function, and an 81KB bundle pasted through the MCP is the one step here with a real chance
 of silent corruption. Repair item 4's CI deploy owns it; the ledger row
 `RECON-pb-score-bundle-behind-source` carries the probe (`SOURCE_RANK` in the deployed source).
+
+
+## 28 · The other half of the check: declared versus running, from CI, with no secrets (17 September 2026)
+
+**Not a ruling.** Repair item 4, executed.
+
+`scripts/conformance_test.ts` reads the repository and fails when the ledger stops matching the
+code. It cannot see the database, and on 17 Sep that blind spot held four findings at once — the
+active rubric with no file, 33 applied migrations with no file, a source that had never delivered,
+and a rule-9 drift — behind an entirely green suite. This closes the other half.
+
+`public.pb_reconcile_state()` returns, as one jsonb, the facts needed to compare declared with
+running: the active rubric's version and spec; the applied `prospect_book_*` migration names;
+per-source liveness measured on **external** evidence only (a webhook row whose user agent is not
+`pg_net`, or a finished run — a row this database posted to itself is not proof of anything, which
+is how PHASE0 carried a false Pass for five days); and the rule-9 mismatch count. Aggregates,
+timestamps and identifiers; nothing row-level; nothing from `pb_contacts`. It is `security
+definer` so it can read the inbox and `schema_migrations`, and it is granted to `anon` — the first
+such grant in the book, made deliberately: everything it returns is either already public under
+§5 or is a count. It has a migration file, applied through the MCP in the same commit.
+
+`scripts/reconcile.ts` fetches it with the page's own publishable key and checks four things: the
+active rubric agrees four ways (database version, database spec fingerprint, file fingerprint,
+and the fingerprint the current reads carry); every applied migration has a file, matched by name,
+with the 29 boards migrations on a known-unfiled list that should only shrink; each source is
+alive within a stated budget, Fathom on `warn` until its first external delivery ever, the others
+on `fail`; and rule 9 has zero mismatches. `scripts/reconcile_test.ts` exercises every failure
+branch against canned states, because a check that has only ever passed has not been shown to
+detect anything.
+
+`.github/workflows/ci.yml` runs `npm test` on every push, `reconcile` on every push and every six
+hours — the database can drift without a push, which is how it drifted the first time — and, on
+the default branch, deploys the five edge functions **from source** with the Supabase CLI. That
+last job does nothing until `SUPABASE_ACCESS_TOKEN` exists as a repository secret; it says so and
+skips. When it runs, the deployed pb-score stops being behind source (§27) without anyone
+carrying a bundle by hand.
+
+What this does not do: read the Grading Register, decide anything about the boards, or make a
+red reconcile go green by itself. A red reconcile means the system and the record disagree; the
+fix is to the system, or to the record with a reason here.

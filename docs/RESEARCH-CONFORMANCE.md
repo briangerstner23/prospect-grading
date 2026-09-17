@@ -27,9 +27,10 @@ Aggregate counts only, per rule 2. No external document IDs. The version point i
 - **Manual rows expire** after `manual_max_age_days`. Each carries the exact query to re-run.
 - Rubric-wide probes **enumerate `core/rubric.prospect.v*.json` from disk**. The 16 Sep version
   hard-coded two of five files and audited a retired rubric as if it were active.
-- It **cannot see the database**. Rubric drift against `pb_rubric_versions`, migration drift
-  against `schema_migrations`, and source liveness need network and belong in
-  `scripts/reconcile.ts`, which is not yet built (row `RECON-checks-unbuilt`).
+- It **cannot see the database**. That half is `scripts/reconcile.ts` (built 17 Sep): it calls
+  `pb_reconcile_state()` and compares the active rubric four ways, applied migrations by name,
+  source liveness on EXTERNAL evidence, and the rule-9 mismatch count. CI runs it on every push and
+  every six hours with no secrets. The `reconcile` block below is its policy.
 - **Never** delete a row to make the build pass.
 
 ## The standard the book must rest on (owner direction, 17 Sep)
@@ -555,14 +556,6 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "Repair item 1 executed 17 Sep: webhook NYMFoCciM4MNbUi3 created via REST (201), receiver 200, secret verified, 12-17 Sep back-filled (7 external calls). PROOF STILL PENDING: no pb_webhook_inbox row has ever carried a Fathom user agent. This row closes only when one does. Until then treat Fathom as unproven, not as fixed."
     },
     {
-      "id": "RECON-checks-unbuilt",
-      "r": "RECON",
-      "mode": "manual",
-      "verified_on": "2026-09-17",
-      "reverify": "does scripts/reconcile.ts exist and run in CI?",
-      "claim": "The three reconciliation checks that compare DECLARED to RUNNING — rubric drift vs pb_rubric_versions, migration drift vs schema_migrations, source liveness with external-delivery evidence — are NOT built. This offline test pins the FILE; reconcile.ts must pin the file TO THE DATABASE. Repair item 4."
-    },
-    {
       "id": "RECON-register-unread",
       "r": "RECON",
       "mode": "manual",
@@ -609,7 +602,109 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "verified_on": "2026-09-17",
       "reverify": "get_edge_function pb-score → does the deployed source contain 'SOURCE_RANK'? Yes = redeployed from a0b1ab6 or later; No = still v8 (16 Sep 17:31). Also compare list_edge_functions updated_at against the last commit touching core/ or ingest/.",
       "claim": "Deployed pb-score is v8 (built 16 Sep 17:31 from 5b3e6c5-era source) and lacks the 17 Sep latestFactPerKey source-precedence fix (no SOURCE_RANK in the deployed bundle). Production reads are UNAFFECTED — pb-score feeds pb_current_facts' already-resolved rows into the function — so this is bundle-vs-source drift, not a scoring defect. Deliberately NOT redeployed by hand: an 81KB bundle pasted through the MCP is the one step in the repair with a real chance of a one-character corruption. Repair item 4's CI Action owns the deploy; pb-score is its first."
+    },
+    {
+      "id": "RECON-reconcile-script-present",
+      "r": "RECON",
+      "mode": "auto",
+      "claim": "scripts/reconcile.ts exists and tests every failure branch (scripts/reconcile_test.ts). It compares DECLARED to RUNNING via pb_reconcile_state(); conformance_test compares the ledger to the code. Together they are the two halves.",
+      "probe": {
+        "kind": "file_exists",
+        "path": "scripts/reconcile_test.ts"
+      }
+    },
+    {
+      "id": "RECON-state-function-filed",
+      "r": "RECON",
+      "mode": "auto",
+      "claim": "pb_reconcile_state() has a migration file (it was applied through the MCP in the same commit — the rule: nothing applied without a file).",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "supabase/migrations/20260917100000_prospect_book_reconcile_state.sql"
+        ],
+        "pattern": "create or replace function public.pb_reconcile_state\\(\\)",
+        "equals": 1
+      }
+    },
+    {
+      "id": "RECON-ci-workflow-present",
+      "r": "RECON",
+      "mode": "auto",
+      "claim": "CI runs npm test on push, reconcile on push and every six hours (no secrets), and deploys functions from source on the default branch when SUPABASE_ACCESS_TOKEN is set.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          ".github/workflows/ci.yml"
+        ],
+        "pattern": "scripts/reconcile.ts|supabase@latest functions deploy",
+        "min": 2
+      }
+    },
+    {
+      "id": "RECON-ci-green",
+      "r": "RECON",
+      "mode": "manual",
+      "verified_on": "2026-09-17",
+      "reverify": "GitHub → Actions → 'Prospect Book CI' on the latest push: test and reconcile both green? deploy skipped-with-notice until the secret exists.",
+      "claim": "CI has been pushed; its first runs are what verify the rpc over HTTPS and the anon grant end-to-end. This row records whether it is green; the owner must add SUPABASE_ACCESS_TOKEN for the deploy job to do anything."
     }
-  ]
+  ],
+  "reconcile": {
+    "rpc": "pb_reconcile_state",
+    "known_unfiled_migrations": {
+      "reason": "the 16 Sep boards system (research_log → prospect_board), held until owner decision 2 in docs/REPAIR-PLAN.md; their SQL is saved outside the repo. This list should only shrink.",
+      "names": [
+        "prospect_book_research_log",
+        "prospect_book_candidates_from_reads",
+        "prospect_book_candidate_source_from_method",
+        "prospect_book_contact_events",
+        "prospect_book_engagement_mutual_counts",
+        "prospect_book_mdm_registry",
+        "prospect_book_mdm_junk_domains",
+        "prospect_book_a_client_is_still_a_prospect",
+        "prospect_book_orbit_clients",
+        "prospect_book_admit_from_orbit",
+        "prospect_book_admit_from_orbit_fix",
+        "prospect_book_roster_source_orbit",
+        "prospect_book_gmail_sweep_staging",
+        "prospect_book_contact_events_from_gmail",
+        "prospect_book_attribute_orphan_calls",
+        "prospect_book_attribute_orphan_calls_fix",
+        "prospect_book_attribute_orphan_calls_uuid_fix",
+        "prospect_book_call_attribution_candidates_per_call",
+        "prospect_book_attribute_orphan_calls_register_columns",
+        "prospect_book_contact_events_from_calls",
+        "prospect_book_orbit_quote_sweep",
+        "prospect_book_norm_company_suffixes",
+        "prospect_book_contact_events_from_quotes",
+        "prospect_book_chase_board_v2",
+        "prospect_book_chase_board_dedupe_registry_join",
+        "prospect_book_chase_board_new_logo_rank_v2",
+        "prospect_book_quote_match_by_domain",
+        "prospect_book_chase_board_by_company",
+        "prospect_book_prospect_board"
+      ]
+    },
+    "sources": {
+      "fathom": {
+        "mode": "warn",
+        "max_age_days": 7,
+        "why": "warn until the first EXTERNAL delivery (non-pg_net user agent) is ever recorded; then flip to fail"
+      },
+      "pipedrive": {
+        "mode": "fail",
+        "max_age_days": 7
+      },
+      "score_run": {
+        "mode": "fail",
+        "max_age_days": 2
+      },
+      "notes_run": {
+        "mode": "fail",
+        "max_age_days": 2
+      }
+    }
+  }
 }
 ```

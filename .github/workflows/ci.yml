@@ -1,0 +1,75 @@
+# Continuous integration for the Prospect Book.
+#
+# Three jobs, three different questions:
+#   test       Does the repository agree with itself?  npm test — every *_test.ts plus the
+#              sync check plus scripts/conformance_test.ts (the ledger vs the code).
+#   reconcile  Does the record agree with the RUNNING system?  scripts/reconcile.ts calls
+#              pb_reconcile_state() — aggregates only, callable with the page's own publishable
+#              key, so this job needs NO secrets and also runs every six hours, because the
+#              database can drift without anyone pushing (that is how it drifted the first time).
+#   deploy     Are the deployed edge functions built from this commit?  Deploys from SOURCE with
+#              the Supabase CLI — never an 81KB bundle carried by hand — on pushes to the default
+#              branch, and only when SUPABASE_ACCESS_TOKEN is set as a repository secret. Until it
+#              is, the step says so and skips. DECISIONS §28.
+#
+# The page publish stays in deploy-pages.yml (manual). Nothing here touches web/.
+
+name: Prospect Book CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Repo agrees with itself (npm test)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  reconcile:
+    name: Record agrees with the running system
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: reconcile declared vs running
+        run: node --experimental-strip-types scripts/reconcile.ts
+
+  deploy:
+    name: Edge functions built from this commit
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [test, reconcile]
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: sgagrmapuovnjwvgsxbp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain when the token is missing
+        if: env.SUPABASE_ACCESS_TOKEN == ''
+        run: |
+          echo "::notice::SUPABASE_ACCESS_TOKEN is not set as a repository secret; functions are not deployed from CI yet."
+          echo "::notice::Add it under Settings → Secrets and variables → Actions. Until then the deployed functions can be behind source (ledger row RECON-pb-score-bundle-behind-source)."
+      - name: Deploy the five functions from source
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          npx --yes supabase@latest functions deploy pb-score pb-sync pb-notes pb-fathom-webhook pb-pipedrive-webhook \
+            --project-ref "$PROJECT_REF" --no-verify-jwt

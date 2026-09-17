@@ -75,7 +75,12 @@ docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · R
 scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an admission, the way a
             pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
-            index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts
+            index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts ·
+            reconcile.ts (DECLARED vs RUNNING: calls pb_reconcile_state() — no secrets — and fails
+            when the active rubric, the applied migrations, source liveness or rule 9 disagree with
+            the record; CI runs it on push and every 6h; `--state f.json` runs offline) · reconcile_test.ts
+.github/    workflows/ci.yml — test · reconcile · deploy-from-source (needs SUPABASE_ACCESS_TOKEN)
+            workflows/deploy-pages.yml — the page, manual
 ```
 
 ## Conventions
