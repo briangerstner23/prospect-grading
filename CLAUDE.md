@@ -58,6 +58,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
 web/        index.html — the page, one file, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
+            HANDOFF-2026-09-17.md — start here if you are new: goal, environment, what was
+            done, every corrected claim, and an eight-step check that proves you are oriented
+            before you build. REPAIR-PLAN.md — the ordered work and the four owner decisions.
             STATE-SNAPSHOT-2026-09-17.md — the version point: what was ACTUALLY running on
             17 Sep, measured from the database. Read it before trusting PHASE0/METHOD/the
             deployed-versions line; on 17 Sep all three described a system that was not running.
