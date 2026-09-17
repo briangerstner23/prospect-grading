@@ -1274,6 +1274,39 @@ select status_code, content from net._http_response where id = <request_id>;
 | `budget_ms` (default 110 000) | **a self-imposed deadline**, reserving headroom for the next batch | the watermark |
 | `concurrency` (default 3, max 6) | how many records are read at once | — |
 
+**The real ceiling on `budget_ms` is the API gateway's 150-second idle timeout, not `pg_net`'s.**
+Setting `timeout_milliseconds := 280000` on the `net.http_post` does not buy 280 seconds: the
+gateway closes the connection after 150s with
+`504 {"code":"IDLE_TIMEOUT","message":"Request idle timeout limit (150s) reached"}` and nothing in
+`pg_net` says the function was still working. A run invoked with `budget_ms: 220000` on 17 Sep was
+cut off exactly there. Its 71 facts and 93 candidates were kept — writes flush per record — but no
+watermark advanced and the run row sat in `running` until the next run closed it, so the same pages
+were read again. Nothing was written twice (`already_on_record` in `written_record.ts` refuses a
+fact this source already holds at the same value; candidates dedupe on fingerprint), but a whole
+run's model spend was repeated. **Keep `budget_ms` at or under 105 000** and let the watermark
+carry the rest across several calls; that is what it is for.
+
+**Draining a backlog without babysitting it.** A first sweep of a new channel has no watermark, so
+it has the whole corpus to get through — 567 stored pages when the `website` channel went live —
+and one call can only ever take a budget's worth. Rather than firing calls by hand, schedule a
+temporary `pg_cron` job and let it drain:
+
+```sql
+select cron.schedule('pb-website-drain', '*/2 * * * *',
+  $$select net.http_post(url := '<FN>/pb-notes',
+      headers := jsonb_build_object('content-type','application/json',
+                                    'authorization','Bearer '||public.pb_secret('PB_SYNC_TOKEN')),
+      body := jsonb_build_object('sources', jsonb_build_array('website'),
+                                 'max_notes', 400, 'budget_ms', 100000, 'concurrency', 6),
+      timeout_milliseconds := 145000)$$);
+-- when the counters stop moving:
+select cron.unschedule('pb-website-drain');
+```
+
+Two minutes against a 100-second budget leaves no overlap worth worrying about, and a call with
+nothing left to read no-ops. **Unschedule it once the backlog is gone** — it is an operator action,
+not part of the six standing jobs, and leaving it running spends money re-checking an empty queue.
+
 **Concurrency is why the budget buys anything.** A record costs one model call — about fifty
 seconds of waiting on a network round trip and almost no CPU — so reading one at a time spends
 the budget on idling. Records are read in small concurrent batches and then processed strictly
