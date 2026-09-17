@@ -3113,3 +3113,60 @@ helper and never the anonymous one, and that the blank-expiry sentence stays.
 each run, but nothing names *which*. Movement is a number in a table nobody opens. Until that is a
 list on this page, a tier can change overnight and the only way to notice is to have remembered
 where it was.
+
+## §45 — Bulk confirm, narrowed rather than refused (17 Sep 2026)
+
+Owner: *"are there facts that are clear and can be committed without human approval? i don't want
+to approve everything, many of the comments from Fathom and email are clear."*
+
+**First, the part that was already true.** Fathom calls and Pipedrive notes already write straight
+through with nobody approving anything — 303 and 63 facts respectively, labelled `evidence`. The
+gate in `written_record.ts` is four tests: a verbatim quote, the claim is an *observation* rather
+than an assessment, the extractor rated it high, and it does not contradict what a person
+recorded. When all four hold it is a fact, immediately. The queue is what *failed* one of them.
+
+**Why 915 had piled up.** 604 because the extractor itself said medium or low — the sentence
+implied the answer rather than stating it. 124 because the claim is a judgement ("they are price
+sensitive"): the quote is real, which proves provenance, not truth. 87 because the value disagrees
+with something already on file. 5 with no quote. And the largest single block, ~473, from the
+**website reader**, which is a different pipeline that queues everything it finds regardless of
+confidence.
+
+Against that, only one thing could actually be approved in bulk without a person weighing
+anything, and **212** candidates were in it.
+
+**The rule this changes, and the honest account of it.** `web/index.html` carried, in a comment
+written by an earlier session: *"There is no bulk confirm and there should never be one: rule 8 is
+that nothing a machine read becomes a fact on a machine's say-so, and one click writing a hundred
+facts is precisely what that refuses."* That reasoning is correct about the general case, and I
+told the owner beforehand that building this touched it rather than pretending it was a free
+change. What the ruling does is narrow it, not overturn it.
+
+`pb_confirm_fact_candidates(uuid[], text)` accepts a candidate only when **the extractor rated it
+high**, **a verbatim quote is attached**, and **the book holds nothing for that key** — so a
+confirmation cannot overwrite anyone, least of all a person, and cannot settle a disagreement by
+click. Everything else is refused *in the database*, so no interface can widen it. Four further
+limits, each for a reason:
+
+- **The conflict test is re-derived at confirm time** against `pb_current_facts`, never read off
+  the candidate's own `conflicts` column. That column is a snapshot from when the candidate was
+  written; a person may have recorded the same key an hour later, and trusting a stale boolean is
+  exactly how a machine would end up overruling them.
+- **Owner lane only** — single review allows rater, this does not, because the failure mode here
+  is volume (PRO-5).
+- **250 per batch**, below the reject cap of 1000, because this one writes.
+- **One register row per account, saying the word "bulk" with the batch size.** The register is
+  what someone reads when deciding whether to trust a fact. It must never present one click as
+  eleven considered decisions.
+
+**Tested by output, per §43a**, not by reading the diff: the real write path was run end to end
+against the live queue inside a transaction that was then rolled back — 5 named, 3 confirmed, 2
+refused (one medium-confidence, one disagreeing with a Fathom call), 3 facts written, and a
+follow-up query confirming 915 still proposed and nothing left behind. The lane guards were
+exercised the same way: a WLIQ address with no member row and an outside address were both
+refused.
+
+**Still open, and the bigger prize.** The ~473 website candidates are the pile that will re-form
+every night, because that reader queues even its high-confidence reads. Letting it write through
+on the same four tests the note sweep already uses is the change that stops the queue growing —
+and it is a change to rule 8's automated path, so it is a ruling, not a fix.

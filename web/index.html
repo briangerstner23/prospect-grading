@@ -1544,12 +1544,34 @@ function fmtFactValue(v) {
  * extractor proposed a value the book cannot hold — clear them out", because those rows are
  * spread across dozens of sheets and the reader would have to open every one.
  *
- * This view groups every proposed claim by key and by the value proposed, and rejects a group
- * at a time. It rejects ONLY. There is no bulk confirm and there should never be one: rule 8
- * is that nothing a machine read becomes a fact on a machine's say-so, and one click writing a
- * hundred facts is precisely what that refuses. Rejection writes nothing, so the argument does
- * not run the other way — the worst a wrong rejection costs is a proposal the sweep re-offers.
+ * This view groups every proposed claim by key and by the value proposed, and answers a group at
+ * a time.
+ *
+ * It rejected ONLY, and this comment said there should never be a bulk confirm: rule 8 is that
+ * nothing a machine read becomes a fact on a machine's say-so, and one click writing a hundred
+ * facts is precisely what that refuses. That argument is still right, and the owner ruled on
+ * 17 Sep 2026 that it is too broad in one case (DECISIONS §45).
+ *
+ * Bulk CONFIRM now exists for exactly one class, and pb_confirm_fact_candidates() — not this
+ * page — is what enforces it: the extractor rated the claim high, a verbatim quote is attached,
+ * and the book holds nothing for that key, so confirming cannot overrule a person or settle a
+ * disagreement by click. Medium or low confidence, a missing quote and any value that disagrees
+ * with what is on file are refused in the database, so nothing here can widen it. The button
+ * below counts what its selection actually qualifies, and says what it will leave behind.
+ *
+ * Rejection is still the broader answer, for the reason it always was: it writes nothing, so the
+ * worst a wrong rejection costs is a proposal the sweep re-offers.
  */
+/**
+ * Does this claim qualify for a bulk confirm? The database decides for real — this only keeps the
+ * button honest about what it is about to do, so the count in the dialog is the count that lands.
+ * `conflicts` is the candidate's own snapshot and can be stale; the function re-derives it, which
+ * is why the dialog promises "at most" and the result says what actually happened.
+ */
+const bulkConfirmable = (c) =>
+  c.status === "proposed" && c.confidence === "high" &&
+  typeof c.quote === "string" && c.quote.trim().length > 0 && !c.conflicts;
+
 const queueSelection = new Set();   // candidate ids, so a reader can take 15 of 17
 const queueOpen = new Set();        // which value groups are expanded, kept across redraws
 const groupId = (key, valueKey) => key + "\u0000" + valueKey;
@@ -1590,13 +1612,28 @@ function drawQueue() {
   const tally = h("span");
   const note = h("input", { type: "text", placeholder: "Why (optional)", "aria-label": "Rejection note" });
   const reject = h("button", { type: "button", class: "danger" }, "Reject selected");
+  // Owner lane only, matching the database. A rater sees no button rather than a refusal.
+  const confirmBtn = state.role === "owner"
+    ? h("button", { type: "button", class: "primary" }, "Confirm the clear ones")
+    : null;
   const clear = h("button", { type: "button", class: "ghost" }, "Clear selection");
   const boxes = []; // [checkbox, ids] for every box on screen, so one change re-syncs the others
 
+  // byId is built above, from the rows actually on screen.
+  const selectedClear = () => [...queueSelection].filter((id) => {
+    const c = byId.get(id);
+    return c ? bulkConfirmable(c) : false;
+  });
+
   const retally = () => {
     const n = queueSelection.size;
-    tally.replaceChildren(n ? `${n} claim${n === 1 ? "" : "s"} selected — rejecting writes nothing to the book` : "Nothing selected");
+    const clearN = selectedClear().length;
+    tally.replaceChildren(n
+      ? `${n} claim${n === 1 ? "" : "s"} selected — rejecting writes nothing to the book` +
+        (confirmBtn ? `; ${clearN} of them qualify to confirm together, ${n - clearN} need reading` : "")
+      : "Nothing selected");
     reject.disabled = n === 0;
+    if (confirmBtn) confirmBtn.disabled = clearN === 0;
     clear.disabled = n === 0;
     for (const [box, ids] of boxes) {
       const picked = ids.filter((id) => queueSelection.has(id)).length;
@@ -1606,6 +1643,35 @@ function drawQueue() {
   };
 
   clear.addEventListener("click", () => { queueSelection.clear(); retally(); });
+
+  if (confirmBtn) confirmBtn.addEventListener("click", async () => {
+    const ids = selectedClear();
+    if (!ids.length) return;
+    const skipping = queueSelection.size - ids.length;
+    if (!window.confirm(
+      `Confirm ${ids.length} claim${ids.length === 1 ? "" : "s"} together?\n\n` +
+      `Each becomes a fact under your name, dated by the note rather than by today, and reaches the ` +
+      `grade at the next nightly run. They qualify because the extractor rated them high, each carries ` +
+      `a quote, and the book holds nothing for that key — so none of them overrules anyone.\n\n` +
+      (skipping ? `${skipping} of your selection will be left alone and still need reading.\n\n` : "") +
+      `The register will record this as a bulk review, not as ${ids.length} separate readings.`
+    )) return;
+    confirmBtn.disabled = true;
+    const { data, error } = await state.db.rpc("pb_confirm_fact_candidates", { p_candidates: ids, p_note: note.value.trim() || null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); retally(); return; }
+    queueSelection.clear();
+    // The function re-derives the conflict test, so it can decline rows this page counted as clear.
+    // Say which, and why, rather than reporting the number asked for as the number done.
+    const why = data?.skipped_why && Object.keys(data.skipped_why).length
+      ? " Left alone: " + Object.entries(data.skipped_why).map(([k, v]) => `${v} × ${k}`).join("; ") + "."
+      : "";
+    const sup = data?.superseded ? ` ${data.superseded} competing proposal(s) for the same keys were closed.` : "";
+    flash("ok", `Confirmed ${data?.confirmed ?? 0} claim${data?.confirmed === 1 ? "" : "s"} across ` +
+      `${data?.accounts ?? 0} account(s) under ${state.email}.${why}${sup} They reach the grades at the next ` +
+      `nightly run, and each account's register carries one line saying this was a bulk review.`);
+    await loadBook();
+    await openQueue();
+  });
   reject.addEventListener("click", async () => {
     const ids = [...queueSelection];
     if (!ids.length) return;
@@ -1712,8 +1778,10 @@ function drawQueue() {
     ),
     h("div", { class: "notice info" },
       h("b", null, "What the two answers mean. "),
-      "Confirm writes the fact under your name, dated by the note rather than by today, and it reaches the grade at the next nightly run — so it is offered one claim at a time, with the sentence in front of you. ",
-      "Reject writes nothing at all: the claim is closed, the decision is recorded in the register, and the sweep may propose it again tomorrow. Because rejecting writes nothing, it is the only answer that can be given in bulk.",
+      "Confirm writes the fact under your name, dated by the note rather than by today, and it reaches the grade at the next nightly run. ",
+      "Most claims are therefore offered one at a time, with the sentence in front of you — because deciding them means weighing something: the extractor was unsure, the sentence is somebody's assessment rather than something you could check, or the book already holds a different answer. ",
+      "One class has nothing to weigh: rated high, a quote attached, and nothing on file for that key. Those can be confirmed together, and the database — not this page — is what holds the line (DECISIONS §45). The register records it as a bulk review rather than as separate readings. ",
+      "Reject writes nothing at all: the claim is closed, the decision is recorded in the register, and the sweep may propose it again tomorrow. Because it writes nothing, rejection can be given in bulk far more freely.",
     ),
   );
   for (const g of groups) {
@@ -1726,7 +1794,7 @@ function drawQueue() {
   }
   if (total) {
     parts.push(h("div", { class: "card pad" },
-      h("div", { class: "inline" }, tally, note, reject, clear),
+      h("div", { class: "inline" }, tally, note, confirmBtn, reject, clear),
       msg,
     ));
   }
