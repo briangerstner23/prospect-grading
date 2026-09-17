@@ -845,6 +845,12 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   function capWarning(chosen, computed) {
     var ov = ovBlock(), tiers = ovTiers();
     if (!chosen || !ov) return "";
+    // null is a DECISION — no cap (owner, 17 Sep; DECISIONS §49). Defaulting to 1 here is how a
+    // removed cap would come back to life in the interface while the engine allowed the move.
+    if (ov.max_tiers_moved === null) {
+      if (chosen === computed) return "That is the tier the engine already computed, so the override would change nothing.";
+      return "";
+    }
     var cap = typeof ov.max_tiers_moved === "number" ? ov.max_tiers_moved : 1;
     if (!computed) {
       return "The last read carries no computed tier, so the one-tier cap cannot be checked here. " +
@@ -894,16 +900,21 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
 
     var codes = Array.isArray(ov.reason_codes) ? ov.reason_codes : [];
     var days = typeof ov.expiry_default_days === "number" ? ov.expiry_default_days : null;
-    var cap = typeof ov.max_tiers_moved === "number" ? ov.max_tiers_moved : 1;
+    var cap = ov.max_tiers_moved === null ? null
+            : (typeof ov.max_tiers_moved === "number" ? ov.max_tiers_moved : 1);
 
     return head +
       '<p class="lead">' +
       (computed
         ? "The engine computed <strong>" + esc(computed) + "</strong> on the last read. "
         : "The last read carries no computed tier. ") +
-      "You may move it " + cap + " tier" + (cap === 1 ? "" : "s") + " at most; beyond that the engine " +
-      "refuses the override and keeps its own answer. A reason code and a written reason are both " +
-      "required (July, ruled)." +
+      (cap === null
+        ? "You may move it to any tier: this rubric sets no limit on the distance (the July " +
+          "one-grade cap was removed on 17 Sep 2026). A move of more than one tier is flagged on " +
+          "the row, so it reads as the deliberate act it is rather than an ordinary correction."
+        : "You may move it " + cap + " tier" + (cap === 1 ? "" : "s") + " at most; beyond that the engine " +
+          "refuses the override and keeps its own answer.") +
+      " A reason code and a written reason are both required (July, ruled)." +
       (days ? " It expires on the date below \u2014 and <strong>clearing that date does not mean forever</strong>: " +
               "the engine falls back to " + days + " days from today, so an override always lapses unless you " +
               "set a later date on purpose. When it lapses the computed tier returns, which is the one way this " +

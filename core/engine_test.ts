@@ -736,6 +736,41 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   throws("ovr: without max_tiers_moved the engine refuses to guess", () => grade(gold, without("override.max_tiers_moved"), ov("Silver")), "override.max_tiers_moved");
   eq("ovr: the shipped rubric requires a written reason", R.override.written_reason_required, true);
 
+  // ── the cap is a rubric value, and null means NO CAP (owner, 17 Sep 2026 — DECISIONS §49) ──
+  // The July ruling's "one grade max" was retired; everything else about an override stands.
+  // These run against a LOCAL clone so they test the engine's contract rather than whichever
+  // version happens to be shipped, and the two shipped rubrics are checked separately below.
+  const uncapped = structuredClone(R);
+  uncapped.override.max_tiers_moved = null;
+  const far = grade(gold, uncapped, ov("Bronze"));
+  eq("ovr: null cap lets an override move two tiers", far.status, "Overridden");
+  eq("ovr: null cap applies the tier asked for", far.effective_tier, "Bronze");
+  eq("ovr: null cap still preserves the computed tier", far.fit.computed_tier, "Gold");
+  check("ovr: null cap raises no refusal flag",
+    !far.flags.includes("Override refused: beyond one-tier cap"), far.flags.join(" | "));
+  // A three-tier move is a big claim; the trace has to say how far it went, not just that it went.
+  check("ovr: a move beyond one tier is flagged so it cannot pass for an ordinary override",
+    far.flags.includes("Override moved more than one tier"), far.flags.join(" | "));
+  check("ovr: the trace says how many tiers it moved and that the rubric permits it",
+    far.trace.notes.some((n) => n.includes("moved 2 tiers") && n.includes("max_tiers_moved is null")),
+    far.trace.notes.join(" | "));
+  // The full span, which is what the owner was refused when he asked for it: Platinum → Bronze.
+  const span = grade(base({ money: "present", icp_class: "ICP-1" }), uncapped, ov("Bronze"));
+  check("ovr: the full span of the tier vocabulary is reachable",
+    span.status === "Overridden" && span.effective_tier === "Bronze", span.status + " / " + span.effective_tier);
+  eq("ovr: with no cap a one-tier move is unremarkable",
+    grade(gold, uncapped, ov("Silver")).flags.includes("Override moved more than one tier"), false);
+  // Removing the cap removes ONLY the distance limit.
+  eq("ovr: no cap still requires a written reason", grade(gold, uncapped, ov("Bronze", { reason: "" })).status, "Ranked");
+  eq("ovr: no cap still requires an approver", grade(gold, uncapped, ov("Bronze", { approver: "" })).status, "Ranked");
+  eq("ovr: no cap still honours expiry", grade(gold, uncapped, ov("Bronze", { expires_at: "2026-09-01" })).status, "Ranked");
+  eq("ovr: no cap still refuses a value that is not a tier",
+    grade(gold, uncapped, ov("Diamond" as never)).status, "Ranked");
+  // The distinction that matters: null is a DECISION, absent is a MISTAKE. A rubric that forgot to
+  // mention the cap must not quietly become an uncapped one.
+  throws("ovr: an ABSENT cap is still an error, not an implied 'no cap'",
+    () => grade(gold, without("override.max_tiers_moved"), ov("Silver")), "override.max_tiers_moved");
+
   // "expires soon" is rubric.override.expires_soon_days (14 in the shipped rubric) and nothing else
   eq("ovr: the shipped expires-soon window is 14 days", R.override.expires_soon_days, 14);
   check("ovr: expiring within the rubric window flags", grade(gold, R, ov("Silver", { expires_at: "2026-09-20" })).flags.includes("Override expires soon"));

@@ -952,7 +952,13 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
 
   /* 10 · override — every term of the contract is rubric.override, read strictly */
   const ov = options?.override ?? null;
-  const maxMoved = reqNum(rubric, "override.max_tiers_moved");
+  /* The cap the owner may move a tier by. A NUMBER caps it; an explicit `null` means NO CAP
+     (owner ruling, 17 Sep 2026 — DECISIONS §49, which retires the July "one grade max"). A
+     MISSING key is still an error, exactly as before: "no cap" has to be stated on purpose,
+     because a rubric that forgot to mention the cap must not silently become an uncapped one. */
+  const maxMovedRaw = rubricAt(rubric, "override.max_tiers_moved");
+  if (maxMovedRaw === undefined) throw new RubricError(rubric, "override.max_tiers_moved", "a finite number or null", maxMovedRaw);
+  const maxMoved: number | null = maxMovedRaw === null ? null : reqNum(rubric, "override.max_tiers_moved");
   const codes = reqArr<string>(rubric, "override.reason_codes");
   const codeRequired = reqBool(rubric, "override.reason_code_required");
   // July (ruled, quoted in rubric.override.ruling): "one grade max, written reason required".
@@ -987,12 +993,20 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
       notes.push("Override ignored: no computed tier to move from (Unclassified).");
     } else if (!TIER_ORDER.includes(ov.tier)) {
       notes.push(`Override ignored: '${String(ov.tier)}' is not a tier.`);
-    } else if (Math.abs(TIER_ORDER.indexOf(ov.tier) - TIER_ORDER.indexOf(computedTier)) > maxMoved) {
+    } else if (maxMoved !== null &&
+               Math.abs(TIER_ORDER.indexOf(ov.tier) - TIER_ORDER.indexOf(computedTier)) > maxMoved) {
       flags.add("Override refused: beyond one-tier cap");
       notes.push(`Override to ${ov.tier} refused: more than ${maxMoved} tier from computed ${computedTier}.`);
     } else {
       applied = expirySource === "derived" ? { ...ov, expires_at: expiresAt } : ov;
+      const moved = Math.abs(TIER_ORDER.indexOf(ov.tier) - TIER_ORDER.indexOf(computedTier));
       notes.push(`Override applied: ${computedTier} → ${ov.tier} (${ov.reason_code ?? "no code"}, ${ov.approver}).`);
+      // With no cap, how FAR it moved is the thing a later reader needs; the trace says so rather
+      // than leaving a three-tier move looking like any other override.
+      if (maxMoved === null && moved > 1) {
+        notes.push(`Override moved ${moved} tiers, which this rubric permits (override.max_tiers_moved is null).`);
+        flags.add("Override moved more than one tier");
+      }
       if (expirySource === "derived") notes.push(`Override expiry derived: set_at ${ov.set_at} + ${expiryDefaultDays} days → ${expiresAt}.`);
       if (expiresAt === null) {
         notes.push("Override has no expiry: no expires_at, and no set_at to derive one from.");

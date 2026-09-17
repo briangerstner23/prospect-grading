@@ -381,7 +381,8 @@ footer{border-top:1px solid var(--rule);padding-block:22px 34px;
       "<h2>Overrides</h2><p>When a person disagrees with the engine. The engine enforces the terms " +
       "— it refuses an override that breaks them rather than applying it quietly.</p></div>");
     if (ov) {
-      h.push(kv([["lane", ov.lane], ["tiers it may move", ov.max_tiers_moved],
+      h.push(kv([["lane", ov.lane],
+                 ["tiers it may move", ov.max_tiers_moved === null ? "no limit" : ov.max_tiers_moved],
                  ["reason code", ov.reason_code_required ? "required" : "optional"],
                  ["written reason", ov.written_reason_required ? "required" : "optional"],
                  ["expires after", (ov.expiry_default_days || "?") + " days"],
