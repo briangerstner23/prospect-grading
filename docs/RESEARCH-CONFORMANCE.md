@@ -23,7 +23,7 @@ Aggregate counts only, per rule 2. No external document IDs. The version point i
   to go green fails the build. (The 16 Sep version passed with 21 of 22 rows deleted.)
 - **The active rubric is pinned by the engine's own `fingerprint()`** — the value every
   `pb_reads` row stores — not by an ad-hoc hash. On 17 Sep every read under 0.1.3 carried
-  `909b3747`, and the recovered file produces `909b3747`.
+  `909b3747`; 0.1.4 (activated later that day) produces `1d83b2e3`, verified the same way.
 - **Manual rows expire** after `manual_max_age_days`. Each carries the exact query to re-run.
 - Rubric-wide probes **enumerate `core/rubric.prospect.v*.json` from disk**. The 16 Sep version
   hard-coded two of five files and audited a retired rubric as if it were active.
@@ -67,7 +67,7 @@ decision entry. Whether it stays is owner decision 2.
 |---|---|---|
 | Fathom never connected; status doc said Pass | 988 inbox rows all `pg_net`, zero Fathom user agents ever; newest call 11 Sep | **item 1 done 17 Sep; proof pending first delivery** |
 | Active rubric had no file | 0.1.3, 829 reads, zero repo hits; recovered 17 Sep, engine fp `909b3747` | done |
-| Active rubric lacks §17; extractor vocabulary split | `Champion identified` proposed by the sweep, unknown to the engine | item 2 |
+| Active rubric lacks §17; extractor vocabulary split | `Champion identified` proposed by the sweep, unknown to the engine | **item 2 done 17 Sep — 0.1.4 active, 829/0 changed** |
 | 33 applied migrations with no file | 64 applied vs 31 on disk, by name | item 3 |
 | Composite score in the database | `pb_chase_scores`, 146 rows | decision 2 |
 | Docs described a system not running | PHASE0 (corrected), METHOD.md (regenerate from active), CLAUDE.md layout (corrected) | item 5 |
@@ -117,9 +117,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
   ],
   "manual_max_age_days": 45,
   "active_rubric": {
-    "version": "0.1.3",
-    "file": "core/rubric.prospect.v0.1.3.json",
-    "engine_fingerprint": "909b3747",
+    "version": "0.1.4",
+    "file": "core/rubric.prospect.v0.1.4.json",
+    "engine_fingerprint": "1d83b2e3",
     "reads_verified_on": "2026-09-17",
     "note": "engine_fingerprint is fingerprint() from core/engine.ts — the value every pb_reads row stores. Verified 17 Sep: all 829 reads under 0.1.3 carry 909b3747. When a new version is activated, update version, file, engine_fingerprint and reads_verified_on together, in the same commit as the file and its golden fixture."
   },
@@ -206,7 +206,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "Four gates in the research's evaluation order — checked on the ACTIVE rubric (the 16 Sep version checked the retired 0.1.0).",
       "probe": {
         "kind": "rubric_equals",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "path": "gates.evaluation_order",
         "value": [
           "service_shape",
@@ -223,7 +223,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "Service shape parks.",
       "probe": {
         "kind": "rubric_equals",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "path": "gates.items.service_shape.mode",
         "value": "park"
       }
@@ -235,7 +235,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "Economic floor parks.",
       "probe": {
         "kind": "rubric_equals",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "path": "gates.items.economics.mode",
         "value": "park"
       }
@@ -247,7 +247,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "Broker character only flags (PRO-2r-a unruled). Flip to 'park' when ruled.",
       "probe": {
         "kind": "rubric_equals",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "path": "gates.items.broker_character.mode",
         "value": "flag"
       }
@@ -259,7 +259,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "GAP: geography is a gate in the research and is switched OFF in the live rubric, with no ruling and no open item saying why. Only two of four gates park.",
       "probe": {
         "kind": "rubric_equals",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "path": "gates.items.geography.mode",
         "value": "off"
       }
@@ -340,7 +340,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "GAP: deal-health stage medians are still the placeholder default (21 days), not WLIQ's own. Pipedrive has been readable since 12 Sep. Pinned numerically rather than by grepping prose.",
       "probe": {
         "kind": "rubric_equals",
-        "version": "0.1.3",
+        "version": "0.1.4",
         "path": "deal_health.default_stage_median_days",
         "value": 21
       }
@@ -417,17 +417,17 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       }
     },
     {
-      "id": "R9-no-fixture-on-active",
+      "id": "R9-fixture-on-active",
       "r": "R9",
       "mode": "auto",
-      "claim": "GAP: no golden fixture carries an expected scorecard for the ACTIVE version. All 25 pin only 0.1.0 (retired). Flips when repair item 5 lands.",
+      "claim": "CLOSED 17 Sep: golden fixtures carry expected scorecards for the ACTIVE version (PB04, PB20 under 0.1.4), and engine_test pins its fingerprint. Update when a new version is activated.",
       "probe": {
         "kind": "count_matches",
         "paths": [
           "fixtures/golden.json"
         ],
-        "pattern": "\"0\\.1\\.3\"",
-        "equals": 0
+        "pattern": "\"0\\.1\\.4\"",
+        "min": 2
       }
     },
     {
@@ -438,7 +438,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "probe": {
         "kind": "count_matches",
         "paths": [
-          "core/rubric.prospect.v0.1.3.json"
+          "core/rubric.prospect.v0.1.4.json"
         ],
         "pattern": "PRO-8",
         "min": 1
@@ -509,29 +509,33 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       }
     },
     {
-      "id": "RECON-s17-missing-from-active",
+      "id": "RECON-s17-in-active",
       "r": "RECON",
       "mode": "auto",
-      "claim": "BREAK: the ACTIVE rubric does not contain DECISIONS §17 (14 Sep ruling). 'Champion identified' is absent from potential.climb_evidence; the §17 set lives only in the 0.1.2 draft (0 reads). Flips when 0.1.4 carries §17 (repair item 2).",
+      "claim": "CLOSED 17 Sep (repair item 2): the ACTIVE rubric carries DECISIONS §17 — lift_requires {strong:1, weak:2} present. 0.1.3 had dropped it; 0.1.4 restores it on top of §20's caps_ceiling:false. Preview: 829 accounts, 0 changed.",
       "probe": {
-        "kind": "rubric_absent",
-        "version": "0.1.3",
-        "path": "potential.climb_evidence",
-        "needle": "Champion identified"
+        "kind": "rubric_equals",
+        "version": "0.1.4",
+        "path": "potential.climb_evidence.lift_requires",
+        "value": {
+          "strong": 1,
+          "weak": 2
+        }
       }
     },
     {
-      "id": "RECON-extractor-vocab-split",
+      "id": "RECON-extractor-vocab-aligned",
       "r": "RECON",
       "mode": "auto",
-      "claim": "BREAK (paired with the row above): the extractor may propose 'Champion identified', which the active rubric does not recognise — the extractor and the engine disagree about what a climb signal is. Facts collected tonight cannot be used by the engine tonight.",
+      "claim": "CLOSED 17 Sep: the extractor's climb vocabulary and the active rubric's agree — both carry 'Champion identified'. (Paired with RECON-s17-in-active.)",
       "probe": {
         "kind": "count_matches",
         "paths": [
-          "ingest/notes_sweep.ts"
+          "ingest/notes_sweep.ts",
+          "core/rubric.prospect.v0.1.4.json"
         ],
         "pattern": "\"Champion identified\"",
-        "equals": 1
+        "min": 2
       }
     },
     {

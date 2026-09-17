@@ -12,6 +12,8 @@ Aggregate counts only, per rule 2. Every figure below is reproducible from the q
 
 ## 1 · The rubric that is actually grading
 
+*Point-in-time. Superseded later the same day by 0.1.4 — DECISIONS §25.*
+
 | | |
 |---|---|
 | Active version | **0.1.3** — activated 2026-09-16 17:32 UTC, 829 reads |

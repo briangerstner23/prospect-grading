@@ -44,6 +44,7 @@ type Rubric = any;
 const RUBRICS: Record<string, Rubric> = {
   "0.1.0": load("rubric.prospect.v0.1.json"),
   "0.1.2": load("rubric.prospect.v0.1.2.json"),
+  "0.1.4": load("rubric.prospect.v0.1.4.json"),
 };
 const R: Rubric = RUBRICS["0.1.0"];
 const FIXTURES: Array<{ id: string; description: string; features: ProspectFeatures; options?: { override?: unknown }; expected: Record<string, unknown> }> =
@@ -90,7 +91,9 @@ function without(path: string): Rubric {
  * rubric, re-read the fixtures, then re-record the hash here in the same change. A rubric
  * edit that arrives without this line moving is an accident.
  */
-const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2", "0.1.2": "d8bc859e" };
+const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2", "0.1.2": "d8bc859e",
+  "0.1.4": "1d83b2e3",
+};
 
 /* ------------------------------------------------------------------ *
  * a synthetic base record

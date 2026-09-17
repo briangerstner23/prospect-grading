@@ -33,6 +33,8 @@ the book is right.
 
 ## 1 · Reconnect Fathom — do this first, it is the only ongoing loss
 
+*Executed 17 Sep — DECISIONS §24. Webhook created; proof pending first external delivery.*
+
 > Fathom has never delivered to this system. Verified: all 990 rows in `pb_webhook_inbox` carry
 > `user-agent: pg_net/0.19.5` and fall inside the 13–14 Sep `prospect_book_fathom_backfill*`
 > window — this database posting to its own endpoint. **Zero rows have ever carried a Fathom user
@@ -64,6 +66,8 @@ the book is right.
 ---
 
 ## 2 · Reconcile the missing ruling into the active rubric
+
+*Executed 17 Sep — DECISIONS §25. 0.1.4 active; preview 829/0 changed.*
 
 > **Read `docs/STATE-SNAPSHOT-2026-09-17.md` §1 first — this is subtle and the snapshot has the
 > table.**

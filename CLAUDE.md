@@ -19,10 +19,11 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ```
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
-            rubric.prospect.v0.1.3.json is ACTIVE (recovered from the database 17 Sep — it had no
-            file; see docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
+            rubric.prospect.v0.1.4.json is ACTIVE (17 Sep: 0.1.3 + DECISIONS §17 restored; §25).
+            v0.1.3 (retired; recovered from the database 17 Sep — it had had no file; see
+            docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
             v0.1.1 and v0.3 (files with NO pb_rubric_versions row), v0.1.2 and v0.2 (registered
-            drafts, 0 reads). SIX files, four registered — run `ls core/rubric*` rather than
+            drafts, 0 reads). SEVEN files, five registered — run `ls core/rubric*` rather than
             trusting this line, and check pb_rubric_versions for which is active.
             engine.ts (pure grade()) · classify.ts · decay.ts · reason.ts · engine_test.ts
 fixtures/   golden.json — synthetic accounts with expected scorecards per rubric version
