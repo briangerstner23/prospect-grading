@@ -579,6 +579,28 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
         "kind": "file_absent",
         "path": "docs/STANDARDS.md"
       }
+    },
+    {
+      "id": "RECON-rule9-source-tier-in-function",
+      "r": "RECON",
+      "mode": "auto",
+      "claim": "latestFactPerKey carries the view's source-precedence tier (rater > fathom_call > pipedrive_note > website > notion_master > apollo > pipedrive). Added 17 Sep after two days of drift.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "ingest/resolve_features.ts"
+        ],
+        "pattern": "rater: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6",
+        "equals": 1
+      }
+    },
+    {
+      "id": "RECON-rule9-view-matches-function",
+      "r": "RECON",
+      "mode": "manual",
+      "verified_on": "2026-09-17",
+      "reverify": "with recency_only as (select distinct on (account_id,key) id,account_id,key from pb_facts order by account_id,key, case evidence_label when 'evidence' then 0 when 'inferred' then 1 else 2 end, case source when 'rater' then 0 when 'fathom_call' then 1 when 'pipedrive_note' then 2 when 'website' then 3 when 'notion_master' then 4 when 'apollo' then 5 when 'pipedrive' then 6 else 7 end, created_at desc, observed_at desc nulls last) select count(*) filter (where v.id<>r.id) from pb_current_facts v join recency_only r using (account_id,key); -- must be 0",
+      "claim": "The live pb_current_facts view and latestFactPerKey now resolve every key identically. Before the fix: 50 of 6,983 keys across 19 accounts differed, 24 with a different value. The 16 Sep 'closed' verdict on rule 9 had compared the function to the FILED 11 Sep view, not the LIVE 15 Sep one."
     }
   ]
 }

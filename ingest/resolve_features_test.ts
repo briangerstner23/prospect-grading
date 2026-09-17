@@ -199,6 +199,46 @@ function run(partial: Partial<ResolveInput> = {}) {
   eq("within one label the newest still wins", r.features.headcount, 18);
 }
 {
+  // Rule 9, the tier the view gained on 15 Sep 2026: within one evidence label a person's entry
+  // outranks a machine's even when the machine's is newer. Order: rater, fathom_call,
+  // pipedrive_note, website, notion_master, apollo, pipedrive, then anything else.
+  const r = run({
+    facts: [
+      factRow("headcount", 40, { evidence_label: "inferred", source: "apollo", created_at: "2026-09-16T00:00:00Z" }),
+      factRow("headcount", 12, { evidence_label: "inferred", source: "rater", created_at: "2026-08-01T00:00:00Z" }),
+    ],
+  });
+  eq("within one label a rater's older fact beats apollo's newer one (source precedence)", r.features.headcount, 12);
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 30, { evidence_label: "inferred", source: "apollo", created_at: "2026-09-16T00:00:00Z" }),
+      factRow("headcount", 22, { evidence_label: "inferred", source: "fathom_call", created_at: "2026-07-01T00:00:00Z" }),
+      factRow("headcount", 25, { evidence_label: "inferred", source: "website", created_at: "2026-09-10T00:00:00Z" }),
+    ],
+  });
+  eq("a call beats the site beats apollo, regardless of date", r.features.headcount, 22);
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 50, { evidence_label: "inferred", source: "some_new_source", created_at: "2026-09-16T00:00:00Z" }),
+      factRow("headcount", 26, { evidence_label: "inferred", source: "pipedrive", created_at: "2026-06-01T00:00:00Z" }),
+    ],
+  });
+  eq("an unlisted source ranks last, like the view's else branch", r.features.headcount, 26);
+}
+{
+  const r = run({
+    facts: [
+      factRow("headcount", 7, { evidence_label: "evidence", source: "rater", created_at: "2026-09-16T00:00:00Z" }),
+      factRow("headcount", 90, { evidence_label: "inferred", source: "rater", created_at: "2026-09-17T00:00:00Z" }),
+    ],
+  });
+  eq("evidence label still outranks source (label is the first tier, not source)", r.features.headcount, 7);
+}
+{
   const r = run({ facts: [factRow("icp_class", "ICP-2", { evidence_label: "evidence" })] });
   eq("icp_class resolved with its label", [r.features.icp_class, r.features.icp_class_label], ["ICP-2", "evidence"]);
 }

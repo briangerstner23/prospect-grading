@@ -425,9 +425,25 @@ function labelRank(label: unknown): number {
   return label === "evidence" ? 0 : label === "inferred" ? 1 : 2;
 }
 
+/** The view's `case source … end`, verbatim. An unlisted source ranks last, like the view's `else`. */
+const SOURCE_RANK: Readonly<Record<string, number>> = {
+  rater: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6,
+};
+function sourceRank(source: unknown): number {
+  return typeof source === "string" && source in SOURCE_RANK ? SOURCE_RANK[source] : 7;
+}
+
 /**
  * Winning row per key, in the same order as the pb_current_facts view: evidence outranks
- * inferred outranks unknown, then newest written, then newest observed.
+ * inferred outranks unknown, THEN SOURCE PRECEDENCE (a person, then a call, then a note, then the
+ * agency's own site, then the seed, then Apollo, then Pipedrive's fields, then anything else),
+ * then newest written, then newest observed.
+ *
+ * The source tier was added to the view on 15 Sep 2026 (migration
+ * prospect_book_fact_source_precedence, applied without a file and transcribed on 17 Sep —
+ * DECISIONS §26, §27). This function lagged it for two days: 50 of 6,983 keys resolved
+ * differently, 24 to a different value. Rule 9 says the two must not drift; the order below is
+ * the view's, verbatim, and resolve_features_test.ts pins it.
  *
  * Recency alone is not quality. A quote-backed sentence from a 2025 call note beats a machine
  * guess made this morning, and under a pure created_at sort the next sweep would overwrite it.
@@ -440,6 +456,9 @@ function latestFactPerKey(facts: FactRow[]): Map<string, FactRow> {
       const la = labelRank(a.f.evidence_label);
       const lb = labelRank(b.f.evidence_label);
       if (la !== lb) return la - lb;
+      const sa = sourceRank(a.f.source);
+      const sb = sourceRank(b.f.source);
+      if (sa !== sb) return sa - sb;
       const ca = parseMs(a.f.created_at) ?? -Infinity;
       const cb = parseMs(b.f.created_at) ?? -Infinity;
       if (ca !== cb) return cb - ca;

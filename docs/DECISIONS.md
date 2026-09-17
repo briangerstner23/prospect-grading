@@ -1653,3 +1653,30 @@ The remaining 29 — `prospect_book_research_log` through `prospect_book_prospec
 boards, the MDM registry, contact events, the chase score — are held until the owner decides
 whether that system stays (decision 2). Their SQL is saved outside the repository so the decision
 can be taken without losing anything either way.
+
+
+## 27 · Rule 9 drifted for two days, and the check that said it had not was reading a stale file (17 September 2026)
+
+**Not a ruling.** A defect, its cause, and the fix — recorded because the cause is the pattern this
+whole repair is about.
+
+On 15 Sep the `pb_current_facts` view gained a **source-precedence** tier between the evidence
+label and recency — `rater > fathom_call > pipedrive_note > website > notion_master > apollo >
+pipedrive > else` — in `prospect_book_fact_source_precedence`, a migration applied without a file.
+`ingest/resolve_features.ts::latestFactPerKey` was not changed. Rule 9 says the two must not
+drift. They did: on 17 Sep, **50 of 6,983 keys across 19 accounts** resolved to a different row
+under the two orders, **24 of them to a different value**.
+
+Production reads were not wrong — pb-score feeds the view's already-resolved rows into the
+function, where the second sort is a no-op — so the drift bit the pure path: tests, fixtures,
+local grading, and the explanation of how a fact wins. It also bit this session: on 16 Sep the
+rule-9 check was closed as "holds" after comparing the function to the view definition in the
+**filed** 11 Sep migration. The live view had been replaced four days earlier by one that had no
+file. A check that reads the repo cannot see a change that never reached it — which is the
+reconciliation gap `scripts/reconcile.ts` (repair item 4) exists to close.
+
+Fixed: the function carries the view's order verbatim, `resolve_features_test.ts` pins it with
+four cases (a rater's older fact beats Apollo's newer one; call beats site beats Apollo; an
+unlisted source ranks last; the evidence label still outranks source), CLAUDE.md rule 9 now states
+the real order, and the ledger carries an auto check on the function and a manual row with the
+query that must return zero.

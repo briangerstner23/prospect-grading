@@ -115,9 +115,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
    `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
    `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
-9. **Evidence outranks recency.** `pb_current_facts` and `latestFactPerKey` both resolve a key by
-   `evidence > inferred > unknown`, then newest written, then newest observed. The view is what
-   pb-score reads and the function is what the pure path reads; they must not drift.
+9. **Evidence outranks recency, and a person outranks a machine.** `pb_current_facts` and
+   `latestFactPerKey` both resolve a key by `evidence > inferred > unknown`, then **source
+   precedence** (`rater > fathom_call > pipedrive_note > website > notion_master > apollo >
+   pipedrive > anything else`, added 15 Sep 2026), then newest written, then newest observed. The
+   view is what pb-score reads and the function is what the pure path reads; they must not drift —
+   and they did, for two days, because the view changed in a migration that had no file
+   (DECISIONS §27). `resolve_features_test.ts` pins the order.
 10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
 
