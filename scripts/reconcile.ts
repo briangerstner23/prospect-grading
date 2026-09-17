@@ -166,7 +166,9 @@ export function branchState(): { branch: string; unmerged: string[] } | null {
     // /bin/sh under execSync does not survive, and a silently-null check is worse than none.
     const heads = run("git branch -r")
       .split("\n").map((b) => b.replace(/^[* ]+/, "").trim())
-      .filter((b) => b.startsWith("origin/") && !b.includes("->"));
+      .filter((b) => b.startsWith("origin/") && !b.includes("->"))
+      // An intentional frozen snapshot, not a line of work — docs/BASELINE.md, DECISIONS §39.
+      .filter((b) => b !== "origin/baseline-v0.1.0");
     const unmerged: string[] = [];
     for (const b of heads) {
       const n = Number(run(`git rev-list --count HEAD..${b}`));
