@@ -19,7 +19,9 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ```
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
-            rubric.prospect.v0.1.4.json is ACTIVE (17 Sep: 0.1.3 + DECISIONS §17 restored; §25).
+            rubric.prospect.v0.1.5.json is ACTIVE (17 Sep 18:02 UTC, fp 517f4476: four owner
+            rulings, DECISIONS §40 — adds dimension_b.flag_rules; previewed 829/0 changed).
+            v0.1.4 (retired 17 Sep; it was 0.1.3 + DECISIONS §17 restored, §31).
             v0.1.3 (retired; recovered from the database 17 Sep — it had had no file; see
             docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
             v0.1.1 and v0.3 (files with NO pb_rubric_versions row), v0.1.2 and v0.2 (registered
@@ -217,10 +219,12 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
   took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
-- Deployed versions as of **17 Sep 2026**: **pb-score v10** (commit `94d8fbc`, deployed as a
+- Deployed versions as of **17 Sep 2026**: **pb-score v11** (commit `5d6254a`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
-  **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). This line has
+  **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
+  BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
+  `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40). This line has
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift
   against each function's real import closure (RUNBOOK §3). All five carry the
   `helpers.ts` / `db.ts` paging fixes; pb-score also carries the 17 Sep rule-9 source precedence

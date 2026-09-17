@@ -192,27 +192,24 @@ actions.
 | Weekly data-first review; monthly re-tier; quarterly rubric re-run | The research §Rhythm; Ebsta | Nightly score runs; no human rhythm is defined anywhere in the repo | **behind (not built)** |
 | Routing cell is fit × *size* (tier × ceiling), not fit × *readiness* | Every outside grid crosses fit with engagement/readiness (HubSpot A1–C3, Marketo) | `cell` = tier × ceiling; readiness (qualification, urgency) is the second and third key of `chase_rank_key`, not part of the cell. PRO-0 ("who we chase first, how much it is worth") | **deliberately diverged, recorded** (PRO-0; DECISIONS §10 on the chase order) — and **untested**: nothing measures whether tier × ceiling orders better than tier × urgency would. The snapshots will eventually allow the comparison. |
 
-## 9 · The accidental divergences, ranked
+## 9 · The accidental divergences — both ruled, 17 September 2026
 
-"Accidental" means: WLIQ does something *different* from the established practice and no ruling,
-DECISIONS section or rubric note records the choice. Things that are simply not built yet are
-"behind" above, not listed here; things the register or DECISIONS records are "deliberate" and
-not listed here either. Two survive that test.
+"Accidental" meant: WLIQ does something different from the established practice and no ruling,
+DECISIONS section or rubric note records the choice. **Two survived that test on 17 Sep, and both
+were put to the owner the same day and ruled. Neither is accidental any more.** The table is kept
+for the record; the ledger's `STD-accidental-divergences-open` now expects zero.
 
-| # | Where | The standard it would align to | What WLIQ does | The WLIQ-specific reason that might justify keeping it | What a ruling needs to say |
-|---|---|---|---|---|---|
-| **A1** | `dimension_b.adjustments.rules[2]` `ADJ-ICP3-FLOOR` | The 9 Sep research's Fit finding (from The Admin Bar 2026, *independent*): boutiques under ~10 people sit on a $5K profitability cliff; **keep ICP-3 only where** average project ≥ $10K and they already outsource — a floor that excludes | The same condition is a **+1 rung when met** and silent otherwise. An ICP-3 shop below the floor keeps its Bronze base and is never parked or marked; one above it is lifted. The rule's `source` text still reads as a floor. | The book's purpose is chase order, not a yes/no gate (PRO-0), and a gate that parks most of the cold pool's small shops would empty Tier 3. A bonus keeps them visible and ranks the good ones higher. That is a legitimate position — but it is the opposite of what the research said, and the rubric's own text does not say so. | Either (a) rewrite the rule as a floor: a gate (`mode park` or `flag`) on `avg_project_size < 10000 AND icp_class == ICP-3`, unknown never parking; or (b) keep the bonus and rewrite its `source` and add a DECISIONS entry saying the floor was consciously inverted and why. Both are one rubric edit and a preview. |
-| **A2** | `dimension_b.platinum_rule` × `potential.climb_evidence.caps_ceiling` × `ceiling_from_headroom` | Thresholds cut where the staircase breaks, with a **scarce top band** (Reform; 6sense — *practitioner*/*vendor data*; the research §Scoring 5: the top band should convert ≥ 2× the bottom, and hold 60–70% of past wins across the top two cells) | Platinum (67) outnumbers Gold (39). Since §20 removed the climb-evidence cap, the Partner ceiling reaches 143 accounts on headroom alone, and headroom rests on two defaults (`winnable_share` "#1 of 3", `serviceable_share` 0.5) for most of them. §20 is recorded and its reasoning is sound; **the resulting distribution is not recorded as accepted**, and no cut has ever been made from outcomes. | Platinum is potential, not deal reality (owner, 15 Sep): the top *band* is meant to say "could be worth this much", and the chase key's second element (facts present) already pushes the unreal ones down. If that is the intended reading, the standard's "scarce top band" applies to the *chase order's* head, not to the tier word. | A DECISIONS entry that either accepts a non-scarce Platinum *as a size label* and names the chase-order head (e.g. Platinum AND Qualified/Partly, currently a handful) as the scarce thing the pod plans against; or re-cuts `ceiling_from_headroom` / `platinum_rule` so the top tier is ~10–15% of ranked accounts until outcomes exist to cut it properly. Decision 1 (Tier-1 capacity) is the same question from the other side. |
+| # | Where | The standard | What WLIQ does | **Ruling (DECISIONS §40)** |
+|---|---|---|---|---|
+| ~~A1~~ | `ADJ-ICP3-FLOOR` + `FLAG-ICP3-BELOW-FLOOR` | The research's ICP-3 profitability floor: an exclusion below a $10K average project | Was a +1 bonus when met and silence when not | **RULED: flag it, do not park it.** Rubric 0.1.5 adds `dimension_b.flag_rules` raising "Below the small-shop project floor". The book ranks, it does not gate (PRO-0). Inert until `avg_project_size` is collected — zero facts on file today, which is also why the bonus never fired. |
+| ~~A2~~ | `platinum_rule` × `caps_ceiling` | Cut thresholds from conversion; keep the top band scarce | Platinum 67 outnumbers Gold 39 since §20 | **RULED: Platinum is a SIZE label and need not be scarce.** Scarcity belongs to what the team plans against — the head of the chase order, Platinum **and** qualified, which `chase_rank_key` already produces. No threshold moved; the cut comes from outcomes when they exist. |
 
-Two further items are close to the line and are listed so they are not lost, but they are
-*recorded* somewhere and so do not count as accidental:
-
-- **Stated timing overrides the computed urgency** (`signals.urgency.stated_timing_wins`) — the
-  research asked for a computed value replacing the stamp; the rubric's `urgency_note` records the
-  choice. It belongs in a `standard_source` entry (§10), not in this list.
-- **The Wallet Allocation Rule on prospects** — recorded (§18, and the rubric's `default_basis`),
-  untested, and the single softest number under Platinum. When outcomes exist, it is the first
-  parameter to check.
+Two items were listed here as close to the line and *recorded* rather than accidental. One of them
+has now also been ruled: **broker character** was an unruled default in `flag` mode; PRO-2r-a is
+ruled (§40) and it stays a flag — a deliberate, recorded divergence from disqualification practice.
+The other stands unchanged: **the Wallet Allocation Rule applied to prospects** (§18) is recorded,
+untested, and still the softest number under Platinum — the first parameter to check when outcomes
+exist.
 
 ## 10 · Proposal (not applied): a `standard_source` field beside `basis`
 

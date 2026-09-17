@@ -2798,3 +2798,81 @@ was discarded in the conflict resolutions, and the merge is recorded commit by c
    `origin/*` carries commits the working tree does not, so the blind spot announces itself.
 4. **The default branch must be the line of work** (owner decision 5). Until it is, GitHub runs
    no scheduled reconcile at all, which is the same blindness on a timer.
+
+## 40 · Four owner rulings: the floor is visible, character never parks, Platinum is a size (17 September 2026)
+
+The four questions `docs/REPAIR-PLAN.md` and `docs/STANDARDS.md` §9 had left open, answered by the
+owner. Rubric **0.1.5** carries them; it changes exactly one behaviour and the preview proved it.
+
+**1 · The trunk is `main`.** Eleven session branches existed (§39). The owner chose a normal trunk
+name over adopting a session branch: `main` is pushed from the consolidated line of work, and the
+owner sets it as the repository default in GitHub. Until that setting changes, GitHub runs no
+scheduled reconcile — it reads scheduled workflows only from the default branch.
+
+**2 · PRO-2r-a: broker character stays a FLAG.** *Ruled out as a safety gate.* A flagged agency
+keeps its rank, stays visible, and a person judges it case by case; the grade was never in
+question (PRO-2r already says character is not a grading input). This is a **deliberate divergence**
+from the outside practice that credits real win-rate lift to disqualification that actually
+disqualifies (`docs/STANDARDS.md` §1) — recorded here, so it stops counting as an unruled default.
+`gates.items.broker_character.basis` moves `reasoned` → `ruled`.
+
+**3 · The small-shop project floor becomes visible (STANDARDS A1).** The 9 Sep research (The Admin
+Bar 2026, n = 622) put a profitability cliff at $5K and said to keep ICP-3 only above a $10K
+average project with outsourcing already in place — an *exclusion*. The rubric had implemented the
+same condition as `ADJ-ICP3-FLOOR`: **+1 rung when met, silence when not**, so a shop below the
+cliff looked like any other prospect and nothing anywhere recorded the inversion. The owner ruled
+the middle path: **flag it, do not park it.** The book ranks, it does not gate (PRO-0). The row
+stays, ranks where it ranks, and carries a visible warning before anyone spends an hour on it.
+`ADJ-ICP3-FLOOR` is unchanged and still lifts the ones that clear the bar.
+
+*Measured before building, and it matters:* **`avg_project_size` has zero facts on file.** Nobody
+has ever collected it. So `ADJ-ICP3-FLOOR` has never once fired, and the new flag starts inert —
+which is why the fixture diff is 0 of 25 and the preview 0 of 829. The rule is correct and asleep;
+it wakes the day a rater records an average project size. That fact is now the first candidate for
+the rater questions of §37.
+
+**4 · Platinum is a SIZE label; scarcity lives in the chase order (STANDARDS A2).** Platinum (67)
+outnumbers Gold (39) because §20 stopped the ceiling depending on engagement, so 143 accounts reach
+a Partner ceiling on headroom alone. The owner's reading, consistent with the 15 Sep ruling
+(*"platinum does not mean the deal is real, it means they have the potential to reach this
+level"*): the tier word is what an agency **could** be worth, and a non-scarce size label is not a
+defect. The outside standard that wants a scarce top band applies to **what a team plans against**,
+and here that is the head of the chase order — Platinum **and** qualified — which `chase_rank_key`
+already produces (tier, then facts present, then urgency). **No threshold moved.** When outcomes
+exist the cut comes from conversion data, never from the shape of the distribution.
+
+### The mechanism, and why it is in the rubric
+
+Every flag in `core/engine.ts` was hard-coded, which was fine while each was tied to a gate or an
+override. Ruling 3 needed a finding to be *visible* without being a gate and without moving a tier,
+and rule 4 says the rubric is data — so `core/engine.ts` gains `runFlagRules()`, reading an
+**optional** `dimension_b.flag_rules` block: a named condition with its flag text, its basis and
+its source. A rubric without the block raises no rule-driven flag, so 0.1.0–0.1.4 score exactly as
+before (`docs/BASELINE.md` holds). A flag outside `flags.vocabulary` throws rather than printing a
+chip the page cannot explain. Unknown is never evidence: `evalWhen` is false for a null on every
+comparison, so an uncollected fact cannot flag. Twelve engine tests pin all of it.
+
+### How it went live
+
+pb-score was redeployed **first** — v11, pinned to commit `5d6254a` — because the previously
+deployed engine ignores `flag_rules` entirely, so a preview on it would have proved nothing about
+the rule. Then: preview on v11 (829 scored, 0 errors, **0 changed**), activate, score. The run
+wrote 829 reads on fingerprint `517f4476` and 598 snapshots. Tier distribution unchanged
+(Platinum 67 · Gold 39 · Silver 171 · Bronze 348 · 225 unclassified), 0 rows flagged by the new
+rule, as predicted.
+
+### A wrinkle the activation exposed, recorded rather than swept
+
+`pb_potential_snapshots` now holds **1,196 rows for 17 Sep** — 598 under `year1_band_edges@0.1.4`
+(02:43) and 598 under `year1_band_edges@0.1.5` (18:02). This is the unique key
+`(account_id, taken_at, estimator)` behaving as designed: the estimator name embeds the rubric
+version, so two rubrics active on one day produce two parallel claims rather than one overwriting
+the other. That is the honest shape — a different rubric is a different estimator and could produce
+different edges — but §36's sentence "a re-run the same day replaces the day's row, never doubles
+it" is only true *within one estimator*, and a naive count of rows per day now double-counts.
+
+**The selection rule, stated now so the scoring pass cannot get it wrong:** one row per account per
+day is `distinct on (account_id, taken_at) … order by created_at desc` — the last claim the book
+made that day. The frozen snapshot at promotion is still the newest row with
+`taken_at <= pb_promotions.first_invoice_at` under that same selection. Nothing is deleted; both
+claims stay, because which rubric produced an estimate is exactly what calibration needs to know.

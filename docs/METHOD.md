@@ -1,11 +1,11 @@
 # How a prospect is graded
 
-> Generated from core/rubric.prospect.v0.1.4.json. Do not edit by hand.
+> Generated from core/rubric.prospect.v0.1.5.json. Do not edit by hand.
 > Regenerate with `node --experimental-strip-types explain/generate_method.ts`.
 > `explain/method_test.ts` fails the build if this file is out of date, so what you
 > read here is what the engine actually does — not what someone once wrote down.
 
-**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.4 · **Status:** DRAFT · **Created:** 2026-09-09
+**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.5 · **Status:** DRAFT · **Created:** 2026-09-09
 
 Every anticipated grade is produced by a pure function of stored inputs:
 
@@ -80,7 +80,7 @@ A gate has one of three **modes**: `park` (a fail sets the row's status to Parke
 |---|---|---|---|---|---|---|---|
 | 1 | **Service shape** | The need is Core or Complement to what WLIQ sells. Off parks. | `service_shape` | `Off` | **park** | `unruled_default` | — |
 | 2 | **Economic floor** | Accepts real rates, at or above the floor. | `economics` | `fail` | **park** | `unruled_default` | — |
-| 3 | **Broker character** | Fair in scoping, negotiation and treatment of expertise. | `broker_character` | `flag` | **flag** | `reasoned` | `Broker character flag` |
+| 3 | **Broker character** | Fair in scoping, negotiation and treatment of expertise. | `broker_character` | `flag` | **flag** | `ruled` | `Broker character flag` |
 | 4 | **Geography** | Inside the territories WLIQ serves. | `geography_ok` | `no` | **off** | `reasoned` | `Geography flag` |
 
 A gate in mode `flag` raises the flag text in the last column when it fails (a gate in mode `park` parks instead; a gate in mode `off` does nothing). The text is listed in the flag vocabulary (§16) so the page can explain it.
@@ -96,7 +96,7 @@ A gate in mode `flag` raises the flag text in the last column when it fails (a g
 
 **Economic floor.** Floor **$2,000**, read as **deal_size** (options: `deal_size`, `hourly_rate`). Whether the >= $2K floor is about the hourly rate or the deal size is unruled since July (prospect_rulings still_open). deal_size is the default reading; the engine derives economics = fail when deal_size_estimate is stated and below the floor, or hourly_rate_accepted is explicitly false, and never from absence.
 
-**Broker character.** PRO-2r (2026-09-07): character is NOT a grading input. PRO-2r-a is open: does it survive as a safety gate that never scores? Until ruled it is a FLAG only — visible, never scoring, never parking. Switch mode to 'park' if the owner rules the safety valve in.
+**Broker character.** PRO-2r (2026-09-07): character is NOT a grading input. PRO-2r-a RULED by the owner 17 Sep 2026: it is not a safety gate either — it stays a FLAG. A flagged agency keeps its rank and stays visible, and a person judges it case by case. This is a deliberate divergence from the outside practice that credits win-rate lift to disqualification that actually disqualifies (docs/STANDARDS.md §1); it is recorded, not accidental. DECISIONS §40.
 
 **Geography.** Added by the 9 Sep research brief; no ruling. Off until a territory list exists. `flag` is the text raised should the mode be switched to flag.
 
@@ -519,6 +519,7 @@ A flag warns and never caps (Client Book principle carried over). Every flag is 
 - Override refused: beyond one-tier cap
 - Override expires soon
 - Conversation only
+- Below the small-shop project floor
 
 ## 17 · The reason sentence
 

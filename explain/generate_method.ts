@@ -31,7 +31,7 @@ type Rubric = any;
 // deno-lint-ignore no-explicit-any
 type Obj = Record<string, any>;
 
-export const DEFAULT_RUBRIC_FILE = "rubric.prospect.v0.1.4.json"; // the ACTIVE rubric; scripts/conformance_test.ts fails when this and the ledger disagree
+export const DEFAULT_RUBRIC_FILE = "rubric.prospect.v0.1.5.json"; // the ACTIVE rubric; scripts/conformance_test.ts fails when this and the ledger disagree
 
 /* ------------------------------------------------------------------ *
  * Formatting helpers

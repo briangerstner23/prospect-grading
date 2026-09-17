@@ -289,11 +289,11 @@ project: long-horizon, many sources, judgment about what is settled versus vendo
 3. **RULED 17 Sep (DECISIONS §37): yes, at release, with plain-language questions and an entry page.** ~~Is there ever a second rater?~~ 2 owners, 0 raters. The blind test and per-rater calibration
    are blocked on someone other than you. If the answer is nobody, strike them from the plan
    rather than carrying them as debt.
-4. **Does the gate bite?** Broker character is a flag, geography is `off`, and you park 7 of 829.
+4. **RULED 17 Sep (DECISIONS §40): no — broker character stays a flag and never parks.** ~~Does the gate bite?~~ Broker character is a flag, geography is `off`, and you park 7 of 829.
    Outside practice attributes real win-rate lift to disqualification that actually disqualifies.
    Free to decide, and it changes what the book is for.
 
-5. **Which branch is the repository's default?** It is `claude/new-session-8qkstx` today, and all of
+5. **RULED 17 Sep (DECISIONS §40): `main`, pushed from this line of work; the owner sets it in GitHub.** ~~Which branch is the repository's default?~~ It is `claude/new-session-8qkstx` today, and all of
    17 Sep's work is on `claude/amazing-mayer-umftf0`. Two things depend on the answer and neither
    is a session's to fix: GitHub fires `schedule` triggers only from the default branch's workflow
    file, so the six-hourly reconcile has **never run** (only the on-push one has); and the deploy
