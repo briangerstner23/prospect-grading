@@ -145,6 +145,26 @@ bundles each into one ES module under `dist/functions/<fn>/index.js`; deploy tha
   pb-sync (21,280) does not. Splicing by hand is the riskiest thing in this section, so treat the
   boot check below as mandatory rather than optional after one.
 
+**The better way, from 17 Sep 2026: an entrypoint pinned to a commit.** The repository is public,
+so the bundler can fetch the committed source itself. Deploy a one-file function whose `index.ts`
+is a comment plus one line:
+
+```ts
+import "https://raw.githubusercontent.com/briangerstner23/prospect-grading/<full commit sha>/supabase/functions/pb-score/index.ts";
+```
+
+The bundler follows the relative `../_shared/…` imports from the same commit and freezes the whole
+closure into the version, so the deployed function IS that commit — byte-identical by construction,
+nothing emitted by hand, no bundle, no backslash or trailing-newline hazards, and the sha you
+record is the git sha, which `git show` can always reproduce. `deploy_edge_function` takes
+`entrypoint_path = index.ts`, `verify_jwt = false`, and `files = [{ name: "index.ts", content }]`
+(a few hundred bytes). pb-score **v9** was deployed this way from `c467352` and proved with the
+preview call below (200, 829 scored, 0 changed) before its first real run. Two cautions: use the
+full 40-character sha, never a branch name (a branch moves; a version must not), and the commit
+must be on GitHub before you deploy (push first, then `curl` the raw URL and compare its sha256
+with the local file — the pre-flight that was run for v9). The bundle route above still works
+and is what `scripts/build_functions.sh` produces; it is now the fallback for a private mirror.
+
 **Catching up a stale function (14 Sep 2026).** pb-sync and pb-pipedrive-webhook had been left on
 v1 since 12–13 Sep, both missing the `helpers.ts` / `db.ts` paging fixes. Both were rebuilt from
 `53fb656` — the bundles reproduced the recorded hashes exactly, `b189f501…` and `b8b4c1d6…`, which

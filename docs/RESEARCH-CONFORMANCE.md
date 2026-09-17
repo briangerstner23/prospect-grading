@@ -318,7 +318,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "select taken_at, estimator, count(*) from pb_potential_snapshots group by 1, 2 order by 1 desc limit 5;",
-      "claim": "First rows written 17 Sep 2026 by the first pb-score run after deploy (count recorded in DECISIONS §30). Before that: zero rows, ever."
+      "claim": "598 rows on 2026-09-17, estimator year1_band_edges@0.1.4, one per ranked account, written by run 9290fe00 on pb-score v9 (DECISIONS §30). All carry p10/p90, none p50; all sit in the two ICP prior bands because no ranked account has a quote. Before 17 Sep: zero rows, ever."
     },
     {
       "id": "R5-quote-check-present",
@@ -614,8 +614,8 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "r": "RECON",
       "mode": "manual",
       "verified_on": "2026-09-17",
-      "reverify": "get_edge_function pb-score → does the deployed source contain 'SOURCE_RANK'? Yes = redeployed from a0b1ab6 or later; No = still v8 (16 Sep 17:31). Also compare list_edge_functions updated_at against the last commit touching core/ or ingest/.",
-      "claim": "Deployed pb-score is v8 (built 16 Sep 17:31 from 5b3e6c5-era source) and lacks the 17 Sep latestFactPerKey source-precedence fix (no SOURCE_RANK in the deployed bundle). Production reads are UNAFFECTED — pb-score feeds pb_current_facts' already-resolved rows into the function — so this is bundle-vs-source drift, not a scoring defect. Deliberately NOT redeployed by hand: an 81KB bundle pasted through the MCP is the one step in the repair with a real chance of a one-character corruption. Repair item 4's CI Action owns the deploy; pb-score is its first."
+      "reverify": "get_edge_function pb-score → its index.ts is one import pinned to a full commit sha; that sha must be >= the last commit touching core/, ingest/ or supabase/functions/ (git log -1 --format=%H -- core ingest supabase/functions). If it is older, redeploy per RUNBOOK §3 (pinned-commit entrypoint).",
+      "claim": "CLOSED 17 Sep: pb-score v9 deployed from commit c467352 by a pinned-commit entrypoint (RUNBOOK §3) — the deployed function IS the committed source, so SOURCE_RANK (§27) and buildSnapshotRow (§30) are in it by construction. Proved by preview (200; 829 scored, 598 ranked, 224 unclassified, 7 parked, 0 changed against current reads) and then a real run. v8 (16 Sep) had been behind source by the rule-9 fix; production reads were unaffected because pb-score consumes the already-resolved view. The other four functions are unchanged since 14 Sep."
     },
     {
       "id": "RECON-reconcile-script-present",

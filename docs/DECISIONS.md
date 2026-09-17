@@ -1794,5 +1794,9 @@ candidate for a naive baseline, and that is Track B's question, not this repair'
 score anything. It does not touch grants: service role writes, `authenticated` reads through
 the 9 Sep policy, `anon` holds nothing on this table.
 
-First rows: written by the first pb-score run after deploy on 17 Sep; the count is in the
-ledger row `R4-snapshots-empty` (kept under that id so the flip is visible in history).
+First rows: **598**, written 17 Sep 02:43 UTC by run `9290fe00` on pb-score v9 (one per ranked
+account; 224 unclassified and 7 parked rows get none). Every one carries p10 and p90 and none
+carries p50. All 598 fall in two bands — the ICP prior bands `$6K–16K` (536) and `$16K–46K`
+(62) — because no ranked account carries a quote today: until quotes flow in, the estimator is
+in practice the ICP prior map, which is a fact Track B should weigh when it proposes a naive
+baseline. The ledger row `R4-snapshots-empty` keeps its id so the flip is visible in history.

@@ -160,8 +160,9 @@ the book is right.
 > Then add a GitHub Action that runs `npm test` on push, **and that builds and deploys the edge
 > functions from `scripts/build_functions.sh` with the Supabase CLI and a stored access token** —
 > so a deploy is a reproducible build of a commit, never an 81KB bundle hand-carried through the MCP.
-> Its first job is pb-score: v8 is behind source by the 17 Sep rule-9 fix (ledger row
-> `RECON-pb-score-bundle-behind-source`). The suite is good and currently entirely
+> Its first job was pb-score: v8 was behind source by the 17 Sep rule-9 fix (ledger row
+> `RECON-pb-score-bundle-behind-source`) — closed the same day by v9, deployed as a one-line
+> entrypoint pinned to commit `c467352` (RUNBOOK §3), which is what the CI deploy should also do. The suite is good and currently entirely
 > voluntary; making it mandatory is a twenty-line file. Run `reconcile.ts` on a schedule too, since
 > the database can drift without anyone pushing.
 

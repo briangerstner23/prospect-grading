@@ -215,6 +215,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: errorMessage(e), counts, errors }, 500);
   }
   const writeErrors: string[] = [];
+  let snapshotsWritten = 0;
   try {
     const readRows: Rec[] = [];
     for (const sc of cards) readRows.push(buildReadRow(sc, runId, await sha256Hex(scorecardJson(sc))));
@@ -235,6 +236,7 @@ Deno.serve(async (req: Request) => {
     }
     const snaps = await upsertBatches(db, "pb_potential_snapshots", snapRows, "account_id,taken_at,estimator");
     writeErrors.push(...snaps.errors);
+    snapshotsWritten = snaps.wrote;
     notes.push(`potential snapshots: ${snaps.wrote} written for ${snapRows.length} ranked of ${cards.length} scored`);
   } catch (e) {
     writeErrors.push(errorMessage(e));
@@ -243,7 +245,8 @@ Deno.serve(async (req: Request) => {
   const allErrors: unknown[] = [...errors, ...writeErrors.map((m) => ({ error: m }))];
   const status = runStatus(cards.length, allErrors.length);
   try {
-    await finishRun(db, runId, status, { ...counts, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
+    // snapshots goes into counts, not only notes: the response truncates notes past 200 and pb_runs is the record.
+    await finishRun(db, runId, status, { ...counts, snapshots: snapshotsWritten, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
   } catch (e) {
     writeErrors.push(errorMessage(e));
   }
