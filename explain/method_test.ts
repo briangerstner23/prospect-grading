@@ -226,7 +226,7 @@ for (const [label, path, value, expect] of [
   ["the written-reason toggle", ["override", "written_reason_required"], false, "| Written reason | optional |"],
   ["the top-n signal count", ["signals", "top_n"], 7, "lists the top **7** live positive signals"],
   ["a deal-health threshold", ["deal_health", "red_when_any", "0", "params", "min_days_dark"], 28, "min_days_dark = 28"],
-  ["a two-parameter deal-health rule", ["deal_health", "yellow_when_any", "0", "params", "max_days"], 27, "min_days = 14; max_days = 27"],
+  ["a two-parameter deal-health rule", ["deal_health", "yellow_when_any", "0", "params", "max_days"], 27, "max_days = 27; min_days = 14"],
   ["a gate flag text", ["gates", "items", "broker_character", "flag"], "Character concern", "| `Character concern` |"],
   ["a new catalog row's lifespan", ["signals", "catalog", "quote_lost", "lifespan_days"], 200, "| -4 | 200 days | yes | negative |"],
   ["a signal weight", ["signals", "catalog", "quote_requested", "weight"], 11, "| 11 |"],

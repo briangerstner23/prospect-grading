@@ -71,7 +71,7 @@ decision entry. Whether it stays is owner decision 2.
 | Active rubric lacks §17; extractor vocabulary split | `Champion identified` proposed by the sweep, unknown to the engine | **item 2 done 17 Sep — 0.1.4 active, 829/0 changed** |
 | 33 applied migrations with no file | 64 applied vs 31 on disk, by name | **4 filed 17 Sep; 29 (boards) wait on decision 2** |
 | Composite score in the database | `pb_chase_scores`, 146 rows | decision 2 |
-| Docs described a system not running | PHASE0 (corrected), METHOD.md (regenerate from active), CLAUDE.md layout (corrected) | item 5 |
+| Docs described a system not running | PHASE0 (corrected), METHOD.md (regenerated from 0.1.4, held there by `ACTIVE-method-source`), CLAUDE.md layout (corrected) | **item 5 done 17 Sep** |
 
 ## The seven decisions the research asked for
 
@@ -647,7 +647,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "GitHub → Actions → 'Prospect Book CI' on the latest push: test and reconcile both green? deploy skipped-with-notice until the secret exists.",
-      "claim": "CI has been pushed; its first runs are what verify the rpc over HTTPS and the anon grant end-to-end. This row records whether it is green; the owner must add SUPABASE_ACCESS_TOKEN for the deploy job to do anything."
+      "claim": "Run #1 (17 Sep, commit e89c1ed) green: 'Repo agrees with itself' passed, 'Record agrees with the running system' reached pb_reconcile_state over HTTPS from GitHub's runner with the anon key and reported 0 failures, 2 warnings (29 held migrations; Fathom proof pending). The deploy job was skipped: this branch is not the repository's default branch, and SUPABASE_ACCESS_TOKEN is not set."
     }
   ],
   "reconcile": {

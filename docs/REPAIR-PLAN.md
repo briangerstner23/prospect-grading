@@ -186,6 +186,8 @@ the book is right.
 > Do not retire the 0.1.0 fixtures. `docs/BASELINE.md`'s frozen baseline still reproduces
 > byte-identically over 680 rows and that property is worth keeping.
 
+*Executed 17 Sep — DECISIONS §29. Fixture half in §25 (PB04, PB20 pinned on 0.1.4); METHOD.md regenerated from 0.1.4; `ACTIVE-method-source` in the conformance test fails if the generator's default and the ledger's active file ever differ again.*
+
 ---
 
 ## 6 · Start writing potential snapshots tonight

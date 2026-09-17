@@ -1726,3 +1726,29 @@ carrying a bundle by hand.
 What this does not do: read the Grading Register, decide anything about the boards, or make a
 red reconcile go green by itself. A red reconcile means the system and the record disagree; the
 fix is to the system, or to the record with a reason here.
+
+## 29 · METHOD.md described a rubric nothing ran; now it is generated from the active file and held there (17 September 2026)
+
+`docs/METHOD.md` is the page a salesperson quotes. Until today it was generated from
+`core/rubric.prospect.v0.1.json` — version 0.1.0, retired — while 0.1.3 and then 0.1.4 graded the
+book. `explain/method_test.ts` guarantees the document matches *its* rubric byte for byte; it
+never asked whether that rubric was the one running. This is REPAIR-PLAN item 5.
+
+What changed:
+
+- `explain/generate_method.ts` defaults to `rubric.prospect.v0.1.4.json`, and `docs/METHOD.md`
+  is regenerated from it. Section 10b now reads `caps_ceiling` the way the engine does: when it is
+  false the document says the ceiling comes from headroom alone and the "Ceiling capped" flag is
+  never raised, instead of describing a cap that §20 removed. The strength of each climb signal,
+  the lift bar (one strong or two weak) and the two retired signals are printed, so §17 is
+  visible on the page as well as in the engine.
+- `scripts/conformance_test.ts` gained `ACTIVE-method-source`: the generator's default file must
+  be the ledger's `active_rubric.file`. Activating a new version without repointing the
+  generator now fails `npm test`, alongside the fingerprint pin from §23.
+- Deal-health `params` are printed sorted by name. 0.1.4 was written back from the database,
+  whose `jsonb` reorders keys; a document must not change because a file was round-tripped.
+  The other tables that reordered (aliases, ICP maps) follow the file's order and are unchanged
+  in content.
+
+The 0.1.0 fixtures and `docs/BASELINE.md` are untouched; the fixture half of item 5 landed in
+§25 (PB04 and PB20 pinned on 0.1.4).

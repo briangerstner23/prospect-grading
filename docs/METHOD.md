@@ -1,11 +1,11 @@
 # How a prospect is graded
 
-> Generated from core/rubric.prospect.v0.1.json. Do not edit by hand.
+> Generated from core/rubric.prospect.v0.1.4.json. Do not edit by hand.
 > Regenerate with `node --experimental-strip-types explain/generate_method.ts`.
 > `explain/method_test.ts` fails the build if this file is out of date, so what you
 > read here is what the engine actually does — not what someone once wrote down.
 
-**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.0 · **Status:** DRAFT · **Created:** 2026-09-09
+**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.4 · **Status:** DRAFT · **Created:** 2026-09-09
 
 Every anticipated grade is produced by a pure function of stored inputs:
 
@@ -63,8 +63,8 @@ PRO-1r (2026-09-04): same words as clients. Every prospect tier prints the word 
 | Older word | Ceiling |
 |---|---|
 | A job | Project |
-| Seat at the table | Embedded |
 | Partnership | Partner |
+| Seat at the table | Embedded |
 
 **Urgency** (coldest to hottest): **Cold** → **Warm** → **Hot** → **Super Hot**.
 
@@ -90,9 +90,9 @@ A gate in mode `flag` raises the flag text in the last column when it fails (a g
 | Seed value | → `service_shape` |
 |---|---|
 | Core | Core |
-| Adjacent | Complement |
 | Neither | Off |
 | Unknown | unknown |
+| Adjacent | Complement |
 
 **Economic floor.** Floor **$2,000**, read as **deal_size** (options: `deal_size`, `hourly_rate`). Whether the >= $2K floor is about the hourly rate or the deal size is unruled since July (prospect_rulings still_open). deal_size is the default reading; the engine derives economics = fail when deal_size_estimate is stated and below the floor, or hourly_rate_accepted is explicitly false, and never from absence.
 
@@ -140,10 +140,10 @@ The July Stage 1 mapping (ICP-1/2/4 → High · ICP-6 → Medium · ICP-3/5 → 
 |---|---|
 | **ICP-1** | **Gold** |
 | **ICP-2** | **Gold** |
-| **ICP-4** | **Gold** |
-| **ICP-6** | **Silver** |
 | **ICP-3** | **Bronze** |
+| **ICP-4** | **Gold** |
 | **ICP-5** | **Bronze** |
+| **ICP-6** | **Silver** |
 
 ## 7 · Named adjustments
 
@@ -179,10 +179,9 @@ Basis of the downward cap: reasoned — symmetry with the ruled bump cap; resear
 | Requirement | Why |
 |---|---|
 | `adjusted_tier == Gold` | top base band |
-| `potential.ceiling == Partner` | Partner ceiling with climb evidence (headroom ≥ $100K band or stated Partner, and at least one climb signal) |
-| `qualification.present_count >= 3` | the deal is real: at least three of money, authority, timing, specification present |
+| `potential.ceiling == Partner` | Partner ceiling: headroom >= $100K band or stated Partner. Climb evidence no longer required — it raises confidence and engagement, never size (owner ruling, DECISIONS §20). |
 
-Research tier table: Tier 1 = Fit A or B, ceiling Partner with at least one climb signal. Under PRO-0 the top of the chase order must be both the best fit and the biggest real deal; a Gold that is not yet real ranks below a Gold that is.
+Platinum is POTENTIAL, not deal reality (owner, 15 Sep 2026): "platinum does not mean the deal is real, it means that they have the potential to reach this level." Top base band plus a Partner-sized ceiling. Whether the deal is real is qualification.present_count, which drives confidence and the chase order — it is not part of the tier.
 
 **Fit confidence** prints beside the anticipated tier. Rules are tried in order; the first that matches wins (basis `reasoned`):
 
@@ -203,8 +202,8 @@ Four facts. Each is **present**, **absent** or **unknown** — a fact, never a j
 | Fact | Test | Where the evidence lives |
 |---|---|---|
 | **money** | A stated budget, or a quote issued. | PandaDoc or Orbit quote · a budget figure recorded in the CRM |
-| **authority** | Someone who can say yes, and we have met them. | who attended the calls · who is named on the proposal · who is copied on the quote |
 | **timing** | There is a date. | the urgency stamp / a stated timeline |
+| **authority** | Someone who can say yes, and we have met them. | who attended the calls · who is named on the proposal · who is copied on the quote |
 | **specification** | They can say what they need in enough detail to quote it. | the brief · the RFP · the proposal · the quote |
 
 The count of facts **present** gives the qualification label:
@@ -221,10 +220,10 @@ Seed values from the intake list map to the four facts as follows (a rater's ent
 
 | Fact | Seed property | Mapping | Note |
 |---|---|---|---|
-| **money** | Gate: can afford us | Yes → present; No → absent; Unknown → unknown | — |
-| **authority** | Key decision maker? | Yes → present; No → absent; Unknown → unknown | — |
-| **timing** | Lead priority | Super Hot → within_1_week; Hot → within_1_month; Warm → within_3_months; Cold → no_timeline | — |
-| **specification** | Active project / immediate need? | Yes → present; No → absent; Unknown → unknown | Approximation flagged at seed: an immediate need is not a written scope. Treated as inferred. |
+| **money** | Gate: can afford us | No → absent; Yes → present; Unknown → unknown | — |
+| **timing** | Lead priority | Hot → within_1_month; Cold → no_timeline; Warm → within_3_months; Super Hot → within_1_week | — |
+| **authority** | Key decision maker? | No → absent; Yes → present; Unknown → unknown | — |
+| **specification** | Active project / immediate need? | No → absent; Yes → present; Unknown → unknown | Approximation flagged at seed: an immediate need is not a written scope. Treated as inferred. |
 
 ## 10 · Potential: how big could it get?
 
@@ -242,18 +241,18 @@ headroom = wallet * winnable_share - trailing_12m_revenue, where wallet = headco
 
 | Archetype | Revenue per head |
 |---|---|
-| **production** | $150,000 |
 | **blended** | $175,000 |
 | **strategy** | $200,000 |
+| **production** | $150,000 |
 
 **Outsourceable share** by white-label signal (default **20%** when the signal is unknown). Basis: locked headroom method (WL meter Low/Medium/High → 10/20/30%).
 
 | WL signal | Outsourceable share |
 |---|---|
-| **Very High** | 30% |
+| **Low** | 10% |
 | **High** | 30% |
 | **Medium** | 20% |
-| **Low** | 10% |
+| **Very High** | 30% |
 
 **Serviceable share:** default **50%**. Reasoned — the skill derives it from service mapping; until that pack exists half of a blended agency's outsourceable menu is assumed to map to WLIQ's eleven service families.
 
@@ -281,17 +280,24 @@ When rank or vendor count is unknown the default is **0.5**. Reasoned — '#1 of
 
 When headroom cannot be computed (headcount unknown) a sales-stated ceiling stands in, treated as inferred.
 
-### 10b · Climb evidence caps the ceiling
+### 10b · Climb evidence is traced; it does not cap the ceiling
 
-The ceiling may not exceed Project without at least one observed climb signal (July Stage 3; the July ledger records this as never ruled; kept under PRO-15). Basis: `unruled_default`. A ceiling held down by this rule carries the flag "Ceiling capped: no climb evidence".
+Climb evidence is computed and traced but does NOT cap the ceiling. "Project" is a size; "cold" is a behaviour that changes the moment someone engages. Welding them capped 139 accounts with above-$100K headroom at a Project ceiling because no climb signal had ever been recorded (owner ruling, 15 Sep 2026, DECISIONS §20). Basis: `ruled`. Under this version `caps_ceiling` is false: the ceiling comes from headroom (or a stated ceiling) alone, the flag "Ceiling capped: no climb evidence" is never raised, and the signals below are still recognised and written into the trace as a description of the relationship.
 
-| Climb signal | Also written as |
+| Climb signal | Strength | Also written as |
+|---|---|---|
+| **2nd person engaged** | strong | `multi_thread`, `second_person_engaged` |
+| **Champion identified** | strong | `champion`, `champion_identified` |
+| **Structural break** | strong | `critical_event`, `Critical event`, `structural_trigger_event` |
+| **Future-state language** | weak | `future_state_language` |
+| **Strategy question asked** | weak | `strategy_shaped_question` |
+
+**What counts as a lift:** 1 strong signal or 2 weak ones. Without a lift the evidence is recorded and does not yet count.
+
+| Retired signal | Why |
 |---|---|
-| **2nd person engaged** | `multi_thread` |
-| **Strategy question asked** | `strategy_shaped_question` |
-| **2nd project scoped** | `second_project_scoped` |
-| **Referred someone** | `refers_others` |
-| **Structural break** | `structural_trigger_event` |
+| **2nd project scoped** | Requires a first project. Not observable in a prospect (owner ruling, 14 Sep 2026). |
+| **Referred someone** | Requires a delivered outcome. Not observable in a prospect (owner ruling, 14 Sep 2026). |
 
 ### 10c · Year-one band
 
@@ -313,8 +319,8 @@ Basis of the anchors: fitted anchors — retrodiction cohort year-one billings, 
 |---|---|
 | **ICP-1** | **$16K–46K** |
 | **ICP-2** | **$16K–46K** |
-| **ICP-4** | **$6K–16K** |
 | **ICP-3** | **$6K–16K** |
+| **ICP-4** | **$6K–16K** |
 | **ICP-5** | **$6K–16K** |
 | **ICP-6** | **$6K–16K** |
 
@@ -345,36 +351,36 @@ weight_now = decays ? weight * max(0, 1 - age_days / lifespan_days) : (age_days 
 
 | Signal | Label | Weight | Lifespan | Decays | Strength | SLA | Also |
 |---|---|---|---|---|---|---|---|
-| `referral_warm_intro` | Warm intro or referral | 10 | 90 days | yes | strong | 48 h | — |
-| `champion_job_change` | Past champion or contact moved to a new agency | 9 | 90 days | yes | strong | 72 h | — |
-| `quote_requested` | Quote requested | 9 | 14 days | yes | strong | 8 h | — |
-| `quote_sent` | Quote sent | 8 | 30 days | yes | strong | default | — |
-| `verbally_accepted` | Quote verbally accepted | 8 | 30 days | yes | strong | default | — |
 | `pa_sent` | Project agreement sent | 8 | 30 days | yes | strong | default | — |
 | `quote_lost` | Quote lost | -4 | 180 days | yes | negative | default | outcome of a quote; a reason to re-qualify, not a gate |
-| `orbit_verbally_accepted` | Quote verbally accepted (Orbit) | 8 | 30 days | yes | strong | default | — |
-| `orbit_pa_sent` | Project agreement sent (Orbit) | 8 | 30 days | yes | strong | default | — |
-| `orbit_pa_signed` | Project agreement signed (Orbit) — promotion pending | 8 | 60 days | no | strong | default | flag: PA signed — promotion pending (PRO-18) |
+| `quote_sent` | Quote sent | 8 | 30 days | yes | strong | default | — |
+| `manual_note` | Peer-group or conference intel entered by hand | 2 | 90 days | yes | weak | default | — |
+| `prior_grade` | Prior grade from an earlier list or model | 0 | never expires | no | informational | default | Every letter grade from Gotham, the Tier 1 Book, the July wave, AMIN, Pittsburgh or the Cold Pool is kept as this signal with its source. It never scores. |
 | `inbound_reply` | Inbound reply | 6 | 14 days | yes | strong_when_stacked | default | — |
-| `meeting_accepted` | Meeting accepted | 6 | 14 days | yes | strong_when_stacked | default | — |
-| `next_step_agreed` | Next step agreed on a call | 8 | 30 days | yes | strong | default | — |
-| `new_client_win` | New client win or AOR announcement | 6 | 90 days | yes | medium_strong | default | — |
+| `orbit_pa_sent` | Project agreement sent (Orbit) | 8 | 30 days | yes | strong | default | — |
 | `cluster_hiring` | Cluster hiring for developers or designers (3+ roles) | 5 | 56 days | yes | medium_two_sided | default | — |
-| `freelance_dev_posting` | Freelance or Upwork dev posting by the agency | 6 | 60 days | yes | medium_strong | default | — |
-| `service_mix_change` | Service-mix change | 4 | 90 days | yes | medium | default | — |
-| `platform_tier_change` | Platform partner tier change | 4 | 90 days | yes | medium | default | — |
+| `new_client_win` | New client win or AOR announcement | 6 | 90 days | yes | medium_strong | default | — |
+| `orbit_pa_signed` | Project agreement signed (Orbit) — promotion pending | 8 | 60 days | no | strong | default | flag: PA signed — promotion pending (PRO-18) |
+| `quote_requested` | Quote requested | 9 | 14 days | yes | strong | 8 h | — |
+| `meeting_accepted` | Meeting accepted | 6 | 14 days | yes | strong_when_stacked | default | — |
+| `neg_dark_21_days` | 21+ days dark | -6 | 90 days | no | strong_negative | default | — |
+| `next_step_agreed` | Next step agreed on a call | 8 | 30 days | yes | strong | default | — |
 | `leadership_change` | New COO, ops director or head of delivery | 5 | 84 days | yes | medium | default | — |
+| `neg_champion_left` | Champion left | -8 | 90 days | no | strong_negative | default | — |
+| `verbally_accepted` | Quote verbally accepted | 8 | 30 days | yes | strong | default | — |
+| `service_mix_change` | Service-mix change | 4 | 90 days | yes | medium | default | — |
+| `champion_job_change` | Past champion or contact moved to a new agency | 9 | 90 days | yes | strong | 72 h | — |
 | `owner_capacity_post` | Owner posts about capacity or hiring pain | 4 | 30 days | yes | medium | default | — |
+| `referral_warm_intro` | Warm intro or referral | 10 | 90 days | yes | strong | 48 h | — |
+| `platform_tier_change` | Platform partner tier change | 4 | 90 days | yes | medium | default | — |
+| `freelance_dev_posting` | Freelance or Upwork dev posting by the agency | 6 | 60 days | yes | medium_strong | default | — |
+| `neg_no_decision_maker` | No decision-maker on calls | -5 | 90 days | no | strong_negative | default | — |
 | `peer_group_attendance` | Attends AMI, BABA, Agency Builders; joins a peer group | 3 | 365 days | no | medium | default | — |
 | `review_award_relaunch` | Review velocity, award, website relaunch | 1 | 90 days | yes | weak | default | — |
-| `neg_champion_left` | Champion left | -8 | 90 days | no | strong_negative | default | — |
 | `neg_needs_to_figure_out` | 'We need to figure out…' | -5 | 90 days | no | strong_negative | default | — |
-| `neg_no_decision_maker` | No decision-maker on calls | -5 | 90 days | no | strong_negative | default | — |
-| `neg_dark_21_days` | 21+ days dark | -6 | 90 days | no | strong_negative | default | — |
-| `neg_hiring_inhouse_dev_lead` | Hiring an in-house dev lead | -6 | 90 days | no | strong_negative | default | — |
+| `orbit_verbally_accepted` | Quote verbally accepted (Orbit) | 8 | 30 days | yes | strong | default | — |
 | `neg_end_client_inhousing` | End client in-housing | -6 | 90 days | no | strong_negative | default | — |
-| `prior_grade` | Prior grade from an earlier list or model | 0 | never expires | no | informational | default | Every letter grade from Gotham, the Tier 1 Book, the July wave, AMIN, Pittsburgh or the Cold Pool is kept as this signal with its source. It never scores. |
-| `manual_note` | Peer-group or conference intel entered by hand | 2 | 90 days | yes | weak | default | — |
+| `neg_hiring_inhouse_dev_lead` | Hiring an in-house dev lead | -6 | 90 days | no | strong_negative | default | — |
 
 The scorecard lists the top **5** live positive signals, strongest first (display only); the decayed total behind urgency counts every signal, listed or not.
 
@@ -384,10 +390,10 @@ The scorecard lists the top **5** live positive signals, strongest first (displa
 
 | Stated timing | Urgency |
 |---|---|
+| `no_timeline` | **Cold** |
 | `within_1_week` | **Super Hot** |
 | `within_1_month` | **Hot** |
 | `within_3_months` | **Warm** |
-| `no_timeline` | **Cold** |
 
 Otherwise the **decayed total** of live signals climbs this ladder (the first rung the total reaches, from the top). With no signals at all the row is **Cold** with basis `none`.
 
@@ -426,7 +432,7 @@ Every threshold a rule uses sits in its `params`, by name; the `test` is the sam
 | Rule | Test | Thresholds (params) | Warning shown |
 |---|---|---|---|
 | **DH-DARK** | `days since last buyer-initiated touch >= 21 AND no next meeting booked` | min_days_dark = 21 | 21+ days without a buyer touch and nothing scheduled |
-| **DH-PUSHES** | `close_date_pushes >= 3 OR largest_push_days > 21` | min_pushes = 3; max_push_days = 21 | Close date pushed three times or once by more than three weeks |
+| **DH-PUSHES** | `close_date_pushes >= 3 OR largest_push_days > 21` | max_push_days = 21; min_pushes = 3 | Close date pushed three times or once by more than three weeks |
 | **DH-STALLED** | `days in stage > 2 * stage median` | median_multiple = 2 | Stalled in stage at more than twice WLIQ's median |
 | **DH-NO-DM** | `decision_maker_engaged == false AND calls_held >= 2` | min_calls = 2 | Two or more calls and no decision-maker has attended or replied |
 | **DH-INDECISION** | `indecision_level == high OR (risk_words_present == true AND no next meeting booked)` | — | High indecision language with no next step |
@@ -435,8 +441,8 @@ Every threshold a rule uses sits in its `params`, by name; the `test` is the sam
 
 | Rule | Test | Thresholds (params) | Warning shown |
 |---|---|---|---|
-| **DH-QUIET** | `days since last buyer-initiated touch between 14 and 20` | min_days = 14; max_days = 20 | Two weeks quiet |
-| **DH-PUSHED** | `close_date_pushes between 1 and 2` | min_pushes = 1; max_pushes = 2 | Close date has moved |
+| **DH-QUIET** | `days since last buyer-initiated touch between 14 and 20` | max_days = 20; min_days = 14 | Two weeks quiet |
+| **DH-PUSHED** | `close_date_pushes between 1 and 2` | max_pushes = 2; min_pushes = 1 | Close date has moved |
 | **DH-NO-NEXT** | `no next meeting booked` | — | No next meeting booked |
 | **DH-NO-PRICE** | `price_discussed == false AND calls_held >= 2` | min_calls = 2 | Price not discussed by the second call |
 | **DH-THIN** | `buyer_contacts_30d < 2` | min_contacts = 2 | Fewer than two buyer contacts engaged |

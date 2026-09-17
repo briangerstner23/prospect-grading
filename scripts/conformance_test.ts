@@ -248,6 +248,12 @@ if (unknownKeys.length) fail("COVERAGE:unknown", `checks carry keys not in requi
     const v = (JSON.parse(read(a.file)) as { version?: string }).version;
     if (v !== a.version) fail("ACTIVE-rubric-version", `${a.file} says version ${v}, ledger says ${a.version}`);
   }
+  // docs/METHOD.md is generated from explain/generate_method.ts's DEFAULT_RUBRIC_FILE. Until 17 Sep that
+  // was 0.1.0 while 0.1.3 graded the book, so the method document described a rubric nothing ran.
+  const m = read("explain/generate_method.ts").match(/DEFAULT_RUBRIC_FILE = "([^"]+)"/);
+  const want = a.file.split("/").pop();
+  if (!m) fail("ACTIVE-method-source", "explain/generate_method.ts no longer declares DEFAULT_RUBRIC_FILE = \"…\"");
+  else if (m[1] !== want) fail("ACTIVE-method-source", `docs/METHOD.md is generated from ${m[1]}, but the active rubric is ${want} — repoint DEFAULT_RUBRIC_FILE and regenerate`);
 }
 
 // 3 · Auto probes.

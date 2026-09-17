@@ -31,7 +31,7 @@ type Rubric = any;
 // deno-lint-ignore no-explicit-any
 type Obj = Record<string, any>;
 
-export const DEFAULT_RUBRIC_FILE = "rubric.prospect.v0.1.json";
+export const DEFAULT_RUBRIC_FILE = "rubric.prospect.v0.1.4.json"; // the ACTIVE rubric; scripts/conformance_test.ts fails when this and the ledger disagree
 
 /* ------------------------------------------------------------------ *
  * Formatting helpers
@@ -331,13 +331,29 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
     w();
   }
   const ce = pot.climb_evidence as Obj;
-  w(`### 10b · Climb evidence caps the ceiling`);
+  // `caps_ceiling` is read by the engine with the same default (true) — core/engine.ts, "Does climb evidence CAP the ceiling".
+  const capsCeiling = ce.caps_ceiling !== false;
+  w(capsCeiling ? `### 10b · Climb evidence caps the ceiling` : `### 10b · Climb evidence is traced; it does not cap the ceiling`);
   w();
-  para(`${ce.rule} Basis: ${code(ce.basis)}. A ceiling held down by this rule carries the flag "Ceiling capped: no climb evidence".`);
-  tbl(["Climb signal", "Also written as"], (ce.signals as string[]).map((s) => {
+  para(`${ce.rule} Basis: ${code(ce.basis)}. ` + (capsCeiling
+    ? `A ceiling held down by this rule carries the flag "Ceiling capped: no climb evidence".`
+    : `Under this version \`caps_ceiling\` is false: the ceiling comes from headroom (or a stated ceiling) alone, the flag "Ceiling capped: no climb evidence" is never raised, and the signals below are still recognised and written into the trace as a description of the relationship.`));
+  const strength = (ce.strength ?? {}) as Obj;
+  const hasStrength = Object.keys(strength).length > 0;
+  tbl(hasStrength ? ["Climb signal", "Strength", "Also written as"] : ["Climb signal", "Also written as"], (ce.signals as string[]).map((s) => {
     const aliases = Object.entries(ce.aliases as Obj).filter(([, v]) => v === s).map(([k]) => code(k));
-    return [`**${s}**`, aliases.length ? aliases.join(", ") : "—"];
+    const row = [`**${s}**`, aliases.length ? aliases.join(", ") : "—"];
+    if (hasStrength) row.splice(1, 0, cell(strength[s]));
+    return row;
   }));
+  const lift = ce.lift_requires as Obj | undefined;
+  if (lift) {
+    para(`**What counts as a lift:** ${lift.strong} strong signal or ${lift.weak} weak ones. Without a lift the evidence is recorded and does not yet count.`);
+  }
+  const retired = ce.retired as Obj | undefined;
+  if (retired && Object.keys(retired).length) {
+    tbl(["Retired signal", "Why"], Object.entries(retired).map(([k, v]) => [`**${k}**`, cell(v)]));
+  }
   w(`### 10c · Year-one band`);
   w();
   w(`Year one is a **band, never a figure**.` +
@@ -412,7 +428,9 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   w();
   para(dh.params_note);
   const params = (r: Obj): string => {
-    const entries = Object.entries((r.params ?? {}) as Obj);
+    // Sorted by name: a rubric file written back from the database (jsonb reorders keys, as 0.1.4 was)
+    // must produce the same document as one typed by hand.
+    const entries = Object.entries((r.params ?? {}) as Obj).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     return entries.length ? entries.map(([k, v]) => `${k} = ${cell(v)}`).join("; ") : "—";
   };
   w(`**Red when any of:**`);
