@@ -45,6 +45,7 @@ const RUBRICS: Record<string, Rubric> = {
   "0.1.0": load("rubric.prospect.v0.1.json"),
   "0.1.2": load("rubric.prospect.v0.1.2.json"),
   "0.1.4": load("rubric.prospect.v0.1.4.json"),
+  "0.1.5": load("rubric.prospect.v0.1.5.json"),
 };
 const R: Rubric = RUBRICS["0.1.0"];
 const FIXTURES: Array<{ id: string; description: string; features: ProspectFeatures; options?: { override?: unknown }; expected: Record<string, unknown> }> =
@@ -93,6 +94,7 @@ function without(path: string): Rubric {
  */
 const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2", "0.1.2": "d8bc859e",
   "0.1.4": "1d83b2e3",
+  "0.1.5": "517f4476",
 };
 
 /* ------------------------------------------------------------------ *
@@ -158,6 +160,51 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   for (const [version, rubric] of Object.entries(RUBRICS)) {
     eq(`fingerprint: rubric ${version} bytes are the pinned ones (re-record PINNED_FINGERPRINT deliberately when the rubric changes)`, fingerprint(rubric), PINNED_FINGERPRINT[version]);
   }
+}
+
+
+/* rubric-driven flag rules (0.1.5, DECISIONS §40): a named condition raises a flag and moves nothing.
+ *
+ * The small-shop floor is the case that forced the mechanism: the research wanted an exclusion,
+ * the owner ruled it visible instead, and the book ranks rather than gates (PRO-0). What must hold
+ * is that the flag fires on the stated fact, never on a null, never outside its class, and never
+ * touches a tier — and that a rubric WITHOUT the block behaves exactly as it did before.
+ */
+{
+  const R15 = RUBRICS["0.1.5"];
+  const FLOOR_FLAG = "Below the small-shop project floor";
+  const icp3 = (avg: number | null) =>
+    grade({ ...base(), icp_class: "ICP-3", icp_class_label: "evidence", avg_project_size: avg }, R15);
+
+  eq("flag rule: an ICP-3 shop below the $10K floor is flagged",
+    icp3(6000).flags.includes(FLOOR_FLAG), true);
+  eq("flag rule: at the floor exactly, not flagged (the rule reads < 10000)",
+    icp3(10000).flags.includes(FLOOR_FLAG), false);
+  eq("flag rule: above the floor, not flagged",
+    icp3(12000).flags.includes(FLOOR_FLAG), false);
+  eq("flag rule: unknown average project never flags (rule 5)",
+    icp3(null).flags.includes(FLOOR_FLAG), false);
+  eq("flag rule: the same number outside ICP-3 never flags",
+    grade({ ...base(), icp_class: "ICP-1", icp_class_label: "evidence", avg_project_size: 6000 }, R15)
+      .flags.includes(FLOOR_FLAG), false);
+  eq("flag rule: flagging does not move the tier",
+    icp3(6000).effective_tier, icp3(12000).effective_tier);
+  eq("flag rule: flagging does not park the row",
+    icp3(6000).status === "Parked", false);
+  eq("flag rule: a rubric with no flag_rules block raises no rule-driven flag (0.1.0 unchanged)",
+    grade({ ...base(), icp_class: "ICP-3", avg_project_size: 6000 }, RUBRICS["0.1.0"])
+      .flags.includes(FLOOR_FLAG), false);
+  throws("flag rule: a flag outside flags.vocabulary throws rather than printing an unexplainable chip",
+    () => {
+      const bad = JSON.parse(JSON.stringify(R15));
+      bad.dimension_b.flag_rules[0].flag = "Not in the vocabulary";
+      return grade({ ...base(), icp_class: "ICP-3", avg_project_size: 6000 }, bad);
+    }, "dimension_b.flag_rules[0].flag");
+
+  // PRO-2r-a, ruled 17 Sep: character warns and never parks, whatever the fact says.
+  const flagged = grade({ ...base(), broker_character: "flag" }, R15);
+  eq("PRO-2r-a ruled: broker character flags", flagged.flags.includes("Broker character flag"), true);
+  eq("PRO-2r-a ruled: broker character never parks", flagged.status === "Parked", false);
 }
 
 /* the strict rubric reader: no key the engine needs has a code fallback */

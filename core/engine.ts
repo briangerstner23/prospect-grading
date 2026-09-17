@@ -138,6 +138,62 @@ function fmt(n: number): string {
  * fit · adjustments
  * ------------------------------------------------------------------ */
 
+/**
+ * Rubric-driven flags: a named condition that raises a flag and changes nothing else.
+ *
+ * Every other flag in this engine is hard-coded, which was fine while each one was tied to a
+ * gate or an override. It stopped being fine when a research finding needed to be *visible*
+ * without being a gate and without moving a tier (DECISIONS §40: the small-shop project floor).
+ * Rule 4 says the rubric is data, so the condition, its text and its basis live there.
+ *
+ * `dimension_b.flag_rules` is OPTIONAL. A rubric without it raises no rule-driven flags, so
+ * 0.1.0 through 0.1.4 score exactly as they always did (docs/BASELINE.md).
+ *
+ * Unknown is never evidence (rule 5): `evalWhen` is false for a null field on every comparison,
+ * so a fact nobody has collected cannot raise a flag.
+ */
+export interface FlagRuleTrace {
+  id: string;
+  flag: string;
+  fired: boolean;
+  rule_text: string;
+  basis: "ruled" | "unruled_default" | "reasoned";
+  inputs: Record<string, unknown>;
+}
+
+function runFlagRules(
+  f: ProspectFeatures,
+  icp: string | null,
+  rubric: Rubric,
+  flags: Set<string>,
+): FlagRuleTrace[] {
+  if (rubricAt(rubric, "dimension_b.flag_rules") === undefined) return [];
+  const rules = reqArr<Record<string, unknown>>(rubric, "dimension_b.flag_rules");
+  const vocabulary = reqArr<string>(rubric, "flags.vocabulary");
+  const ctx: WhenContext = { ...(f as unknown as WhenContext), icp_class: icp };
+  const out: FlagRuleTrace[] = [];
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+    const path = `dimension_b.flag_rules[${i}]`;
+    const id = reqStrIn(rubric, r, "id", path);
+    const when = reqStrIn(rubric, r, "when", path);
+    const flag = reqStrIn(rubric, r, "flag", path);
+    const basis = reqOneOfIn(rubric, r, "basis", path, BASES) as "ruled" | "unruled_default" | "reasoned";
+    // A flag the vocabulary does not name would print on a page that cannot explain it.
+    if (!vocabulary.includes(flag)) {
+      throw new RubricError(rubric, `${path}.flag`, `one of flags.vocabulary`, flag);
+    }
+    const inputs: Record<string, unknown> = {};
+    for (const field of when.match(/[a-z_][a-z0-9_.]*(?=\s+(==|!=|>=|<=|>|<|in)\s)/g) ?? []) {
+      inputs[field] = (ctx as Record<string, unknown>)[field] === undefined ? null : (ctx as Record<string, unknown>)[field];
+    }
+    const fired = evalWhen(when, ctx);
+    if (fired) flags.add(flag);
+    out.push({ id, flag, fired, rule_text: when, basis, inputs });
+  }
+  return out;
+}
+
 function runAdjustments(
   f: ProspectFeatures,
   icp: IcpClass | null,
@@ -824,6 +880,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
 
   /* 4 · adjustments */
   const adj = runAdjustments(f, icp.icp_class, rubric, notes);
+  const flagRules = runFlagRules(f, icp.icp_class, rubric, flags);
   let adjustedTier: Tier | null = null;
   if (baseTier) {
     const never = reqOneOf(rubric, "dimension_b.adjustments.adjustments_never_reach", TIER_ORDER);
