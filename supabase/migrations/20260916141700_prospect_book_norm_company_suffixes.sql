@@ -1,22 +1,18 @@
--- SUPERSEDED — NOT WHAT RAN. This file was written by the 16 September session on branch
--- claude/new-session-glwxzh and never applied under this name; the database ran
---   20260916141700_prospect_book_norm_company_suffixes.sql
--- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
+-- Applied 20260916141700 as "prospect_book_norm_company_suffixes" by the 16 September session, which pushed its work to its own
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
+-- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
--- Company-name normaliser for cross-system joins.
---
--- The first version was too literal and five quoted companies fell out of the join. Two of the
--- five are pure spelling: an ampersand where the book writes "and", and a legal suffix the book
--- keeps ("Inc") that the delivery system drops. Those are mechanical, so the normaliser handles
--- them.
+-- pb_norm_company was too literal and five quoted companies fell out of the join. Two of the five
+-- are pure spelling: an ampersand where the book writes "and", and a legal suffix the book keeps
+-- ("Inc") that the delivery system drops. Those are mechanical, so the normaliser handles them.
 --
 -- The other three are not spelling and must NOT be normalised away: a genuine typo in the source,
 -- a brand name against a legal name, and a parenthetical naming the agency behind a sub-brand.
 -- Each is an ALIAS — an assertion that two names are one company — and an alias is an identity
 -- decision (rule 8). They stay in pb_orbit_quote_unmatched for a person, where they are visible,
 -- rather than being guessed by a cleverer regex. A normaliser loose enough to match those three
--- would also match companies that are genuinely different, and it would do it silently.
+-- would also match companies that are genuinely different.
 create or replace function public.pb_norm_company(p text)
 returns text language sql immutable as $$
   select regexp_replace(

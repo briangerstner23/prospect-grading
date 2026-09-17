@@ -1,8 +1,7 @@
--- SUPERSEDED — NOT WHAT RAN. This file was written by the 16 September session on branch
--- claude/new-session-glwxzh and never applied under this name; the database ran
---   20260916141408_prospect_book_call_attribution_candidates_per_call.sql
--- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
+-- Applied 20260916141408 as "prospect_book_call_attribution_candidates_per_call" by the 16 September session, which pushed its work to its own
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
+-- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- The first cut of this view grouped by (call, domain) and asked whether THAT DOMAIN matched
 -- more than one account. That finds one kind of ambiguity and hides the other. A call can carry

@@ -554,12 +554,12 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       }
     },
     {
-      "id": "RECON-migrations-unfiled",
+      "id": "RECON-migrations-filed",
       "r": "RECON",
       "mode": "manual",
       "verified_on": "2026-09-17",
-      "reverify": "count pb migrations in supabase_migrations.schema_migrations vs ls supabase/migrations — match by NAME, timestamps differ.",
-      "claim": "29 Prospect Book migrations are applied with no file — ALL in the 16 Sep boards group (research_log → prospect_board), held until owner decision 2. The 4 pre-16-Sep ones were transcribed verbatim from schema_migrations.statements on 17 Sep (repair item 3, first half). Their SQL is also saved outside the repo so nothing is lost while the decision is open."
+      "reverify": "node --experimental-strip-types scripts/reconcile.ts — the migrations line must read 0 unfiled. Also: git fetch --all, then confirm no origin/* branch holds commits this tree does not (git merge-base --is-ancestor).",
+      "claim": "Every applied migration has a file (0 unfiled). Until 17 Sep this row said 29 had none: that was measured against ONE branch while 24 of the files sat on another, which is the blind spot DECISIONS §39 records. The last 10 were filed verbatim from the database. Five files on disk name versions that never ran (superseded drafts from the same session) and carry a SUPERSEDED header."
     },
     {
       "id": "RECON-fathom-proof-pending",
@@ -695,38 +695,8 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
   "reconcile": {
     "rpc": "pb_reconcile_state",
     "known_unfiled_migrations": {
-      "reason": "the 16 Sep boards system (research_log → prospect_board), held until owner decision 2 in docs/REPAIR-PLAN.md; their SQL is saved outside the repo. This list should only shrink.",
-      "names": [
-        "prospect_book_research_log",
-        "prospect_book_candidates_from_reads",
-        "prospect_book_candidate_source_from_method",
-        "prospect_book_contact_events",
-        "prospect_book_engagement_mutual_counts",
-        "prospect_book_mdm_registry",
-        "prospect_book_mdm_junk_domains",
-        "prospect_book_a_client_is_still_a_prospect",
-        "prospect_book_orbit_clients",
-        "prospect_book_admit_from_orbit",
-        "prospect_book_admit_from_orbit_fix",
-        "prospect_book_roster_source_orbit",
-        "prospect_book_gmail_sweep_staging",
-        "prospect_book_contact_events_from_gmail",
-        "prospect_book_attribute_orphan_calls",
-        "prospect_book_attribute_orphan_calls_fix",
-        "prospect_book_attribute_orphan_calls_uuid_fix",
-        "prospect_book_call_attribution_candidates_per_call",
-        "prospect_book_attribute_orphan_calls_register_columns",
-        "prospect_book_contact_events_from_calls",
-        "prospect_book_orbit_quote_sweep",
-        "prospect_book_norm_company_suffixes",
-        "prospect_book_contact_events_from_quotes",
-        "prospect_book_chase_board_v2",
-        "prospect_book_chase_board_dedupe_registry_join",
-        "prospect_book_chase_board_new_logo_rank_v2",
-        "prospect_book_quote_match_by_domain",
-        "prospect_book_chase_board_by_company",
-        "prospect_book_prospect_board"
-      ]
+      "reason": "EMPTY since 17 Sep. The 29 names that sat here were the 16 September boards system; 24 of their files existed all along on branch claude/new-session-glwxzh and arrived with the merge, and the remaining 10 (the *_fix and *_v2 iterations the database actually ran) were filed verbatim from schema_migrations.statements the same day. This list should only shrink; a name appearing here again means a migration ran with no file.",
+      "names": []
     },
     "sources": {
       "fathom": {

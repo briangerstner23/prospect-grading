@@ -2760,6 +2760,7 @@ rediscover them.
 Redeploying v7 changes no read tonight. The stored 0.2.0 draft is also older than the repo file
 (`flags.vocabulary` 18 vs 21 entries) and 0.3.0 has no row yet; both are refreshed as drafts at
 deploy time, previewed, and activated by nobody but the owner.
+<<<<<<< HEAD
 
 ## 39 · Eleven branches, one database, and a claim that was wrong because of it (17 September 2026)
 
@@ -2798,3 +2799,5 @@ was discarded in the conflict resolutions, and the merge is recorded commit by c
    `origin/*` carries commits the working tree does not, so the blind spot announces itself.
 4. **The default branch must be the line of work** (owner decision 5). Until it is, GitHub runs
    no scheduled reconcile at all, which is the same blindness on a timer.
+=======
+>>>>>>> origin/claude/gracious-albattani-grgu0k

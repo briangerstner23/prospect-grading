@@ -1,11 +1,10 @@
--- SUPERSEDED — NOT WHAT RAN. This file was written by the 16 September session on branch
--- claude/new-session-glwxzh and never applied under this name; the database ran
---   20260916134753_prospect_book_gmail_sweep_staging.sql
--- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
+-- Applied 20260916134753 as "prospect_book_gmail_sweep_staging" by the 16 September session, which pushed its work to its own
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
+-- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- The email sweep (DECISIONS §24 — engagement is recorded contact, and email is the
--- channel we had never read). The owner asked for it twice: sweep every prospect domain.
+-- channel we had never read). Brian said yes twice: sweep every prospect domain.
 --
 -- WHY A STAGING TABLE. The sweep runs outside the database: a Gmail query per batch of
 -- domains, newest-first. What comes back is per-domain — a last inbound date and a last

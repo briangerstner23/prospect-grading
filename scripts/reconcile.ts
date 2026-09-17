@@ -27,6 +27,7 @@
  * Runs under Deno and `node --experimental-strip-types`.
  */
 
+import { execSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -149,6 +150,34 @@ function loadLedger(): LedgerReconcile & { compiled_on: string } {
   return { compiled_on: b.compiled_on, active_rubric: b.active_rubric, ...b.reconcile };
 }
 
+/**
+ * Which branch this ran on, and whether any other branch carries commits it does not.
+ *
+ * DECISIONS §39: this script compares the database to the WORKING TREE. On 17 Sep that made it
+ * report 29 applied migrations as unfiled while 24 of their files sat on another branch. A check
+ * that reads one branch cannot see work on another, so it has to say which one it read.
+ * Best-effort: no git, no remotes, or a shallow clone all return null rather than failing a run.
+ */
+export function branchState(): { branch: string; unmerged: string[] } | null {
+  try {
+    const run = (cmd: string) => execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const branch = run("git rev-parse --abbrev-ref HEAD");
+    // `git branch -r`, not for-each-ref: the --format spec's parentheses need shell quoting that
+    // /bin/sh under execSync does not survive, and a silently-null check is worse than none.
+    const heads = run("git branch -r")
+      .split("\n").map((b) => b.replace(/^[* ]+/, "").trim())
+      .filter((b) => b.startsWith("origin/") && !b.includes("->"));
+    const unmerged: string[] = [];
+    for (const b of heads) {
+      const n = Number(run(`git rev-list --count HEAD..${b}`));
+      if (Number.isFinite(n) && n > 0) unmerged.push(`${b} (+${n})`);
+    }
+    return { branch, unmerged };
+  } catch {
+    return null;
+  }
+}
+
 export function diskMigrationNames(): string[] {
   return readdirSync(join(root, "supabase/migrations"))
     .filter((f) => f.endsWith(".sql"))
@@ -193,6 +222,13 @@ async function main(): Promise<void> {
   const fileFp = existsSync(file) ? fingerprint(JSON.parse(readFileSync(file, "utf8"))) : null;
   const v = evaluate(state, ledger, diskMigrationNames(), fileFp, asOf);
 
+  const branches = branchState();
+  if (branches) {
+    console.log(`reconcile: read the working tree on branch ${branches.branch}`);
+    if (branches.unmerged.length) {
+      v.warnings.push(`${branches.unmerged.length} branch(es) carry commits this tree does not: ${branches.unmerged.join(", ")}. Everything below was measured against ${branches.branch} only — merge before trusting a "no file" or "missing" finding (DECISIONS §39).`);
+    }
+  }
   console.log(`reconcile: state generated ${state.generated_at}; ledger compiled ${ledger.compiled_on}; as of ${asOf.toISOString()}`);
   for (const s of v.summary) console.log(`  ok    ${s}`);
   for (const w of v.warnings) console.log(`  WARN  ${w}`);

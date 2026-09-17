@@ -1,16 +1,14 @@
--- SUPERSEDED — NOT WHAT RAN. This file was written by the 16 September session on branch
--- claude/new-session-glwxzh and never applied under this name; the database ran
---   20260916142134_prospect_book_chase_board_v2.sql (then _dedupe_registry_join, then _new_logo_rank_v2)
--- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
+-- Applied 20260916142134 as "prospect_book_chase_board_v2" by the 16 September session, which pushed its work to its own
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
+-- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- The chase board, rebuilt on evidence (DECISIONS §30).
 --
--- The old chase list ranked the 146 accounts that happened to have been researched, on a CRM
--- stage that turns out not to predict contact at all. Of the 184 accounts sitting in "Schedule
--- Sales Call", 7 are in live contact and 140 have nothing recorded against them ever; 155 sit in
--- "Sales Call Done" with 67 in the same state. The stage was ranking the book's own filing, not
--- the prospect's interest. 20 of that old top 100 survive into this one.
+-- The old chase list ranked 146 accounts that happened to have been researched, on a stage label
+-- that turned out to mean nothing: of 62 accounts marked Hot or Super Hot, 5 were in live contact
+-- and 30 had nothing recorded at all; of 458 marked Cold, 17 were in live contact. The label was
+-- ranking the book's attention, not the prospect's interest.
 --
 -- This ranks all 849 on what is now recorded: who replied, who has a quote out, who we are
 -- already delivering for. The owner's rulings (§26) are the ordering:
@@ -20,26 +18,8 @@
 --   * a LOST or old quote is still a signal, "a no is a positive sign";
 --   * a stage label means nothing unless a person confirmed it, so it scores ZERO here.
 --
--- The stage is still CARRIED, at zero points, because a board that hides the number it refuses to
--- use cannot be argued with. It is `cj_stage`, read from the `pipedrive_cj_stage` fact — NOT from
--- pb_accounts.status, which is the book's own lifecycle (Ranked / Unclassified / Merged / Parked)
--- and is surfaced separately as `account_status`. The first cut of this view named the second one
--- `stage_label` and so reported its own headline finding against the wrong column.
---
 -- WEIGHTS ARE DATA, not SQL (rule 4). They live in pb_chase_weights, versioned, so changing the
 -- order of the chase is an edit to a table and a new version — never an edit to this view.
---
--- TWO RANKS OVER ONE SET OF EVIDENCE. Ranked purely on contact, 91 of the top 100 are companies
--- we already deliver for — the ruling working as stated, not a bug. But "who do I call today" and
--- "where does the next logo come from" are different questions, and a board that only knows the
--- first will quietly starve the second. So new_logo_rank ranks the same score over accounts with
--- no active delivery work. Both live in the view; neither is a filter someone has to remember.
---
--- ONE ROW PER ACCOUNT. pb_mdm_resolution is per RECORD, not per company, so joining it directly
--- fans accounts out — the first cut returned 852 rows for 849 accounts with one company twice in
--- the top ten. A fan-out inside a ranked list is the worst shape of bug: the total is barely off,
--- the duplicates sort next to each other so they read as a tie, and the thing being multiplied is
--- the thing being counted. The registry is collapsed per company first.
 create table if not exists public.pb_chase_weights (
   weights_version text    not null,
   signal          text    not null,
@@ -67,8 +47,9 @@ insert into public.pb_chase_weights (weights_version, signal, points, note, acti
 on conflict (weights_version, signal) do update
   set points = excluded.points, note = excluded.note, active = excluded.active;
 
--- One row of weights, so the board reads them as scalars. `filter` attaches only to an aggregate,
--- never to a scalar subquery — which is what the first version of the board got wrong.
+-- One row of weights, so the view can read them as scalars without a correlated subquery per
+-- account. `filter` does not attach to a scalar subquery — only to an aggregate — which is what
+-- the first version of this view got wrong.
 create or replace view public.pb_chase_weights_active as
 select
   max(points) filter (where signal = 'quote_open')       as w_quote_open,
@@ -85,24 +66,12 @@ from public.pb_chase_weights where active;
 
 revoke all on public.pb_chase_weights_active from anon, authenticated;
 
-drop view if exists public.pb_chase_board;
-
-create view public.pb_chase_board as
-with mdm as (
-  select
-    public.pb_norm_company(canonical_name) as norm_name,
-    case when bool_or(entity_type = 'client') then 'client'
-         else min(entity_type) end                as entity_type
-  from public.pb_mdm_resolution
-  group by public.pb_norm_company(canonical_name)
-),
-sig as (
+create or replace view public.pb_chase_board as
+with sig as (
   select
     a.id   as account_id,
     a.name,
-    a.status                                        as account_status,
-    (select f.value #>> '{}' from public.pb_current_facts f
-      where f.account_id = a.id and f.key = 'pipedrive_cj_stage') as cj_stage,
+    a.status                                        as stage_label,
     e.engagement,
     s.quote_state,
     e.last_engaged,
@@ -125,11 +94,12 @@ sig as (
     (e.engagement = 'pursued')                      as f_pursued_no_reply,
     (e.engagement = 'dormant')                      as f_dormant
   from public.pb_accounts a
-  left join public.pb_engagement       e  on e.account_id = a.id
-  left join public.pb_engagement_shape s  on s.account_id = a.id
-  left join public.pb_orbit_clients    oc on oc.orbit_id  = a.orbit_client_id
-  left join mdm                        m  on m.norm_name  = public.pb_norm_company(a.name)
-  left join public.pb_current_reads    r  on r.account_id = a.id
+  left join public.pb_engagement       e  on e.account_id  = a.id
+  left join public.pb_engagement_shape s  on s.account_id  = a.id
+  left join public.pb_orbit_clients    oc on oc.orbit_id   = a.orbit_client_id
+  left join public.pb_mdm_resolution   m  on public.pb_norm_company(m.canonical_name)
+                                           = public.pb_norm_company(a.name)
+  left join public.pb_current_reads    r  on r.account_id  = a.id
 ),
 scored as (
   select sig.*,
@@ -150,12 +120,8 @@ select
   account_id, name, score,
   dense_rank() over (order by score desc) as rank_band,
   row_number()  over (order by score desc, last_engaged desc nulls last, name) as chase_rank,
-  case when active_projects = 0 then
-    row_number() over (partition by (active_projects = 0)
-                       order by score desc, last_engaged desc nulls last, name)
-  end as new_logo_rank,
   engagement, quote_state, entity_type, active_projects,
-  effective_tier, confidence, cj_stage, account_status,
+  effective_tier, confidence, stage_label,
   last_engaged::date as they_last_replied,
   last_quote::date   as last_quoted,
   nullif(array_to_string(array_remove(array[
@@ -173,11 +139,8 @@ select
 from scored;
 
 comment on view public.pb_chase_board is
-  'Chase order over every account, scored from recorded contact rather than CRM stage. Two ranks '
-  'over identical evidence: chase_rank over everyone, new_logo_rank over accounts with no active '
-  'delivery work — because "who do I call today" and "where does the next logo come from" are '
-  'different questions and one number cannot answer both. Weights are data (pb_chase_weights). '
-  'The CRM stage is carried as cj_stage and scores zero on purpose; account_status is the book''s '
-  'own lifecycle, which is a different column and not a stage. DECISIONS §26, §30.';
+  'Chase order over every account, scored from recorded contact rather than CRM stage. Weights '
+  'are data (pb_chase_weights), not SQL. The stage label is carried for comparison and scores '
+  'zero on purpose — DECISIONS §26, §30.';
 
 revoke all on public.pb_chase_board from anon, authenticated;
