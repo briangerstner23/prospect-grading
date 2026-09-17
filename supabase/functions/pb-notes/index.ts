@@ -490,6 +490,11 @@ Deno.serve(async (req: Request) => {
   }
   const model = (typeof body.model === "string" && body.model) || (await getSecret(db, "PB_EXTRACTOR_MODEL")) || DEFAULT_MODEL;
   const extractor = extractorId(model);
+  /* One id per SOURCE. `extractor` above is the notes prompt's id and is kept because the run
+     row and the response have always carried one string; but a website is read by a different
+     prompt, so reporting that one value for a website-only run would name a prompt that never
+     ran. Filled as each channel is registered. */
+  const extractors: Record<string, string> = {};
 
   const as_of = typeof body.as_of === "string" ? body.as_of : today();
   const max_notes = typeof body.max_notes === "number" && body.max_notes > 0 ? Math.floor(body.max_notes) : 250;
@@ -549,6 +554,7 @@ Deno.serve(async (req: Request) => {
         return;
       }
       channels.push({ source, pull });
+      extractors[source] = extractorId(model, promptVersionFor(source));
     };
 
     consider(PIPEDRIVE_NOTES, pipedriveToken, "PB_PIPEDRIVE_API_TOKEN", () =>
@@ -794,7 +800,7 @@ Deno.serve(async (req: Request) => {
       notes.push("Dry run: nothing was written and no watermark moved.");
       await finishRun(db, runId, "success", { ...counters, facts: factsWritten, candidates: queued }, notes);
       return json({
-        ok: true, run_id: runId, dry_run: true, swept, extractor,
+        ok: true, run_id: runId, dry_run: true, swept, extractor, extractors,
         would_write: { facts: factsWritten, candidates: queued },
         next_watermarks: newWatermarks, counters, notes,
       });
@@ -810,7 +816,7 @@ Deno.serve(async (req: Request) => {
           source,
           last_seen_at,
           last_run_at: new Date().toISOString(),
-          note: `${extractor}: swept ${source}.`,
+          note: `${extractors[source] ?? extractor}: swept ${source}.`,
         }, { onConflict: "source" });
         if (error) { errors++; notes.push(`pb_source_watermarks(${source}): ${error.message}`); }
       }
@@ -820,7 +826,7 @@ Deno.serve(async (req: Request) => {
 
     await finishRun(db, runId, runStatus(wrote, errors), { ...counters, facts: factsWritten, candidates: queued, wrote, errors }, notes);
     return json({
-      ok: errors === 0, run_id: runId, swept, extractor, stopped_early: stopped,
+      ok: errors === 0, run_id: runId, swept, extractor, extractors, stopped_early: stopped,
       wrote: { facts: factsWritten, candidates: queued },
       next_watermarks: newWatermarks, counters, notes,
     });
