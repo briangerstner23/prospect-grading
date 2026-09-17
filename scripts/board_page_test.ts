@@ -73,6 +73,18 @@ check("states scarcity as the head of the chase order, not the tier", /Platinum 
 check("one inline script, no bundler", (page.match(/<script/g) ?? []).length === 1);
 check("no import or require", !/\bimport\s|\brequire\(/.test(page));
 
+
+/* 8 · the reader's choices, added 17 Sep after the owner saw it open dark */
+check("opens LIGHT: no prefers-color-scheme rule decides the theme", !/prefers-color-scheme/.test(page));
+check("dark is opt-in, under a data-theme attribute", /:root\[data-theme="dark"\]/.test(page));
+check("the theme choice is remembered", /localStorage\.setItem\("pb-theme"/.test(page));
+check("every localStorage touch is guarded (it throws in a private window)",
+  (page.match(/localStorage\./g) ?? []).length === (page.match(/try \{[^}]*localStorage\./g) ?? []).length);
+
+/* 9 · navigation between the screens */
+check("navigates to the back office", /href="index\.html"/.test(page));
+check("marks which screen you are on", /aria-current="page"/.test(page));
+
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);
 process.exit(failures.length ? 1 : 0);

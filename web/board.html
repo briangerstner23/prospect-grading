@@ -39,18 +39,8 @@
   --alert:#a3341f; --alert-bg:#f7e5e1;
   --go:#2f6f4f; --go-bg:#dfeee6; --go-line:#8fbda6;
 }
-@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
-  --bg:#0f1418; --surface:#161d23; --surface-2:#1b232a; --surface-3:#202932;
-  --ink:#e6ebef; --ink-2:#a4b0ba; --ink-3:#7a868f;
-  --rule:#2a343d; --rule-2:#222b32; --steel:#6fb3d4;
-  --plat:#7cbede; --plat-bg:#14313f; --plat-line:#3b7b9c;
-  --gold:#dcb45e; --gold-bg:#3a2f14; --gold-line:#8d7028;
-  --silver:#9dabb8; --silver-bg:#252e36; --silver-line:#4d5a66;
-  --bronze:#d29066; --bronze-bg:#3a2519; --bronze-line:#8a5735;
-  --none:#8b959d; --none-bg:#222a30; --none-line:#454f57;
-  --alert:#e5836b; --alert-bg:#37201b;
-  --go:#77c49c; --go-bg:#16301f; --go-line:#3c6e51;
-}}
+/* Dark only when the reader asks for it — never because the operating system did.
+   The board opens light so it looks the same on every machine (owner, 17 Sep). */
 :root[data-theme="dark"]{
   --bg:#0f1418; --surface:#161d23; --surface-2:#1b232a; --surface-3:#202932;
   --ink:#e6ebef; --ink-2:#a4b0ba; --ink-3:#7a868f;
@@ -78,6 +68,17 @@ a{color:var(--steel)}
 :focus-visible{outline:2px solid var(--steel);outline-offset:2px}
 
 header.top{background:var(--surface);border-bottom:1px solid var(--rule)}
+.topnav{background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.topnav .wrap{display:flex;align-items:center;gap:4px;padding-block:0}
+.navlink{display:inline-flex;align-items:baseline;gap:6px;font-family:"Roboto Mono",monospace;
+  font-size:12px;letter-spacing:.06em;text-decoration:none;color:var(--ink-3);
+  padding:10px 12px;border-bottom:2px solid transparent}
+.navlink:hover{color:var(--ink)}
+.navlink.is-here{color:var(--ink);border-bottom-color:var(--steel);font-weight:600}
+.navnote{font-size:10px;color:var(--ink-3);letter-spacing:.08em}
+.navbtn{margin-left:auto;font-family:"Roboto Mono",monospace;font-size:11.5px;letter-spacing:.06em;
+  padding:4px 10px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.navbtn:hover{color:var(--ink);border-color:var(--ink-3)}
 .mast{display:flex;flex-direction:column;gap:12px;padding-block:28px 24px}
 .lede{font-size:clamp(15px,2vw,18px);color:var(--ink-2);max-width:62ch;line-height:1.48}
 .lede em{font-style:normal;color:var(--ink);font-weight:600}
@@ -151,6 +152,12 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
 </style>
 </head>
 <body>
+
+<nav class="topnav"><div class="wrap">
+  <a class="navlink is-here" href="board.html" aria-current="page">Board</a>
+  <a class="navlink" href="index.html">Back office<span class="navnote">sign-in</span></a>
+  <button type="button" class="navbtn" id="themebtn" aria-pressed="false">Dark</button>
+</div></nav>
 
 <header class="top"><div class="wrap"><div class="mast">
   <p class="eyebrow" id="asof">WLIQ Prospect Book · loading…</p>
@@ -383,6 +390,25 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
     renderDist();
     render();
   }).catch(function (e) { fail(e.message || String(e)); });
+
+  // Theme: light unless the reader chose dark, and the choice is remembered on this browser.
+  // localStorage can throw in a private window, so every touch of it is guarded and the page
+  // renders correctly when it is unavailable.
+  (function theme() {
+    var btn = el("themebtn"), saved = null;
+    try { saved = localStorage.getItem("pb-theme"); } catch (e) { saved = null; }
+    function apply(mode) {
+      document.documentElement.setAttribute("data-theme", mode);
+      btn.textContent = mode === "dark" ? "Light" : "Dark";
+      btn.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
+    }
+    apply(saved === "dark" ? "dark" : "light");
+    btn.addEventListener("click", function () {
+      var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      apply(next);
+      try { localStorage.setItem("pb-theme", next); } catch (e) { /* nothing to do */ }
+    });
+  })();
 
   el("filter").addEventListener("input", render);
   el("untouchedOnly").addEventListener("change", render);

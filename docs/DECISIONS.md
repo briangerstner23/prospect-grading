@@ -2936,3 +2936,54 @@ back from this container to confirm — the egress policy here refuses `github.i
 verified is the deploy job's success and the file it published (commit `d75f261`, the tested one),
 not a byte-for-byte read of the live page. A person opening it is the remaining check.
 
+
+## 42 · The board was live and unusable: eight seconds, and the page said so (17 September 2026)
+
+The board deployed, the owner opened it, and it showed the failure panel rather than a list:
+`500 {"code":"57014", "message":"canceling statement due to statement timeout"}`. That is the
+page working as designed — it shows nothing rather than something stale, and it names the error
+instead of a spinner — but it is still a board nobody can read.
+
+**What it was.** `select * from pb_prospect_board` took **8,146 ms**. One join was 8,061 ms of
+it; everything else together was under 300 ms. From `explain (analyze, buffers)`:
+
+```
+Nested Loop  (actual time=105..8061 rows=613 loops=1)
+  Join Filter: (r.account_id = ANY (g_1.account_ids))
+  ->  CTE Scan on grp                       rows=599
+  ->  Unique  (rows=850 LOOPS=599)
+        ->  Index Scan on pb_reads (rows=13584 loops=599)   Buffers: shared hit=8,191,325
+```
+
+`pb_current_reads` is a `distinct on` over all 13,584 rows of `pb_reads`. **DISTINCT ON blocks
+predicate pushdown**, so no join condition can reach inside it, and `= any(array)` cannot use an
+index either. The planner therefore rebuilt the entire current-reads set **once per company** —
+599 times, 8.2 million buffer hits.
+
+**What fixed it, and what did not.** Unnesting the array to make the join an equality was the
+obvious fix and took it from 8.1s to **7.7s** — a 5% improvement on a 10× problem, which is the
+useful kind of failure: it proves the array was not the cost. The cost was the repetition. Adding
+`as materialized` to the reads CTE is an optimisation fence: Postgres computes it **once** and
+hash-joins against the result. **8,146 ms → 803 ms**, a tenfold cut, with output verified
+identical — 599 rows, ranks 1..599 contiguous, same tier distribution (Platinum 61 · Gold 28 ·
+Silver 140 · Bronze 298 · 72 ungraded), same head of the list, 42 untouched, 3 Platinum-and-
+qualified.
+
+**Worth keeping.** The first fix was reasonable, targeted the right line, and was nearly useless;
+the plan said which line cost the time and the guess did not. Measure the plan, change one thing,
+measure again. And `distinct on` in a view that anything joins to is a performance trap — it reads
+like a filter and behaves like a wall.
+
+### Two things the owner asked for on first sight
+
+**"Why is it dark, can it be light?"** Because the stylesheet followed
+`prefers-color-scheme` and expressed no preference of its own, so the board looked different on
+every machine. A working surface should open the same way every time: it is now **light by
+default**, with a Dark button that remembers the choice per browser. Every `localStorage` touch is
+wrapped, because it throws in a private window and a theme preference must never be able to stop
+a page rendering.
+
+**"Is there navigation for the other screens?"** There was not — the board was a dead end and the
+back office was unreachable from it. Both pages now carry a link to the other, and the board marks
+which screen you are on. Pinned by `scripts/board_page_test.ts`, which now also fails if a
+`prefers-color-scheme` rule ever decides the theme again.
