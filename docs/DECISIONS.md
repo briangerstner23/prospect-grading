@@ -3262,3 +3262,33 @@ wrong one: it swept up *Tier*, *Confidence* and *Engagement*, which are sub-head
 section the contract already names. A heading is not a section because it is large; it is a
 section because it **declares itself one**. The check now reads `blk("Name")` and
 `data-section="Name"`, which is the convention the board's own regions already used.
+
+## §48 — Sign in where the form is, and one session for both pages (17 Sep 2026)
+
+Owner, with the dialog open on screen: *"when i click the button i get this screen and can not
+change the designation."* The dialog worked. It just said **"Sign in at the top of the page and
+this becomes a form"**, which is not an answer to someone standing in front of the form.
+
+Two faults, and the second is the real one.
+
+**The dialog sent him away.** The sign-in was a `window.prompt` behind a nav button — a browser
+dialog, at the other end of the page, for something he was already trying to do. The panel now
+carries its own email field and a *Send me a sign-in link* button, and the link returns to the page
+he was on. One function sends it, used by both the nav and the panel, so they cannot drift.
+
+**The two pages kept SEPARATE sessions on the same origin.** `board.html` rolls its own GoTrue
+calls with its own `localStorage` key (§44, deliberately: one inline script, no CDN). `index.html`
+uses supabase-js, which keeps its own. Same browser, same project, same origin — and signing in on
+one did nothing whatsoever for the other. Nobody would guess that from the outside; it just looks
+like sign-in not working. The board now reads the library's key too, so one sign-in covers both.
+
+**Borrowed, not owned.** An adopted session is used and never *refreshed*: Supabase rotates refresh
+tokens, so refreshing a token out of the other page's store would revoke what that store holds and
+quietly sign the reader out of the back office — a worse bug than the one being fixed. It is also
+never copied under this page's key, which would leave a stale duplicate this page would trust after
+the other page signed out. It is held in memory, used until it expires, and then asked for again.
+
+**Worth naming as a pattern.** Two implementations of the same thing on one origin will diverge in
+some way nobody looks for. The right repair was one *read* across the boundary, plus an explicit
+rule about which copy owns the token — not a second refresh loop, and not renaming keys until the
+symptom went away.

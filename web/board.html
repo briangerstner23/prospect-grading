@@ -463,12 +463,41 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
 
   function saveSess(x) {
     sess = x;
-    if (x) lsSet("pb-sess", JSON.stringify(x)); else lsDel("pb-sess");
+    // A borrowed session is held in memory only. Copying it under our key would leave a stale
+    // duplicate behind after the other page signs out, and this page would trust it.
+    if (x && !x.adopted) lsSet("pb-sess", JSON.stringify(x));
+    else lsDel("pb-sess");
   }
+  /* Two pages, one origin, and until §48 two DIFFERENT session stores: this page rolled its own
+     GoTrue calls with its own key, while the back office uses supabase-js with the library's key.
+     Signing in on one therefore did nothing for the other, on the same browser and the same
+     project — which is exactly the trap the owner hit. So this reads BOTH, preferring whichever
+     is still valid. It is a read, not a second implementation: the library's shape is
+     {access_token, refresh_token, expires_at (SECONDS)}, ours stores milliseconds. */
+  var SB_KEY = "sb-sgagrmapuovnjwvgsxbp-auth-token";
+
   function loadSess() {
-    var raw = lsGet("pb-sess");
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch (e) { lsDel("pb-sess"); return null; }
+    var mine = null, raw = lsGet("pb-sess");
+    if (raw) { try { mine = JSON.parse(raw); } catch (e) { lsDel("pb-sess"); } }
+    if (mine && mine.access_token) return mine;
+
+    var lib = lsGet(SB_KEY);
+    if (!lib) return null;
+    try {
+      var j = JSON.parse(lib);
+      // supabase-js has wrapped the session in different shapes across versions; accept either.
+      var sx = j && j.access_token ? j : (j && j.currentSession) || null;
+      if (!sx || !sx.access_token) return null;
+      return {
+        access_token: sx.access_token,
+        refresh_token: sx.refresh_token || null,
+        expires_at: sx.expires_at ? Number(sx.expires_at) * 1000 : Date.now() + 3600000,
+        // Borrowed, not owned. Refreshing it would ROTATE the refresh token and quietly sign the
+        // reader out of the back office, which is a worse bug than the one this fixes. So an
+        // adopted session is used until it expires and then asked for again, never refreshed.
+        adopted: true
+      };
+    } catch (e) { return null; }
   }
 
   /** An authenticated read. Separate from get() on purpose — see scripts/board_page_test.ts. */
@@ -527,6 +556,8 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     // A minute of headroom: a token that expires mid-request is a refusal the reader cannot act on.
     if (!sess || !sess.refresh_token) return Promise.resolve(sess);
     if (sess.expires_at && sess.expires_at - Date.now() > 60000) return Promise.resolve(sess);
+    // An adopted session belongs to the other page's store — let it lapse rather than rotate it.
+    if (sess.adopted) { saveSess(null); return Promise.resolve(null); }
     return authPost(AUTH + "/token?grant_type=refresh_token", { refresh_token: sess.refresh_token })
       .then(function (j) {
         saveSess({ access_token: j.access_token, refresh_token: j.refresh_token,
@@ -567,6 +598,13 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       : "Reading needs no account. Sign in to set an override from this page.";
   }
 
+  /** Ask GoTrue for a magic link back to THIS page. Used by the nav and by the panel. */
+  function sendLink(addr) {
+    return authPost(AUTH + "/otp?redirect_to=" +
+      encodeURIComponent(window.location.origin + window.location.pathname),
+      { email: addr, create_user: true });
+  }
+
   function signIn() {
     var addr = window.prompt("White Label IQ email address.\n\nWe send a sign-in link; opening it " +
       "brings you back to this page signed in. Reading the board never needs this — it is what " +
@@ -574,8 +612,8 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     if (!addr) return;
     addr = addr.trim().toLowerCase();
     if (!addr) return;
-    authPost(AUTH + "/otp?redirect_to=" + encodeURIComponent(window.location.origin + window.location.pathname),
-             { email: addr, create_user: true })
+    lsSet("pb-lastmail", addr);
+    sendLink(addr)
       .then(function () { window.alert("Sign-in link sent to " + addr + ". Open it on this device and you will land back here, signed in."); })
       .catch(function (e) { window.alert("Could not send the link: " + (e.message || String(e))); });
   }
@@ -834,9 +872,17 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
         'offers nothing. The back office has the same form.</p>' + tail;
     }
     if (!me.email) {
+      // Telling someone standing in front of a form to go and find a button somewhere else is not
+      // an answer. The sign-in is HERE, and the link brings them back to this page (§48).
       return head + '<p class="lead">Reading this book needs no account. <strong>Setting an override does</strong> \u2014 ' +
         'it is recorded against a person, with a reason and an expiry, and the owner lane is the only ' +
-        'one that may set one (PRO-5). Sign in at the top of the page and this becomes a form.</p>' + tail;
+        'one that may set one (PRO-5).</p>' +
+        '<div class="frow"><div class="fld"><label for="ovMail">White Label IQ email</label>' +
+        '<input type="email" id="ovMail" placeholder="you@whitelabeliq.com" autocomplete="email" value="' +
+        esc(lsGet("pb-lastmail") || "") + '"></div></div>' +
+        '<div class="foot"><button type="button" class="go" id="ovSend">Send me a sign-in link</button>' +
+        '<span class="lane">the link opens this page, signed in \u00b7 nothing else changes</span></div>' +
+        '<div class="note" id="ovMailMsg" hidden></div>' + tail;
     }
     if (me.role !== "owner") {
       return head + '<p class="lead">Signed in as ' + esc(me.email) + '. Override authority sits with the ' +
@@ -895,16 +941,43 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   function wireOverride(r, d, onDone, root) {
     var scope = root || document;
     var q = function (id) { return scope.querySelector("#" + id); };
-    var go = q("ovGo");
-    if (!go) return;                                  // signed out, or no rubric: nothing to wire
-    var tier = q("ovTier"), code = q("ovCode"), exp = q("ovExp"), why = q("ovWhy"),
-        capEl = q("ovCap"), msg = q("ovMsg"), computed = computedTier(r, d);
-
     function note(node, kind, text) {
+      if (!node) return;
       node.className = "note " + kind;
       node.textContent = text;
       node.hidden = !text;
     }
+
+    // Signed out: the panel IS a sign-in, so wire that and stop.
+    var send = q("ovSend");
+    if (send) {
+      var mail = q("ovMail"), mailMsg = q("ovMailMsg");
+      var fire = function () {
+        var addr = (mail.value || "").trim().toLowerCase();
+        if (!addr || addr.indexOf("@") < 0) { note(mailMsg, "warn", "An email address is needed."); return; }
+        lsSet("pb-lastmail", addr);
+        send.disabled = true;
+        note(mailMsg, "ok", "Sending\u2026");
+        sendLink(addr)
+          .then(function () {
+            note(mailMsg, "ok", "Link sent to " + addr + ". Open it on this device \u2014 it brings you " +
+              "back to this page, signed in, and this becomes the override form.");
+          })
+          .catch(function (e) {
+            send.disabled = false;
+            note(mailMsg, "warn", "Could not send it: " + (e.message || String(e)));
+          });
+      };
+      send.addEventListener("click", fire);
+      mail.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); fire(); } });
+      return;
+    }
+
+    var go = q("ovGo");
+    if (!go) return;                                  // no rubric: nothing to wire
+    var tier = q("ovTier"), code = q("ovCode"), exp = q("ovExp"), why = q("ovWhy"),
+        capEl = q("ovCap"), msg = q("ovMsg"), computed = computedTier(r, d);
+
     tier.addEventListener("change", function () { note(capEl, "warn", capWarning(tier.value, computed)); });
 
     go.addEventListener("click", function () {

@@ -173,6 +173,24 @@ check("the form's lookups are SCOPED, so the dialog cannot drive the dossier's f
 check("the dossier wires its own copy against its own container", /wireOverride\(row, d, null, dbody\)/.test(page));
 check("one override implementation, reached two ways", (page.match(/function overrideHtml/g) ?? []).length === 1);
 check("the chip does not pretend the tier moved", /still shows the engine's tier until then/.test(page));
+
+/* 10 · signing in where the form is (DECISIONS §48)
+ *
+ * The override dialog shipped saying "sign in at the top of the page", which is not an answer to
+ * someone standing in front of the form — and worse, this page and the back office kept SEPARATE
+ * session stores on the same origin, so signing in on one did nothing for the other. Both pinned.
+ */
+check("the panel signs you in where you are, not somewhere else",
+  /id="ovSend"/.test(page) && /id="ovMail"/.test(page));
+check("it no longer sends the reader to the nav", !/Sign in at the top of the page/.test(page));
+check("one function sends the link, used by the nav and the panel",
+  (page.match(/function sendLink/g) ?? []).length === 1 && /sendLink\(addr\)/.test(page));
+check("the back office session is read, so one sign-in covers both pages",
+  /sb-sgagrmapuovnjwvgsxbp-auth-token/.test(page));
+check("a borrowed session is never refreshed (rotating it signs the other page out)",
+  /sess\.adopted/.test(page) && /let it lapse rather than rotate it/.test(page));
+check("a borrowed session is never copied into this page's own store",
+  /!x\.adopted/.test(page));
 check("pb_members is read only with a session, through the auth helper",
   /authReq\("pb_members\?/.test(page) && !/get\("pb_members/.test(page));
 check("signing in is stated as optional for reading", /Reading this book needs no account/.test(page));
