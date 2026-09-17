@@ -3038,3 +3038,34 @@ widening: the id is an opaque uuid, it is the key `pb_dossier()` already takes, 
 
 `scripts/board_page_test.ts` now runs 54 checks and pins every section name, so a future edit that
 quietly drops a section fails the build rather than the owner's next look at the page.
+
+### §43a — The privacy fix that did not fix it
+
+Within the hour, the "names only" change above turned out not to do what I had just written down
+that it did. Worth its own entry, because the failure is a habit rather than a typo.
+
+The fix stopped selecting the attendee **email** field and returned the attendee **name**. But
+where Fathom never learned a name, the name *is* the address — **332 attendee entries** in
+`pb_calls` are in exactly that state. So the addresses kept flowing, to a page with no sign-in,
+while the migration comment and a DECISIONS paragraph both said they no longer did.
+
+It passed because I checked the **shape** of the fix and not its **output**: the field was gone,
+so the leak was gone. Running the actual function over the actual board would have shown it in one
+query — which is how it was eventually found, and only because a coarse `ilike '%@%.com%'` on one
+row came back true and I chased it instead of dismissing it.
+
+Free text had the same problem and always did: a fact's `note` (103), a contact event's `subject`,
+a register row's `text`, the written brief. An address inside a sentence is as published as one in
+a column, and no amount of per-key care reaches it.
+
+So the rule moved from *"do not select that field"* to **"no address leaves this function"** —
+one `regexp_replace` over the whole result, reducing every address to its local part. Provenance
+still reads as a person or an extractor version, so rule 8's audit trail is intact; nothing
+returned is a deliverable address. Verified over all **599** dossiers as `anon`: **0** contain an
+address, 527 still carry a read, 5,694 facts still present.
+
+**The standing rule.** A privacy fix is verified by output, over the whole population, as the role
+that will run it — never by reading the diff. "I removed the field" is a description of a change,
+not evidence of a result. The same applies to the per-key habit itself: where the concern is *a
+kind of data* rather than *a column*, apply the guard once at the boundary, because the per-key
+version is the version that misses one.
