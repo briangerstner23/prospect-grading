@@ -155,7 +155,11 @@ the book is right.
 >    row whose user agent is `pg_net` must not count as Fathom being alive. That is the check that
 >    would have caught this on 14 Sep instead of on the 17th.
 >
-> Then add a GitHub Action that runs `npm test` on push. The suite is good and currently entirely
+> Then add a GitHub Action that runs `npm test` on push, **and that builds and deploys the edge
+> functions from `scripts/build_functions.sh` with the Supabase CLI and a stored access token** —
+> so a deploy is a reproducible build of a commit, never an 81KB bundle hand-carried through the MCP.
+> Its first job is pb-score: v8 is behind source by the 17 Sep rule-9 fix (ledger row
+> `RECON-pb-score-bundle-behind-source`). The suite is good and currently entirely
 > voluntary; making it mandatory is a twenty-line file. Run `reconcile.ts` on a schedule too, since
 > the database can drift without anyone pushing.
 

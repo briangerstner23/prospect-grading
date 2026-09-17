@@ -601,6 +601,14 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "verified_on": "2026-09-17",
       "reverify": "with recency_only as (select distinct on (account_id,key) id,account_id,key from pb_facts order by account_id,key, case evidence_label when 'evidence' then 0 when 'inferred' then 1 else 2 end, case source when 'rater' then 0 when 'fathom_call' then 1 when 'pipedrive_note' then 2 when 'website' then 3 when 'notion_master' then 4 when 'apollo' then 5 when 'pipedrive' then 6 else 7 end, created_at desc, observed_at desc nulls last) select count(*) filter (where v.id<>r.id) from pb_current_facts v join recency_only r using (account_id,key); -- must be 0",
       "claim": "The live pb_current_facts view and latestFactPerKey now resolve every key identically. Before the fix: 50 of 6,983 keys across 19 accounts differed, 24 with a different value. The 16 Sep 'closed' verdict on rule 9 had compared the function to the FILED 11 Sep view, not the LIVE 15 Sep one."
+    },
+    {
+      "id": "RECON-pb-score-bundle-behind-source",
+      "r": "RECON",
+      "mode": "manual",
+      "verified_on": "2026-09-17",
+      "reverify": "get_edge_function pb-score → does the deployed source contain 'SOURCE_RANK'? Yes = redeployed from a0b1ab6 or later; No = still v8 (16 Sep 17:31). Also compare list_edge_functions updated_at against the last commit touching core/ or ingest/.",
+      "claim": "Deployed pb-score is v8 (built 16 Sep 17:31 from 5b3e6c5-era source) and lacks the 17 Sep latestFactPerKey source-precedence fix (no SOURCE_RANK in the deployed bundle). Production reads are UNAFFECTED — pb-score feeds pb_current_facts' already-resolved rows into the function — so this is bundle-vs-source drift, not a scoring defect. Deliberately NOT redeployed by hand: an 81KB bundle pasted through the MCP is the one step in the repair with a real chance of a one-character corruption. Repair item 4's CI Action owns the deploy; pb-score is its first."
     }
   ]
 }

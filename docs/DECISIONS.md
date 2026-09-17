@@ -1680,3 +1680,9 @@ four cases (a rater's older fact beats Apollo's newer one; call beats site beats
 unlisted source ranks last; the evidence label still outranks source), CLAUDE.md rule 9 now states
 the real order, and the ledger carries an auto check on the function and a manual row with the
 query that must return zero.
+
+The deployed pb-score (v8, 16 Sep 17:31) predates this fix and was deliberately not redeployed by
+hand: production reads are unaffected, since pb-score feeds the view's already-resolved rows into
+the function, and an 81KB bundle pasted through the MCP is the one step here with a real chance
+of silent corruption. Repair item 4's CI deploy owns it; the ledger row
+`RECON-pb-score-bundle-behind-source` carries the probe (`SOURCE_RANK` in the deployed source).
