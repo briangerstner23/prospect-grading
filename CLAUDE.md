@@ -69,6 +69,9 @@ docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · R
             STATE-SNAPSHOT-2026-09-17.md — the version point: what was ACTUALLY running on
             17 Sep, measured from the database. Read it before trusting PHASE0/METHOD/the
             deployed-versions line; on 17 Sep all three described a system that was not running.
+            STANDARDS.md — Track B (17 Sep): each component against the field's established
+            practice, evidence kind stated, one verdict per row; §9 is the ranked list of ACCIDENTAL
+            divergences (two open) that need a ruling. ADVISORY; the register governs.
             RESEARCH-CONFORMANCE.md — how the build compares to the 9 Sep research's ten
             requirements; ADVISORY (the register governs). Its fenced JSON block is run by
             scripts/conformance_test.ts on every npm test, so closing a gap OR reopening one

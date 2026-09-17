@@ -578,13 +578,41 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "The Grading Register (PRO-0..PRO-18) is a Claude artifact, not a file. No session in this repo has read it directly; every PRO-number claim in docs/ is second-hand via DECISIONS.md."
     },
     {
-      "id": "STD-standards-doc-absent",
+      "id": "STD-standards-doc-present",
       "r": "STD",
       "mode": "auto",
-      "claim": "GAP (owner direction, 17 Sep): docs/STANDARDS.md — the per-component comparison of WLIQ to the field's established practice, with every divergence marked deliberate-or-accidental — does not exist yet. Track B in docs/REPAIR-PLAN.md produces it. Flip to file_exists when it lands.",
+      "claim": "docs/STANDARDS.md exists (Track B, 17 Sep): eight components compared to the field's established practice, each row with the practice, who established it, the evidence kind, WLIQ today by rubric path or file, and one verdict. Was STD-standards-doc-absent (file_absent) until it landed.",
       "probe": {
-        "kind": "file_absent",
+        "kind": "file_exists",
         "path": "docs/STANDARDS.md"
+      }
+    },
+    {
+      "id": "STD-standards-doc-shape",
+      "r": "STD",
+      "mode": "auto",
+      "claim": "The standards document keeps its shape: a three-kinds-of-knowledge section plus the eight components, the ranked accidental list and the standard_source proposal (>= 11 top-level sections).",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "docs/STANDARDS.md"
+        ],
+        "pattern": "\\n## ",
+        "min": 11
+      }
+    },
+    {
+      "id": "STD-accidental-divergences-open",
+      "r": "STD",
+      "mode": "auto",
+      "claim": "GAP: two accidental divergences are open and unruled — A1 (ADJ-ICP3-FLOOR: a research floor implemented as a bonus) and A2 (Platinum not scarce after §20). Each stays a row in docs/STANDARDS.md §9 until a DECISIONS entry rules it, at which point the row moves out of the table and this count drops; update `equals` then. Expect 2 today.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "docs/STANDARDS.md"
+        ],
+        "pattern": "\\n\\| \\*\\*A[0-9]+\\*\\* \\|",
+        "equals": 2
       }
     },
     {

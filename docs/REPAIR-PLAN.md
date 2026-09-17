@@ -274,6 +274,8 @@ project: long-horizon, many sources, judgment about what is settled versus vendo
 > Finally flip the `STD-standards-doc-absent` row in `docs/RESEARCH-CONFORMANCE.md` and run
 > `npm test`.
 
+*Executed 17 Sep on Fable 5.1 — `docs/STANDARDS.md`. Eight components, two accidental divergences found (A1: the research's ICP-3 profitability floor was implemented as a +1 bonus; A2: Platinum outnumbers Gold since §20 removed the climb cap, and no ruling accepts that distribution). Both are one rubric edit and a preview away once ruled. The `standard_source` field is proposed with three worked examples, not applied. Ledger: `STD-standards-doc-present`, `STD-standards-doc-shape`, `STD-accidental-divergences-open` (equals 2).*
+
 ---
 
 ## Blocked on you, not on a session
