@@ -3327,7 +3327,7 @@ would have refused every nightly run before the function was reached. Caught by 
 response; v13 is the same commit at `verify_jwt: false`. **Check that field on every deploy.**
 
 **Previewed on the real book before activation**, as the runbook requires: 830 scored, 0 errors,
-**2 changed**, both explained. One is the owner's own Conduit Digital override — written at 22:08,
+**2 changed**, both explained. One is an override the owner had written himself — at 22:08,
 refused by the cap under 0.1.5, applied under 0.1.6: **Platinum → Bronze, rank 3 → 231**, with the
 new flag on the row. The other is a Pipedrive account added the same day and has nothing to do with
 the rubric. Nothing else in the book moved. The real run then wrote 830 reads at fingerprint

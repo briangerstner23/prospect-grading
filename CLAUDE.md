@@ -21,7 +21,7 @@ core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only —
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
             rubric.prospect.v0.1.6.json is ACTIVE (17 Sep 22:27 UTC, fp 9a911e2c: the override
             distance cap removed — max_tiers_moved null, DECISIONS §49; previewed 830 scored,
-            2 changed, both explained: the owner's own Conduit Digital override, which the cap had
+            2 changed, both explained: an override the owner had written himself, which the cap had
             been refusing, and one Pipedrive row added the same day).
             v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §40 — added
             dimension_b.flag_rules; previewed 829/0 changed).

@@ -49,6 +49,8 @@ import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
   extractorId,
   extractionPrompt,
+  promptVersionFor,
+  MIN_NOTE_CHARS,
   oneRecordingPerMeeting,
   planSweep,
   verifyClaims,
@@ -56,7 +58,7 @@ import {
 import type { PlannedNote } from "../_shared/ingest/notes_sweep.ts";
 import { mapPipedriveNotes } from "../_shared/ingest/written_record.ts";
 import type { ExistingFact, NoteExtraction, WrittenRecord } from "../_shared/ingest/written_record.ts";
-import { attributeAll, gmailBodyText, gmailToRecord, isChatter, stripQuotedReply } from "../_shared/ingest/record_sources.ts";
+import { attributeAll, gmailBodyText, gmailToRecord, isChatter, stripQuotedReply, websiteReadToRecord } from "../_shared/ingest/record_sources.ts";
 import type { GmailMessage } from "../_shared/ingest/record_sources.ts";
 
 /** Domains that are us. Anyone at one of these does not attribute a record to an account. */
@@ -64,6 +66,7 @@ const OUR_DOMAINS = ["whitelabeliq.com"];
 const PIPEDRIVE_NOTES = "pipedrive_note";
 const FATHOM_CALLS = "fathom_call";
 const EMAIL = "email";
+const WEBSITE = "website";
 /**
  * Which model reads the records. Overridable from Vault (`PB_EXTRACTOR_MODEL`) so switching is
  * a secret change, not a redeploy — and so the two can be compared on the same corpus.
@@ -228,6 +231,84 @@ async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled
 }
 
 /**
+ * An agency's own website, read from pb_website_reads rather than from the web.
+ *
+ * Like the Fathom channel this needs no credential and repeats no attribution: the fetcher went
+ * to a domain that was already on an account, so every stored page already knows whose it is.
+ * Unlike every other channel, the text was paid for long ago and has been sitting unread —
+ * 255 accounts had pages in this table and no reading of them at all.
+ *
+ * TWO RULES SHAPE WHAT THIS RETURNS.
+ *
+ * It reads a site the book has NEVER READ. An account with a live pb_account_reads row was
+ * already read by the 16 September research pass, which produced 469 candidates across 126
+ * accounts; sweeping those sites again under a different extractor id would propose the same
+ * claims a second time and hand a person two of everything to review. A re-read is a deliberate
+ * act — supersede the read row and the site comes back into scope on the next run.
+ *
+ * It asks a narrower set of keys. A website cannot witness a deal, so notes_sweep.keysFor()
+ * withholds money, authority, specification, timing and the climb signals from the prompt
+ * entirely. See EXTRACTABLE_SITE for why withholding beats trusting the model to decline.
+ */
+async function pullWebsiteReads(db: DbLike, since: string | null): Promise<Pulled> {
+  /* Which accounts are already read. Fetched as ids only; the read itself is not needed. */
+  const reads = await selectAll(db, "pb_account_reads", "account_id", (q) => q.is("superseded_at", null));
+  const alreadyRead = new Set(reads.map((r) => String(r.account_id)));
+
+  const rows = await selectAll(
+    db,
+    "pb_website_reads",
+    "id,account_id,url,path,text,completed_at,requested_at",
+    (q) => q.not("text", "is", null).not("account_id", "is", null).order("completed_at", { ascending: true }),
+  );
+
+  const records: WrittenRecord[] = [];
+  let skippedAlreadyRead = 0;
+  let skippedEmpty = 0;
+  const accounts = new Set<string>();
+
+  for (const r of rows) {
+    const account_id = String(r.account_id ?? "");
+    if (!account_id) continue;
+    if (alreadyRead.has(account_id)) { skippedAlreadyRead++; continue; }
+    const rec = websiteReadToRecord({
+      id: String(r.id ?? ""),
+      account_id,
+      url: String(r.url ?? ""),
+      path: (r.path as string | null) ?? null,
+      text: (r.text as string | null) ?? null,
+      completed_at: (r.completed_at as string | null) ?? null,
+      requested_at: (r.requested_at as string | null) ?? null,
+    });
+    /* A fetch that returned a cookie banner and nothing else is stored like any other. It is
+       not worth a model call, and planSweep would drop it anyway — counted here so the run
+       says how much of the table is chaff rather than silently reporting a small sweep. */
+    if (rec.content.length < MIN_NOTE_CHARS) { skippedEmpty++; continue; }
+    if (since !== null && String(rec.update_time ?? "") <= since) continue;
+    records.push(rec);
+    accounts.add(account_id);
+  }
+
+  const notes: string[] = [];
+  if (skippedAlreadyRead > 0) {
+    notes.push(`${skippedAlreadyRead} stored page(s) belong to accounts the research pass already read; supersede that read to bring a site back into scope.`);
+  }
+  if (skippedEmpty > 0) {
+    notes.push(`${skippedEmpty} stored page(s) hold less than ${MIN_NOTE_CHARS} characters of text — a fetch that succeeded and returned nothing worth reading.`);
+  }
+  return {
+    records,
+    notes,
+    counters: {
+      pulled: records.length,
+      accounts: accounts.size,
+      skipped_already_read: skippedAlreadyRead,
+      skipped_no_text: skippedEmpty,
+    },
+  };
+}
+
+/**
  * Email. One record per MESSAGE, not per thread — a thread spans months and collapsing it
  * would date every sentence in it by the last reply.
  *
@@ -347,7 +428,7 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
       // No `temperature`: sampling parameters are removed on the current models and a request
       // carrying one is rejected with a 400. Determinism comes from the prompt and the
       // validator, not from a sampling knob.
-      system: extractionPrompt(),
+      system: extractionPrompt(planned.note.source),
       messages: [{ role: "user", content: `<record>\n${planned.text}\n</record>` }],
     }),
   });
@@ -474,6 +555,8 @@ Deno.serve(async (req: Request) => {
       pullPipedriveNotes(pipedriveToken as string, watermark(PIPEDRIVE_NOTES), accountByOrg));
     // No credential: the webhook already put these in pb_calls, with their account resolved.
     consider(FATHOM_CALLS, "ready", "", () => pullFathomCalls(db, watermark(FATHOM_CALLS)));
+    // No credential either: the pages are already in pb_website_reads, each with its account.
+    consider(WEBSITE, "ready", "", () => pullWebsiteReads(db, watermark(WEBSITE)));
     consider(EMAIL, gmailReady, "PB_GMAIL_REFRESH_TOKEN / PB_GMAIL_CLIENT_ID / PB_GMAIL_CLIENT_SECRET", async () => {
       const token = await gmailAccessToken(gmailRefresh as string, gmailClientId as string, gmailClientSecret as string);
       return pullEmail(token, watermark(EMAIL), accountByDomain, bookDomains);
@@ -650,12 +733,19 @@ Deno.serve(async (req: Request) => {
               entered_by: (f.entered_by as string | null) ?? null,
             }));
 
+            /* Per RECORD, not per run. A website is read by a different prompt against a
+               different key set, so it carries a different extractor id — and the id is what
+               every fingerprint is built from. One run-wide value would stamp a site read with
+               the notes prompt's version and make the two corpora indistinguishable in the
+               review queue, which is the one place the difference matters. */
+            const extractorHere = extractorId(model, promptVersionFor(p.note.source));
+
             const mapped = mapPipedriveNotes({
               account_id: p.account_id,
               notes: [p.note],
               extractions: [v.extraction],
               existing: held,
-              extractor,
+              extractor: extractorHere,
               as_of,
             });
             notes.push(...mapped.notes);
@@ -664,7 +754,7 @@ Deno.serve(async (req: Request) => {
             const factRows: Rec[] = mapped.facts.map((f) => ({
               account_id: f.account_id, key: f.key, value: f.value,
               evidence_label: f.evidence_label, source: f.source, evidence_url: f.evidence_url,
-              note: f.note, observed_at: f.observed_at, entered_by: extractor, stand_in: false,
+              note: f.note, observed_at: f.observed_at, entered_by: extractorHere, stand_in: false,
             }));
             const candidateRows: Rec[] = mapped.candidates.map((c) => ({
               account_id: c.account_id, key: c.key, value: c.value,
