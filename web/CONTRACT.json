@@ -1,0 +1,115 @@
+{
+  "_what_this_is": [
+    "The screens, section by section, as the owner approved them. This file is the CONTRACT and",
+    "the pages are the implementation — not the other way round.",
+    "",
+    "Why it exists (DECISIONS §46). On 17 Sep the dossier was rebuilt from the 16 September artifact",
+    "and shipped with 12 of its 25 sections. The test written alongside it pinned those 12 and",
+    "passed, because the test was derived FROM THE PAGE I HAD BUILT rather than from the layout the",
+    "owner ruled. A check written after the fact can only ever confirm what you already did. That is",
+    "how thirteen sections went missing with a green build, and it is the mechanism behind the",
+    "owner's complaint that the screens keep changing and degrading.",
+    "",
+    "So the direction is reversed. This file is written from the artifact. scripts/contract_test.ts",
+    "reads it and fails when a page is missing a section, renders them out of order, or carries a",
+    "section this file does not name. Adding to a screen means adding it HERE first; removing",
+    "anything means the owner changing this file. No session can quietly drop a section again,",
+    "because the build goes red the moment one disappears.",
+    "",
+    "`required` true means the section must always be in the page's source. Sections that render",
+    "only when their data exists are still required HERE: the page must contain the code and the",
+    "heading, even if a given account has nothing to put in it."
+  ],
+
+  "version": 1,
+  "approved_by": "owner (Brian)",
+  "approved_on": "2026-09-16",
+  "source_of_truth": "The 16 September 2026 artifact, ruled the layout to maintain — DECISIONS §37, §43, §46.",
+
+  "screens": [
+    {
+      "file": "dashboard.html",
+      "title": "The front dashboard",
+      "purpose": "Every high-level number about the book on one screen, and nothing about one agency. Answers: how big is the book, how well do we know it, what is waiting on a person, and is the machinery actually running.",
+      "sections": [
+        { "name": "The book right now",        "required": true, "shows": "companies, records, how many ranked, how many unclassified", "source": "pb_board()" },
+        { "name": "By anticipated tier",       "required": true, "shows": "the distribution bar and counts, Platinum through Ungraded", "source": "pb_board()" },
+        { "name": "Three axes that never touch","required": true, "shows": "tier sets the rank; confidence and engagement are columns — with live counts on each", "source": "pb_board()" },
+        { "name": "How well we know them",     "required": true, "shows": "confidence spread and the qualification-facts histogram (0..4 of Dimension A)", "source": "pb_board()" },
+        { "name": "Never contacted",           "required": true, "shows": "Gold-or-better with no contact on record — the most actionable number in the book", "source": "pb_board()" },
+        { "name": "Waiting on a person",       "required": true, "shows": "fact candidates by why they are queued, and how many can be confirmed together", "source": "pb_queue_summary()" },
+        { "name": "Is the machinery running",  "required": true, "shows": "last scoring run, last note sweep, the active rubric and its fingerprint, and what moved on the last run", "source": "pb_runs · pb_rubric_versions · pb_movement" },
+        { "name": "What changed on the last run","required": true, "shows": "tier moves, promotions, demotions, newly ranked — the answer to 'did this change under me'", "source": "pb_movement" },
+        { "name": "What this page is not",     "required": true, "shows": "no composite score, no forecast; every tier word anticipated and UNVALIDATED", "source": "the rubric" }
+      ]
+    },
+
+    {
+      "file": "board.html",
+      "view": "board",
+      "title": "The board",
+      "purpose": "Every prospect ranked by potential. Tier sets the order; whether anyone has called them is a column, never a position.",
+      "sections": [
+        { "name": "Masthead",                   "required": true, "shows": "count, the lede, and the source line: rubric version, order, row count, live read", "source": "pb_board()" },
+        { "name": "By anticipated tier",        "required": true, "shows": "distribution bar and legend with counts", "source": "pb_board()" },
+        { "name": "Three axes that never touch","required": true, "shows": "tier / confidence / engagement, and that only the first sets the rank", "source": "pb_board()" },
+        { "name": "The ranked list",            "required": true, "shows": "grouped headers Potential | Contact; columns rank, company, tier, cell, year one, facts, engagement, they replied", "source": "pb_board()" },
+        { "name": "Filters",                    "required": true, "shows": "per-tier toggles, never-contacted only, researched only, flagged only, name filter, live count", "source": "the page" }
+      ]
+    },
+
+    {
+      "file": "board.html",
+      "view": "dossier",
+      "title": "One prospect",
+      "purpose": "Everything the book holds about one agency, in the order the owner approved. Twenty-five blocks; the page renders what pb_dossier() returns and derives nothing.",
+      "ordered": true,
+      "sections": [
+        { "name": "Make this call",                "required": true, "column": "left", "shows": "the one action, from the brief's next step or from the engagement state", "source": "brief.next_step" },
+        { "name": "Where we win",                  "required": true, "column": "left", "shows": "the angle from the brief, else the wedge from the research read, else 'no wedge found' stated as a finding", "source": "brief.angle · research.recommended_wedge" },
+        { "name": "What kills it",                 "required": true, "column": "left", "shows": "the risk in the brief's own words", "source": "brief.watch" },
+        { "name": "How they got here",             "required": true, "column": "left", "shows": "live signals with weight, date and what produced them", "source": "signals" },
+        { "name": "Open loops",                    "required": true, "column": "left", "shows": "what is owed, by whom, and how old — WLIQ vs Them, aged in days", "source": "derived from brief, engagement, facts_present, duplicate records" },
+        { "name": "Quotes on record",              "required": true, "column": "left", "shows": "every quote against the account with amount and status; a lost quote is the first thing to explain", "source": "deals" },
+        { "name": "Risk register",                 "required": true, "column": "left", "shows": "flags raised by the research pass against page text and the call record, each with its quote", "source": "research.red_flags" },
+        { "name": "What we could actually deliver","required": true, "column": "left", "shows": "serviceable share, core families we do well, adjacent families reachable but unproven", "source": "research.wliq_overlap" },
+        { "name": "Who they buy for",              "required": true, "column": "left", "shows": "their named clients — the work behind the relationship", "source": "research.named_clients" },
+        { "name": "Qualification evidence",        "required": true, "column": "left", "shows": "the four Dimension A facts first, then every other resolved fact, each with value, basis, source and date", "source": "facts" },
+        { "name": "Who they are",                  "required": true, "column": "left", "shows": "the business, from the brief", "source": "brief.what_they_do" },
+        { "name": "How they see us",               "required": true, "column": "left", "shows": "their view of WLIQ, quoted", "source": "brief.how_they_see_us" },
+        { "name": "How we got here",               "required": true, "column": "left", "shows": "the record: calls, referrals, quotes, CRM history in prose", "source": "brief.history" },
+        { "name": "Why it ranks here",             "required": true, "column": "left", "shows": "the engine's own reason sentence, verbatim, with rubric version and fingerprint", "source": "read.reason · read.rubric_fingerprint" },
+        { "name": "The site read",                 "required": true, "column": "left", "shows": "what their own page says: agency type, country, founded, headcount named, delivery headcount, sells build work, white-label signal", "source": "research.fields" },
+        { "name": "Independent check",             "required": true, "column": "left", "shows": "Apollo's numbers, never blended with ours", "source": "apollo" },
+        { "name": "What a person ruled",           "required": true, "column": "left", "shows": "register rows — decisions, overrides, disputes, notes — with who and when", "source": "register" },
+        { "name": "Waiting on a person",           "required": true, "column": "left", "shows": "claims read out of calls and notes and NOT written, how many at high confidence, how many contradict a fact on file, and which keys", "source": "candidates" },
+        { "name": "What we actually know",         "required": true, "column": "left", "shows": "why the confidence is what it is, and the headcount basis with its own confidence", "source": "brief.confidence_why" },
+        { "name": "No brief written yet",          "required": true, "column": "left", "shows": "the empty state when a read exists but nobody wrote a brief — stated as the cheapest work in the book", "source": "empty state" },
+        { "name": "Nothing has been read",         "required": true, "column": "left", "shows": "the empty state when there is no read, no brief and no call", "source": "empty state" },
+        { "name": "Who to call",                   "required": true, "column": "right", "shows": "people by name and title, decision makers flagged, with the source that named them", "source": "people" },
+        { "name": "Call record",                   "required": true, "column": "right", "shows": "recorded calls as a dated rail, with attendees by name and a link to each", "source": "calls" },
+        { "name": "Contact history",               "required": true, "column": "right", "shows": "every logged touch as dated pills, inbound marked apart from outbound", "source": "events" },
+        { "name": "Sources",                       "required": true, "column": "right", "shows": "where every line above came from, counted", "source": "all of it" }
+      ]
+    },
+
+    {
+      "file": "method.html",
+      "title": "How the grading works",
+      "purpose": "The rubric and every grading consideration, read from the ACTIVE rubric rather than written down here, so this page cannot describe a system that is not running.",
+      "sections": [
+        { "name": "What this book decides",    "required": true, "shows": "four reads plus deal health, never summed; a rank and bands, never a composite number (PRO-0)", "source": "the rubric" },
+        { "name": "The active rubric",         "required": true, "shows": "version, fingerprint, when it was activated, and how many accounts were scored under it", "source": "pb_rubric_versions · pb_reads" },
+        { "name": "Dimension B — fit",         "required": true, "shows": "how the anticipated tier is reached: the ICP map or the observable criteria, whichever the active rubric uses", "source": "rubric.dimension_b" },
+        { "name": "The adjustment rules",      "required": true, "shows": "every rule that can move a tier, its condition in plain words, its direction, and whether it is ruled or an unruled default", "source": "rubric.dimension_b.adjustments" },
+        { "name": "Dimension A — qualification","required": true, "shows": "the four facts, what each means, and how many are needed before confidence rises above Medium", "source": "rubric.dimension_a" },
+        { "name": "Potential and the bands",   "required": true, "shows": "ceiling, headroom and year-one bands, and that a band is not a forecast (PRO-16 unruled)", "source": "rubric.potential" },
+        { "name": "Signals and how they decay","required": true, "shows": "every signal type, its weight and its lifespan in days", "source": "rubric.signals" },
+        { "name": "The flags",                 "required": true, "shows": "every flag the engine can raise and what raises it — a flag is a reason to check, never a reason the engine lowered a tier", "source": "rubric.flags" },
+        { "name": "Overrides",                 "required": true, "shows": "the owner lane, the one-tier cap, the reason codes, the expiry, and that a blank expiry still lapses", "source": "rubric.override" },
+        { "name": "What is still unruled",     "required": true, "shows": "every open ruling carried as a toggle, with the default it is sitting on today", "source": "rubric + DECISIONS" },
+        { "name": "The rules the code keeps",  "required": true, "shows": "unknown is never evidence; evidence outranks recency and a person outranks a machine; the engine is pure; the rubric is data", "source": "CLAUDE.md rules 3,4,5,9" }
+      ]
+    }
+  ]
+}

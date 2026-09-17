@@ -3170,3 +3170,56 @@ refused.
 every night, because that reader queues even its high-confidence reads. Letting it write through
 on the same four tests the note sweep already uses is the change that stops the queue growing —
 and it is a change to rule 8's automated path, so it is a ruling, not a fix.
+
+## §46 — The screens stop changing: a contract, written from the artifact (17 Sep 2026)
+
+Owner, after opening the rebuilt board: *"there is a lot of info missing, and the info is not
+designed well as it keeps changing"* — the third time in one session that the churn itself was the
+complaint. It is the right complaint, and more features on top would not have answered it.
+
+**Measured, not guessed.** The 16 September artifact was read back and diffed against the page.
+It has **25 dossier sections**; the page had **12**. Missing: Open loops · Quotes on record · Risk
+register · What we could actually deliver · Qualification evidence · Who they are · Waiting on a
+person · What a person ruled · Who to call · Call record · Contact history, and both empty states.
+One more was actively wrong: "Who they buy for" was rendering *people*, when in the artifact it is
+their *named clients* and people belong in "Who to call".
+
+**Why the test did not catch it — the actual mechanism.** `board_page_test.ts` pinned thirteen
+section names and passed. I wrote that list by reading the page I had just built. **A check
+derived from the implementation cannot notice an absence, because the absence is in the check
+too.** That is the whole failure, and it will recur in any repository where the test is written
+after the screen.
+
+**The fix reverses the direction.** `web/CONTRACT.json` is written from the artifact and names
+every screen, every section, what each shows and where its data comes from.
+`scripts/contract_test.ts` fails when a section is missing, when the order changes, **and when a
+page renders a heading the contract does not name**. That third check matters as much as the
+first: "not designed well as it keeps changing" is what happens when every session adds a block
+wherever it fits. Adding to a screen is still allowed — it means editing the contract first, which
+is a diff the owner can see rather than a change discovered on the page. Section names now have
+exactly one owner; `board_page_test.ts` keeps the behavioural checks it was always good at.
+
+**What shipped with it.** All 25 sections rebuilt in the contract's order. Two needed data that
+did not exist: `pb_dossier()` now returns the quotes on record (`pb_deals`) and *counts* of what is
+waiting on a person (`pb_fact_candidates` — how many, how many at high confidence, how many
+contradict a fact on file, and which keys; never the claims, which stay behind sign-in). Verified
+by output across all 599: 56 carry quotes, 121 carry waiting claims, **0 leak an address**.
+
+Two new screens the owner asked for, both contract-first:
+
+- **`dashboard.html`** — the front door. The book's size, the tier distribution, the three axes,
+  how well we know them, never-contacted, the review queue grouped by *why* each claim waits,
+  whether the nightly jobs actually ran, and **what moved on the last run**.
+- **`method.html`** — every rubric and grading consideration, **read from the active rubric at
+  load time**. Nothing is written down: a page that describes a rubric in prose can describe a
+  system that is not running, and on 17 September three separate documents did exactly that.
+
+**One honest gap left visible rather than faked.** "Who they buy for" wants an agency's named
+clients; the site reader does not capture them (0 of 146 reads). The section renders that fact —
+a gap in the reader, not a finding about the agency — rather than quietly reusing the people list
+as it did before.
+
+**Still open, and the real answer to "changing without my understanding":** `pb_movement` counts
+how many accounts changed tier on each run; nothing names *which*. The dashboard now shows the
+count and says plainly that naming them is the missing half. Until that exists, a tier can change
+overnight and the only way to notice is to have remembered where it was.

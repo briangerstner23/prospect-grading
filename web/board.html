@@ -285,13 +285,15 @@ tbody tr:hover td{background:var(--surface-2)}
 
 <div id="boardview">
 <nav class="topnav"><div class="wrap">
-  <a class="navlink is-here" href="board.html" aria-current="page">Board</a>
+  <a class="navlink" href="dashboard.html">Dashboard</a>
+  <a class="navlink is-here" href="board.html" aria-current="page">The board</a>
+  <a class="navlink" href="method.html">How grading works</a>
   <a class="navlink" href="index.html">Back office<span class="navnote">sign-in</span></a>
   <button type="button" class="navbtn who" id="whobtn">Sign in</button>
   <button type="button" class="navbtn" id="themebtn" aria-pressed="false">Dark</button>
 </div></nav>
 
-<header class="top"><div class="wrap"><div class="mast">
+<header class="top" data-section="Masthead"><div class="wrap"><div class="mast">
   <p class="eyebrow" id="asof">WLIQ Prospect Book · loading…</p>
   <h1>The Prospect Book</h1>
   <p class="lede">Agencies we are <em>not</em> delivering for, ranked by what they could be worth.
@@ -302,7 +304,7 @@ tbody tr:hover td{background:var(--surface-2)}
 <div class="wrap">
   <div id="fatal"></div>
 
-  <div class="dist">
+  <div class="dist" data-section="By anticipated tier">
     <p class="eyebrow" id="distlabel">by anticipated tier</p>
     <div class="bar" id="bar"></div>
     <div class="legend" id="legend"></div>
@@ -326,7 +328,7 @@ tbody tr:hover td{background:var(--surface-2)}
       <p>Rows with a red edge are <strong>Gold or better and never contacted</strong> — the most
       actionable thing in the book. Every figure comes from the last scoring run; this page
       computes nothing of its own.</p></div>
-    <div class="controls" id="controls">
+    <div class="controls" id="controls" data-section="Filters">
       <span class="eyebrow" style="margin-right:2px">tier</span>
       <span id="tierbtns"></span>
       <label class="toggle" for="untouchedOnly"><input type="checkbox" id="untouchedOnly"> never contacted only</label>
@@ -334,7 +336,7 @@ tbody tr:hover td{background:var(--surface-2)}
       <input type="search" id="filter" placeholder="Filter by name…" aria-label="Filter by name">
       <span class="count" id="count"></span>
     </div>
-    <div class="tablewrap"><table>
+    <div class="tablewrap" data-section="The ranked list"><table>
       <thead>
         <tr class="grp"><th colspan="2"></th><th colspan="4">Potential</th><th colspan="2" class="g-contact">Contact</th><th></th></tr>
         <tr class="cols">
@@ -893,10 +895,38 @@ tbody tr:hover td{background:var(--surface-2)}
     });
   }
 
+  /* A research field is sometimes {quote, value} and sometimes the bare value — the extractor
+     wraps a field when it has a sentence to cite. Unwrap either without pretending a missing
+     value is an empty string, so "unknown" stays distinguishable from "". */
+  function fieldVal(v) {
+    if (v == null) return null;
+    if (typeof v === "object" && !Array.isArray(v)) {
+      if ("value" in v) return fieldVal(v.value);
+      return null;
+    }
+    if (Array.isArray(v)) return v.join(", ");
+    if (typeof v === "boolean") return v ? "yes" : "no";
+    return String(v);
+  }
+  /* A fact's value is jsonb: a string, a number, a boolean or a list. Render it as it is; never
+     round a number or reword a string, because this table is the evidence. */
+  function factVal(v) {
+    if (v == null) return "";
+    if (Array.isArray(v)) return v.join(", ");
+    if (typeof v === "boolean") return v ? "yes" : "no";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
   function dossierHtml(r, d) {
     d = d || {};
     var br = (d.brief && d.brief.brief) || {}, rd = d.research || {},
         rf = (rd.fields) || {}, read = d.read || {}, h = [];
+    // The last touch and its age: used by the strip, by Open loops and by nothing else. Computed
+    // from the contact log rather than from a column, so it cannot disagree with the log below it.
+    var evAll = d.events || [];
+    var lastTouch = evAll.length ? evAll[0].occurred_at : null;
+    var ageDays = daysAgo(lastTouch);
 
     /* ---- hero ---- */
     h.push('<div class="dhero"><div class="wrap">');
@@ -946,9 +976,15 @@ tbody tr:hover td{background:var(--surface-2)}
 
     h.push('<div class="wrap">' + overrideHtml(r, d) + "</div>");
 
+    /* ==================================================================================
+       THE TWENTY-FIVE SECTIONS, IN THE ORDER web/CONTRACT.json SETS (DECISIONS §46).
+       Do not add, remove or reorder a block here without changing the contract first —
+       scripts/contract_test.ts fails the build either way round, which is the point:
+       this page shipped once with twelve of these and a green test.
+       ================================================================================== */
     h.push('<div class="dgrid"><div class="col">');
 
-    /* ---- the one action ---- */
+    /* ---- 1 · Make this call ---- */
     var dm = (d.people || []).filter(function (p) { return p.is_decision_maker; })[0] || (d.people || [])[0];
     var who = dm ? esc(dm.name) + (has(dm.title) ? ", " + esc(dm.title) : "") : null;
     if (has(br.next_step)) {
@@ -957,150 +993,334 @@ tbody tr:hover td{background:var(--surface-2)}
       h.push(blk("Make this call", "the one action",
         "<p>" + (r.engagement === "unknown"
           ? (who ? "Nobody has ever contacted them. Open the first conversation with " + who + "."
-                 : "Nobody has ever contacted them, and no person is on file yet — find one.")
-          : (r.they_last_replied
-             ? "They last replied " + esc(r.they_last_replied) + ". Pick the thread back up" + (who ? " with " + who : "") + "."
-             : "We have reached out and they have never answered" + (who ? "; " + who + " is who we know" : "") + ".")) +
+                 : "Nobody has ever contacted them, and there is no named contact on file. Find one first.")
+          : (who ? "Pick the thread back up with " + who + "."
+                 : "Pick the thread back up — but there is no named contact on file yet, so find one first.")) +
         "</p>", "act"));
     }
 
-    /* ---- where we win ---- */
+    /* ---- 2 · Where we win ---- */
     if (has(br.partner_angle)) h.push(blk("Where we win", "the angle", para(br.partner_angle), "win"));
-    else if (has(rf.recommended_wedge)) h.push(blk("Where we win", "the wedge, from the research read", para(rf.recommended_wedge), "win"));
-    else h.push(blk("Where we win", "no wedge found",
-      "<p>No angle has been written and the research read proposes none. This is the gap to close before calling.</p>", "gap"));
+    else if (has(rf.recommended_wedge)) h.push(blk("Where we win", "the wedge, from the research read",
+      para(fieldVal(rf.recommended_wedge)), "win"));
+    else if (rd.read_at) h.push(blk("Where we win", "no wedge found",
+      "<p>The research pass read this account and found no way in; the risk register below says why. " +
+      "That is a finding, not a gap — do not spend a call on it until something changes.</p>", "gap"));
+    else h.push(blk("Where we win", "not read yet",
+      "<p>Nobody has read this account, so there is no angle on file. Reading the site is the cheapest " +
+      "work in the book.</p>", "gap"));
 
-    /* ---- what kills it ---- */
+    /* ---- 3 · What kills it ---- */
     if (has(br.watch_out)) h.push(blk("What kills it", "the risk", para(br.watch_out), "kill"));
-    var flags = Array.isArray(rf.red_flags) ? rf.red_flags : [];
-    if (flags.length) {
-      h.push(blk("What kills it", "flagged by the research read",
-        "<ul class='people'>" + flags.map(function (f) {
-          var t = typeof f === "string" ? f : (f && (f.note || f.reason || JSON.stringify(f)));
-          return "<li><div class='ti'>" + esc(t) + "</div></li>";
-        }).join("") + "</ul>", "kill"));
-    }
 
-    /* ---- live signals ---- */
+    /* ---- 4 · How they got here ---- */
     var sg = d.signals || [];
     if (sg.length) {
       h.push(blk("How they got here", "live signals",
         "<ul class='sig'>" + sg.slice(0, 12).map(function (s) {
-          var w = Number(s.weight || 0);
-          var cls = w > 0 ? "" : (w < 0 ? " neg" : " zero");
-          return "<li><span class='wt" + cls + "'>" + (w > 0 ? "+" : "") + esc(w) + "</span>" +
-            "<span class='lb'>" + esc(s.type) + "</span>" +
-            "<span class='dt'>" + esc(day(s.observed_at)) + "</span></li>";
-        }).join("") + "</ul>"));
+          var w = Number(s.weight);
+          var cls = !w ? "zero" : (w < 0 ? "neg" : "");
+          return "<li><span class='wt " + cls + "'>" + (w > 0 ? "+" : "") + esc(s.weight) + "</span>" +
+            "<span class='lb'>" + esc(String(s.type).replace(/_/g, " ")) + "</span>" +
+            "<span class='dt'>" + esc(day(s.observed_at)) + "</span>" +
+            "<span class='via'>" + esc(s.source || "") +
+            (s.decays ? " · decays over " + esc(s.lifespan_days) + " days" : " · does not decay") +
+            "</span></li>";
+        }).join("") + "</ul>", "win"));
     }
 
-    /* ---- the record ---- */
-    var calls = d.calls || [];
-    if (calls.length) {
-      h.push(blk("How we got here", "the record",
-        "<ol class='rail'>" + calls.map(function (k) {
-          var att = (k.attendees || []).map(function (a) { return a.name; }).filter(Boolean).join(", ");
-          return "<li><span class='dt'>" + esc(day(k.held_at)) + "</span>" +
-            "<span class='tl'>" + esc(k.title || "Recorded call") + "</span>" +
-            (att ? "<span class='mt'>" + esc(att) + "</span>" : "") +
-            (has(k.recorded_by) ? "<span class='mt'>recorded by " + esc(localPart(k.recorded_by)) + "</span>" : "") +
-            (has(k.url) ? "<a href='" + esc(k.url) + "' target='_blank' rel='noopener'>open the recording &rarr;</a>" : "") +
-            "</li>";
-        }).join("") + "</ol>"));
-    }
-    if (has(br.our_history)) h.push(blk("How we got here", "written up", para(br.our_history)));
-    if (has(br.their_view_of_us)) h.push(blk("How they see us", "in their words", para(br.their_view_of_us)));
-
-    /* ---- why it ranks here: the engine, verbatim ---- */
-    h.push(blk("Why it ranks here", "the engine, verbatim",
-      '<div class="reason">' + esc(read.reason || "No reason sentence on this read.") + "</div>" +
-      '<p class="src">rubric ' + esc(read.rubric_version || "?") + " · fingerprint " +
-      esc(read.rubric_fingerprint || "?") + " · scored " + esc(day(read.as_of)) + "</p>" +
-      ((read.flags || []).length
-        ? '<div class="fam">' + (read.flags || []).map(function (f) {
-            return "<span>" + esc(f) + "</span>"; }).join("") + "</div>"
-        : "")));
-    if (has(br.why_this_rank)) h.push(blk("Why it ranks here", "written up", para(br.why_this_rank)));
-
-    /* ---- the facts the grade stands on ---- */
-    var fx = d.facts || [];
-    if (fx.length) {
-      h.push(blk("What we actually know", "every fact, with its evidence",
-        '<div class="scrollx"><table class="fx"><thead><tr><th>Fact</th><th>Value</th><th>Evidence</th><th>Source</th></tr></thead><tbody>' +
-        fx.map(function (f) {
-          var lab = f.evidence_label === "evidence" ? "hard" : (f.evidence_label === "inferred" ? "soft" : "");
-          var v = typeof f.value === "object" ? JSON.stringify(f.value) : String(f.value);
-          return "<tr><td class='k'>" + esc(f.key) + "</td><td class='v'>" + esc(v.replace(/^"|"$/g, "")) +
-            "</td><td><span class='ev " + lab + "'>" + esc(f.evidence_label) + "</span></td>" +
-            "<td class='v'>" + esc(f.source) + "</td></tr>";
-        }).join("") + "</tbody></table></div>"));
+    /* ---- 5 · Open loops ---- */
+    var loops = [];
+    if (has(br.next_step)) loops.push(["WLIQ", esc(br.next_step), ageDays]);
+    if (!d.brief) loops.push(["WLIQ", "No brief written — nobody has turned what we know into a next step", null]);
+    if (["pursued", "responsive", "engaged"].indexOf(r.engagement) >= 0 && ageDays != null && ageDays >= 45)
+      loops.push(["Them", "Thread has gone quiet since the last touch on " + esc(day(lastTouch)), ageDays]);
+    if (["fading", "dormant"].indexOf(r.engagement) >= 0)
+      loops.push(["WLIQ", "Engagement reads " + esc(r.engagement) + " — re-open it or retire it", ageDays]);
+    if ((r.facts_present || 0) < 3)
+      loops.push(["WLIQ", "Qualification incomplete — " + (r.facts_present || 0) +
+        " of 4 Dimension A facts on file, and the engine needs 3 before confidence rises above Medium", null]);
+    if (r.records > 1)
+      loops.push(["WLIQ", r.records + " duplicate records in the book, not yet merged — their evidence is split", null]);
+    if (loops.length) {
+      h.push(blk("Open loops", "owed, and by whom",
+        "<table class='loops'><thead><tr><th>Owner</th><th>Owed</th><th>Age</th></tr></thead><tbody>" +
+        loops.map(function (l) {
+          var age = l[2] == null ? "&mdash;" : l[2] + "d";
+          return "<tr><td class='owner'>" + l[0] + "</td><td>" + l[1] + "</td>" +
+            "<td class='age" + (l[2] != null && l[2] >= 60 ? " hot" : "") + "'>" + age + "</td></tr>";
+        }).join("") + "</tbody></table>" +
+        "<p class='src'>Derived from the brief, the engagement state and the qualification count — " +
+        "not from a task list. Nothing here was assigned to anyone.</p>"));
     }
 
-    h.push("</div><div class='col'>");
+    /* ---- 6 · Quotes on record ---- */
+    var dls = d.deals || [];
+    if (dls.length) {
+      h.push(blk("Quotes on record", dls.length + " in the CRM",
+        "<table class='quotes'><tbody>" + dls.map(function (q) {
+          var v = Number(q.value);
+          var amt = v > 0 ? "$" + Math.round(v).toLocaleString() : "&mdash;";
+          var st = String(q.status || "").toLowerCase();
+          return "<tr><td>" + esc(q.title || "(untitled)") +
+            (q.close_date ? "<br><span class='src'>closed " + esc(day(q.close_date)) + "</span>" : "") +
+            (has(q.stage_name) ? "<br><span class='src'>" + esc(q.stage_name) + "</span>" : "") +
+            "</td><td class='amt'>" + amt + "</td><td class='st'>" +
+            (st === "lost" ? "<span class='lost'>LOST</span>" : esc(st.toUpperCase() || "—")) +
+            "</td></tr>";
+        }).join("") + "</tbody></table>" +
+        "<p class='src'>Every quote this book can see against the account. A lost quote is the first " +
+        "thing to explain before re-approaching.</p>", "kill"));
+    }
 
-    /* ---- right column: people, the site read, apollo, register, sources ---- */
-    var pe = d.people || [];
-    if (pe.length) {
-      h.push(blk("Who they buy for", "the people on file",
-        "<ul class='people'>" + pe.slice(0, 12).map(function (p) {
-          return "<li><div class='nm'>" + esc(p.name) +
-            (p.is_decision_maker ? "<span class='dm'>DECISION MAKER</span>" : "") + "</div>" +
-            (has(p.title) ? "<div class='ti'>" + esc(p.title) + "</div>" : "") +
-            "<div class='mt'>" + esc(p.source || "") + "</div></li>";
-        }).join("") + "</ul>"));
+    /* ---- 7 · Risk register ---- */
+    var flags = Array.isArray(rf.red_flags) ? rf.red_flags : [];
+    if (flags.length) {
+      h.push(blk("Risk register", flags.length + " raised by the read",
+        "<ul class='risks'>" + flags.map(function (x) {
+          var kind = String(x.flag || "other").replace(/_/g, " ");
+          return "<li><span class='ft" + (kind === "other" ? " mild" : "") + "'>" + esc(kind) + "</span>" +
+            "<p>" + esc(x.note || "") + "</p>" +
+            (has(x.quote) ? "<p class='src'>“" + esc(x.quote) + "”</p>" : "") + "</li>";
+        }).join("") + "</ul>" +
+        "<p class='src'>Raised by the research pass against the page text and the call record, not by " +
+        "the engine. A flag is a reason to check, never a reason the engine lowered a tier.</p>", "kill"));
+    }
+
+    /* ---- 8 · What we could actually deliver ---- */
+    var ov = rf.wliq_overlap || {};
+    var core = Array.isArray(ov.core) ? ov.core : [];
+    var adj = Array.isArray(ov.adjacent) ? ov.adjacent : [];
+    if (core.length || adj.length) {
+      var share = "";
+      if (ov.serviceable_share_estimate != null) {
+        var pct = Math.round(Number(ov.serviceable_share_estimate) * 100);
+        share = "<div class='share'><span class='cap'>" + pct + "% of their service menu is work WLIQ " +
+          "could deliver</span><div class='track'><span class='fill' style='width:" + pct + "%'></span></div></div>";
+      }
+      h.push(blk("What we could actually deliver", "their menu vs ours",
+        share +
+        (core.length ? "<div><span class='subk'>core — we do this well</span><div class='fam core'>" +
+          core.map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + "</div></div>" : "") +
+        (adj.length ? "<div><span class='subk'>adjacent — reachable, not proven</span><div class='fam'>" +
+          adj.map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + "</div></div>" : "") +
+        (has(ov.reasoning) ? "<p class='src'>" + esc(ov.reasoning) + "</p>" : "") +
+        "<p class='src'>Counted from the services their own site lists, mapped onto WLIQ service " +
+        "families by the research pass.</p>", "win"));
+    }
+
+    /* ---- 9 · Who they buy for ---- */
+    var clients = Array.isArray(rf.named_clients) ? rf.named_clients : [];
+    if (clients.length) {
+      h.push(blk("Who they buy for", "the work behind the relationship",
+        "<div class='clients'>" + clients.map(function (c) {
+          return "<span>" + esc(c) + "</span>"; }).join("") + "</div>" +
+        "<p class='src'>Their own named clients, off their site. The work behind the relationship — " +
+        "what WLIQ would actually be building for.</p>"));
     } else {
-      h.push(blk("Who they buy for", "gap", "<p>No person is on file for this account.</p>", "gap"));
+      h.push(blk("Who they buy for", "not captured",
+        "<p>The site reader does not yet record an agency's named clients, so this is empty for every " +
+        "account rather than empty for this one. It is a gap in the reader, not a finding about them.</p>",
+        "gap"));
     }
 
+    /* ---- 10 · Qualification evidence ---- */
+    var fx = d.facts || [], byKey = {};
+    fx.forEach(function (f) { byKey[f.key] = f; });
+    var dimA = ["money", "authority", "timing", "specification"];
+    var ordered = dimA.map(function (k) {
+      return byKey[k] || { key: k, value: null, evidence_label: "unknown", source: null, observed_at: null };
+    }).concat(fx.filter(function (f) { return dimA.indexOf(f.key) < 0; }));
+    h.push(blk("Qualification evidence", (r.facts_present || 0) + " of 4 on file",
+      "<div class='scrollx'><table class='fx'><thead><tr><th>Fact</th><th>Value</th><th>Basis</th>" +
+      "<th>Source</th><th>Seen</th></tr></thead><tbody>" +
+      ordered.map(function (f) {
+        var known = f.value != null;
+        var cls = f.evidence_label === "evidence" ? "hard" : (f.evidence_label === "inferred" ? "" : "soft");
+        return "<tr><td class='k'>" + esc(String(f.key).replace(/_/g, " ")) + "</td>" +
+          "<td class='v" + (known ? "" : " un") + "'>" + (known ? esc(factVal(f.value)) : "not on file") + "</td>" +
+          "<td class='e'><span class='ev " + cls + "'>" + esc(f.evidence_label) + "</span></td>" +
+          "<td class='v" + (f.source ? "" : " un") + "'>" + (f.source ? esc(f.source) : "&mdash;") + "</td>" +
+          "<td class='v" + (f.observed_at ? "" : " un") + "'>" + (f.observed_at ? esc(day(f.observed_at)) : "&mdash;") + "</td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      "<p class='src'>The first four are Dimension A: the engine counts them to set confidence and needs " +
+      "three before it will say more than Medium. <em>evidence</em> means a verbatim quote from a call or " +
+      "note; <em>inferred</em> means read off a CRM field. Unknown never fires a gate (rule 5).</p>"));
+
+    /* ---- 11 · Who they are ---- */
+    if (has(br.what_they_do)) h.push(blk("Who they are", "the business", para(br.what_they_do)));
+
+    /* ---- 12 · How they see us ---- */
+    if (has(br.their_view_of_us)) h.push(blk("How they see us", "in their words",
+      "<p class='quote'>" + esc(br.their_view_of_us) + "</p>" +
+      "<p class='qsrc'>from the research read of their calls, notes and site</p>"));
+
+    /* ---- 13 · How we got here ---- */
+    if (has(br.our_history)) h.push(blk("How we got here", "the record", para(br.our_history)));
+
+    /* ---- 14 · Why it ranks here ---- */
+    h.push(blk("Why it ranks here", "the engine, verbatim",
+      "<p class='reason'>" + esc(read.reason || "No reason sentence on the last read.") + "</p>" +
+      "<p class='src'>rubric " + esc(read.rubric_version || "?") +
+      " · fingerprint " + esc(read.rubric_fingerprint || "?") +
+      " · scored " + esc(day(read.as_of)) + "</p>" +
+      ((read.flags || []).length
+        ? "<div class='flaglist'>" + read.flags.map(function (f) {
+            return "<span class='fl" + (/UNVALIDATED|refused|expire/i.test(f) ? " u" : "") + "'>" +
+              esc(f) + "</span>"; }).join("") + "</div>"
+        : "")));
+
+    /* ---- 15 · The site read ---- */
     if (rd.read_at) {
-      var fam = Array.isArray(rf.services_listed) ? rf.services_listed : [];
+      var svc = Array.isArray(rf.services_listed) ? rf.services_listed
+              : (rf.services_listed && Array.isArray(rf.services_listed.value) ? rf.services_listed.value : []);
       h.push(blk("The site read", "what the page itself says",
         (has(rd.summary) ? para(rd.summary) : "") +
-        (fam.length ? "<div class='fam'>" + fam.slice(0, 14).map(function (x) {
-          return "<span>" + esc(typeof x === "string" ? x : JSON.stringify(x)) + "</span>"; }).join("") + "</div>" : "") +
-        '<div class="kv">' +
-          ["agency_type", "white_label_signal", "delivery_headcount", "sells_build_work",
-           "recurring_work_shape", "client_budget_size"].map(function (k) {
-            return has(rf[k]) ? "<div><span class='k'>" + esc(k.replace(/_/g, " ")) +
-              "</span><span class='v'>" + esc(String(rf[k])) + "</span></div>" : ""; }).join("") +
-        "</div>" +
-        '<p class="src">read ' + esc(day(rd.read_at)) + " · " + esc(rd.method || "") +
-        (rd.verified ? " · verified" : "") + "</p>"));
-    } else {
-      h.push(blk("The site read", "gap", "<p>Their website has not been read yet.</p>", "gap"));
+        "<div class='kv'>" +
+        [["agency type", fieldVal(rf.agency_type)], ["country", fieldVal(rf.country)],
+         ["founded", fieldVal(rf.founded_year)], ["headcount named", fieldVal(rf.headcount_named)],
+         ["delivery headcount", fieldVal(rf.delivery_headcount)], ["sells build work", fieldVal(rf.sells_build_work)],
+         ["white-label signal", fieldVal(rf.white_label_signal)], ["recurring work", fieldVal(rf.recurring_work_shape)]
+        ].map(function (kv) {
+          var v = kv[1];
+          return "<div><span class='k'>" + esc(kv[0]) + "</span><span class='v" + (has(v) ? "" : " un") + "'>" +
+            (has(v) ? esc(v) : "unknown") + "</span></div>";
+        }).join("") + "</div>" +
+        (svc.length ? "<div><span class='subk'>services listed</span><div class='fam'>" +
+          svc.map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + "</div></div>" : "") +
+        "<p class='src'>read " + esc(day(rd.read_at)) + " by " + esc(localPart(rd.reader)) +
+        " · " + esc(rd.method || "") + " · " + (rd.verified ? "verified" : "unverified") +
+        " · confidence " + esc(rd.confidence || "?") + "</p>"));
     }
 
-    if (d.apollo) {
-      var ap = d.apollo;
+    /* ---- 16 · Independent check ---- */
+    var ap = d.apollo;
+    if (ap) {
       h.push(blk("Independent check", "Apollo, third-party",
-        '<div class="kv">' +
-          [["employees", ap.employees], ["engineers", ap.eng_headcount], ["industry", ap.industry],
-           ["founded", ap.founded_year]].map(function (kv) {
-            return has(kv[1]) ? "<div><span class='k'>" + esc(kv[0]) + "</span><span class='v'>" +
-              esc(String(kv[1])) + "</span></div>" : ""; }).join("") +
-        "</div><p class='src'>fetched " + esc(day(ap.fetched_at)) +
+        "<div class='kv'>" +
+        [["employees", ap.employees], ["engineers", ap.eng_headcount], ["revenue", ap.revenue],
+         ["industry", ap.industry], ["founded", ap.founded_year]].map(function (kv) {
+          return "<div><span class='k'>" + esc(kv[0]) + "</span><span class='v" + (has(kv[1]) ? "" : " un") +
+            "'>" + (has(kv[1]) ? esc(kv[1]) : "unknown") + "</span></div>";
+        }).join("") + "</div>" +
+        ((ap.build_keywords || []).length ? "<div class='fam'>" + ap.build_keywords.slice(0, 14).map(function (k) {
+          return "<span>" + esc(k) + "</span>"; }).join("") + "</div>" : "") +
+        "<p class='src'>Apollo, fetched " + esc(day(ap.fetched_at)) +
         " · a third party's numbers, never blended with ours</p>"));
     }
 
+    /* ---- 17 · What a person ruled ---- */
     var rg = d.register || [];
     if (rg.length) {
-      h.push(blk("Decisions on the record", "the register",
+      h.push(blk("What a person ruled", rg.length + " on the register",
         "<ul class='rulings'>" + rg.map(function (g) {
-          return "<li><span class='kd'>" + esc(g.kind) + "</span><p>" + esc(g.text || "") + "</p>" +
-            "<span class='by'>" + esc(localPart(g.made_by)) + " · " + esc(day(g.created_at)) + "</span></li>";
-        }).join("") + "</ul>"));
+          return "<li><span class='kd" + (g.kind === "note" ? " note" : "") + "'>" + esc(g.kind) + "</span>" +
+            "<p>" + esc(g.text || "") + "</p>" +
+            "<span class='by'>" + esc(localPart(g.made_by)) + " · " + esc(day(g.created_at)) +
+            (g.expires_at ? " · expires " + esc(day(g.expires_at)) : "") + "</span></li>";
+        }).join("") + "</ul>" +
+        "<p class='src'>Nothing here was decided by the engine.</p>"));
     }
 
+    /* ---- 18 · Waiting on a person ---- */
+    var cd = d.candidates || {};
+    if (Number(cd.n) > 0) {
+      h.push(blk("Waiting on a person", cd.n + " unwritten claims",
+        "<p>" + cd.n + " claim" + (Number(cd.n) === 1 ? " was" : "s were") + " read out of calls, notes and " +
+        "the site for this account and <strong>not written</strong>" +
+        (Number(cd.high) ? ", " + cd.high + " of them at high confidence" : "") + ". " +
+        (Number(cd.conflicts)
+          ? "<strong>" + cd.conflicts + "</strong> contradict something already on file, so they need a person, not a rerun."
+          : "None contradicts a fact on file.") + "</p>" +
+        "<div class='fam'>" + (cd.keys || []).map(function (k) {
+          return "<span>" + esc(String(k).replace(/_/g, " ")) + "</span>"; }).join("") + "</div>" +
+        "<p class='src'>pb_fact_candidates, status proposed. Nothing reaches the book without a verbatim " +
+        "quote at high confidence that does not contradict what a person recorded — so these wait " +
+        "(rule 8). The claims themselves are a reviewer's screen, behind sign-in.</p>", "gap"));
+    }
+
+    /* ---- 19 · What we actually know / 20 · No brief / 21 · Nothing read ---- */
+    if (d.brief && has(br.confidence_reason)) {
+      h.push(blk("What we actually know", "confidence: " + (br.confidence || "?"),
+        para(br.confidence_reason) +
+        (has(br.headcount_basis)
+          ? "<p class='src'>Headcount basis (" + esc(d.brief.headcount_confidence || "?") + " confidence): " +
+            esc(br.headcount_basis) + "</p>"
+          : "")));
+    }
+    if (!d.brief && rd.read_at) {
+      h.push(blk("No brief written yet", "gap",
+        "<p>The research read above is verified, but nobody has turned it into a brief with a dated next " +
+        "step. Writing one is the cheapest work in the book: the evidence is already here.</p>", "gap"));
+    }
+    if (!d.brief && !rd.read_at) {
+      h.push(blk("Nothing has been read", "gap",
+        "<p>No website read, no brief, no call. The rank above is the engine working from " +
+        (r.facts_present || 0) + " of 4 qualification facts, all of them CRM fields rather than evidence. " +
+        "Read the site before anyone spends a call on this.</p>", "gap"));
+    }
+
+    /* ================= right column ================= */
+    h.push('</div><div class="col">');
+
+    /* ---- 22 · Who to call ---- */
+    var pe = d.people || [];
+    var ndm = pe.filter(function (p) { return p.is_decision_maker; }).length;
+    h.push(blk("Who to call", ndm ? ndm + " decision maker" + (ndm === 1 ? "" : "s") : "no DM flagged",
+      pe.length
+        ? "<ul class='people'>" + pe.slice(0, 14).map(function (p) {
+            return "<li><div class='nm'>" + esc(p.name || "(unnamed)") +
+              (p.is_decision_maker ? "<span class='dm'>DECISION MAKER</span>" : "") + "</div>" +
+              (has(p.title) ? "<div class='ti'>" + esc(p.title) + "</div>" : "") +
+              "<div class='mt'>" + esc(p.source || "") +
+              (p.last_job_change_at ? " · moved " + esc(day(p.last_job_change_at)) : "") +
+              "</div></li>";
+          }).join("") + "</ul>" +
+          "<p class='src'>Names and titles only — no address reaches this page.</p>"
+        : "<p>No person is on file for this account. Finding one is the first step.</p>"));
+
+    /* ---- 23 · Call record ---- */
+    var ks = d.calls || [];
+    h.push(blk("Call record", ks.length ? ks.length + " recorded" : "none",
+      ks.length
+        ? "<ol class='rail'>" + ks.map(function (k) {
+            var ext = (k.attendees || []).filter(function (a) { return a.is_external; })
+              .map(function (a) { return a.name; }).filter(Boolean);
+            return "<li><span class='dt'>" + esc(day(k.held_at)) + "</span>" +
+              "<span class='tl'>" + esc(k.title || "call") + "</span>" +
+              "<span class='mt'>" + esc(localPart(k.recorded_by)) +
+              (ext.length ? " · with " + esc(ext.join(", ")) : "") + "</span>" +
+              (has(k.url) ? "<a href='" + esc(k.url) + "' target='_blank' rel='noopener'>open the recording</a>" : "") +
+              "</li>";
+          }).join("") + "</ol>"
+        : "<p>No call has ever been recorded against this account.</p>"));
+
+    /* ---- 24 · Contact history ---- */
+    var ev = d.events || [];
+    h.push(blk("Contact history", ev.length ? ev.length + " touches" : "empty",
+      ev.length
+        ? "<div class='touchline'>" + ev.slice(0, 40).map(function (e) {
+            var cls = e.direction === "inbound" ? " in" : (e.channel === "call" ? " call" : "");
+            return "<span class='tp" + cls + "'>" + esc(day(e.occurred_at)) + " " + esc(e.channel || "") + "</span>";
+          }).join("") + "</div>" +
+          "<p class='src'>Inbound is marked apart: a reply from them is the only touch that says anything " +
+          "about their interest. Absence of contact is not evidence.</p>"
+        : "<p>Nothing logged. That is a gap in our record, not a fact about them — absence of contact " +
+          "is not evidence (rule 5).</p>"));
+
+    /* ---- 25 · Sources ---- */
     var acc = d.account || {};
     h.push(blk("Sources", "every line above",
       "<p class='src'>" +
       ["roster: " + esc(acc.roster_source || "unknown") + (acc.roster_certified ? " (certified)" : " (uncertified)"),
        (d.brief ? "brief by " + esc(localPart((d.brief || {}).author)) + " " + esc(day((d.brief || {}).generated_at)) : "no brief written"),
        (rd.read_at ? "site read " + esc(day(rd.read_at)) : "no site read"),
-       (d.calls || []).length + " recorded call(s)",
-       (d.events || []).length + " contact event(s)",
+       ks.length + " recorded call(s)",
+       ev.length + " contact event(s)",
        fx.length + " resolved fact(s)",
-       sg.length + " signal(s)"].join("<br>") + "</p>"));
+       sg.length + " signal(s)",
+       (d.deals || []).length + " quote(s) in the CRM",
+       (Number(cd.n) || 0) + " claim(s) waiting on a person"].join("<br>") + "</p>"));
 
     h.push("</div></div></div>");
     return h.join("");

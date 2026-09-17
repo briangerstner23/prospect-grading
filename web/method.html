@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Prospect Book — how grading works</title>
+<!--
+  HOW THE GRADING WORKS. Every threshold, rule, band, weight and lifespan on this page is READ
+  FROM THE ACTIVE RUBRIC at load time (pb_rubric_versions, status active). Nothing is written down
+  here.
+  That is the whole point. docs/METHOD.md is generated and can go stale between a rubric change
+  and a regeneration; a page that describes the rubric in prose can describe a system that is not
+  running, and on 17 September three separate documents did exactly that. This page cannot: if the
+  rubric changes tonight, this page says something different tomorrow, because it has no opinion
+  of its own.
+
+  Sections are set by web/CONTRACT.json and enforced by scripts/contract_test.ts (DECISIONS §46).
+-->
+<style>
+:root{
+  --bg:#eef1f4; --surface:#fbfcfd; --surface-2:#f4f6f8; --surface-3:#eaeef2;
+  --ink:#121920; --ink-2:#48545f; --ink-3:#77838d;
+  --rule:#d5dbe1; --rule-2:#e4e9ed;
+  --steel:#2f6c8b;
+  --plat:#2f6c8b; --plat-bg:#dfeaf1; --plat-line:#8fb6c9;
+  --gold:#8a6510; --gold-bg:#f3e9d2; --gold-line:#cfae62;
+  --silver:#5c6874; --silver-bg:#e6eaee; --silver-line:#aab4bf;
+  --bronze:#8f5330; --bronze-bg:#f2e3da; --bronze-line:#c99a7d;
+  --none:#79848d; --none-bg:#eceff1; --none-line:#c2cad1;
+  --alert:#a3341f; --alert-bg:#f7e5e1;
+  --go:#2f6f4f; --go-bg:#dfeee6; --go-line:#8fbda6;
+}
+:root[data-theme="dark"]{
+  --bg:#0f1418; --surface:#161d23; --surface-2:#1b232a; --surface-3:#202932;
+  --ink:#e6ebef; --ink-2:#a4b0ba; --ink-3:#7a868f;
+  --rule:#2a343d; --rule-2:#222b32;
+  --steel:#6fb3d4;
+  --plat:#7cbede; --plat-bg:#14313f; --plat-line:#3b7b9c;
+  --gold:#dcb45e; --gold-bg:#3a2f14; --gold-line:#8d7028;
+  --silver:#9dabb8; --silver-bg:#252e36; --silver-line:#4d5a66;
+  --bronze:#d29066; --bronze-bg:#3a2519; --bronze-line:#8a5735;
+  --none:#8b959d; --none-bg:#222a30; --none-line:#454f57;
+  --alert:#e5836b; --alert-bg:#37201b;
+  --go:#77c49c; --go-bg:#16301f; --go-line:#3c6e51;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 "Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1000px;margin:0 auto;padding-inline:20px}
+h1,h2,h3{font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-weight:700;letter-spacing:-.022em;margin:0}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.04}
+h2{font-size:clamp(19px,2.6vw,24px);line-height:1.18}
+h3{font-size:15px}
+p{margin:0}
+a{color:var(--steel)}
+.mono{font-family:"Roboto Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font-family:"Roboto Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-3)}
+:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+
+.topnav{background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.topnav .wrap{display:flex;gap:4px;align-items:center;padding-block:7px;flex-wrap:wrap;max-width:1180px}
+.navlink{font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.05em;
+  padding:5px 10px;color:var(--ink-2);text-decoration:none;border:1px solid transparent}
+.navlink:hover{color:var(--ink);border-color:var(--rule)}
+.navlink.is-here{background:var(--surface);border-color:var(--rule);color:var(--ink);font-weight:600}
+.navbtn{margin-left:auto;font:inherit;font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;
+  padding:5px 10px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer}
+
+header.top{background:var(--surface);border-bottom:1px solid var(--rule)}
+.mast{display:flex;flex-direction:column;gap:12px;padding-block:30px 26px}
+.lede{font-size:clamp(16px,2vw,18.5px);color:var(--ink-2);max-width:64ch;line-height:1.48}
+.lede em{font-style:normal;color:var(--ink);font-weight:600}
+
+section{padding-block:30px;border-top:1px solid var(--rule)}
+.sechead{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;max-width:68ch}
+.sechead p{color:var(--ink-2);font-size:14.5px}
+
+table{border-collapse:collapse;width:100%;background:var(--surface);border:1px solid var(--rule)}
+th{font-family:"Roboto Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500;text-align:left;
+  padding:9px 11px;background:var(--surface-2);border-bottom:1px solid var(--rule)}
+td{padding:9px 11px;border-bottom:1px solid var(--rule-2);vertical-align:top;font-size:14px;color:var(--ink-2)}
+tr:last-child td{border-bottom:none}
+td.k{font-family:"Roboto Mono",ui-monospace,monospace;font-size:12.5px;color:var(--ink);white-space:nowrap;width:1%}
+td.n{font-family:"Roboto Mono",ui-monospace,monospace;font-size:12.5px;white-space:nowrap;width:1%;
+  text-align:right;font-variant-numeric:tabular-nums}
+.scrollx{overflow-x:auto}
+
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule)}
+.kv div{background:var(--surface);padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.kv .k{font-family:"Roboto Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-3)}
+.kv .v{font-family:"Roboto Mono",ui-monospace,monospace;font-size:14px;color:var(--ink)}
+
+.pill{display:inline-block;font-family:"Roboto Mono",ui-monospace,monospace;font-size:10.5px;
+  padding:1px 7px;border:1px solid var(--rule);background:var(--surface-2);color:var(--ink-2)}
+.pill.ruled{border-color:var(--go-line);background:var(--go-bg);color:var(--go)}
+.pill.unruled{border-color:var(--alert);background:var(--alert-bg);color:var(--alert)}
+.pill.up{border-color:var(--go-line);color:var(--go)}
+.pill.down{border-color:var(--alert);color:var(--alert)}
+.tier{display:inline-flex;gap:6px;font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;
+  padding:3px 9px;border:1px solid var(--none-line);background:var(--none-bg);color:var(--none)}
+.t-Platinum{background:var(--plat-bg);color:var(--plat);border-color:var(--plat-line)}
+.t-Gold{background:var(--gold-bg);color:var(--gold);border-color:var(--gold-line)}
+.t-Silver{background:var(--silver-bg);color:var(--silver);border-color:var(--silver-line)}
+.t-Bronze{background:var(--bronze-bg);color:var(--bronze);border-color:var(--bronze-line)}
+.tiers{display:flex;flex-wrap:wrap;gap:6px}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:2px}
+.card{background:var(--surface);padding:15px 17px;display:flex;flex-direction:column;gap:7px}
+.card p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.card.rule{box-shadow:inset 3px 0 0 var(--steel)}
+.note{margin-top:14px;font-size:14px;color:var(--ink-2);border-left:2px solid var(--steel);
+  padding-left:13px;max-width:70ch;line-height:1.55}
+.note.alert{border-left-color:var(--alert)}
+.err{background:var(--alert-bg);border:1px solid var(--alert);color:var(--alert);padding:14px 16px;
+  font-size:14px;line-height:1.55}
+.loading{color:var(--ink-3);font-family:"Roboto Mono",ui-monospace,monospace;font-size:13px;padding:14px 0}
+footer{border-top:1px solid var(--rule);padding-block:22px 34px;
+  font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink-3);line-height:1.7}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="topnav"><div class="wrap">
+  <a class="navlink" href="dashboard.html">Dashboard</a>
+  <a class="navlink" href="board.html">The board</a>
+  <a class="navlink is-here" href="method.html" aria-current="page">How grading works</a>
+  <a class="navlink" href="index.html">Back office<span class="eyebrow" style="margin-left:6px">sign-in</span></a>
+  <button type="button" class="navbtn" id="themebtn" aria-pressed="false">Dark</button>
+</div></nav>
+
+<header class="top"><div class="wrap"><div class="mast">
+  <p class="eyebrow" id="asof">WLIQ Prospect Book · loading the active rubric…</p>
+  <h1>How grading works</h1>
+  <p class="lede">Every threshold, rule, band and weight below is read from the
+    <em>active rubric</em> as this page loads. Nothing here is written down — so this page cannot
+    describe a system that is not running.</p>
+</div></div></header>
+
+<div class="wrap" id="fatal"></div>
+<div class="wrap" id="body"><p class="loading">Reading the active rubric…</p></div>
+
+<footer><div class="wrap">
+  The rubric is data (rule 4): every number on this page lives in a versioned JSON spec with a
+  fingerprint, not in code and not in this page. A new version is a new file, a new row, and a
+  preview before it is ever activated.
+</div></footer>
+
+<script>
+(function () {
+  "use strict";
+  var SUPABASE_URL = "https://sgagrmapuovnjwvgsxbp.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_Rwx3FbwsjnVFx9MUVQX0EA_wm2F52sC";
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;";
+    });
+  }
+  function el(id) { return document.getElementById(id); }
+  function has(v) { return v != null && String(v).length > 0; }
+  function words(s) { return esc(String(s == null ? "" : s).replace(/_/g, " ")); }
+
+  function req(path, opts) {
+    var o = opts || {};
+    return fetch(SUPABASE_URL + "/rest/v1/" + path, {
+      method: o.method || "GET",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+                 "Content-Type": "application/json" },
+      body: o.method === "POST" ? JSON.stringify(o.args || {}) : undefined
+    }).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(res.status + " " + t.slice(0, 200)); });
+      return res.json();
+    });
+  }
+  function rpc(fn, args) { return req("rpc/" + fn, { method: "POST", args: args }); }
+
+  /* Walk a dotted path without throwing on a rubric that does not carry that block. A version
+     that lacks a section must render as "this rubric does not define it", never as a crash and
+     never as a plausible-looking default. */
+  function at(o, path) {
+    var cur = o;
+    var parts = path.split(".");
+    for (var i = 0; i < parts.length; i++) {
+      if (cur == null || typeof cur !== "object") return undefined;
+      cur = cur[parts[i]];
+    }
+    return cur;
+  }
+  function missing(what) {
+    return '<p class="err">The active rubric defines no <code>' + esc(what) + "</code> block, so " +
+      "there is nothing to show here. That is a fact about the rubric, not a gap in this page.</p>";
+  }
+  function kv(pairs) {
+    return '<div class="kv">' + pairs.map(function (p) {
+      return "<div><span class='k'>" + esc(p[0]) + "</span><span class='v'>" +
+        (has(p[1]) ? esc(p[1]) : "—") + "</span></div>";
+    }).join("") + "</div>";
+  }
+  /* A rule carries its own basis in the spec. Print it: a reader must be able to tell a ruling
+     from a default nobody has ever decided (that distinction is most of docs/DECISIONS.md). */
+  function basis(b) {
+    var cls = b === "ruled" ? "ruled" : (b === "unruled_default" ? "unruled" : "");
+    return '<span class="pill ' + cls + '">' + words(b || "unstated") + "</span>";
+  }
+
+  function render(spec, meta) {
+    var h = [];
+
+    /* ---------- What this book decides ---------- */
+    var cons = at(spec, "what_the_grade_is_for.consequence");
+    h.push('<section data-section="What this book decides"><div class="sechead">' +
+      "<h2>What this book decides</h2><p>One row per agency, four reads plus deal health, " +
+      "<strong>never summed</strong>. The output is a rank and a set of bands.</p></div>" +
+      '<div class="cards">' +
+      '<div class="card rule"><h3>Fit — Dimension B</h3><p>What could they be worth? This is the ' +
+        "read that sets the anticipated tier, and the only one that sets the rank.</p></div>" +
+      '<div class="card rule"><h3>Qualification — Dimension A</h3><p>Is a deal real right now? Four ' +
+        "facts. It moves confidence, never the tier.</p></div>" +
+      '<div class="card rule"><h3>Potential</h3><p>Ceiling, headroom and year-one bands — what the ' +
+        "relationship could grow into, expressed as a band and never a forecast.</p></div>" +
+      '<div class="card rule"><h3>Signals</h3><p>Is anything live right now? Weighted, dated and ' +
+        "decaying. A signal is a reason to act sooner, not a reason to rank higher.</p></div>" +
+      "</div>" +
+      (has(cons) ? '<p class="note">' + esc(cons) + "</p>" : "") +
+      '<p class="note alert">There is no composite score, and there will not be one (PRO-0). A ' +
+      "single number would hide which read moved and why — and every one of these four answers a " +
+      "different question about the same company.</p></section>");
+
+    /* ---------- The active rubric ---------- */
+    h.push('<section data-section="The active rubric"><div class="sechead">' +
+      "<h2>The active rubric</h2><p>The fingerprint is a hash of the whole spec. If it changes, " +
+      "something in the grading changed — and every read carries the fingerprint it was scored " +
+      "under, so a tier can always be traced to the exact rules that produced it.</p></div>" +
+      kv([["version", meta.version], ["fingerprint", meta.fingerprint],
+          ["activated", String(meta.activated_at || "").slice(0, 16).replace("T", " ")],
+          ["accounts scored", meta.accounts_scored]]) +
+      '<p class="note">A new version is a new file and a new row, previewed against every account ' +
+      "before it is ever activated. Nothing is edited in place.</p></section>");
+
+    /* ---------- Dimension B — fit ---------- */
+    var b = at(spec, "dimension_b") || {};
+    var fromIcp = at(spec, "dimension_b.base_tier_from_icp");
+    var fromFit = at(spec, "dimension_b.base_tier_from_fit");
+    h.push('<section data-section="Dimension B — fit"><div class="sechead">' +
+      "<h2>Dimension B — fit</h2><p>How the anticipated tier is reached, before any adjustment.</p></div>");
+    if (fromIcp) {
+      h.push('<div class="scrollx"><table><thead><tr><th>ICP class</th><th>Base tier</th></tr></thead><tbody>' +
+        Object.keys(fromIcp).map(function (k) {
+          var t = fromIcp[k];
+          return "<tr><td class='k'>" + words(k) + "</td><td><span class='tier t-" + esc(t) + "'>" +
+            esc(t) + "</span></td></tr>";
+        }).join("") + "</tbody></table></div>" +
+        (b.base_tier_from_icp_basis ? "<p class='note'>Basis: " + basis(b.base_tier_from_icp_basis) + "</p>" : ""));
+    } else if (fromFit) {
+      h.push('<div class="scrollx"><table><thead><tr><th>Criteria met</th><th>Base tier</th></tr></thead><tbody>' +
+        Object.keys(fromFit).map(function (k) {
+          return "<tr><td class='k'>" + words(k) + "</td><td><span class='tier t-" + esc(fromFit[k]) +
+            "'>" + esc(fromFit[k]) + "</span></td></tr>";
+        }).join("") + "</tbody></table></div>");
+    } else {
+      h.push(missing("dimension_b.base_tier_from_icp"));
+    }
+    h.push("</section>");
+
+    /* ---------- The adjustment rules ---------- */
+    var adj = at(spec, "dimension_b.adjustments");
+    h.push('<section data-section="The adjustment rules"><div class="sechead">' +
+      "<h2>The adjustment rules</h2><p>Every rule that can move a tier from its base, what fires " +
+      "it, which way it moves, and whether that was <em>ruled</em> or is a default nobody has " +
+      "decided yet.</p></div>");
+    if (Array.isArray(adj) && adj.length) {
+      var cap = at(spec, "dimension_b.net_cap_up"), capd = at(spec, "dimension_b.net_cap_down");
+      h.push('<div class="scrollx"><table><thead><tr><th>Rule</th><th>Fires when</th><th>Moves</th>' +
+        "<th>Basis</th></tr></thead><tbody>" +
+        adj.map(function (a) {
+          var dir = Number(a.delta) > 0 ? "up" : (Number(a.delta) < 0 ? "down" : "");
+          return "<tr><td class='k'>" + esc(a.id || "") + "</td>" +
+            "<td>" + esc(a.rule_text || a.when || "") + "</td>" +
+            "<td class='n'><span class='pill " + dir + "'>" +
+              (Number(a.delta) > 0 ? "+" : "") + esc(a.delta) + "</span></td>" +
+            "<td>" + basis(a.basis) + "</td></tr>";
+        }).join("") + "</tbody></table></div>" +
+        '<p class="note">' + adj.length + " rules, capped at net " + esc(cap) + " up and " +
+        esc(capd) + " down. The cap is what stops a stack of small adjustments quietly becoming a " +
+        "two-tier move.</p>");
+    } else {
+      h.push(missing("dimension_b.adjustments"));
+    }
+    h.push("</section>");
+
+    /* ---------- Dimension A — qualification ---------- */
+    var a = at(spec, "dimension_a") || {};
+    var need = at(spec, "dimension_a.facts_for_qualified") || at(spec, "dimension_a.min_facts_qualified");
+    h.push('<section data-section="Dimension A — qualification"><div class="sechead">' +
+      "<h2>Dimension A — qualification</h2><p>Is the deal real <em>right now</em>? Four facts. " +
+      "This read moves confidence and the qualification label — it never moves the tier.</p></div>" +
+      '<div class="cards">' +
+      '<div class="card"><h3>Money</h3><p>Is there a budget, and is it real money?</p></div>' +
+      '<div class="card"><h3>Authority</h3><p>Is there someone who can say yes, and have we met them?</p></div>' +
+      '<div class="card"><h3>Timing</h3><p>Is there a date, or is this someday?</p></div>' +
+      '<div class="card"><h3>Specification</h3><p>Is there a scope, or only an idea?</p></div>' +
+      "</div>" +
+      '<p class="note">' + (has(need)
+        ? "The engine needs <strong>" + esc(need) + " of 4</strong> before it will say more than " +
+          "Medium confidence."
+        : "How many are needed before confidence rises is read from the rubric and is not set in " +
+          "this version.") +
+      " A missing fact is <em>unknown</em>, and unknown never fires a gate (rule 5) — the tier " +
+      "stands, the confidence does not.</p></section>");
+
+    /* ---------- Potential and the bands ---------- */
+    var pot = at(spec, "potential") || at(spec, "bands");
+    h.push('<section data-section="Potential and the bands"><div class="sechead">' +
+      "<h2>Potential and the bands</h2><p>Ceiling, headroom and year one. Every one is a " +
+      "<strong>band</strong>, never a number — and a band is not a forecast.</p></div>");
+    if (pot && typeof pot === "object") {
+      h.push('<div class="scrollx"><table><thead><tr><th>Band</th><th>Definition</th></tr></thead><tbody>' +
+        Object.keys(pot).map(function (k) {
+          var v = pot[k];
+          return "<tr><td class='k'>" + words(k) + "</td><td>" +
+            (typeof v === "object" ? "<span class='mono'>" + esc(JSON.stringify(v)) + "</span>" : esc(v)) +
+            "</td></tr>";
+        }).join("") + "</tbody></table></div>");
+    } else {
+      h.push(missing("potential"));
+    }
+    h.push('<p class="note alert">The pass mark on these bands is an <strong>open ruling</strong> ' +
+      "(PRO-16). Until it is made, a band says what the relationship could reach, and nothing about " +
+      "how likely that is.</p></section>");
+
+    /* ---------- Signals and how they decay ---------- */
+    var sig = at(spec, "signals.types") || at(spec, "signals");
+    h.push('<section data-section="Signals and how they decay"><div class="sechead">' +
+      "<h2>Signals and how they decay</h2><p>What counts as a live signal, what it is worth, and " +
+      "how long it lasts before it stops counting at all.</p></div>");
+    if (sig && typeof sig === "object" && !Array.isArray(sig)) {
+      var keys = Object.keys(sig).filter(function (k) { return sig[k] && typeof sig[k] === "object"; });
+      if (keys.length) {
+        h.push('<div class="scrollx"><table><thead><tr><th>Signal</th><th>Weight</th>' +
+          "<th>Lifespan</th><th>Decays</th></tr></thead><tbody>" +
+          keys.map(function (k) {
+            var s = sig[k];
+            return "<tr><td class='k'>" + words(k) + "</td>" +
+              "<td class='n'>" + esc(s.weight) + "</td>" +
+              "<td class='n'>" + (has(s.lifespan_days) ? esc(s.lifespan_days) + " days" : "—") + "</td>" +
+              "<td>" + (s.decays === false ? "no" : "yes") + "</td></tr>";
+          }).join("") + "</tbody></table></div>");
+      } else { h.push(missing("signals.types")); }
+    } else { h.push(missing("signals")); }
+    h.push('<p class="note">A signal changes <em>urgency</em>, never the tier. Someone replying to ' +
+      "an email does not make their company bigger.</p></section>");
+
+    /* ---------- The flags ---------- */
+    var vocab = at(spec, "flags.vocabulary");
+    var frules = at(spec, "dimension_b.flag_rules");
+    h.push('<section data-section="The flags"><div class="sechead">' +
+      "<h2>The flags</h2><p>A flag is a reason to <em>check</em>. It is never the reason the engine " +
+      "lowered a tier — the engine has no way to lower a tier with a flag.</p></div>");
+    if (Array.isArray(vocab) && vocab.length) {
+      h.push('<div class="tiers">' + vocab.map(function (f) {
+        return '<span class="pill">' + esc(f) + "</span>"; }).join("") + "</div>");
+    } else { h.push(missing("flags.vocabulary")); }
+    if (Array.isArray(frules) && frules.length) {
+      h.push('<div class="scrollx" style="margin-top:14px"><table><thead><tr><th>Rule</th>' +
+        "<th>Raises</th><th>When</th><th>Basis</th></tr></thead><tbody>" +
+        frules.map(function (f) {
+          return "<tr><td class='k'>" + esc(f.id || "") + "</td><td class='k'>" + esc(f.flag || "") + "</td>" +
+            "<td>" + esc(f.rule_text || f.when || "") + "</td><td>" + basis(f.basis) + "</td></tr>";
+        }).join("") + "</tbody></table></div>");
+    }
+    h.push("</section>");
+
+    /* ---------- Overrides ---------- */
+    var ov = at(spec, "override");
+    h.push('<section data-section="Overrides"><div class="sechead">' +
+      "<h2>Overrides</h2><p>When a person disagrees with the engine. The engine enforces the terms " +
+      "— it refuses an override that breaks them rather than applying it quietly.</p></div>");
+    if (ov) {
+      h.push(kv([["lane", ov.lane], ["tiers it may move", ov.max_tiers_moved],
+                 ["reason code", ov.reason_code_required ? "required" : "optional"],
+                 ["written reason", ov.written_reason_required ? "required" : "optional"],
+                 ["expires after", (ov.expiry_default_days || "?") + " days"],
+                 ["warns before", (ov.expires_soon_days || "?") + " days"]]) +
+        '<div class="tiers" style="margin-top:12px">' + (ov.reason_codes || []).map(function (c) {
+          return '<span class="pill">' + words(c) + "</span>"; }).join("") + "</div>" +
+        (has(ov.ruling) ? '<p class="note">' + esc(ov.ruling) + "</p>" : "") +
+        '<p class="note alert">An override <strong>always lapses</strong>. Leaving the expiry blank ' +
+        "does not make it permanent — the engine derives <span class='mono'>set_at + " +
+        esc(ov.expiry_default_days) + " days</span> when no date is given, and when it lapses the " +
+        "computed tier returns on its own. If a correction is permanent, the honest fix is a " +
+        "<em>fact</em>: facts never expire, and they move the tier with no cap at all, because they " +
+        "correct the input rather than overruling the answer.</p>");
+    } else { h.push(missing("override")); }
+    h.push("</section>");
+
+    /* ---------- What is still unruled ---------- */
+    var open = [];
+    (Array.isArray(adj) ? adj : []).forEach(function (x) {
+      if (x.basis === "unruled_default") open.push(["adjustment " + (x.id || ""), x.rule_text || x.when || ""]);
+    });
+    (Array.isArray(frules) ? frules : []).forEach(function (x) {
+      if (x.basis === "unruled_default") open.push(["flag rule " + (x.id || ""), x.rule_text || x.when || ""]);
+    });
+    h.push('<section data-section="What is still unruled"><div class="sechead">' +
+      "<h2>What is still unruled</h2><p>Every one of these is sitting on a default nobody has " +
+      "decided. They are toggles in the rubric, not opinions in the code — which is what makes " +
+      "them cheap to change once a decision is made.</p></div>" +
+      '<div class="scrollx"><table><thead><tr><th>Open item</th><th>Where it sits today</th></tr></thead><tbody>' +
+      [["Broker character as a safety gate", "flag only — it never blocks a tier (PRO-2r-a)"],
+       ["Minimum facts before a tier is published", "0 — a tier is published on no qualification facts at all"],
+       ["Is the $2K floor an hourly rate or a deal size", "deal size"],
+       ["Who confirms a promotion", "owner lane (PRO-18)"],
+       ["The sizing pass mark on bands", "unset (PRO-16) — bands are printed, never scored"],
+       ["ICP as the fit read", "kept as a label; draft 0.2 retires it for six observable criteria"]]
+        .concat(open)
+        .map(function (r) {
+          return "<tr><td class='k'>" + esc(r[0]) + "</td><td>" + esc(r[1]) + "</td></tr>";
+        }).join("") + "</tbody></table></div>" +
+      '<p class="note">Rulings live in the Grading Register, and how each one landed is recorded in ' +
+      "docs/DECISIONS.md. Nothing in the code is a new ruling.</p></section>");
+
+    /* ---------- The rules the code keeps ---------- */
+    h.push('<section data-section="The rules the code keeps"><div class="sechead">' +
+      "<h2>The rules the code keeps</h2><p>Four properties the engine holds whatever the rubric " +
+      "says. These are not settings.</p></div>" +
+      '<div class="cards">' +
+      '<div class="card rule"><h3>Unknown is never evidence</h3><p>A missing input fires no gate, no ' +
+        "adjustment and no warning. It produces a flag where the rubric names one — and the grade is " +
+        "labelled, never withheld (rule 5).</p></div>" +
+      '<div class="card rule"><h3>Evidence outranks recency</h3><p>A quoted fact beats an inferred ' +
+        "one; then a person beats a machine; then newest wins. Without that middle step the tiebreak " +
+        "is which import ran last (rule 9).</p></div>" +
+      '<div class="card rule"><h3>The engine is pure</h3><p>Same facts plus same rubric equals the ' +
+        "same grade, every time. It reads no clock and no network, and every rule that fired is in " +
+        "the trace with its basis (rule 3).</p></div>" +
+      '<div class="card rule"><h3>The rubric is data</h3><p>Every threshold, band, weight and ' +
+        "lifespan on this page is read from a versioned spec. None of it is hard-coded — which is " +
+        "why this page can be generated from the rubric at all (rule 4).</p></div>" +
+      "</div></section>");
+
+    el("body").innerHTML = h.join("");
+  }
+
+  function fail(msg) {
+    el("fatal").innerHTML = '<div class="err"><strong>The rubric could not be read.</strong><br>' +
+      esc(msg) + "<br><br>Nothing is shown rather than something stale: describing a rubric this " +
+      "page could not load is exactly the failure it exists to prevent.</div>";
+    el("body").innerHTML = "";
+  }
+
+  Promise.all([
+    req("pb_rubric_versions?select=version,activated_at,spec&status=eq.active&order=created_at.desc&limit=1"),
+    rpc("pb_dashboard")
+  ]).then(function (out) {
+    var row = (out[0] || [])[0];
+    var dash = out[1] || {};
+    if (!row || !row.spec) { fail("No active rubric row was returned."); return; }
+    var meta = {
+      version: row.version,
+      activated_at: row.activated_at,
+      fingerprint: (dash.rubric && dash.rubric.fingerprint) || "?",
+      accounts_scored: (dash.rubric && dash.rubric.accounts_scored) || 0
+    };
+    el("asof").textContent = "WLIQ Prospect Book · rubric " + row.version +
+      " · fingerprint " + meta.fingerprint + " · read live";
+    render(row.spec, meta);
+  }).catch(function (e) { fail(e.message || String(e)); });
+
+  (function theme() {
+    var btn = el("themebtn"), saved = null;
+    try { saved = localStorage.getItem("pb-theme"); } catch (e) { saved = null; }
+    function apply(mode) {
+      document.documentElement.setAttribute("data-theme", mode);
+      btn.textContent = mode === "dark" ? "Light" : "Dark";
+      btn.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
+    }
+    apply(saved === "dark" ? "dark" : "light");
+    btn.addEventListener("click", function () {
+      var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      apply(next);
+      try { localStorage.setItem("pb-theme", next); } catch (e) { /* nothing to do */ }
+    });
+  })();
+})();
+</script>
+</body>
+</html>

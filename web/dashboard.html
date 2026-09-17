@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Prospect Book — dashboard</title>
+<!--
+  THE FRONT DASHBOARD. Every high-level number about the book on one screen, and nothing about any
+  one agency — that is the board's job, one click away.
+
+  Its sections are set by web/CONTRACT.json and enforced by scripts/contract_test.ts. Adding one
+  means adding it to the contract first. This page was built after thirteen sections went missing
+  from the dossier under a green test (DECISIONS §46), so it is contract-first by construction.
+
+  Everything here is read live from pb_board() and pb_dashboard(); nothing is baked in, so the
+  page cannot go stale without the book going stale. One file, one inline script, no build step,
+  no CDN, no data at rest.
+-->
+<style>
+:root{
+  --bg:#eef1f4; --surface:#fbfcfd; --surface-2:#f4f6f8; --surface-3:#eaeef2;
+  --ink:#121920; --ink-2:#48545f; --ink-3:#77838d;
+  --rule:#d5dbe1; --rule-2:#e4e9ed;
+  --steel:#2f6c8b;
+  --plat:#2f6c8b; --plat-bg:#dfeaf1; --plat-line:#8fb6c9;
+  --gold:#8a6510; --gold-bg:#f3e9d2; --gold-line:#cfae62;
+  --silver:#5c6874; --silver-bg:#e6eaee; --silver-line:#aab4bf;
+  --bronze:#8f5330; --bronze-bg:#f2e3da; --bronze-line:#c99a7d;
+  --none:#79848d; --none-bg:#eceff1; --none-line:#c2cad1;
+  --alert:#a3341f; --alert-bg:#f7e5e1;
+  --go:#2f6f4f; --go-bg:#dfeee6; --go-line:#8fbda6;
+}
+:root[data-theme="dark"]{
+  --bg:#0f1418; --surface:#161d23; --surface-2:#1b232a; --surface-3:#202932;
+  --ink:#e6ebef; --ink-2:#a4b0ba; --ink-3:#7a868f;
+  --rule:#2a343d; --rule-2:#222b32;
+  --steel:#6fb3d4;
+  --plat:#7cbede; --plat-bg:#14313f; --plat-line:#3b7b9c;
+  --gold:#dcb45e; --gold-bg:#3a2f14; --gold-line:#8d7028;
+  --silver:#9dabb8; --silver-bg:#252e36; --silver-line:#4d5a66;
+  --bronze:#d29066; --bronze-bg:#3a2519; --bronze-line:#8a5735;
+  --none:#8b959d; --none-bg:#222a30; --none-line:#454f57;
+  --alert:#e5836b; --alert-bg:#37201b;
+  --go:#77c49c; --go-bg:#16301f; --go-line:#3c6e51;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 "Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px}
+h1,h2,h3{font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-weight:700;letter-spacing:-.022em;margin:0}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.04}
+h2{font-size:clamp(19px,2.6vw,24px);line-height:1.18}
+h3{font-size:15px}
+p{margin:0}
+a{color:var(--steel)}
+.mono{font-family:"Roboto Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font-family:"Roboto Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-3)}
+:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+
+.topnav{background:var(--surface-2);border-bottom:1px solid var(--rule)}
+.topnav .wrap{display:flex;gap:4px;align-items:center;padding-block:7px;flex-wrap:wrap}
+.navlink{font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.05em;
+  padding:5px 10px;color:var(--ink-2);text-decoration:none;border:1px solid transparent}
+.navlink:hover{color:var(--ink);border-color:var(--rule)}
+.navlink.is-here{background:var(--surface);border-color:var(--rule);color:var(--ink);font-weight:600}
+.navbtn{margin-left:auto;font:inherit;font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;
+  padding:5px 10px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer}
+
+header.top{background:var(--surface);border-bottom:1px solid var(--rule)}
+.mast{display:flex;flex-direction:column;gap:12px;padding-block:30px 26px}
+.lede{font-size:clamp(16px,2vw,18.5px);color:var(--ink-2);max-width:64ch;line-height:1.48}
+.lede em{font-style:normal;color:var(--ink);font-weight:600}
+
+section{padding-block:30px;border-top:1px solid var(--rule)}
+.sechead{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;max-width:66ch}
+.sechead p{color:var(--ink-2);font-size:14.5px}
+
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule)}
+.num{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
+.num .k{font-family:"Roboto Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+.num .v{font-family:"Roboto Mono",ui-monospace,monospace;font-size:26px;font-weight:500;line-height:1.1;
+  font-variant-numeric:tabular-nums}
+.num .b{font-size:12px;color:var(--ink-3);line-height:1.4}
+.num.alert .v{color:var(--alert)}
+.num.go .v{color:var(--go)}
+
+.bar{display:flex;height:26px;overflow:hidden;background:var(--surface-2);margin-bottom:11px}
+.bar span{display:block;height:100%}
+.b-Platinum{background:var(--plat)} .b-Gold{background:var(--gold)}
+.b-Silver{background:var(--silver)} .b-Bronze{background:var(--bronze)}
+.b-Ungraded{background:var(--none-line)}
+.legend{display:flex;flex-wrap:wrap;gap:7px}
+.tier{display:inline-flex;align-items:center;gap:7px;font-family:"Roboto Mono",ui-monospace,monospace;
+  font-size:11.5px;padding:3px 9px;border:1px solid;background:var(--none-bg);color:var(--none);
+  border-color:var(--none-line);text-decoration:none}
+.tier .n{opacity:.72}
+.t-Platinum{background:var(--plat-bg);color:var(--plat);border-color:var(--plat-line)}
+.t-Gold{background:var(--gold-bg);color:var(--gold);border-color:var(--gold-line)}
+.t-Silver{background:var(--silver-bg);color:var(--silver);border-color:var(--silver-line)}
+.t-Bronze{background:var(--bronze-bg);color:var(--bronze);border-color:var(--bronze-line)}
+.t-Ungraded{background:var(--none-bg);color:var(--none);border-color:var(--none-line)}
+
+.axes{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:2px}
+.axis{background:var(--surface);padding:15px 17px;display:flex;flex-direction:column;gap:5px}
+.axis em{font-style:normal;font-family:"Roboto Mono",ui-monospace,monospace;font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.axis p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.axis.is-rank{box-shadow:inset 3px 0 0 var(--steel)}
+
+.hist{display:flex;flex-direction:column;gap:5px}
+.hrow{display:flex;align-items:center;gap:10px}
+.hrow .hk{font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink-2);
+  width:190px;flex:none}
+.hrow .ht{flex:1;height:14px;background:var(--surface-2);border:1px solid var(--rule-2)}
+.hrow .hf{display:block;height:100%;background:var(--steel)}
+.hrow .hf.warn{background:var(--alert)}
+.hrow .hn{font-family:"Roboto Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);
+  width:52px;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:2px}
+.card{background:var(--surface);padding:15px 17px;display:flex;flex-direction:column;gap:7px}
+.card h3{display:flex;gap:8px;align-items:baseline}
+.card .tag{font-family:"Roboto Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.card p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.card.ok{box-shadow:inset 3px 0 0 var(--go)}
+.card.bad{box-shadow:inset 3px 0 0 var(--alert)}
+.card .big{font-family:"Roboto Mono",ui-monospace,monospace;font-size:20px;color:var(--ink)}
+
+.note{margin-top:14px;font-size:14px;color:var(--ink-2);border-left:2px solid var(--steel);
+  padding-left:13px;max-width:68ch;line-height:1.55}
+.note.alert{border-left-color:var(--alert)}
+.err{background:var(--alert-bg);border:1px solid var(--alert);color:var(--alert);padding:14px 16px;
+  font-size:14px;line-height:1.55}
+.loading{color:var(--ink-3);font-family:"Roboto Mono",ui-monospace,monospace;font-size:13px;padding:14px 0}
+footer{border-top:1px solid var(--rule);padding-block:22px 34px;
+  font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink-3);line-height:1.7}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="topnav"><div class="wrap">
+  <a class="navlink is-here" href="dashboard.html" aria-current="page">Dashboard</a>
+  <a class="navlink" href="board.html">The board</a>
+  <a class="navlink" href="method.html">How grading works</a>
+  <a class="navlink" href="index.html">Back office<span class="eyebrow" style="margin-left:6px">sign-in</span></a>
+  <button type="button" class="navbtn" id="themebtn" aria-pressed="false">Dark</button>
+</div></nav>
+
+<header class="top"><div class="wrap"><div class="mast">
+  <p class="eyebrow" id="asof">WLIQ Prospect Book · loading…</p>
+  <h1>The book, at a glance</h1>
+  <p class="lede">Every high-level number in one place: how big the book is, how well we know it,
+    what is waiting on a person, and whether the machinery actually ran. Nothing here is about
+    <em>one</em> agency — that is the board, one click away.</p>
+</div></div></header>
+
+<div class="wrap" id="fatal"></div>
+<div class="wrap" id="body"><p class="loading">Reading the book…</p></div>
+
+<footer><div class="wrap">
+  Every tier word is <strong>anticipated</strong> and carries a confidence (PRO-1r), and reads
+  UNVALIDATED while the rubric says so (PRO-8). No number on this page is a composite score and
+  none is a forecast (PRO-0, PRO-16). Read live from pb_board() and pb_dashboard() — never a
+  snapshot.
+</div></footer>
+
+<script>
+(function () {
+  "use strict";
+  var SUPABASE_URL = "https://sgagrmapuovnjwvgsxbp.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_Rwx3FbwsjnVFx9MUVQX0EA_wm2F52sC";
+  var TIERS = ["Platinum", "Gold", "Silver", "Bronze", "Ungraded"];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;";
+    });
+  }
+  function el(id) { return document.getElementById(id); }
+  function n(x) { return (x == null ? 0 : Number(x)).toLocaleString(); }
+  function day(s) { return s ? String(s).slice(0, 10) : "—"; }
+
+  function req(path, opts) {
+    var o = opts || {};
+    return fetch(SUPABASE_URL + "/rest/v1/" + path, {
+      method: o.method || "GET",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY,
+                 "Content-Type": "application/json" },
+      body: o.method === "POST" ? JSON.stringify(o.args || {}) : undefined
+    }).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(res.status + " " + t.slice(0, 200)); });
+      return res.json();
+    });
+  }
+  function rpc(fn, args) { return req("rpc/" + fn, { method: "POST", args: args }); }
+
+  function num(k, v, b, cls) {
+    return '<div class="num ' + (cls || "") + '"><span class="k">' + esc(k) + '</span>' +
+      '<span class="v">' + v + '</span>' + (b ? '<span class="b">' + b + "</span>" : "") + "</div>";
+  }
+  function hrow(label, count, total, warn) {
+    var pct = total ? (count / total * 100) : 0;
+    return '<div class="hrow"><span class="hk">' + esc(label) + '</span>' +
+      '<span class="ht"><span class="hf' + (warn ? " warn" : "") + '" style="width:' +
+      pct.toFixed(3) + '%"></span></span><span class="hn">' + n(count) + "</span></div>";
+  }
+
+  function render(rows, dash) {
+    var h = [], total = rows.length;
+
+    /* ---------- The book right now ---------- */
+    var ranked = rows.filter(function (r) { return r.effective_tier; }).length;
+    var recs = rows.reduce(function (a, r) { return a + (Number(r.records) || 0); }, 0);
+    var dupes = rows.filter(function (r) { return Number(r.records) > 1; }).length;
+    h.push('<section data-section="The book right now"><div class="sechead">' +
+      "<h2>The book right now</h2><p>One row per company. A company can hold more than one CRM " +
+      "record; where it does, its evidence is split across them until someone merges them.</p></div>" +
+      '<div class="nums">' +
+      num("Companies", n(total), "with no active delivery work") +
+      num("CRM records", n(recs), "behind those companies") +
+      num("Ranked", n(ranked), "the engine reached a tier") +
+      num("Not yet classified", n(total - ranked), "too little on file to place",
+          (total - ranked) > 0 ? "alert" : "") +
+      num("Duplicates", n(dupes), "companies with more than one record", dupes ? "alert" : "") +
+      "</div></section>");
+
+    /* ---------- By anticipated tier ---------- */
+    var counts = {};
+    rows.forEach(function (r) { var t = r.effective_tier || "Ungraded"; counts[t] = (counts[t] || 0) + 1; });
+    h.push('<section data-section="By anticipated tier"><div class="sechead">' +
+      "<h2>By anticipated tier</h2><p>What they could be worth, never what the deal is worth today. " +
+      "Tier changes when their business changes — never because someone answered an email.</p></div>" +
+      '<div class="bar">' + TIERS.map(function (t) {
+        var c = counts[t] || 0;
+        return c ? '<span class="b-' + t + '" style="width:' + (c / total * 100).toFixed(4) +
+          '%" title="' + t + ": " + c + '"></span>' : "";
+      }).join("") + "</div>" +
+      '<div class="legend">' + TIERS.map(function (t) {
+        return '<a class="tier t-' + t + '" href="board.html">' + t +
+          '<span class="n">' + n(counts[t] || 0) + "</span></a>";
+      }).join("") + "</div></section>");
+
+    /* ---------- Three axes that never touch ---------- */
+    var conf = {};
+    rows.forEach(function (r) { var c = r.confidence || "none"; conf[c] = (conf[c] || 0) + 1; });
+    var never = rows.filter(function (r) { return r.engagement === "unknown"; }).length;
+    h.push('<section data-section="Three axes that never touch"><div class="sechead">' +
+      "<h2>Three axes that never touch</h2><p>The owner's ruling, 15 September: " +
+      "<em>“platinum does not mean the deal is real, it means that they have the potential to reach " +
+      "this level.”</em></p></div>" +
+      '<div class="axes">' +
+      '<div class="axis is-rank"><em>sets the rank</em><h3>Tier</h3><p>What could they be worth? ' +
+        (counts.Platinum || 0) + " Platinum and " + (counts.Gold || 0) + " Gold in the book.</p></div>" +
+      '<div class="axis"><em>a column</em><h3>Confidence</h3><p>How well do we know them? ' +
+        Object.keys(conf).sort().map(function (k) { return conf[k] + " " + k; }).join(", ") +
+        ". It never moves the rank.</p></div>" +
+      '<div class="axis"><em>a column</em><h3>Engagement</h3><p>Are they live right now? ' + n(never) +
+        " have never been contacted at all, which says nothing about their size.</p></div>" +
+      "</div></section>");
+
+    /* ---------- How well we know them ---------- */
+    var facts = [0, 0, 0, 0, 0];
+    rows.forEach(function (r) { var f = Math.max(0, Math.min(4, Number(r.facts_present) || 0)); facts[f]++; });
+    h.push('<section data-section="How well we know them"><div class="sechead">' +
+      "<h2>How well we know them</h2><p>Dimension A is four facts — is there money, is there " +
+      "someone who can say yes, is there a timeline, is there a spec. The engine needs three before " +
+      "it will say more than Medium confidence.</p></div>" +
+      '<div class="hist">' +
+      facts.map(function (c, i) {
+        return hrow(i + " of 4 facts on file", c, total, i < 3);
+      }).join("") + "</div>" +
+      '<p class="note">Confidence is about <strong>what the book knows</strong>, not about the ' +
+      "prospect. A Platinum on one fact is still a Platinum — we simply have less reason to be sure.</p>" +
+      "</section>");
+
+    /* ---------- Never contacted ---------- */
+    var untouched = rows.filter(function (r) { return r.untouched_high_potential; }).length;
+    var topNever = rows.slice(0, 100).filter(function (r) { return r.engagement === "unknown"; }).length;
+    h.push('<section data-section="Never contacted"><div class="sechead">' +
+      "<h2>Never contacted</h2><p>The most actionable number in the book: high potential, and " +
+      "nobody has ever opened a conversation.</p></div>" +
+      '<div class="nums">' +
+      num("Gold or better, never contacted", n(untouched), "the working list", untouched ? "alert" : "go") +
+      num("In the top 100", n(topNever), "of the highest-potential hundred") +
+      num("Never contacted, any tier", n(never), "of " + n(total) + " companies") +
+      "</div>" +
+      '<p class="note alert">Absence of contact is <strong>not evidence</strong> (rule 5). A company ' +
+      "with nothing on file reads <em>unknown</em>, never <em>cold</em> — nobody has tried.</p></section>");
+
+    /* ---------- Waiting on a person ---------- */
+    var q = (dash && dash.queue) || { total: 0, by_reason: {}, confirmable_together: 0 };
+    var reasons = Object.keys(q.by_reason || {}).sort(function (a, b) {
+      return (q.by_reason[b] || 0) - (q.by_reason[a] || 0); });
+    h.push('<section data-section="Waiting on a person"><div class="sechead">' +
+      "<h2>Waiting on a person</h2><p>Claims read out of calls, notes and websites that were " +
+      "<strong>not written</strong> into the book. Nothing reaches a fact on a machine's say-so " +
+      "(rule 8) — these are what the machine declined to decide.</p></div>" +
+      '<div class="nums">' +
+      num("Waiting", n(q.total), "claims proposed, none written", q.total ? "alert" : "go") +
+      num("Can be confirmed together", n(q.confirmable_together),
+          "rated high, quoted, nothing on file for that key", q.confirmable_together ? "go" : "") +
+      "</div>" +
+      (reasons.length
+        ? '<div class="hist" style="margin-top:14px">' + reasons.map(function (k) {
+            return hrow(k, q.by_reason[k], q.total, k.indexOf("clear") !== 0);
+          }).join("") + "</div>"
+        : "") +
+      '<p class="note">The ones that are not clear are not backlog — each needs a person because ' +
+      "something has to be weighed: the extractor was unsure, the sentence is an assessment rather " +
+      "than something you could check, or the book already holds a different answer. " +
+      '<a href="index.html#queue">Review them in the back office</a>.</p></section>');
+
+    /* ---------- Is the machinery running ---------- */
+    var runs = (dash && dash.runs) || {};
+    var rb = (dash && dash.rubric) || {};
+    var ovr = (dash && dash.overrides) || { live: 0, expiring_30d: 0 };
+    function runCard(key, label, what) {
+      var r = runs[key];
+      var ok = r && r.status === "success";
+      var age = r && r.finished_at
+        ? Math.floor((Date.now() - new Date(r.finished_at).getTime()) / 86400000) : null;
+      return '<div class="card ' + (ok && age != null && age <= 1 ? "ok" : "bad") + '">' +
+        "<h3>" + esc(label) + '<span class="tag">' + esc(key) + "</span></h3>" +
+        '<p class="big">' + (r ? esc(day(r.finished_at)) : "never") + "</p>" +
+        "<p>" + (r
+          ? esc(r.status) + (age != null ? " · " + age + " day" + (age === 1 ? "" : "s") + " ago" : "")
+          : "No run on record at all.") + "</p>" +
+        "<p>" + esc(what) + "</p></div>";
+    }
+    h.push('<section data-section="Is the machinery running"><div class="sechead">' +
+      "<h2>Is the machinery running</h2><p>A book that stopped updating looks exactly like a book " +
+      "where nothing changed. These are the dates that tell the two apart.</p></div>" +
+      '<div class="cards">' +
+      runCard("pb-score", "Scoring run", "Reads the facts and writes every tier. 06:15 UTC nightly.") +
+      runCard("pb-notes", "Note sweep", "Reads calls and notes for new facts. 05:45 UTC nightly.") +
+      '<div class="card"><h3>Active rubric<span class="tag">the contract</span></h3>' +
+        '<p class="big">' + esc(rb.version || "?") + "</p>" +
+        "<p>fingerprint " + esc(rb.fingerprint || "?") + "</p>" +
+        "<p>" + n(rb.accounts_scored) + " accounts scored under it · activated " +
+        esc(day(rb.activated_at)) + "</p></div>" +
+      '<div class="card' + (ovr.expiring_30d ? " bad" : "") + '">' +
+        '<h3>Overrides<span class="tag">by hand</span></h3>' +
+        '<p class="big">' + n(ovr.live) + "</p>" +
+        "<p>live, set by a person against the engine</p>" +
+        "<p>" + (ovr.expiring_30d
+          ? "<strong>" + n(ovr.expiring_30d) + " lapse within 30 days</strong> — when one lapses the " +
+            "computed tier returns on its own."
+          : "None lapsing in the next 30 days.") + "</p></div>" +
+      "</div></section>");
+
+    /* ---------- What changed on the last run ---------- */
+    var m = (dash && dash.movement) || null;
+    h.push('<section data-section="What changed on the last run"><div class="sechead">' +
+      "<h2>What changed on the last run</h2><p>The answer to “did this change under me”. Measured " +
+      "by the engine against each account's own previous read.</p></div>" +
+      (m
+        ? '<div class="nums">' +
+          num("Accounts scored", n(m.accounts), esc(day(m.run_at))) +
+          num("Changed tier", n(m.tier_moved), "against their own last read", m.tier_moved ? "alert" : "go") +
+          num("Promoted", n(m.promoted), "moved up a tier") +
+          num("Demoted", n(m.demoted), "moved down a tier", m.demoted ? "alert" : "") +
+          num("Newly ranked", n(m.newly_ranked), "reached a tier for the first time") +
+          num("Facts changed", n(m.facts_changed), "new evidence arrived") +
+          "</div>"
+        : '<p class="err">No movement has been recorded yet.</p>') +
+      '<p class="note alert">This counts <em>how many</em> moved, not <em>which</em>. Naming them ' +
+      "is the missing half, and it is the next thing worth building: until it exists, a tier can " +
+      "change overnight and the only way to notice is to have remembered where it was.</p></section>");
+
+    /* ---------- What this page is not ---------- */
+    h.push('<section data-section="What this page is not"><div class="sechead">' +
+      "<h2>What this page is not</h2></div>" +
+      '<div class="cards">' +
+      '<div class="card"><h3>Not a score</h3><p>Four reads plus deal health, never summed. The book ' +
+        "outputs a rank and bands — a single number would hide which read moved and why (PRO-0).</p></div>" +
+      '<div class="card"><h3>Not a forecast</h3><p>Year-one and ceiling are <em>bands</em>. The pass ' +
+        "mark on them is an open ruling (PRO-16), so no number here is a prediction of revenue.</p></div>" +
+      '<div class="card"><h3>Not validated</h3><p>Every tier word reads UNVALIDATED while the rubric ' +
+        "says so (PRO-8): the method has not yet been checked against won and lost outcomes.</p></div>" +
+      '<div class="card"><h3>Not a contact list</h3><p>Engagement is a column, never a position. ' +
+        "Sorting by who replied is the old board's question, and it buried the biggest prospects.</p></div>" +
+      "</div></section>");
+
+    el("body").innerHTML = h.join("");
+  }
+
+  function fail(msg) {
+    el("fatal").innerHTML = '<div class="err"><strong>The dashboard could not be read.</strong><br>' +
+      esc(msg) + "<br><br>Nothing is shown rather than something stale: an empty page is an honest " +
+      "answer, a cached one is not.</div>";
+    el("body").innerHTML = "";
+  }
+
+  Promise.all([rpc("pb_board"), rpc("pb_dashboard")]).then(function (out) {
+    var rows = out[0] || [], dash = out[1] || {};
+    if (!rows.length) { fail("The board returned no rows."); return; }
+    var scored = dash.runs && dash.runs["pb-score"] ? dash.runs["pb-score"].finished_at : null;
+    el("asof").textContent = "WLIQ Prospect Book · scored " +
+      (scored ? String(scored).slice(0, 16).replace("T", " ") + " UTC" : "date unknown") +
+      " · rubric " + ((dash.rubric && dash.rubric.version) || "?");
+    render(rows, dash);
+  }).catch(function (e) { fail(e.message || String(e)); });
+
+  /* Light unless the reader chose dark; the choice is remembered on this browser. localStorage
+     throws in a private window, so every touch of it is guarded and the page renders regardless. */
+  (function theme() {
+    var btn = el("themebtn"), saved = null;
+    try { saved = localStorage.getItem("pb-theme"); } catch (e) { saved = null; }
+    function apply(mode) {
+      document.documentElement.setAttribute("data-theme", mode);
+      btn.textContent = mode === "dark" ? "Light" : "Dark";
+      btn.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
+    }
+    apply(saved === "dark" ? "dark" : "light");
+    btn.addEventListener("click", function () {
+      var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      apply(next);
+      try { localStorage.setItem("pb-theme", next); } catch (e) { /* nothing to do */ }
+    });
+  })();
+})();
+</script>
+</body>
+</html>

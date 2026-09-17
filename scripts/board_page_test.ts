@@ -15,7 +15,7 @@
  *  - It says UNVALIDATED and anticipated (PRO-1r, PRO-8).
  *  - It fails visibly rather than showing stale rows.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -93,11 +93,17 @@ check("marks which screen you are on", /aria-current="page"/.test(page));
 check("a row opens a dossier", /function openDossier/.test(page));
 check("rows carry the account id that opens it", /data-account="/.test(page));
 check("the dossier is read through pb_dossier()", /rpc\("pb_dossier", \{ p_account_id/.test(page));
-for (const section of [
-  "Make this call", "Where we win", "What kills it", "How they got here", "How we got here",
-  "How they see us", "Why it ranks here", "What we actually know", "Who they buy for",
-  "The site read", "Independent check", "Decisions on the record", "Sources",
-]) check(`dossier keeps the section: ${section}`, page.includes(`"${section}"`));
+// The dossier's SECTION NAMES are no longer pinned here, and that is the fix rather than a
+// loosening. This list used to hold thirteen names and pass, while thirteen OTHER sections of the
+// owner's approved layout were missing — because the list was written by reading the page I had
+// just built. A check derived from the implementation cannot notice an absence: the absence is in
+// the check too (DECISIONS §46).
+//
+// web/CONTRACT.json now owns the section names, written from the artifact the owner ruled, and
+// scripts/contract_test.ts enforces presence, order and that nothing unrecorded was added. This
+// file keeps what it is actually good at: the board's BEHAVIOUR.
+check("the contract that owns the section names exists and is enforced",
+  existsSync(join(here, "..", "web", "CONTRACT.json")) && existsSync(join(here, "contract_test.ts")));
 check("the engine's reason sentence is shown verbatim", /read\.reason/.test(page));
 check("the rubric version and fingerprint are shown", /rubric_fingerprint/.test(page));
 check("facts show their evidence label", /evidence_label/.test(page));
