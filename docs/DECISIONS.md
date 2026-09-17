@@ -3435,3 +3435,74 @@ need the link-following fetcher above before this channel has anything of theirs
 
 **Deployed.** pb-notes **v13**, a pinned-commit entrypoint at `30e6b11` (RUNBOOK §3),
 `verify_jwt: false` confirmed in the deploy response.
+
+---
+
+## §51 — Bulk confirm widened to what is corroborated, not to what a model felt sure about (17 Sep 2026)
+
+**Owner ruling: "confirm bulk confirm."** Asked whether the review queue really needed reading item
+by item, the honest answer was to measure it rather than to estimate it — and the measurement said
+the §45 test was doing the right thing for the wrong reason.
+
+§45 admitted exactly one class: the extractor rated it high, a verbatim quote is attached, the book
+holds nothing for that key. That is a sound test. But it makes THE MODEL'S OWN CONFIDENCE the only
+evidence of anything, and it therefore misses the two cases where a claim is settled by something
+outside the model entirely:
+
+| Why it is in the queue | Count |
+|---|---|
+| Rated high, quoted, nothing on file | 212 |
+| **The book already holds this exact value** | 120 |
+| **A second record, from a different source, says the same** | 7 |
+| No usable quote | 30 |
+| Disagrees with a fact on file | 244 |
+| Single source, medium or low, nothing corroborates it | 606 |
+
+**What was added.** Two classes, both resting on agreement rather than on confidence:
+
+`corroborates_what_is_held` — the book already holds this exact value for this key, from a record
+read separately. The candidate cannot change the book's answer; it can only raise the standing of
+an answer already given. Where the held label is `inferred`, that is a real improvement: same value,
+now with a sentence behind it, and under rule 9 `evidence > inferred` so the resolved value does not
+move while the confidence the book reports about that account rises honestly. **Where the held label
+is already `evidence`, nothing is written at all** — the candidate is closed as superseded, because
+a second evidence row for a value the book already evidences adds a row and no information, and
+rule 9 would never consult it. 75 upgrades, 45 closures.
+
+`second_independent_source` — the book holds nothing, but another candidate on the same account and
+key, **from a different source**, claims the same value with its own quote. Two records that never
+saw each other saying the same thing is the oldest evidence test there is, and it is a better one
+than a single model's "high". Only 7 today; it grows every time a second channel reads an account
+the first one already read.
+
+**Both new classes require `kind = 'observation'` explicitly** — not "is not a judgement". Two
+opinions agreeing is a consensus of opinions, not corroboration.
+
+**Which meant `kind` had to become a column.** The extractor has always decided observation vs
+judgement: the model says which, and `notes_sweep.JUDGEMENT_MARKERS` overrules it, because a model
+that wants to be useful will call an opinion an observation. That verdict routed the claim into the
+queue and was then **thrown away** — the queue knew only from a sentence in the candidate's `note`.
+Fine while a person read every sentence; not fine the moment a rule decides in bulk, and
+prose-matching a note is not a test when `pb_fact_candidates` has four producers writing four note
+shapes. So the verdict travels with the row now (migration `20260917233631`), backfilled once from
+the two note shapes `written_record.ts` emits and NULL everywhere else. **NULL means the producer
+did not say, not "observation"** — the 16 September research pass has no such notion, so its 538
+rows are declined by the new rules. Rule 5: unknown is never evidence.
+
+**§45's class is untouched**, including its acceptance of a NULL kind. It was ruled on its own terms
+and this does not re-open it.
+
+**Everything else is unchanged and still refused in the database, not in the page.** A value that
+disagrees with what is on file is never settled by a click — and the disagreement is re-derived
+against `pb_current_facts` at confirm time rather than read off the candidate's `conflicts` column,
+which is a snapshot from when it was written and may be hours stale. A quote is the floor for all
+three classes. Owner lane only. At most 250 in one decision. One register row per ACCOUNT, saying
+the word "bulk" with the batch size — and now carrying the rule counts in its payload, so a reader
+can see WHICH test admitted what rather than only how many.
+
+**The result on the book as it stands: 339 of 1,289 queued claims clear without a person reading
+one** — 294 written, 45 closed, across about a hundred accounts. 950 still need reading, and 244 of
+those are disagreements, which is exactly the work a person should be doing.
+
+`web/index.html` mirrors the three classes so the button's count is the count that lands, and says
+so in the dialog. The page is a preview; the function is the rule.

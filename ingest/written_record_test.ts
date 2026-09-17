@@ -187,11 +187,23 @@ check("noteFingerprint is eight hex characters", /^[0-9a-f]{8}$/.test(noteFinger
   eq("keeping the sentence, so the reviewer can weigh it", r.candidates[0].quote, "Classified GENUINE, strong fit");
   check("and the reason says why", r.candidates[0].note.includes("assessment, not something a reader could check"));
   eq("counted apart from the other queues", r.counters.queued_judgement, 1);
+  /* The verdict travels WITH the candidate, not only in its prose. It used to be read, used to
+     route the claim here, and then be dropped — survivable while a person read every sentence,
+     not survivable once a rule confirms in bulk (DECISIONS §51). */
+  eq("and the candidate says it is a judgement", r.candidates[0].kind, "judgement");
 }
 
 {
   const r = run([{ note_id: 9001, claims: [claim("is_agency", true, "Full-service agency, 14 people", "high", "observation")] }]);
   eq("an observation with a real sentence still writes", r.facts.length, 1);
+}
+
+{
+  /* An observation that is queued for some OTHER reason still records that it is one — which is
+     the whole point: the bulk rules read this column on claims that did not write themselves. */
+  const r = run([{ note_id: 9001, claims: [claim("headcount", 14, "We are fourteen people", "medium", "observation")] }]);
+  eq("a medium observation queues", r.candidates.length, 1);
+  eq("and is recorded as an observation", r.candidates[0].kind, "observation");
 }
 
 {

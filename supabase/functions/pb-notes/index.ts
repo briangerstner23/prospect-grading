@@ -767,7 +767,7 @@ Deno.serve(async (req: Request) => {
               evidence_label: c.evidence_label, source: c.source, source_id: c.source_id,
               evidence_url: c.evidence_url, quote: c.quote, observed_at: c.observed_at,
               confidence: c.confidence, extractor: c.extractor, fingerprint: c.fingerprint,
-              current_value: c.current_value, conflicts: c.conflicts, note: c.note,
+              current_value: c.current_value, conflicts: c.conflicts, kind: c.kind, note: c.note,
             }));
 
             if (!dry_run) {
