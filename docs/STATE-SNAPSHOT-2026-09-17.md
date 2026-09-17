@@ -12,7 +12,7 @@ Aggregate counts only, per rule 2. Every figure below is reproducible from the q
 
 ## 1 · The rubric that is actually grading
 
-*Point-in-time. Superseded later the same day by 0.1.4 — DECISIONS §25.*
+*Point-in-time. Superseded later the same day by 0.1.4 — DECISIONS §31.*
 
 | | |
 |---|---|
@@ -63,7 +63,7 @@ The signal-vocabulary mismatch is real regardless.
 
 ## 2 · Migrations: what is applied versus what is filed
 
-*Point-in-time. Later the same day the 4 pre-16-Sep entries were filed verbatim (DECISIONS §26); the 29 boards entries wait on decision 2.*
+*Point-in-time. Later the same day the 4 pre-16-Sep entries were filed verbatim (DECISIONS §32); the 29 boards entries wait on decision 2.*
 
 64 Prospect Book migrations applied (75 total in a project shared with other WLIQ systems);
 31 `.sql` files on disk. **33 applied with no file.**
@@ -132,7 +132,7 @@ never summed (`CLAUDE.md` rule: "never a composite number"). Nothing prevented i
 
 ## 4 · Source liveness
 
-*Point-in-time. The Fathom row was acted on later the same day — DECISIONS §24.*
+*Point-in-time. The Fathom row was acted on later the same day — DECISIONS §30.*
 
 | Source | Newest row | Live? |
 |---|---|---|

@@ -292,9 +292,9 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
  * recording ids, four recorders, held_at spanning 11 seconds, and one external attendee.
  * ------------------------------------------------------------------ */
 {
-  const ext = { name: "H M", email: "hmatthews@brainjar.example", is_external: true, domain: "brainjar.example" };
+  const ext = { name: "D F", email: "dfox@northgate.example", is_external: true, domain: "northgate.example" };
   const wliq = (e: string) => ({ name: e, email: e, is_external: false, domain: null });
-  const TITLE = "Caitlin Sims and Hartford Matthews";
+  const TITLE = "Robin Vale and Dana Fox";
 
   // The four recorders, each with their own start time and their own idea of who was internal.
   const rec1 = meetingKey(TITLE, "2026-06-29T18:02:12+00:00", [wliq("a@wliq.example"), wliq("b@wliq.example"), ext]);
@@ -304,7 +304,7 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
   const rec4 = meetingKey(TITLE, "2026-06-29T18:02:23+00:00", [wliq("c@wliq.example"), ext]);
   check("meetingKey: four recorders of one call agree", rec1 === rec2 && rec2 === rec3 && rec3 === rec4);
   check("meetingKey: differing internal attendees do not split the meeting", rec3 === rec4);
-  eq("meetingKey: shape is date|title|external emails", rec1, "2026-06-29|caitlin sims and hartford matthews|hmatthews@brainjar.example");
+  eq("meetingKey: shape is date|title|external emails", rec1, "2026-06-29|robin vale and dana fox|dfox@northgate.example");
 
   // Same title and people, a week later: a recurring call is a different meeting.
   check("meetingKey: the same call next week is a different meeting",
@@ -316,7 +316,7 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
 
   // Normalisation.
   eq("meetingKey: title case and whitespace are normalised",
-    meetingKey("  Caitlin   Sims AND Hartford Matthews ", "2026-06-29T18:02:12Z", [ext]), rec1);
+    meetingKey("  Robin   Vale AND Dana Fox ", "2026-06-29T18:02:12Z", [ext]), rec1);
   eq("meetingKey: external addresses are lower-cased, de-duplicated and sorted",
     meetingKey("x", "2026-06-29T00:00:00Z", [{ ...ext, email: "B@z.example" }, { ...ext, email: "a@z.example" }, { ...ext, email: "b@z.example" }]),
     "2026-06-29|x|a@z.example,b@z.example");
@@ -332,7 +332,7 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
     meetingKey(null, "2026-06-29T00:00:00Z", [{ name: "?", email: null, is_external: true, domain: null }]), null);
   check("meetingKey: a title alone still keys", meetingKey("Just a title", "2026-06-29T00:00:00Z", []) !== null);
   eq("meetingKey: a missing held_at leaves the date empty rather than throwing",
-    meetingKey("x", null, [ext]), "|x|hmatthews@brainjar.example");
+    meetingKey("x", null, [ext]), "|x|dfox@northgate.example");
   eq("meetingKey: is deterministic", meetingKey(TITLE, "2026-06-29T18:02:12Z", [ext]), meetingKey(TITLE, "2026-06-29T18:02:12Z", [ext]));
 }
 

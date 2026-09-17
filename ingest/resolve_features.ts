@@ -425,7 +425,16 @@ function labelRank(label: unknown): number {
   return label === "evidence" ? 0 : label === "inferred" ? 1 : 2;
 }
 
-/** The view's `case source … end`, verbatim. An unlisted source ranks last, like the view's `else`. */
+/**
+ * The view's `case source … end`, verbatim. An unlisted source ranks last, like the view's `else`,
+ * so a new collector never silently outranks a person.
+ *
+ * `website` above `apollo` and `pipedrive` is the point of the order (16 Sep measurement):
+ * Apollo's headcount counts LinkedIn profiles claiming the employer, so it carries alumni and
+ * contractors — against the nine accounts where a headcount was stated on a recorded call it is
+ * exact twice, within 25% four times of seven, and 4x high once. A team page is a claim the
+ * agency makes about itself.
+ */
 const SOURCE_RANK: Readonly<Record<string, number>> = {
   rater: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6,
 };
@@ -447,6 +456,9 @@ function sourceRank(source: unknown): number {
  *
  * Recency alone is not quality. A quote-backed sentence from a 2025 call note beats a machine
  * guess made this morning, and under a pure created_at sort the next sweep would overwrite it.
+ * Within one label, write order is not a judgement either: 111 accounts carry a headcount from
+ * both Apollo and Pipedrive, 38 of them land on opposite sides of the 12-person Partner
+ * threshold, and which one won was decided by the order the two seeds happened to run.
  * The view and this function must stay in step — pb-score reads one, the pure path the other.
  */
 function latestFactPerKey(facts: FactRow[]): Map<string, FactRow> {

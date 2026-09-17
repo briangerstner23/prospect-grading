@@ -13,7 +13,7 @@ build proceeds on. Nothing here is a new ruling.
 | 1 | Tier-1 size: plan against 15–20, hold the rest of the 46 as Tier-2 candidates? | Not ruled. PRO-0 says the grade orders the chase list; tier sizing is Brian's allocation ("grading ≠ organizing", ruled July). | The engine outputs a `chase_rank_key`; no capacity cap is applied in the grade. The tier→play table is configuration for Phase 3. |
 | 2 | ICP changes: floor ICP-3 at $10K, drop ICP-6, add recurring / niche / AM-PM / AI-positive as scored attributes? | **PRO-4: ICP-6 stays in scope, flagged**, excluded from agency-only weights. PRO-15: keep the six ICPs and the July structure; test each piece as data arrives. | ICP-6 rows graded, flagged "Direct-to-client", agency-only adjustments skipped. The ICP-3 floor and the four research attributes are **named adjustment rules with basis `reasoned`**, toggleable, inside the ruled one-grade net cap. |
 | 3 | Weights: run the lift analysis first, or equal weights and calibrate after a quarter? | PRO-12: enrichment first, then fit. PRO-8: pre-registered rank agreement ≥ 0.5; the cohort test on tier vs year-one ran and **did not meet it** (ρ = 0.270, **CI [−0.142, 0.647], n = 31, clients only**); the pre-signing harvest has not run. The interval spans zero, so the test did not distinguish a useless model from a good one — see `docs/BASELINE.md` §5. UNVALIDATED stands; "not yet shown to work" is not "shown not to work". | v0.1 ships **UNVALIDATED (PRO-8)** on every scorecard, with equal (±1 rung) adjustments and every basis labelled. The fit runs when the harvest exists; it is not in this repo's Phase 1. |
-| 4 | Who rates prospects and holds the override lane? | **PRO-5 (revised):** the two sales raters rate their own rows; Brian may stand in, recorded as a stand-in; **Brian alone overrides**. Deepak's lane is retired. PRO-2r: there are no judgment questions — raters enter **facts**. | `pb_members.role` = owner / rater / viewer; `pb_facts.entered_by` + `stand_in`; override insert policy is owner-only; per-rater comparison is a first-class report (later phase). |
+| 4 | Who rates prospects and holds the override lane? | **PRO-5 (revised):** the two sales raters rate their own rows; Brian may stand in, recorded as a stand-in; **Brian alone overrides**. A third rater lane is retired. PRO-2r: there are no judgment questions — raters enter **facts**. | `pb_members.role` = owner / rater / viewer; `pb_facts.entered_by` + `stand_in`; override insert policy is owner-only; per-rater comparison is a first-class report (later phase). |
 | 5 | SPICED as the shared qualification record, MEDDIC-lite above $35K/yr? | Not ruled. PRO-2r's Dimension A (money, authority, timing, specification) is the ruled qualification test. | Dimension A is the qualification read. SPICED's fields (pain, impact, critical event, decision) are the Fathom call-extraction schema, which feeds Dimension A and deal health; nothing is scored on them. |
 | 6 | Pipedrive stays the deal-motion record with write-back, or the Prospect Book becomes the record? | **PRO-6: Pipedrive is the source of truth for the roster, until it is not.** The Orbit CRM and the sales spreadsheet are uncertified. The database is still the grading record (the brief's architecture rule, not contradicted). | `pb_accounts.roster_certified` is true only for rows Pipedrive carries. Every other list seeds rows flagged "Roster source uncertified" and still graded (a grade is labelled, never withheld). Write-back is Phase 3. |
 | 7 | Share the Prospect Book publicly like the Client Book, or keep it private? | **PRO-7: anyone at WLIQ who signs in.** Not public. | **Superseded on 10 Sep 2026 by Brian's instruction: the book reads publicly.** See §5. Writes are unchanged and still by lane (PRO-5). |
@@ -587,15 +587,15 @@ changes, a sales-qualified label is a restatement of what Pipedrive already held
 ### Fathom, measured against the book
 
 The book holds 12 recordings — 9 meetings — newest 19 August. The Fathom API returns **260
-meetings between 11 August and 11 September alone**, with more behind the cursor. Among them:
-"Ridge Media LLC : Riverside GBP report Walk Through" (3 Sep, twice), "WLIQ/Image Shoppe: Weekly
-Meeting" (1 and 8 Sep), "Campfire Digital : Next Action Planning" (27 Aug). Ridge Media is
+meetings between 11 August and 11 September alone**, with more behind the cursor. Among them a
+report walk-through with a chase-list agency (3 Sep, twice), a weekly meeting with another
+(1 and 8 Sep), and a next-action planning call with a third (27 Aug). The first of those is
 **rung 9** of the chase list; the book had never read a word anyone said to them.
 
 ### Three faults in who is on the list
 
 1. **24 duplicate agencies**, 48 rows, 37 of them in the live chase list — almost all one
-   certified Pipedrive row plus one uncertified Notion-seed row. Nettra Media occupied rungs 8
+   certified Pipedrive row plus one uncertified Notion-seed row. One agency occupied rungs 8
    and 28 simultaneously.
 2. **104 accounts with no domain.** Domain is the join key for attributing a call or an email, so
    those accounts are structurally unreachable by Fathom or Gmail however often the sweep runs.
@@ -609,15 +609,16 @@ Meeting" (1 and 8 Sep), "Campfire Digital : Next Action Planning" (27 Aug). Ridg
 - **18 duplicates merged** through `pb_merge_accounts`, each recorded in `pb_register`. The
   certified Pipedrive row survives (PRO-6); the Notion row's facts, signals, contacts and
   candidates move to it. 680 accounts → 662.
-- **Ridge Media LLC given its domain** (`ridgemediallc.com`), evidenced by the external attendee
-  on two Fathom recordings, and recorded in the register.
+- **One account given its domain**, evidenced by the external attendee on two Fathom recordings,
+  and recorded in the register.
 - Re-scored: 601 ranked, 54 unclassified, 7 parked, 0 errors.
 
 ### What is left, and who owns it
 
-- **5 duplicate pairs carry two different domains each** — Altitude Marketing vs Altitude
-  Marketing & Media Partners, Bloor Advisory vs Bloor Capital, Arcanum, BCom, Dynamic Marketing
-  Consultants. These may be separate companies rather than duplicates; a person decides (rule 8).
+- **5 duplicate pairs carry two different domains each** — in three of them one name is a
+  lengthened form of the other (an agency and an agency "& Media Partners"), in the rest the two
+  names share a first word only. These may be separate companies rather than duplicates; a person
+  decides (rule 8).
 - **Two rows named `TBD`**, both Pipedrive placeholders, are not agencies and should leave the book.
 - **85 accounts still lack a domain**, but only about 20 are real agencies. The rest are the
   non-agency contamination above. Their contact emails are no help: 64 of them have one and every
@@ -651,10 +652,12 @@ now; the other cohorts' grading is later work.
 null 81), which covers two of them. Nothing for peer communities or Friends of WLIQ.
 
 And the gap is not theoretical: **all 31 Friends-of-WLIQ organisations in Pipedrive are absent
-from `pb_accounts` entirely** — among them *Agency Management Institute*, AMIN Worldwide,
-Predictive ROI, Sakas and Company, Agency Builders and Dynamic Agency OS. The rubric carries an
-adjustment, `ADJ-REF`, that rewards a "referral from the Brian / AMI / BABA network", and it fires
-on real accounts — while the network it names is tracked nowhere in the book.
+from `pb_accounts` entirely** — the owner's peer network: the agency-owner membership body he
+belongs to, two agency-buyer networks, a research partner, a consultancy and two operator
+communities. The rubric carries an adjustment, `ADJ-REF`, that rewards a referral from exactly
+that network, and it fires on real accounts — while the network it names is tracked nowhere in
+the book. (Named here originally; shaped on 16 Sep when those organisations entered the roster
+and rule 2 began to bite — see the note at the end of §28.)
 
 That stage also mixes cohorts: peer bodies sit beside vendors (WP Engine) and ordinary agencies
 (Spindustry, SJ Innovation, B Squared Media). "Friends of WLIQ" is a journey stage, not a cohort,
@@ -1112,7 +1115,7 @@ found at all.
 
 ### What happened
 
-Miranda Creative is a thirty-year-old Connecticut agency. Brian was on site on 20 August; their
+One account is a thirty-year-old New England agency. The owner was on site on 20 August; their
 web/ops director closed the meeting with *"I'm ready to go. I'm sold."* They run dozens of sites,
 their workload swings between 5 and 500 hours a month, and they had just been burned by an offshore
 vendor. They are, by any sales reading, one of the better prospects in the book.
@@ -1328,8 +1331,8 @@ rate tolerance and whether a partnership lasts — ceiling-type, economics and c
 not size ones. It is recorded so those can be tested against outcomes before anyone wires it into
 an arithmetic.
 
-This also resolves an apparent contradiction in the same session. Of More Better Design Studio (one
-person) the owner said *"they're really small too for one person… not quite meet the goal for
+This also resolves an apparent contradiction in the same session. Of a one-person studio the
+owner said *"they're really small too for one person… not quite meet the goal for
 platinum"*, and of one-person agencies in general, *"1 person can still be platinum"*. Both hold: a
 solo operator with a thirty-strong bench and enterprise clients has Platinum capacity; a solo
 operator with neither has a good small business. Experience makes them a good client, not a big one.
@@ -1355,11 +1358,839 @@ from being small.
 
 Nothing collects either fact yet, so every account resolves through the fallback and today's
 numbers are unchanged — the same trap as `build_demand_exceeds_capacity` in §19. Both are
-portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and Tomahawk's
-own note already carries the latter unextracted. The collector is the next build, and until it
+portfolio-readable: a team page gives capacity, a "founded 2002" line gives maturity, and at least
+one account's own note already carries the latter unextracted. The collector is the next build, and until it
 exists this ruling is potential rather than effect.
 
-## 22 · The research was never checked against the build (16 September 2026)
+## 22 · Which source wins, and reading the agency's own site (15 September 2026)
+
+### What was wrong
+
+`pb_current_facts` resolved a contested key by `evidence_label`, then `created_at desc`. Within
+one label that made **write order** the tiebreak — not a judgement about quality, an accident of
+which seed ran last.
+
+Measured across the prospect book on 15 September:
+
+| | |
+|---|---|
+| accounts carrying a headcount from **both** Apollo and Pipedrive | 111 |
+| of those, the two agree | 12 |
+| median Apollo ÷ Pipedrive | **2.00** (upper quartile 9.25) |
+| disagree by 2× or more | 69 |
+| **land on opposite sides of the 12-person Partner threshold** | **38** |
+
+Apollo wins 109 of the 111 today. Not because it is better: the Apollo seed ran 11 September and
+the Pipedrive seed 9 September. Re-running the Pipedrive seed — which is how an account is
+admitted (RUNBOOK §23) — writes rows dated today and silently flips all 109 back, moving 38
+ceilings across a band. The rule below is a latch, not a repair: today's answer is right by luck.
+
+### Ruled
+
+One order, stated once, ranking a source by how close it is to someone who actually knows.
+It sits **between** the evidence label and recency, so nothing here weakens rule 9's first clause.
+
+```
+rater  >  fathom_call  >  pipedrive_note  >  website  >  notion_master  >  apollo  >  pipedrive  >  (anything else)
+```
+
+An unlisted source sorts **last**, so adding a collector never silently outranks a person.
+
+Apollo above Pipedrive is the one placement resting on evidence rather than principle, and the
+evidence is thin — nine accounts have a headcount someone stated on a recorded call:
+
+| Stated on the call | Apollo | Pipedrive |
+|---|---|---|
+| 100 | 400 | — |
+| 16 | 17 | — |
+| 15 | 36 | — |
+| 15 | 9 | — |
+| 11 | 11 | 30 |
+| 4 | 3 | 6 |
+| 1 | 1 | — |
+
+Apollo is exact twice and within 25% four times of the seven it covers; Pipedrive overcounts both
+of the two it covers. Both errors that matter are **overcounts**, which is the LinkedIn mechanism
+showing through — Apollo's headcount counts profiles claiming the employer, so it carries alumni
+and contractors. Since headroom is `headcount × $8,750` (§20), an overcounting source inflates
+the whole book. n = 7 is a default, not a finding; it is written down so the next nine calls can
+overturn it.
+
+Effect on the book: twelve headcounts changed hands (Notion master list 12 → 24 winners, Apollo
+163 → 154, Pipedrive 189 → 186). Nine changed value. Small, which is the point — the rule exists
+for the flip that had not happened yet.
+
+### The site is the source that should win
+
+The owner, 15 September: *"use the site and do what is needed for accuracy."*
+
+A team page is the number an agency will defend in public, and unlike LinkedIn it shows **roles** —
+which is what separates "eleven people" from "eleven people, two of whom build things", i.e.
+`delivery_headcount` (§21). So `website` is ranked above Apollo and Pipedrive and below anything a
+person said.
+
+Migration 20260915130000 gives `pb_website_reads` a `path` column, so one row is one page, and
+lets the caller name which paths to try. Sub-pages are only queued for an account whose front page
+already returned 200 — no point spending five requests on a domain that does not resolve.
+
+Nothing here writes a fact. The fetch stores text; extraction stays with pb-notes, behind the
+quote check, the judgement check and `pb_fact_candidates` (rule 8). A machine reading a team page
+proposes; a person decides.
+
+## 23 · Rule 2 was broken for five days, and what that costs (16 September 2026)
+
+**Not a ruling. A breach of an existing one, found and repaired here so it is on the record.**
+
+Rule 2 says no prospect data in this repository, because the repository is public. On 16 September
+a check against the account roster found **26 distinct agencies, two real people, two agency
+domains and two per-account deal values** in tracked files:
+
+| Where | What | Since |
+|---|---|---|
+| `docs/PLAN.md` | fifteen agencies, a $47,955 deal, a $117–141K deal, a colleague's first name | 16 Sep |
+| `docs/RUNBOOK.md` §26 | two agencies with their headcounts | 16 Sep |
+| `20260916090100` (comment) | the same two | 16 Sep |
+| `docs/DECISIONS.md` §§4, 13, 19, 21 | thirteen agencies, one domain, three meeting titles, a colleague's first name | 11–13 Sep |
+| `ingest/fathom_webhook_test.ts`, `notes_sweep_test.ts` | a real colleague's full name against a barely disguised agency domain, in a fixture | 11 Sep |
+
+*(The first count written here said "fifteen agency names", which was the PLAN.md figure read as
+the total. The number is 26 across all five rows. Counting by hand is how it got to 26 in the first
+place; the script below is the count.)*
+
+Every one is removed at this commit. The passages keep their substance — an example becomes "a
+counted 35 rather than Apollo's 68", a fixture becomes a genuinely invented name — because the
+point each was making was never the identity.
+
+**Removing them from `HEAD` does not remove them from history.** The repository is public
+(`visibility: public`, confirmed by API, not assumed), so those commits have been fetchable since
+11 September and remain so. Three options, and the choice is the owner's:
+
+1. **Make the repository private.** One switch, closes everything at once, including history.
+   It does not un-publish what has already been fetched, but nothing new can be.
+2. **Rewrite the branch history** and force-push. Removes the names from the commits; GitHub still
+   serves an orphaned commit by its SHA for a while, and anyone with a clone keeps theirs.
+3. **Leave history as it is** and hold the line from here. Defensible — these are company names and
+   public headcounts, not secrets — but it is a decision, not a default.
+
+Nothing here rewrites history on its own; that is an outward-facing, irreversible action on a
+public branch.
+
+**Why it kept happening:** every one of these entered as an *example* — the concrete case that made
+a ruling legible. That instinct is right and the examples should stay; they just have to be shaped,
+not named. A useful example is "an agency Apollo listed at 68 with 35 people on its team page".
+
+**The check is now mechanical.** Pull `pb_accounts.name`, match every tracked text file against it
+case-sensitively on word boundaries, and expect nothing. Run it before any commit that adds prose
+to `docs/` or a comment to a migration. It found all fifteen in one pass and it costs one query.
+
+
+## 24 · Engagement is recorded contact, not a stage label (owner ruling, 16 September 2026)
+
+**Ruled.** The owner, 16 September, on the proposal to stop deriving engagement from the CRM
+stage: *"for 5 and the stage labels, yes make this change, it does not seem accurate."*
+
+### What was wrong
+
+`urgency` came from a Pipedrive dropdown — Super Hot / Hot / Warm / Cold — and it was the heaviest
+single input in every chase ordering. It carries no date, no direction and no source. Measured
+against what is actually recorded:
+
+| The CRM says | engaged | responsive | pursued | fading | dormant | nothing on file |
+|---|---|---|---|---|---|---|
+| Super Hot (15) | 2 | 5 | 0 | 5 | 3 | 0 |
+| Hot (47) | 3 | 2 | 1 | 7 | 4 | 30 |
+| Warm (178) | 3 | 1 | 0 | 5 | 1 | 168 |
+| Cold (458) | 5 | 12 | 2 | 29 | 5 | 405 |
+
+Two readings, both damaging. Of the 62 accounts the CRM calls Hot or Super Hot, **five are in live
+contact**; twelve are fading, seven dormant and thirty have nothing recorded at all. And of the 458
+it calls Cold, **seventeen are in live contact** — five of them inside the last thirty days.
+
+The worst individual cases are the ones that motivated the ruling: an account that had ended its
+relationship with WLIQ read `Hot` and ranked second on the chase list, its last recorded contact
+195 days old; the account ranked *first* read `Super Hot` on a single touch 106 days ago; and an
+account in active conversation read `Cold`.
+
+### What replaces it
+
+`pb_contact_events` (migration 20260916140000): one row per **recorded** contact — a call, an
+email, a CRM note, a quote — each with a date, a direction and a traceable source id. It is an
+observation, never a judgement.
+
+`pb_engagement` derives the label:
+
+| Label | Means |
+|---|---|
+| `engaged` | they replied, or attended a call, within 30 days |
+| `responsive` | the same within 90 days |
+| `pursued` | we contacted them within 30 days and they have not come back |
+| `fading` | some contact within 180 days |
+| `dormant` | nothing for 180 days |
+| `unknown` | **nothing recorded** — which is not the same as cold |
+
+Three properties the stage label did not have: a date, so it decays honestly; a direction, so a
+reply outranks a send; a source id, so any row can be re-checked.
+
+**`unknown` is the important one.** Rule 5 says unknown is never evidence, and the old label broke
+that by rendering "nobody has written anything down" as `Cold`. Those are different claims. Today
+603 accounts are `unknown`, and most of that is a sweep that has not been run yet, not an absence
+of contact — so `unknown` must never be scored as a negative.
+
+### A correction made during the build
+
+The first cut tested `direction = 'inbound'` for "they came back to us". A recorded call is stored
+as `mutual` — both sides showed up — so an account with nineteen calls and no email read as
+`pursued`. Attending a call is at least as strong as replying to an email. Both now count
+(`last_engaged`), and `last_reply` is kept separately for anyone who wants the stricter test.
+
+### What is NOT ruled here
+
+The stage label is not deleted. `pb_engagement.stage_label` carries it alongside, so the two can be
+compared rather than swapped, and so a stale label is visible as a stale label. Whether the label
+should break ties, and what weight `engagement` carries in the chase ordering, remain the open
+`stated_timing_wins` question and the unruled chase weights (PRO decisions 1 and 5).
+
+
+## 25 · The identity registry is mirrored, not re-derived (16 September 2026)
+
+The `wliq-mdm` identity registry maintains what this book has been guessing at: which company is
+which, which Orbit and Notion records belong to it, what it has been called, and what must never
+become a company at all. Version 0.5.1 covers 29 companies and 53 source records, every one
+re-read against the live system on 3 and 13 September.
+
+It is mirrored here (migration 20260916160000) rather than re-derived, because re-deriving it is
+exactly how this book got the following wrong:
+
+- **An account filed under WLIQ's own domain**, carrying 53 of our own projects. The registry
+  lists WLIQ by name as junk; this book reached it by domain, so a name-only check missed it.
+  `pb_mdm_junk` now accepts a `domain` kind and the account is reported by `pb_mdm_junk_hits`.
+- **Two accounts that are one company** — a row titled with a person's name and a row titled with
+  the company's. The registry rules the company canonical and keeps the person as a
+  *non-authoritative* alias so the source row still resolves.
+- **An account under a project label** rather than a company name, with the same treatment.
+- **A pair the registry has ruled are different companies**, scored 0.978 on fuzzy name match.
+  Both halves are in this book. `pb_mdm_poison_pairs` stores the score precisely as the proof that
+  no similarity threshold is merge-safe.
+
+### What the mirror must not discard
+
+**Review state is data.** Rows are green (re-verified against a live system), yellow (documented,
+with an open question) or white (name only): 22 / 6 / 1. A yellow row is not a confirmed row.
+
+**Notion Client IDs are reference only** (registry rule R4). They are stored for traceability and
+`pb_mdm_resolution` must never join on them — it matches domain, then alias, then canonical name.
+
+**The registry is not signed off.** Its own review sheet says nothing changes until the owner
+answers per company. `signed_off_at` stays null and the resolution view reports `pending_signoff`,
+so no downstream job can mistake a draft for a ruling.
+
+### Direction of travel
+
+This book **reads** the registry and never writes to it. Where this book observes something the
+registry has not seen — the junk domain above — the row is marked `origin = 'prospect-book'`,
+which makes it a proposal to the registry's steward, not an edit. Same posture as
+`pb_roster_drift`: it reports, a person decides.
+
+### Still open
+
+The registry's own questions carry over and are not ours to answer: the QuickBooks connector and
+a domain-only join (R3), the Phase C load order, and role-scoped billing visibility.
+
+
+## 26 · Nine owner rulings on how the chase list should behave (16 September 2026)
+
+Answers to the six questions raised in the 16 September diagnosis, plus three more the owner
+volunteered. Several **reverse** what had just been built, and the reversals are the valuable part.
+
+### 1 · Delivery is not a disqualification — REVERSES what was built
+
+The proposal was: an account with an active Orbit project leaves the chase list for a promotion
+queue. Ruled the opposite, for three reasons:
+
+- an Orbit project is very often a **quote**, which means they are mid-decision — *"that means
+  they're even hotter and deserve even more attention"*;
+- after signature the account hands to an account manager, and **that transition is the moment of
+  maximum exposure**: *"we've invested so much money in them at this point"*;
+- a client buying one line is a prospect for **every line they are not already buying**.
+
+So an Orbit project changes the **lane**, never membership. `pb_mdm_resolution.lane` says how to
+work an account and removes nothing (migration 20260916170000). The view had already shipped with
+the wrong advice in it; that text is replaced, not amended.
+
+### 2 · A live quote outranks conversation
+
+`pb_engagement_shape` adds `quote_state`: a quote raised in the last 60 days is `quote_open` and
+means mid-decision. Measured immediately: of ten accounts with an open quote, **four read `Cold`
+in the CRM** and one read `Warm`. Reported beside engagement rather than folded into it, so the
+two can disagree visibly.
+
+### 3 · A lost quote is not a lost client
+
+*"Just because a quote is lost does not mean we have lost the client. A no is a positive sign."*
+A priced conversation is an asset: it can be re-shaped, and the loss may have been our scoping
+rather than their budget. `Quote Lost` must never become a terminal state, and a price refusal
+is a dated event with a reason, not a permanent exclusion.
+
+### 4 · The stage label means nothing unless confirmed
+
+Confirms §24. The dropdown is a tiebreak at most.
+
+### 5 · Chase-list size: up to 100
+
+*"I said 60 because that seemed like a good number… I have capacity to chase 100 at the highest
+volume right now."* So the target is the top 100 and the tuning bias is **recall over precision**
+— missing a live account costs more than carrying an extra one. That is a reversal of how the
+60-row list was built, which optimised for neither.
+
+### 6 · What makes a fact
+
+*"Facts happen in our engagement when we actually learn something from talking to them — through
+email, through Fathom calls, through conversations, through our own discussions."* A fact is
+learned in contact. A field copied from a CRM is a record, not a fact; this is why `rater` outranks
+every machine source in rule 9, and why three rater facts in the system's lifetime is the ceiling
+on everything else.
+
+### 7 · Identity work continues across every source
+
+Domains and call attribution are to be dug out of email, the calendar, Fathom invitee lists, Orbit
+attachments and the Notion prospecting lists — not from a single field. For the unattached calls
+the owner names the method: **match the agency name and URL, not the email domain alone.**
+
+### 8 · One screen per account
+
+Approved in principle; the design is open and the owner has offered to answer questions on it.
+
+### 9 · Connected systems are the source now
+
+Orbit, Gmail and Fathom are reachable over MCP in session. A missing Vault secret blocks the
+*nightly* job, not the work — and asking for a credential that is already in hand was the wrong
+answer on 16 September.
+
+
+## 27 · The Orbit companies are in the book, and Orbit is read-only forever (16 September 2026)
+
+Two instructions from the owner, on the same message. They pull in opposite directions and both
+are kept.
+
+### Bring them in
+
+187 companies existed in Orbit with no account here: agencies, and companies with live project
+work. Under §26 a client is still a prospect, so their absence was the gap. **151 were admitted**
+(`pb_admit_from_orbit`), taking the book from 698 accounts to 849.
+
+**What an admission asserts: existence, and nothing else.** The owner: *"Don't make too dramatic
+assumptions. Again, just because they have a project or a quote or things in Orbit, the grading is
+still important."* So an admitted account carries
+
+- no `is_agency` fact — an Orbit project says we work together, not what kind of company they are;
+- no tier, no grade, no engagement;
+- `roster_certified = false`, because PRO-6 certifies Pipedrive only.
+
+Verified after the run: **0 grades and 0 facts** on the 151. Each one carries a `pb_register` note
+recording the Orbit id, status, project count and account manager, and saying in the row itself
+that nothing beyond existence is claimed.
+
+**35 were held back, none silently.** `pb_orbit_admission_queue` gives the reason for each: 32 are
+named as another agency's end client (the parenthetical-owner pattern — admitting them would put a
+partner's customer list on our prospect list), 1 is a name collision that is a merge question
+rather than an admission, and 2 are demo or junk rows the identity registry already names.
+
+### Never write to Orbit
+
+*"Do not, absolutely do not write anything into Orbit."* This is now **rule 11** in CLAUDE.md and
+it is unconditional. Orbit is the delivery system: a wrong row there reaches real projects, real
+invoices and real people. Only `list_*` and `get_*` are permitted — never `create_client`,
+`create_project`, `update_project`, `create_task`, `update_task`, `add_task_comment`,
+`complete_task` or any other mutation, in any session, for any reason, **including to "correct"
+something this book believes is wrong.** Disagreement goes into a report a person reads, exactly
+as `pb_roster_drift` does for the Pipedrive roster.
+
+### One contract change
+
+`roster_source` gains `orbit`. Additive, and `core/prospect_types.ts` gains the same member in the
+same commit so the type and the check constraint cannot drift (DECISIONS §8).
+
+## §28 — The email sweep: every prospect domain, read once
+
+**16 Sep 2026.** Owner instruction, twice: *"YES SWEEP EMAL ALSO"*, then *"yes"* to running it
+to completion. Email was the largest hole in the book. `pb_facts` was 78% a Pipedrive mirror and
+held **nothing** from email, so 603 of 849 accounts read `unknown` on engagement — not because
+no one had ever talked to them, but because nobody had looked.
+
+### What ran
+
+Every distinct domain on `pb_accounts` — **709** of them — queried against the mailbox as
+`{from:DOMAIN to:DOMAIN} newer_than:3y`, in batches, newest-first. Our own domain and one
+known junk domain were excluded, leaving 707 swept.
+
+**273 domains had email. 195 had a reply from them. 91 had a reply inside 90 days.**
+
+That is the headline: **more than a third of the book had an email history nobody had read**,
+and for 91 of them the other side answered this quarter.
+
+### What a sweep row asserts, and what it does not
+
+`pb_gmail_sweep` holds a domain, a last-inbound date, a last-outbound date, a thread count and
+`truncated`. `truncated` is **true on every row**, and that is not a defect to fix later — it is
+the honest label. The sweep reads page 1 of each query, newest first, which is exactly what
+recency needs and is useless for volume. So a null date means *nothing recent was found*, never
+*nothing exists*. Rule 5 holds: unknown is not evidence.
+
+A row asserts that mail crossed between us and that domain on that date. It does not say who,
+what about, or that it concerned buying anything. It is evidence of **contact**, which is what
+`pb_engagement` reads. It is never a fact about the company, and nothing here reaches `pb_facts`.
+
+### Why the load is a staging table and not a direct insert
+
+The sweep runs outside the database and comes back keyed by *domain*. Which account a domain
+belongs to is a join. Joins run in the database. This is the rule that `20260916180000` was
+written to record after a hand-typed domain list was contaminated by merging in names from a
+different source and produced a wrong headline number. `pb_gmail_sweep` carries the domain and
+the two dates and nothing else; `pb_accounts` decides the account, inside
+`pb_contact_events_from_gmail()`.
+
+The local domain list was verified before any query ran: `md5` of the sorted list on disk against
+`md5(string_agg(...))` in the database. Same digest, same count. A checksum, not a hand count —
+the lesson from §23.
+
+### What it changed
+
+448 email events across 277 accounts. `unknown` engagement fell from 603 to **536**; 49 accounts
+read `engaged` and 51 `responsive`, so **100 accounts have a live reply** where the book
+previously had nothing at all.
+
+### What is still not known
+
+Volume, and anything older than page 1. Both are recoverable by paginating the same queries, and
+neither changes a recency read. Body text was never fetched, so the sweep proposes no facts and
+needs no `pb_fact_candidates` review.
+
+### A note rule 2 only learned today: the roster grows under the prose
+
+Running `scripts/no_prospect_names.ts` against the **current** roster caught two occurrences in
+`docs/DECISIONS.md` that were clean when they were written. They became breaches because the
+companies they named entered `pb_accounts` later — one through the Orbit admission (§27), one
+through the peer-community cohort work itself.
+
+So rule 2 is not a thing you pass once. A sentence that was safe in August can be a breach in
+September without a single character changing, because **the check's other input moved**. The
+script must be re-run against the live roster before every commit that adds prose, not only when
+prose looks risky. Both occurrences are now shaped rather than named, and the run is clean.
+
+The roster file the check reads is itself pulled from the database and verified by checksum
+before use — `md5` of the sorted names on disk against `md5(string_agg(...))` in the database,
+per chunk. That caught a real transcription error on the first attempt: one account name carries a
+non-breaking space (U+00A0) where a reader sees an ordinary one, and it had been flattened to
+ASCII on the way to disk. One byte in 826 names. A hand count would never have found it; the
+checksum found it in two queries. This is the §23 lesson holding: the script is the count, and the
+checksum is the count of the thing the script counts.
+
+## §29 — The orphan calls were never orphans, and the quote history
+
+**16 Sep 2026.** Two sweeps finishing the work §27 and §28 started.
+
+### 826 recorded calls with no account
+
+`pb_calls` held 987 conversations and 826 of them were attached to nothing. The obvious reading
+is that call attribution is broken. It was not. Every one of those calls has an external domain;
+the accounts those domains belong to simply **were not in the book**. They are delivery calls
+with companies the Prospect Book had never heard of, because the Prospect Book only knew
+Pipedrive.
+
+Admitting 151 companies from the delivery system (§27) made **582 of the 826 matchable by exact
+domain**, and the proof that the diagnosis was right is that **every single match lands on a
+`roster_source = 'orbit'` account**. Not one lands on a Pipedrive account. The calls were never
+unmatched prospects; they were unrecorded relationships.
+
+**558 attached, 65 accounts, 24 refused.** Attribution is an identity decision, so rule 8 governs
+it: exactly one matching account attaches (the same exact-domain rule the Fathom webhook already
+applies at ingest), more than one never does. The 24 refusals split into two shapes, and the shape
+matters:
+
+- **16** where one company sits in the book under **two account records sharing one domain**. Had
+  the function taken "the first" match these would all have been silently given to whichever row
+  sorted first, and half that company's history would be filed under a record nobody reads.
+- **8** genuinely **multi-party** — a call with two different agencies present. There is no right
+  single answer, so there is no answer.
+
+Nothing here reads a transcript or proposes a fact. It says which account a conversation belongs
+to. The facts inside remain pb-notes' job, through `pb_fact_candidates`, where a person approves
+them.
+
+### A review queue that dropped the harder half
+
+The first cut of `pb_call_attribution_candidates` grouped by **(call, domain)** and asked whether
+that domain matched more than one account. That finds the duplicate-record shape and is blind to
+the multi-party one: two different domains on one call each match exactly one account, so
+per-domain grouping calls both unambiguous while the call as a whole is not. The view reported
+16; the function, which groups per call, refused 24.
+
+The function was never wrong. The *queue* was, and that is the worse failure — a wrong count is
+visible, a review queue that quietly omits a category looks complete. It now groups per call and
+names which shape each row is.
+
+### Three bugs that `create function` accepted
+
+`pb_attribute_orphan_calls` was created cleanly three times with `group by <uuid> and not
+exists (…)`, then with `min(uuid)` (which is not a Postgres function), then with two pb_register
+column names that do not exist. Postgres does not fully resolve a plpgsql body at CREATE time.
+
+The part worth keeping is why the **dry run did not catch any of them**: the dry-run branch
+returns before it reaches the insert. Three clean dry runs, three broken write paths. A dry run
+that does not exercise the write path is not a rehearsal of the write path — it is a rehearsal of
+the count.
+
+### The quote history
+
+All 11 pages of quote-stage work in the delivery system: **213 projects, 80 distinct companies**.
+The owner's ruling (§26) is that a quote is engagement of the strongest kind, an open quote is the
+hottest state an account can be in, and a lost quote is still a signal — *"a no is a positive
+sign."* So the whole history loads, not just the fresh end.
+
+**86 quote events across 94 accounts. 22 accounts have a quote open (≤60 days), 56 were quoted
+within six months** — against 10 quoted accounts before.
+
+Names came in the delivery system's spelling, not the book's. `pb_norm_company` handles what is
+mechanical — ampersand for "and", a leading "The", a trailing legal suffix — and **five companies
+still missed**. Two were spelling and the normaliser now covers them. The remaining **three are
+aliases**: a typo in the source, a brand name against a legal name, and a parenthetical naming
+the agency behind a sub-brand. Those stay in `pb_orbit_quote_unmatched` for a person.
+
+A regex loose enough to match those three would also silently match companies that are genuinely
+different. The normaliser deliberately stops where spelling stops and identity begins.
+
+### Where engagement stands
+
+Across §27, §28 and §29, on 849 accounts:
+
+| | before today | now |
+|---|---|---|
+| `unknown` engagement | 603 | **498** |
+| `engaged` (replied ≤30d) | — | **64** |
+| `responsive` (replied ≤90d) | — | **52** |
+| quote open (≤60d) | — | **22** |
+| calls attached to an account | 161 | **719** |
+| contact events | 224 | **1,349** |
+
+498 accounts still read `unknown`, and that is honest: most are Apollo-sourced names nobody has
+ever contacted. The difference is that it is now a statement about them rather than a statement
+about what the book had bothered to read.
+
+## §30 — The chase board, rebuilt on evidence
+
+**16 Sep 2026.** The owner asked for the top 100 rebuilt on what is recorded rather than on stage
+labels, and for "a substantive increase in the confidence and quality of these choices." This is
+that board: `pb_chase_board`, every one of the 849 accounts ranked, migration 20260916220000.
+
+### What the old list was actually ranking
+
+The old chase list held **146 rows** — the accounts that happened to have been researched. Ranking
+them was ranking the book's own reading history. The stage label underneath was no better. Of the
+**184 accounts sitting in "Schedule Sales Call", 7 are in live contact and 140 have nothing ever
+recorded against them**; "Sales Call Done" holds 155 with 67 in the same state; "Unqualified/DNC"
+holds 160, of which 4 have replied to something in the last 90 days. A stage tells you what
+somebody once filed. It does not tell you whether anyone is talking to us.
+
+**20 of that old top 100 survive into the new one.** Twenty-eight of them now score zero or less.
+
+### What it ranks on instead
+
+Ten signals, all drawn from recorded contact (§24, §28, §29), scored against the owner's rulings
+in §26:
+
+| signal | points | why |
+|---|---:|---|
+| quote open (≤60d) | 50 | the hottest state an account can be in |
+| replied ≤30d | 40 | they answered, recently |
+| replied ≤90d | 25 | they answered |
+| quoted ≤180d | 20 | including a loss — "a no is a positive sign" |
+| delivering now | 18 | a client is still a prospect |
+| a recorded call exists | 12 | they gave us time |
+| contact ≤180d, no reply | 8 | re-engage |
+| more than one channel | 6 | |
+| written to, never answered | −5 | |
+| contact exists, nothing in six months | −10 | |
+| **CRM stage** | **0** | **deliberately** |
+
+The weights are **data, not SQL** (rule 4): `pb_chase_weights`, version `chase-evidence-0.1`.
+Reordering the chase is an insert and a new version, never an edit to the view.
+
+The stage still appears on every row, at zero points, as `cj_stage`. A board that hides the number
+it refuses to use cannot be argued with, and the owner should be able to see the disagreement.
+
+### Two ranks, because one number cannot answer both questions
+
+Ranked purely on contact, **91 of the top 100 are companies we already deliver for**. That is the
+§26 ruling working exactly as stated — delivery is a relationship, and the handover is the moment
+to nurture hardest — and it is also a board that would quietly starve new-logo work. Both things
+are true.
+
+So the view carries `new_logo_rank`: the same score over the **612 accounts with no active
+delivery work**. The top 50 of that list all score positive. Neither rank is a filter someone has
+to remember to apply, and neither is the "real" one.
+
+The other thing the board shows about itself: **66 of the top 100 have no grade at all** and 67
+have no Pipedrive stage. They arrived through the delivery system (§27) and the engine has never
+read them. That is the queue for the next scoring run, and it is a better queue than the one the
+research pass chose by hand.
+
+### Three bugs, and the one that matters
+
+`filter` attaches only to an aggregate, never to a scalar subquery — the weights are now read
+through a one-row view. And `pb_mdm_resolution` is per **record**, not per company, so joining it
+directly fanned the board out to **852 rows for 849 accounts**, with one company appearing twice in
+the top ten. A fan-out inside a ranked list is the worst-shaped bug available: the total is barely
+wrong, the duplicates sort adjacent so they read as a tie, and the thing being multiplied is the
+thing being counted.
+
+The third is the one worth the section, and the first account of it written here was **also
+wrong** — corrected below, same day.
+
+The view's first cut had a column called `stage_label` holding `pb_accounts.status` — the book's
+own lifecycle (Ranked / Unclassified / Merged / Parked), which is not a stage at all. Every check
+of the board's headline claim ran against that column and came back plausible: "66 of the top 100
+are Cold or Unclassified" was 66 rows of `Unclassified` and zero rows of `Cold`.
+
+The conclusion drawn from that zero was that **no row anywhere in the database says `Cold`**. It
+was written into this section as the moral of the story. It is false. `Cold` is one of five values
+in `pb_reads.urgency`, surfaced as `pb_engagement.stage_label`, and 458 accounts carry it.
+
+So there are **three different columns** a reader could reasonably call "the stage", and the first
+cut of the board picked the wrong one of the three, then read a null result off it as proof that
+the second one did not exist:
+
+| column | what it actually is | values |
+|---|---|---|
+| `pb_reads.urgency` | the CRM's heat read | Super Hot · Hot · Warm · Cold |
+| `pipedrive_cj_stage` (fact) | the pipeline stage | New · Schedule Sales Call · Sales Call Done · Quoting · Quote Lost · Unqualified/DNC |
+| `pb_accounts.status` | the book's own lifecycle | Ranked · Unclassified · Merged · Parked |
+
+The board now carries the first two, both at zero points, as `crm_urgency` and `cj_stage`, and
+surfaces the third as `account_status`.
+
+Read against the right column, the finding is stronger than either wrong version of it. Of the
+**62 accounts marked Hot or Super Hot, 17 are in live contact and 15 have nothing ever recorded**.
+Of the **458 marked Cold, 33 are in live contact** — twice as many live conversations as Hot and
+Super Hot combined. And the **151 accounts carrying no label at all hold 57 of them**, more live
+contact than all 683 labelled accounts put together.
+
+Two lessons, and the second is the one that nearly got away. A filter naming a value its column
+cannot hold returns a number rather than an error, so it should be a test that fails when the
+value set changes, not a predicate in a report. But the worse error was inferring from `count = 0`
+that the *value* does not exist, when all it establishes is that it does not exist **in the column
+queried**. A zero is evidence about the query, not about the world, and this repository's own
+rule 5 already says so — unknown is never evidence. It applies to the book's readings of itself
+exactly as it applies to the accounts.
+
+### Twenty-five companies entered twice
+
+`pb_duplicate_accounts` (migration 20260916220100) names them. Most are a Notion/Pipedrive
+double-load where one record carries the domain and the other does not. Two are the same company
+entered twice from the delivery system under one domain — which is what made 16 recorded calls
+unattributable in §29, and what the chase board's fan-out was a second symptom of. Merging is an
+identity decision, so rule 8 governs: the view proposes, a person decides.
+
+## §31 — The board ranks companies, not account records
+
+**16 Sep 2026.** Owner instruction, on being shown that the top 100 listed four companies twice:
+*"collapse duplicates."*
+
+### What the duplicates were doing
+
+25 companies are in the book twice (§30, `pb_duplicate_accounts`). Ranking their records
+separately is not a cosmetic problem. Seven of the pairs have a **30-point-plus gap between their
+two records**, because the evidence is split: one record holds the reply, the other holds the
+quote. Seven pairs touch the top 100. On **two of them the records contradict each other** — one
+resolved to `quote_open`, the other to `pursued`, so the board printed "quote open" on one row and
+"never answered" on another, for the same company, nine ranks apart. Both rows understated the
+relationship and neither was the company.
+
+`pb_chase_board` now groups by normalised name: **824 companies over 849 records**, every record
+accounted for, no company appearing twice.
+
+### The union is over events, never over flags
+
+OR-ing the two records' derived flags is the obvious shortcut and it manufactures states that
+cannot exist — `engaged` and `pursued` together, "replied <30d · never answered" on one line.
+Engagement is a case expression over dated observations, so the only correct way to merge two
+records' engagement is to merge their **observations** and evaluate the expression once.
+
+`pb_company_engagement` is `pb_engagement`'s derivation verbatim, grouped one level up. The
+thresholds are not restated; if they move in `pb_engagement` they must move here, and that
+duplication is the price of not inventing a second definition of "engaged". Checked after
+applying: zero rows carry a contradictory pair.
+
+### This is not a merge
+
+Nothing is written to `pb_accounts` and no identity is asserted. Every grouped row carries
+`records` and `duplicate_records`, so the duplication stays visible instead of being quietly
+absorbed — the owner asked for the ranking to be right, not for the problem to disappear. The 25
+merges remain in `pb_duplicate_accounts` for a person (rule 8). If the grouping is wrong for some
+pair, the remedy is to drop a view rather than to unpick a write.
+
+One number moved for the right reason: **quote_open fell from 22 to 19**. Three of the 22 were the
+same quote counted under both records of a pair. 19 is the number of companies with an open quote;
+22 was never a fact about the world.
+
+### A quote carried under a domain
+
+The quote sweep left three unmatched names (§29). One was not a spelling variant at all — the
+delivery system carries the company under its **domain** instead of its name, which no amount of
+name normalisation will ever reach. An exact domain match is the `high` confidence bar rule 8
+sets and the same test the Fathom webhook already applies, so the join now also matches
+`lower(client_name) = lower(domain)`, as a **rule** rather than a hand-entered alias row. Nothing
+asserts that two names mean the same company; only that a string which is exactly an account's
+domain identifies that account. One quote attached, and that company moved from #62 to #27.
+
+The remaining two stay unmatched on purpose: a one-character typo in the source, and a
+parenthetical naming the agency behind a sub-brand. Both are probably right; neither is mechanical.
+A regex loose enough to catch a typo is loose enough to merge two companies that differ by a
+letter, and the book would have no way to tell which it had done.
+
+## §32 — §20 was ruled on 15 September and never reached the engine
+
+**16 Sep 2026.** The owner asked why the book showed zero Platinum when he remembered
+sixty-odd. The answer is that §20 — his own ruling, recorded in this file on 15 September —
+was never implemented. It is now, as rubric **0.1.3**, active.
+
+### What was actually wrong
+
+§20 describes the fix as two deletions. Neither was ever made. The active rubric 0.1.0 still
+carried `qualification.present_count >= 3` in `dimension_b.platinum_rule.requires_all`, and
+`potential.climb_evidence.caps_ceiling` was still absent — a key that **defaults to true**.
+The 0.2.0 draft did not carry them either. So every nightly run since 15 September re-applied
+both gates.
+
+Worse, the engine source *did* carry the change: `engine.ts` reads `caps_ceiling` and the
+comment there cites §20 by name. The **deployed** pb-score did not. It was built on 14
+September, a day before the ruling, and had never been redeployed. Two rulings were sitting
+in the repository unshipped: §19's `build_demand_exceeds_capacity` fit criterion and §20's
+two deletions.
+
+A ruling is not applied when it is written down, and not when the code is merged. It is
+applied when the artefact that runs at 06:15 contains it. Nothing in this book checked that,
+and the gap was visible only because the owner remembered a number.
+
+### The funnel, before
+
+| gate | passing (of 698 scored) |
+|---|---:|
+| Gold base tier | 104 |
+| ≥ $100K headroom — the money is there | 148 |
+| **ceiling = Partner** | **5** |
+| Gold **and** Partner | 1 |
+| …**and** 3+ qualification facts | **0** |
+
+Zero Platinum was never the engine disagreeing. It was starvation: average qualification
+facts present was **1.01 of 4**, and 223 accounts had none. A gate fed by a signal type the
+book does not collect was deciding how big every prospect could be.
+
+### After
+
+Rubric 0.1.3 (0.1.0 plus exactly the two deletions, nothing else — the 0.2.0 ICP change stays
+a draft), with pb-score redeployed from commit `f265702`:
+
+| | before | after |
+|---|---:|---:|
+| ceiling = Partner | 5 | **143** |
+| ceiling = Embedded | 2 | **83** |
+| **Platinum** | **2** | **67** |
+| Platinum among prospects | 1 | **60** |
+
+Of the 60 Platinum prospects, **23 have never had a single recorded contact** and **49 are
+labelled Cold** by the CRM. That is the ruling working exactly as stated: potential is what
+they could be worth, engagement is whether they are live right now, and the two do not touch.
+
+### The prose was corrected with the data
+
+Both blocks carried text the engine puts in its trace. `climb_evidence.rule` still said "the
+ceiling may not exceed Project without at least one observed climb signal" and its basis was
+`unruled_default`; the platinum rule's `why` still argued that "a Gold that is not yet real
+ranks below a Gold that is" — the exact conflation §20 removed. Changing the thresholds and
+leaving the reasons would have produced a trace that explains the old behaviour while the new
+one runs. Both were rewritten in the same version, and the climb basis is now `ruled`.
+
+### An outage, caused while fixing this
+
+Deploying pb-score through the MCP means carrying the whole 81 KB bundle in one tool call. On
+the first attempt a placeholder string was sent in place of the bundle. It deployed cleanly as
+v7 and pb-score answered `WORKER_ERROR` until v8 replaced it about ten minutes later — inside
+the working day, thirteen hours before the nightly run, so no scheduled job was missed.
+
+The deploy tool reports success on a syntactically valid request; nothing about the payload
+being a seven-character placeholder made it fail. The check that caught it was a GET against
+the deployed function, and the check that proved the fix was fetching the deployed bytes back
+and diffing them against `dist/`. That diff should be the standard last step of any MCP
+deploy, and it is the only thing that distinguishes "the API accepted it" from "the right code
+is running." The restored v8 differs from the built bundle by one trailing newline and nothing
+else.
+
+## §33 — The prospect board ranks potential; engagement is a column
+
+**16 Sep 2026.** Owner: *"If you have platinum potential, then it doesn't matter about the
+engagement… the engagement is different than their potential. Is that correct?"* It is, it was
+already ruled in §20, and the board I had built contradicted it.
+
+### What the contact board got wrong
+
+`pb_chase_board` ranks on recorded contact. Measured against the 61 highest-potential
+prospects, it put **one** of them in its top 100. The worst sat at rank **816**. Thirty-five
+scored zero or less and did not appear at all.
+
+Three faults, and only the first was visible:
+
+1. **It ranked on engagement.** §20 says potential is what they could be worth and engagement
+   is whether they are live right now. A board that folds one into the other answers neither
+   question.
+2. **It invented an ordering.** The rubric already defines the chase order — `chase_rank_key`:
+   tier, then qualification facts present, then urgency, then year-one band — and `grade()`
+   writes it into every scorecard. Rule 4 says the rubric is data. A `pb_chase_weights` table
+   competing with the rubric's own key is a second source of truth for one decision, and the
+   one I wrote scored tier, headroom and deal size at **zero**.
+3. **It produced a composite number.** 126, 111, 96. The book's first line is four reads
+   *never summed*, output as a rank and bands, never a number (PRO-0). I summed them.
+
+### What replaced it
+
+`pb_prospect_board` sorts on the five elements of the engine's `chase_rank_key`, read out of
+the scorecard. It defines no ordering of its own: change the chase order by editing the rubric
+and re-scoring, and this view does not move.
+
+Worth noticing what that key already does with engagement — **urgency is the third element**,
+after tier and qualification. Liveness breaks ties between equals; it is never a reason to
+outrank a bigger prospect. §20 was expressed as an ordering in the rubric the whole time.
+
+One row per company (§31), and a company's potential is the **best-evidenced read among its
+records**, picked by the same key rather than by whichever record leads on contact. That
+promotes one company whose Platinum read sits on its non-lead record.
+
+### What it shows
+
+599 prospect companies. **89 of the top 100 are Gold or Platinum** — against one before. Every
+one of the top 25 is `Platinum × Partner`. **43 of the top 100 have never had a single recorded
+contact**, and an `untouched_high_potential` flag names the 42 Gold-or-better companies in that
+state, because "real size, nobody has ever tried" is the most actionable row in the book and
+was the least visible.
+
+The contact board stays. It is genuinely useful — it is the answer to "who do I call today,"
+and the account managers want it. It is simply not the answer to "who are the best prospects,"
+and giving one list to both questions is what made the top 100 wrong.
+
+### The third axis is empty, and that is the next job
+
+§20's three axes are tier, **confidence**, and engagement. Confidence reads Medium on 380
+companies and Low on 147 — and **High on none of them**, because High needs three of four
+qualification facts and the average is 1.01. The ranking is sound and the confidence behind it
+is thin everywhere. That is not a scoring problem; it is 548 recorded calls nobody has read.
+
+> **Numbering note (17 September 2026).** §22–§27 below were written by the 16 September session on
+> branch `claude/new-session-glwxzh`; §28–§37 by the 17 September session on
+> `claude/amazing-mayer-umftf0`. The two branches ran in parallel and both numbered from §22, so on
+> merge the later set was shifted by six. Any reference to §22–§31 written before 17 September
+> means the 16 September set; every reference in this file and in the 17 September documents has
+> been corrected to the numbers used here. See §38.
+
+## 28 · The research was never checked against the build (16 September 2026)
 
 **Not a ruling.** This section records a measurement and creates a standing check. Every gap it
 names is a candidate for a ruling and none of them is one. Where this section and the register
@@ -1432,7 +2263,7 @@ No threshold moves. No gate mode changes. No rubric is activated. Geography stay
 white-label signal stays out of the fit read, and decision 4 stays unanswered — all three are now
 written down where the next session will trip over them instead of rediscovering them.
 
-## 23 · What the 17 September audit found: the rubric grading the book had no file (17 September 2026)
+## 29 · What the 17 September audit found: the rubric grading the book had no file (17 September 2026)
 
 **Not a ruling.** A measurement, a version point, and a rule adopted for how work lands from now
 on. Every figure is from the database on 17 Sep and reproducible from `docs/STATE-SNAPSHOT-2026-09-17.md`.
@@ -1440,7 +2271,7 @@ on. Every figure is from the database on 17 Sep and reproducible from `docs/STAT
 ### What prompted it
 
 The owner asked whether iteration had damaged the foundation and where in the build he actually
-was. §22 had compared the repo to the research's ten requirements and found the gaps were all in
+was. §28 had compared the repo to the research's ten requirements and found the gaps were all in
 the measuring half of the design. That comparison was made against a file — and the file was not
 the rubric grading the book.
 
@@ -1487,7 +2318,7 @@ overrides, zero promotions, zero manual signals, ever. Two owners, zero raters.
 
 **Documents described a system that was not running.** PHASE0.md (two false Pass entries),
 METHOD.md (generated from a file, not from the active rubric), and CLAUDE.md's own layout line
-(named two rubric files when there were six — which is why §22's gate checks were run against
+(named two rubric files when there were six — which is why §28's gate checks were run against
 the retired 0.1.0 and reported as if active). PHASE0 and CLAUDE.md are corrected in the version
 point; METHOD.md waits on repair item 5.
 
@@ -1525,7 +2356,7 @@ working surface; whether there is ever a second rater; whether the gate should b
 the owner's, listed in `docs/REPAIR-PLAN.md`. No threshold moves and nothing is activated.
 
 
-## 24 · Fathom, reconnected from the database, and what the 12 September entry got wrong (17 September 2026)
+## 30 · Fathom, reconnected from the database, and what the 12 September entry got wrong (17 September 2026)
 
 **Not a ruling.** Repair item 1 of `docs/REPAIR-PLAN.md`, executed; the record of what was found
 on the way.
@@ -1576,7 +2407,7 @@ Nothing about the rubric, the reads, or any threshold. One connector, one gap, o
 the record.
 
 
-## 25 · §17 restored to the rubric that grades the book (17 September 2026)
+## 31 · §17 restored to the rubric that grades the book (17 September 2026)
 
 **Not a ruling.** Repair item 2, executed. The record of a ruling that had been lost between the
 file that carried it and the row that graded.
@@ -1626,7 +2457,7 @@ Whether climb evidence should cap again; whether the gate bites; anything in Tra
 put back where it belonged.
 
 
-## 26 · Four migrations that ran without a file, filed verbatim (17 September 2026)
+## 32 · Four migrations that ran without a file, filed verbatim (17 September 2026)
 
 **Not a ruling.** Repair item 3, first half.
 
@@ -1655,7 +2486,7 @@ whether that system stays (decision 2). Their SQL is saved outside the repositor
 can be taken without losing anything either way.
 
 
-## 27 · Rule 9 drifted for two days, and the check that said it had not was reading a stale file (17 September 2026)
+## 33 · Rule 9 drifted for two days, and the check that said it had not was reading a stale file (17 September 2026)
 
 **Not a ruling.** A defect, its cause, and the fix — recorded because the cause is the pattern this
 whole repair is about.
@@ -1688,7 +2519,7 @@ of silent corruption. Repair item 4's CI deploy owns it; the ledger row
 `RECON-pb-score-bundle-behind-source` carries the probe (`SOURCE_RANK` in the deployed source).
 
 
-## 28 · The other half of the check: declared versus running, from CI, with no secrets (17 September 2026)
+## 34 · The other half of the check: declared versus running, from CI, with no secrets (17 September 2026)
 
 **Not a ruling.** Repair item 4, executed.
 
@@ -1720,7 +2551,7 @@ detect anything.
 hours — the database can drift without a push, which is how it drifted the first time — and, on
 the default branch, deploys the five edge functions **from source** with the Supabase CLI. That
 last job does nothing until `SUPABASE_ACCESS_TOKEN` exists as a repository secret; it says so and
-skips. When it runs, the deployed pb-score stops being behind source (§27) without anyone
+skips. When it runs, the deployed pb-score stops being behind source (§33) without anyone
 carrying a bundle by hand.
 
 What this does not do: read the Grading Register, decide anything about the boards, or make a
@@ -1734,7 +2565,7 @@ workflow file on the repository's default branch, and the default is still
 branch is the default or merged into it — REPAIR-PLAN decision 5. Until then drift between pushes
 goes unchecked, which is exactly the window the schedule exists to close.
 
-## 29 · METHOD.md described a rubric nothing ran; now it is generated from the active file and held there (17 September 2026)
+## 35 · METHOD.md described a rubric nothing ran; now it is generated from the active file and held there (17 September 2026)
 
 `docs/METHOD.md` is the page a salesperson quotes. Until today it was generated from
 `core/rubric.prospect.v0.1.json` — version 0.1.0, retired — while 0.1.3 and then 0.1.4 graded the
@@ -1751,16 +2582,16 @@ What changed:
   visible on the page as well as in the engine.
 - `scripts/conformance_test.ts` gained `ACTIVE-method-source`: the generator's default file must
   be the ledger's `active_rubric.file`. Activating a new version without repointing the
-  generator now fails `npm test`, alongside the fingerprint pin from §23.
+  generator now fails `npm test`, alongside the fingerprint pin from §29.
 - Deal-health `params` are printed sorted by name. 0.1.4 was written back from the database,
   whose `jsonb` reorders keys; a document must not change because a file was round-tripped.
   The other tables that reordered (aliases, ICP maps) follow the file's order and are unchanged
   in content.
 
 The 0.1.0 fixtures and `docs/BASELINE.md` are untouched; the fixture half of item 5 landed in
-§25 (PB04 and PB20 pinned on 0.1.4).
+§31 (PB04 and PB20 pinned on 0.1.4).
 
-## 30 · Potential snapshots accumulate nightly; the freeze at promotion is a selection, not a write (17 September 2026)
+## 36 · Potential snapshots accumulate nightly; the freeze at promotion is a selection, not a write (17 September 2026)
 
 REPAIR-PLAN item 6. `pb_potential_snapshots` had the research's full schema and zero rows since
 9 Sep. Requirement R4 — freeze what the book claimed, score it against what happened — is the
@@ -1808,7 +2639,7 @@ carries p50. All 598 fall in two bands — the ICP prior bands `$6K–16K` (536)
 in practice the ICP prior map, which is a fact Track B should weigh when it proposes a naive
 baseline. The ledger row `R4-snapshots-empty` keeps its id so the flip is visible in history.
 
-## 31 · The working surface is the Prospect Board; the boards stay; raters join at release (17 September 2026)
+## 37 · The working surface is the Prospect Board; the boards stay; raters join at release (17 September 2026)
 
 Three of the five owner decisions in `docs/REPAIR-PLAN.md`, answered by the owner on 17 Sep.
 Recorded in the owner's terms first, then what follows from them.
@@ -1842,7 +2673,7 @@ What follows:
    back office (sign-in, candidate review, merges, the register). Decision 3 below needs exactly
    that: a page where people enter answers. Two pages, one record.
 3. **Decision 2 follows from decision 1: the 16 Sep boards system stays.** Its 29 migrations are
-   filed verbatim from `schema_migrations.statements` (the same way §26 filed four), tested, and
+   filed verbatim from `schema_migrations.statements` (the same way §32 filed four), tested, and
    the ledger's `known_unfiled_migrations` list goes to zero. `pb_prospect_board` is currently
    revoked from `anon` and `authenticated`; a live page needs a read grant, and under §5 (reads are
    public) that is `select` to `anon` on the view — with the dossier's contact and people data

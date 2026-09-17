@@ -209,7 +209,7 @@ select status_code, content from net._http_response where id = <id>;
 ## 4 · Register the Fathom webhook
 
 **Re-done 17 Sep 2026, from the database.** The 12 Sep entry below claimed a UI-created webhook
-existed; it never delivered once (DECISIONS §24). On 17 Sep a webhook was created through the REST
+existed; it never delivered once (DECISIONS §30). On 17 Sep a webhook was created through the REST
 API from `pg_net` — id `NYMFoCciM4MNbUi3`, `201 Created` — and the 12–17 Sep gap back-filled.
 Three corrections to what follows:
 
@@ -1831,3 +1831,237 @@ select confidence_grade, computed_confidence_grade, count(*)
 from (select distinct on (account_id) * from pb_reads order by account_id, run_at desc) l
 group by 1, 2 order by 1, 2;
 ```
+
+## 25 · Reading the agencies' own sites
+
+Two in-database functions, no edge function and no redeploy. They fetch pages and store the
+stripped text; **they write no facts** — extraction is pb-notes' job, behind the quote check and
+`pb_fact_candidates` (rule 8).
+
+They are a stepper for the reason the roster crawl is: `pg_net` dispatches only after the calling
+transaction commits, so nothing can fetch and harvest in one statement.
+
+```sql
+-- 1 · front pages, in batches of at most 200
+select public.pb_website_fetch_begin(200, 30, '{/}');
+-- 2 · wait ~20s, then harvest. Repeat until still_in_flight is 0.
+select public.pb_website_fetch_step();
+-- 3 · repeat 1–2 until begin returns 0.
+
+-- 4 · then the pages that actually carry a headcount. Only queued for an account whose
+--     front page already returned 200, so this spends nothing on dead domains.
+select public.pb_website_fetch_begin(200, 30, '{/about,/team}');
+select public.pb_website_fetch_step();
+-- 5 · and the spellings the first pass missed
+select public.pb_website_fetch_begin(200, 30, '{/about-us,/our-team}');
+```
+
+`step()` returns `{harvested, failed, still_in_flight, lost}`. **A batch takes longer than it
+looks** — the per-request timeout is 15s and a slow host spends all of it, so a batch of 200 can
+need three or four `step()` calls a minute apart. `lost` counts rows whose reply `pg_net` reaped
+before it was harvested; they are closed with an error rather than left in flight forever, which
+would block that page from ever being queued again.
+
+Where the first full pass landed (15 Sep 2026). 451 of 499 prospects carry a domain; 2,043
+requests across five paths:
+
+| Path | Tried | 200 | Usable text |
+|---|---|---|---|
+| `/` | 455 | 397 | 377 |
+| `/about` | 397 | 256 | 240 |
+| `/about-us` | 397 | 116 | 102 |
+| `/team` | 397 | 91 | 77 |
+| `/our-team` | 397 | 61 | 48 |
+
+**380 accounts now hold usable text, 290 of them from an about or team page, and 291 name job
+titles** — which is the signal worth extracting, because a role list separates "eleven people"
+from "eleven people, two of whom build things" (`delivery_headcount`, DECISIONS §21).
+
+**`p_stale_days` counts from the last ANSWER, not the last success** (20260915140000). The first
+cut tested `last_ok`, the newest 200 — so a page that 404s never set it, stayed due forever, and
+every batch re-queued the same dead URLs. It produced 742 completed `/about` rows across 397
+accounts and never got as far as `/team`. A 404 is an answer: that path does not exist on that
+site, and asking again tomorrow will not change it.
+
+Watch the strip regex if you ever touch `pb_website_fetch_step`. PostgreSQL takes the greediness
+of the **whole** expression from its **first** quantifier, so `<script[^>]*>.*?</script>` matches
+from the first `<script>` to the *last* `</script>` and swallows the page. The first cut of this
+function did exactly that — 424 KB of HTML reduced to zero characters, filed as "probably a
+client-rendered page". Every pattern in there starts with its own non-greedy quantifier; the
+regression test is in the function's own comment.
+
+### Known gap
+
+Paths are guessed. An agency whose team page lives at `/who-we-are` or `/people` is missed, and
+the fix is to keep the `href`s: the stripper drops all tags, so the front page's own link to its
+team page is thrown away before anyone can follow it. Harvesting links on the `/` pass and queuing
+the real URL would beat guessing. Not built.
+
+## 26 · The research log
+
+Three tables hold what we have learned about an account, separately from what the engine computes:
+
+| Table | One row is | Written by |
+|---|---|---|
+| `pb_account_reads` | one structured read of one account — every field with the verbatim quote behind it, and the checker's verdict beside it | an agent run, loaded by hand |
+| `pb_briefs` | one written sales assessment, versioned by `generated_at` | same |
+| `pb_chase_scores` | one account's place in one ranking run, with the full breakdown and the weights version | same |
+
+`pb_current_research` joins the live read to the live brief, one row per account: what we currently
+believe and how sure we are.
+
+**None of these is a fact and none reaches the engine.** `pb_reads` is still written only by
+pb-score and `pb_facts` only through the candidate queue. A read here proposes; a person decides.
+
+### Turning reads into a review queue
+
+```sql
+select public.pb_candidates_from_reads();            -- all live reads
+select public.pb_candidates_from_reads(now() - interval '7 days');
+```
+
+It proposes a `pb_fact_candidates` row only where the read carries a quote, survived the checker,
+is not null, **and differs from what is already on file**. Confirming what we already knew is
+logged but does not ask for anyone's attention. Idempotent — the fingerprint covers
+(account, key, value, source), so a re-run proposes nothing twice.
+
+That split is deliberate and worth keeping: **the record is complete, the queue is selective.**
+431 candidates were already unreviewed on 16 Sep; queueing all ~1,600 read field-values would have
+buried the reviewer and nothing would have been decided.
+
+**The source is per field, not per pass** (migration 20260916100000). The crawl was a site crawl,
+but thirteen `headcount_named` values carry `method = call_stated` — a founder said the number to
+us on a recorded call. Those file under `fathom_call`, which outranks `website`. The first version
+of the function stamped every row `website` and would have filed a founder's own number one rank
+below where it belongs. `evidence_label` stays `inferred` either way: a model read the sentence,
+and a reviewer may promote it when they confirm it.
+
+Source precedence (DECISIONS §22) is what makes confirming one worthwhile: `website` outranks
+`apollo` and `pipedrive`, so a confirmed team-page headcount beats an inflated LinkedIn-derived
+one the moment it lands — a counted 35 rather than Apollo's 68, a counted 10 rather than 30.
+
+### What the first run found (16 Sep 2026)
+
+146 reads → 1,460 mapped field-values → 731 quoted and checker-approved → **473 proposed**, 258
+dropped as agreeing with what is already on file. A second run inserted 0, which is the
+idempotency check.
+
+| Key | Proposed | Disagrees with file | Fills a gap |
+|---|---|---|---|
+| `agency_type` | 78 | 40 | 38 |
+| `client_budget_size` | 70 | 1 | 69 |
+| `headcount` | 61 | 54 | 7 |
+| `years_operating` | 51 | 0 | 51 |
+| `recurring_work_shape` | 49 | 0 | 49 |
+| `build_demand_exceeds_capacity` | 44 | 0 | 44 |
+| `sells_build_work` | 39 | 13 | 26 |
+| `wl_signal` | 39 | 4 | 35 |
+| `delivery_headcount` | 36 | 0 | 36 |
+| `is_agency` | 6 | 2 | 4 |
+
+The headcount column is the one with money attached. Of 54 disagreements the read is **lower in
+44**, median 8.5 people lower; **13 accounts fall below the 12-person Partner floor** and 2 rise
+above it. Confirmed in full, that is **$16.1M of headroom removed** from the book at the
+`headcount × $8,750` rate. Nothing is confirmed by running the function — this is the size of the
+question the queue is asking.
+
+### Loading a batch of reads by hand
+
+The 16 Sep load was 22 SQL files written by a generator, run through the MCP by three agents.
+Two traps, both hit:
+
+**`standard_conforming_strings` is `on`.** A backslash is *not* special inside a `'...'` literal,
+so JSON's own escaping passes through untouched and only `'` needs doubling. Doubling backslashes
+— which is correct for `E'...'` — corrupts the JSON: some rows fail outright with
+`Token "..." is invalid`, and the rest load *silently wrong*, storing `\n` as two characters and
+leaving stray backslashes inside the `quote` fields that rule 8 exists to keep verbatim. Loud
+failure on some rows is the only reason the silent ones were caught. Prove the round-trip before
+loading a batch:
+
+```sql
+select current_setting('standard_conforming_strings')    as scs,                  -- on
+       E'a\nb' = (('"a\nb"'::jsonb)  #>> '{}')          as single_backslash,       -- true
+       E'a\nb' = (('"a\\nb"'::jsonb) #>> '{}')          as doubled_backslash,      -- false
+       ('"a\\nb"'::jsonb) #>> '{}'                      as what_doubling_stores;   -- a\nb
+```
+
+**Verify the load byte for byte, not by row count.** Row counts matched while one statement was
+still wrong: a transcription slip prefixed a sentence from the previous account's statement onto
+`fields->build_capacity_gap->dropped`. Check with a rollup md5 computed the same way on both
+sides — locally from the source files, and in the database:
+
+```sql
+select md5(string_agg(e.key || chr(31) || coalesce(e.value->>'quote','~') || chr(31)
+        || coalesce(e.value->>'dropped','~'), chr(30) order by e.key collate "C"))
+from public.pb_account_reads r, lateral jsonb_each(r.fields) e
+group by r.account_id;   -- then md5 the per-account list, ordered by account_id
+```
+
+Use `collate "C"` on both orderings so the database's locale cannot change the answer. On 16 Sep
+this found exactly one mismatch in 146 reads; after the fix all three rollups matched their local
+values (reads `d858c5f9…` / 146, briefs `2fbf7cd5…` / 80, chase `97d098c3…` / 146).
+
+### When the published page is the only surviving copy
+
+On 16 Sep the brief writers ran twice and the second pass overwrote the first on disk, minutes
+before the copy that went into `pb_briefs` was made. The database therefore held the *second*
+pass, and the artifact published earlier held the first — which was the fuller one. Of 446 brief
+fields, 96 differed and **93 were longer in the published copy**, and what the shorter pass had
+dropped was fact, not padding: one prospect's demand for Net 60/90 against 100%-upfront pricing
+and its request that WLIQ carry liability; another's clients, and what its own CRM log said.
+
+This was found only because the Artifact tool refuses to publish over a version this session has
+not read, and hands back the live source instead. That refusal is a feature — treat it as one.
+**Before republishing any page that carries research, diff the live copy against the new build and
+account for every chunk that exists only in the live one.** A `difflib` pass over the two files,
+split on tag boundaries, gets it to a handful of lines to read by eye.
+
+The recovery: parse the published HTML back into brief objects, overlay them onto the on-disk set,
+insert the result as a new `pb_briefs` row per affected account with an author that says where it
+came from, and set `superseded_at` on the row it replaces. 21 accounts, 109 fields. `pb_briefs`
+already had the shape for this — a row per (account, generated_at) with `superseded_at` — so no
+schema change was needed, and both passes are still on file.
+
+The general lesson is the one the table was built for: **a published artifact is a copy of the
+record, and sometimes the only one.** Do not treat it as disposable output.
+
+### Superseding
+
+A newer read does not delete an older one. Set `superseded_at` on the old row instead; the history
+is how confidence in an account is seen to grow (or not). `pb_current_research` and the candidate
+derivation both ignore superseded rows.
+
+## 27 · Checking rule 2 before you commit
+
+The repository is public and the roster is not in it, so the check needs the roster handed to it.
+Pull the names, run the script, expect nothing:
+
+```sql
+-- in the Supabase SQL editor / MCP
+select string_agg(name, E'\n' order by name) from public.pb_accounts where name is not null;
+```
+
+Save that to a file **outside the repository** (a scratch directory — never `./`), then:
+
+```bash
+node --experimental-strip-types scripts/no_prospect_names.ts /tmp/roster.txt
+```
+
+Exit 0 is clean, 1 means a name is in a tracked file, **2 means no roster was given** — the script
+refuses to report a clean run it did not perform, because a check that passes when handed nothing
+is worse than no check.
+
+Run it before any commit that adds prose to `docs/`, a comment to a migration, or a fixture to a
+test. Every breach so far arrived as an *example*: the concrete case that makes a ruling legible.
+Keep the example and drop the name — "an agency Apollo listed at 68 with 35 people on its team
+page" carries the whole point and identifies nobody. Same for money: "a five-figure deal still
+open", not the invoice number.
+
+Matching is case-sensitive on word boundaries, and a short list of account names that are ordinary
+English (`Agency`, `Momentum`, `Snap`, `Test`, `None`…) is skipped in the script. If the roster
+grows a name that is a common word, add it there rather than letting the check cry wolf — a noisy
+check is one nobody runs.
+
+**What the script cannot do:** it reads the working tree, not history. A name already pushed stays
+in the commits that carried it until someone rewrites history or the repository goes private, and
+both are the owner's call (DECISIONS §23).

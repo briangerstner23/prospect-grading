@@ -47,7 +47,7 @@ or diverges — and whether each divergence is a recorded tuning or an accident.
 | R1 | One record per agency; identity keys; deterministic match; merge queue; grade carried at promotion | **partial** | 993 candidates, 80 with a proposed match, none reviewed since 13 Sep. Promotion confirmer unruled (PRO-18) |
 | R2 | Signals with provenance/weight/lifespan; six connectors; nightly recompute; expire, never delete | **partial** | `email` channel has no credential; **Fathom has never delivered** (see RECON) |
 | R3 | Four reads separately, **gates first**, never summed, no bare numbers | **partial** | Only `service_shape` and `economics` park. `broker_character` is `flag` (PRO-2r-a unruled); **`geography` is `off`** with no ruling |
-| R4 | Wallet/winnable/headroom with editable anchors; climb evidence; **P10/P50/P90 frozen at first SOW, scored at 6/12/24 months, hit-rate, error, Brier** | **accumulating since 17 Sep; scoring pass absent** | pb-score writes one snapshot per ranked account per night (band edges as p10/p90; p50 and the probabilities null — no estimator yet). The freeze is a selection at `first_invoice_at` (DECISIONS §30). Nothing scores against actuals yet |
+| R4 | Wallet/winnable/headroom with editable anchors; climb evidence; **P10/P50/P90 frozen at first SOW, scored at 6/12/24 months, hit-rate, error, Brier** | **accumulating since 17 Sep; scoring pass absent** | pb-score writes one snapshot per ranked account per night (band edges as p10/p90; p50 and the probabilities null — no estimator yet). The freeze is a selection at `first_invoice_at` (DECISIONS §36). Nothing scores against actuals yet |
 | R5 | Fathom extraction; seven quote-backed fields; `not discussed`; rep confirms before write | **divergent** | Quote verification is *stronger* than asked. Extracted set is Dimension A + climb signals, not the seven fields; high-confidence facts write without a human step. **And the extractor's climb vocabulary does not match the active rubric's** |
 | R6 | Deal warnings with **thresholds from WLIQ's own stage medians**; stage-exit criteria | **partial** | Stage median still the placeholder default. Stage-exit noted, not enforced |
 | R7 | Tiers that name a play; capacity cap; owner + SLA; strong signal creates a task | **not met** | Engine emits a chase key and stops. Tier-1 sizing is open decision 1 |
@@ -283,7 +283,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R4-score-writes-snapshots",
       "r": "R4",
       "mode": "auto",
-      "claim": "pb-score writes pb_potential_snapshots on every non-preview run: one row per ranked account per day per estimator, upserted on that key (migration 20260917110000; DECISIONS §30). Closed 17 Sep; the row before it (R4-nothing-writes-snapshots, equals 0) is what this replaced. The scoring pass at 6/12/24 months is NOT built — see R4-scoring-pass-absent.",
+      "claim": "pb-score writes pb_potential_snapshots on every non-preview run: one row per ranked account per day per estimator, upserted on that key (migration 20260917110000; DECISIONS §36). Closed 17 Sep; the row before it (R4-nothing-writes-snapshots, equals 0) is what this replaced. The scoring pass at 6/12/24 months is NOT built — see R4-scoring-pass-absent.",
       "probe": {
         "kind": "count_matches",
         "paths": [
@@ -318,7 +318,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "select taken_at, estimator, count(*) from pb_potential_snapshots group by 1, 2 order by 1 desc limit 5;",
-      "claim": "598 rows on 2026-09-17, estimator year1_band_edges@0.1.4, one per ranked account, written by run 9290fe00 on pb-score v9 (DECISIONS §30). All carry p10/p90, none p50; all sit in the two ICP prior bands because no ranked account has a quote. Before 17 Sep: zero rows, ever."
+      "claim": "598 rows on 2026-09-17, estimator year1_band_edges@0.1.4, one per ranked account, written by run 9290fe00 on pb-score v9 (DECISIONS §36). All carry p10/p90, none p50; all sit in the two ICP prior bands because no ranked account has a quote. Before 17 Sep: zero rows, ever."
     },
     {
       "id": "R5-quote-check-present",
@@ -643,7 +643,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "get_edge_function pb-score → its index.ts is one import pinned to a full commit sha; that sha must be >= the last commit touching core/, ingest/ or supabase/functions/ (git log -1 --format=%H -- core ingest supabase/functions). If it is older, redeploy per RUNBOOK §3 (pinned-commit entrypoint).",
-      "claim": "CLOSED 17 Sep: pb-score v9 deployed from commit c467352, then v10 from 94d8fbc (snapshot count into pb_runs.counts), both by a pinned-commit entrypoint (RUNBOOK §3) — the deployed function IS the committed source, so SOURCE_RANK (§27) and buildSnapshotRow (§30) are in it by construction. Proved by preview (200; 829 scored, 598 ranked, 224 unclassified, 7 parked, 0 changed against current reads) and then a real run. v8 (16 Sep) had been behind source by the rule-9 fix; production reads were unaffected because pb-score consumes the already-resolved view. The other four functions are unchanged since 14 Sep."
+      "claim": "CLOSED 17 Sep: pb-score v9 deployed from commit c467352, then v10 from 94d8fbc (snapshot count into pb_runs.counts), both by a pinned-commit entrypoint (RUNBOOK §3) — the deployed function IS the committed source, so SOURCE_RANK (§33) and buildSnapshotRow (§36) are in it by construction. Proved by preview (200; 829 scored, 598 ranked, 224 unclassified, 7 parked, 0 changed against current reads) and then a real run. v8 (16 Sep) had been behind source by the rule-9 fix; production reads were unaffected because pb-score consumes the already-resolved view. The other four functions are unchanged since 14 Sep."
     },
     {
       "id": "RECON-reconcile-script-present",

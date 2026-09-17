@@ -10,7 +10,7 @@
  * not yet expired, open non-CJ deals, and register overrides. Per account:
  * resolveFeatures → grade. Then, unless preview:
  *   - insert pb_reads (scorecard_sha256 over JSON.stringify(scorecard))
- *   - upsert pb_potential_snapshots, one per ranked account per day per estimator (DECISIONS §30)
+ *   - upsert pb_potential_snapshots, one per ranked account per day per estimator (DECISIONS §36)
  *   - update pb_accounts.status / effective_tier / cell (listing columns)
  *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors}
  * A per-account failure is collected into errors and the run continues.

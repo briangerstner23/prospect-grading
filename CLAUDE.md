@@ -54,8 +54,41 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260915090000 website reads · 090100 fact source precedence · 090200 website team pages ·
             090300 website retry window (the last three transcribed 17 Sep from the database, where
             they had run without a file — DECISIONS §26) ·
-            20260917100000 reconcile state (§28) · 110000 potential snapshot key (§30). All applied. 29 MORE are applied with no
-            file — the 16 Sep boards system — held until owner decision 2 (docs/REPAIR-PLAN.md).
+            20260917100000 reconcile state (§34) · 110000 potential snapshot key (§36). All applied.
+            20260915090000 website reads ·
+            20260915120000 fact source precedence ·
+            20260915130000 website team pages ·
+            20260915140000 website retry window ·
+            20260916090000 research log (pb_account_reads · pb_briefs · pb_chase_scores) ·
+            20260916090100 candidates from reads ·
+            20260916100000 candidate source from method ·
+            20260916140000 contact events + pb_engagement (DECISIONS §24) ·
+            20260916140100 engagement counts a meeting they attended ·
+            20260916160000 identity registry mirror (pb_mdm_*, DECISIONS §25) ·
+            20260916160100 junk by domain + origin ·
+            20260916170000 a client is still a prospect; quote_state (DECISIONS §26) ·
+            20260916180000 orbit clients snapshot + pb_orbit_overlap ·
+            20260916190000/190100 admit from orbit (+ roster_source 'orbit') ·
+            20260916200000/200100 gmail sweep staging + contact events from it ·
+            20260916210000/210100/210200 attribute orphan calls (+ the per-call review
+            queue) · 20260916210250/210300/210500 company-name normaliser + orbit quote
+            sweep + contact events from it ·
+            20260916220000 chase board — pb_chase_weights (weights as data) +
+            pb_chase_board (chase_rank over all 849, new_logo_rank over the 612 with no
+            delivery work; the CRM stage is carried at zero points) ·
+            20260916220100 duplicate accounts ·
+            20260916230000 quote match by exact domain ·
+            20260916230100 pb_company_engagement + the chase board grouped by company
+            (824 companies over 849 records; the union is over EVENTS, never over the
+            derived flags — DECISIONS §31) ·
+            20260916240000 pb_prospect_board — prospects ranked by POTENTIAL, sorted on the
+            engine's own chase_rank_key read out of the scorecard (the rubric defines the
+            order, SQL never restates it); engagement is a COLUMN, never the rank; no
+            composite number. pb_chase_board stays as the contact-ordered
+            "who do I call today" board — a different question (all applied)
+            (the 16 Sep set above was written on branch claude/new-session-glwxzh and merged
+            17 Sep; a few of its inline §-references point at sections that branch never wrote
+            and have been dropped — DECISIONS §38)
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -80,6 +113,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
             pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
             index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts ·
+            no_prospect_names.ts (rule 2 made mechanical — takes the roster from outside the repo;
+            run it before any commit that adds prose. DECISIONS §23, RUNBOOK §27)
             reconcile.ts (DECLARED vs RUNNING: calls pb_reconcile_state() — no secrets — and fails
             when the active rubric, the applied migrations, source liveness or rule 9 disagree with
             the record; CI runs it on push and every 6h; `--state f.json` runs offline) · reconcile_test.ts
@@ -107,7 +142,12 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    open item landed.
 2. **No prospect data in this repo.** It is public. No agency names, dollar bands, seed
    exports, gate reports, staff names or build-kit documents. Fixtures are synthetic
-   (invented agency names). People appear only as roles.
+   (invented agency names). People appear only as roles. This was broken for five days by
+   agency names that entered as *examples* in prose (DECISIONS §23) — so the check is
+   now mechanical: `scripts/no_prospect_names.ts` against the live roster, RUNBOOK §27 — 26
+   agencies reached the repo before anyone ran a check, and a hand count of them was wrong too.
+   Shape
+   the example ("an agency Apollo listed at 68 with 35 on its team page"), never name it.
 3. **The engine is pure.** `grade(features, rubric, options) → scorecard`, deterministic,
    every fired rule in the trace with its basis (`ruled` / `unruled_default` / `reasoned`).
 4. **The rubric is data.** Every threshold, band, weight and lifespan is read from the active
@@ -130,9 +170,20 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    pipedrive > anything else`, added 15 Sep 2026), then newest written, then newest observed. The
    view is what pb-score reads and the function is what the pure path reads; they must not drift —
    and they did, for two days, because the view changed in a migration that had no file
-   (DECISIONS §27). `resolve_features_test.ts` pins the order.
+   (DECISIONS §33). Without the middle step the tiebreak is which seed ran last — 38 accounts flip
+   across the Partner threshold on that alone (§22). `resolve_features_test.ts` pins the order
+   against the migration.
 10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
+11. **Orbit is read, never written.** Owner instruction, 16 Sep 2026: *"Do not, absolutely do not
+   write anything into Orbit."* Orbit is the delivery system and the system of record for work in
+   flight; a wrong row there reaches real projects, real invoices and real people. Only
+   `list_*` / `get_*` are permitted. **Never** call `create_client`, `create_project`,
+   `update_project`, `create_task`, `update_task`, `add_task_comment`, `complete_task`,
+   `change_*_due_date` or any other Orbit mutation, in any session, for any reason — including to
+   "correct" something this book believes is wrong. Drift goes in a report a person reads
+   (`pb_orbit_admission_queue`, `pb_orbit_overlap`), the same posture as `pb_roster_drift`.
+   `pb_orbit_clients` is a snapshot filled from the read endpoints and nothing else.
 
 ## Supabase
 
@@ -161,6 +212,11 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
   enough to make the sweep do real work. A channel with no credential is skipped and said so in
   the run's notes.
+- **A ruling is applied when the deployed artefact contains it** — not when it is written down
+  and not when the code is merged. `deploy_edge_function` reports success for any syntactically
+  valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
+  took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
+  was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
 - Deployed versions as of **17 Sep 2026**: **pb-score v10** (commit `94d8fbc`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
@@ -213,8 +269,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   Check after adding a table. `authenticated` legitimately writes where a policy says so, so
   its expected set is not simply `SELECT`: insert on `pb_facts`, `pb_signals`, `pb_register`
   and `pb_promotions`; update on `pb_fact_candidates` and `pb_identity_candidates`; select
-  elsewhere; and nothing at all on `pb_apollo_enrichment`, `pb_source_watermarks` or
-  `pb_webhook_inbox`. This returns nothing when the book is in order:
+  elsewhere; and nothing at all on `pb_apollo_enrichment`, `pb_source_watermarks`,
+  `pb_webhook_inbox` or `pb_website_reads`. The three research tables
+  (`pb_account_reads`, `pb_briefs`, `pb_chase_scores`) are `authenticated` **select only and
+  `anon` nothing** — deliberately narrower than `pb_facts`, because they carry candid judgements
+  about named companies (who is price-sensitive, whose owner is retiring) rather than facts.
+  Opening them to `anon` is the owner's call, not a default. This returns nothing when the book
+  is in order:
 
   ```sql
   select grantee, table_name, privs, expected

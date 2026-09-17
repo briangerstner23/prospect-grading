@@ -108,7 +108,7 @@ export function evaluate(
   const knownUnfiled = unfiled.filter((n) => known.has(n));
   const knownButFiled = [...known].filter((n) => disk.has(n));
   summary.push(`${state.applied_migrations.length} applied, ${unfiled.length} unfiled (${knownUnfiled.length} known, ${unknownUnfiled.length} unknown)`);
-  if (unknownUnfiled.length) failures.push(`applied with no file and not on the known list: ${unknownUnfiled.join(", ")} — transcribe from schema_migrations.statements (DECISIONS §26)`);
+  if (unknownUnfiled.length) failures.push(`applied with no file and not on the known list: ${unknownUnfiled.join(", ")} — transcribe from schema_migrations.statements (DECISIONS §32)`);
   if (knownUnfiled.length) warnings.push(`${knownUnfiled.length} applied migrations have no file, on the known list (${ledger.known_unfiled_migrations.reason})`);
   if (knownButFiled.length) warnings.push(`on the known-unfiled list but now filed — remove from the ledger: ${knownButFiled.join(", ")}`);
 
