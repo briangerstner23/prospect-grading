@@ -1807,3 +1807,66 @@ carries p50. All 598 fall in two bands — the ICP prior bands `$6K–16K` (536)
 (62) — because no ranked account carries a quote today: until quotes flow in, the estimator is
 in practice the ICP prior map, which is a fact Track B should weigh when it proposes a naive
 baseline. The ledger row `R4-snapshots-empty` keeps its id so the flip is visible in history.
+
+## 31 · The working surface is the Prospect Board; the boards stay; raters join at release (17 September 2026)
+
+Three of the five owner decisions in `docs/REPAIR-PLAN.md`, answered by the owner on 17 Sep.
+Recorded in the owner's terms first, then what follows from them.
+
+**Decision 1 — the surface is "the page", and the page is the 16 Sep Prospect Board.** The owner
+pointed at the board he has been working from (a claude.ai artifact: the top 100 of
+`pb_prospect_board` as of 16 Sep, with a dossier per row) and said: *"This artifact is the page
+that I want to codify, and I want to work from here and iteratively, continuously improve this
+page. I want this page to be recorded as the page. Now we can make more user experience, format
+and layout and design it so it's more usable, but I don't want to reinvent this constantly."*
+And on what it shows: *"I don't know if these numbers and grades and everything are accurate …
+I always want the best, most accurate, most confident data to be displayed on these screens."*
+
+What that artifact is, measured: a **static snapshot** — 100 rows of JSON embedded in the HTML,
+no fetch, no Supabase, rubric 0.1.3 (retired the next day), taken 16 Sep. It renders
+`pb_prospect_board`, a view that ranks one row per company by the engine's own
+`chase_rank_key` and carries **no composite score** (the view's comment says so and its SQL
+confirms it — it reads `pb_current_reads.scorecard->'chase_rank_key'`). The dossier draws on
+briefs, research reads, contacts, calls, facts, signals and the register. The `pb_chase_scores`
+table (146 rows, a weighted `score int`) belongs to the *older* contact-ordered chase board, not
+to this view.
+
+What follows:
+
+1. **The board becomes a live page in this repository**, reading the database on every load and
+   showing the active rubric's reads, so "the most confident data" is by construction the
+   nightly's — never a snapshot. The 16 Sep artifact is superseded the moment the live page
+   exists; its design (rank by potential; tier, confidence and engagement as three axes that never
+   touch; a dossier per row) is the design to keep and iterate.
+2. **`web/index.html` is not replaced; it becomes the entry surface.** Today it is the signed-in
+   back office (sign-in, candidate review, merges, the register). Decision 3 below needs exactly
+   that: a page where people enter answers. Two pages, one record.
+3. **Decision 2 follows from decision 1: the 16 Sep boards system stays.** Its 29 migrations are
+   filed verbatim from `schema_migrations.statements` (the same way §26 filed four), tested, and
+   the ledger's `known_unfiled_migrations` list goes to zero. `pb_prospect_board` is currently
+   revoked from `anon` and `authenticated`; a live page needs a read grant, and under §5 (reads are
+   public) that is `select` to `anon` on the view — with the dossier's contact and people data
+   staying behind sign-in, because `pb_contacts` stays closed (CLAUDE.md).
+4. **`pb_chase_scores` needs its own ruling**, deferred: it is a composite number, which the
+   research's "do not build" list and PRO-0 both refuse. It is not what the board ranks by, so it
+   can wait; it should not be displayed anywhere until ruled.
+
+**Decision 3 — a second rater: yes, at release, with conditions.** *"We're still in development,
+but once we release this, I need other people on the team to also contribute and answer the
+questions. The key is the questions have to be in clear, direct, and plain language. And there
+has to be a page where we can enter the information, and these records and decisions are kept
+and can be evaluated."* So: PRO-5's rater lane is used, not struck; the Blind Test and per-rater
+calibration stay in the plan as *release* work, not debt; and the entry page's requirement is
+written here so it is not lost — every question a rater answers is a plain-language question
+whose answer lands as a `pb_facts` row with `entered_by`, `observed_at` and an evidence label,
+exactly as rule 8 already requires. The gate questions are the first candidates: 795 of 850
+accounts have economics unknown and 758 have service shape unknown, which is why no gate can
+bite today whatever its mode (unknown never parks).
+
+**Not decided here:** decision 4 (does the gate bite — the owner asked for a worked example
+first), decision 5 (the default branch), and STANDARDS §9's A1 and A2. Each is re-asked with
+an example.
+
+**Privacy note for the owner, not a ruling:** the 16 Sep artifact is shared by link and carries
+contact names and staff names in its dossiers. The database keeps `pb_contacts` closed to the
+public on purpose. The live page should follow the database, not the artifact.

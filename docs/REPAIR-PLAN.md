@@ -280,13 +280,13 @@ project: long-horizon, many sources, judgment about what is settled versus vendo
 
 ## Blocked on you, not on a session
 
-1. **Is the page the working surface, or are the boards?** It is currently neither — the page has
+1. **RULED 17 Sep (DECISIONS §31): the page is the 16 Sep Prospect Board, made live.** ~~Is the page the working surface, or are the boards?~~ It is currently neither — the page has
    never been written to (0 overrides, 0 promotions, ever), and last week's work happened on
    boards the page cannot see. Blocks items in prompt 3 and the whole of Phase 3.
-2. **Do the 16 Sep boards, briefs and chase scores stay or go?** Either they are the product and
+2. **RULED 17 Sep (DECISIONS §31): they stay; file the 29 migrations; `pb_chase_scores` deferred.** ~~Do the 16 Sep boards, briefs and chase scores stay or go?~~ Either they are the product and
    need migrations, tests and a ruling, or they are an experiment and should be deleted. Leaving
    them where they are is the only genuinely bad option. Blocks prompt 3's second half.
-3. **Is there ever a second rater?** 2 owners, 0 raters. The blind test and per-rater calibration
+3. **RULED 17 Sep (DECISIONS §31): yes, at release, with plain-language questions and an entry page.** ~~Is there ever a second rater?~~ 2 owners, 0 raters. The blind test and per-rater calibration
    are blocked on someone other than you. If the answer is nobody, strike them from the plan
    rather than carrying them as debt.
 4. **Does the gate bite?** Broker character is a flag, geography is `off`, and you park 7 of 829.
