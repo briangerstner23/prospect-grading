@@ -203,6 +203,13 @@ function runProbe(c: Check): void {
     return;
   }
 
+  if (kind === "file_absent") {
+    // A GAP stated as a missing file. Symmetric with file_exists: creating the file fails this
+    // until the ledger row is flipped, which is the point.
+    if (existsSync(join(root, p.path as string))) fail(c.id, `${p.path} now exists — the gap closed; flip this row to file_exists`);
+    return;
+  }
+
   if (kind === "file_exists") {
     if (!existsSync(join(root, p.path as string))) fail(c.id, `${p.path} does not exist`);
     return;

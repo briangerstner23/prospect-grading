@@ -32,6 +32,13 @@ Aggregate counts only, per rule 2. No external document IDs. The version point i
   `scripts/reconcile.ts`, which is not yet built (row `RECON-checks-unbuilt`).
 - **Never** delete a row to make the build pass.
 
+## The standard the book must rest on (owner direction, 17 Sep)
+
+The foundation is not to be invented. `docs/STANDARDS.md` (Track B, not yet written) will record,
+per component, the field's established practice and whether WLIQ matches it, is ahead, is behind,
+or diverges — and whether each divergence is a recorded tuning or an accident. Until it exists the
+`STD-standards-doc-absent` row fails on purpose.
+
 ## The ten requirements
 
 | R | Asked for | State | What is missing |
@@ -105,7 +112,8 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
     "R10",
     "DNB",
     "FIT",
-    "RECON"
+    "RECON",
+    "STD"
   ],
   "manual_max_age_days": 45,
   "active_rubric": {
@@ -557,6 +565,16 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "verified_on": "2026-09-17",
       "reverify": "has any session read the Grading Register directly?",
       "claim": "The Grading Register (PRO-0..PRO-18) is a Claude artifact, not a file. No session in this repo has read it directly; every PRO-number claim in docs/ is second-hand via DECISIONS.md."
+    },
+    {
+      "id": "STD-standards-doc-absent",
+      "r": "STD",
+      "mode": "auto",
+      "claim": "GAP (owner direction, 17 Sep): docs/STANDARDS.md — the per-component comparison of WLIQ to the field's established practice, with every divergence marked deliberate-or-accidental — does not exist yet. Track B in docs/REPAIR-PLAN.md produces it. Flip to file_exists when it lands.",
+      "probe": {
+        "kind": "file_absent",
+        "path": "docs/STANDARDS.md"
+      }
     }
   ]
 }

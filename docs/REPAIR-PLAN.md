@@ -199,6 +199,66 @@ the book is right.
 
 ---
 
+## Track B · Standards alignment — runs ALONGSIDE the repairs, read-only
+
+*Owner's direction, 17 Sep: the foundation is not to be invented. The book must rest on the
+field's best-established model, tuned to WLIQ; every divergence must be a deliberate, recorded
+tuning. This track produces the evidence for that. It changes no parameter until the foundation
+repairs (items 1–6) are done; its findings then drive the four open rulings.*
+
+*Run on Fable 5.1 at effort `max`, one long session. This is the best single use of Fable in the
+project: long-horizon, many sources, judgment about what is settled versus vendor-written.*
+
+> Read `docs/HANDOFF-2026-09-17.md` §1 for the goal and `docs/DECISIONS.md` §23 for the state.
+> This is READ-ONLY research: you change no rubric, no engine code and no data. Your output is
+> one document and one proposal.
+>
+> The owner's direction: prospect and account grading is a well-studied field, and he does not
+> want to reinvent it. He wants the book to rest on the industry's best-established model —
+> the platinum standard, drawn from the whole field's expertise — personalised to WLIQ. Every
+> place the book diverges from that standard must be a deliberate, recorded tuning to his needs,
+> never an accident of iteration. Your job is to find out, component by component, which it is.
+>
+> You are not starting from nothing. The 17 Sep audit's §4 (in the handoff, embedded in full)
+> already compared ten practices where WLIQ is ahead and twelve where it is behind, with sources.
+> The 9 Sep research document (external; the owner holds it) cites ~80 sources and marks each as
+> independent, academic or vendor. The rubric labels every threshold's `basis` as `reasoned` or
+> `unruled_default` — none is `ruled`. Build on all three; do not re-derive verified facts.
+>
+> Cover every component of the instrument: the gates and knockouts; the fit read (attribute
+> choice, equal versus fitted weights at low n, the criteria the research named that were never
+> built); potential (the wallet formula, the Wallet Allocation Rule applied to prospects rather
+> than customers, interval calibration, Brier scoring, back-testing on 50–100 deals); signals
+> (decay, half-lives keyed to cycle length, routing of strong versus weak signals); deal health
+> (SPICED versus MEDDPICC at this deal size, Gong-style warnings, thresholds from the seller's own
+> stage medians, stage-exit criteria); scoring mechanics (never summed, a reason on every score,
+> thresholds cut where the staircase breaks, a scarce top band); governance (model definitions in
+> version control, a registry, champion–challenger, SR 11-7-style validation, drift monitoring,
+> audit trails for overrides); and adoption (plays with owners and SLAs, write-back to where the
+> team works). For each: the established practice, who established it and on what evidence —
+> say plainly whether that evidence is independent, academic or a vendor's own data — what WLIQ
+> does today (rubric path or file:line), and one verdict: matches, ahead, behind, deliberately
+> diverged (cite the `docs/DECISIONS.md` section that records the divergence), or **diverged by
+> accident** (no record anywhere). The last category is the one that matters most to him.
+>
+> Be honest about the three kinds of knowledge. Settled and not to be relitigated (mechanical
+> combination beats holistic judgment; equal weights beat fitted at low n; fit and engagement are
+> different axes; behaviour decays and fit does not; a few hundred outcomes before fitting).
+> Empirical and local, with no external truth (every threshold, band edge and pass mark — these
+> come from the seller's own conversion data, which WLIQ does not yet have). And unknown to
+> anyone (whether any prospect grade predicts revenue for a white-label development shop). Do
+> not present the second or third kind as the first.
+>
+> Deliver `docs/STANDARDS.md` — one section per component, a table per section, aggregate
+> figures only and no agency names (rule 2) — ending with a ranked list of every accidental
+> divergence that needs a ruling, each with the standard it would align to and the WLIQ-specific
+> reason that might justify keeping the divergence. Then PROPOSE, do not apply, an additive
+> `standard_source` field beside `basis` on each rubric entry, showing three worked examples.
+> Finally flip the `STD-standards-doc-absent` row in `docs/RESEARCH-CONFORMANCE.md` and run
+> `npm test`.
+
+---
+
 ## Blocked on you, not on a session
 
 1. **Is the page the working surface, or are the boards?** It is currently neither — the page has
