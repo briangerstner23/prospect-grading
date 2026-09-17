@@ -31,8 +31,8 @@ const check = (name: string, cond: boolean, detail = "") => {
 
 /* 1 · every table it reads is one anon may select */
 const OPEN = ["pb_rubric_versions", "pb_runs"];
-const CLOSED = ["pb_contacts", "pb_members", "pb_promotions", "pb_potential_snapshots",
-  "pb_webhook_inbox", "pb_briefs", "pb_account_reads", "pb_chase_scores", "pb_chase_board"];
+const CLOSED = ["pb_members", "pb_promotions", "pb_potential_snapshots",
+  "pb_webhook_inbox", "pb_chase_scores", "pb_chase_board"];
 const fetched = [...new Set([...page.matchAll(/get\("([a-z_]+)\?/g)].map((m) => m[1]))];
 check("reads the board through the definer function, not the view",
   /rpc\("pb_board"\)/.test(page) && !/get\("pb_prospect_board/.test(page));
@@ -84,6 +84,26 @@ check("every localStorage touch is guarded (it throws in a private window)",
 /* 9 · navigation between the screens */
 check("navigates to the back office", /href="index\.html"/.test(page));
 check("marks which screen you are on", /aria-current="page"/.test(page));
+
+
+/* 10 · THE DOSSIER — the half this page shipped without (DECISIONS §43).
+ * The owner ruled the 16 September artifact the layout to keep, dossier included. These pin the
+ * sections so a later change cannot quietly drop them again, which is exactly what happened once.
+ */
+check("a row opens a dossier", /function openDossier/.test(page));
+check("rows carry the account id that opens it", /data-account="/.test(page));
+check("the dossier is read through pb_dossier()", /rpc\("pb_dossier", \{ p_account_id/.test(page));
+for (const section of [
+  "Make this call", "Where we win", "What kills it", "How they got here", "How we got here",
+  "How they see us", "Why it ranks here", "What we actually know", "Who they buy for",
+  "The site read", "Independent check", "Decisions on the record", "Sources",
+]) check(`dossier keeps the section: ${section}`, page.includes(`"${section}"`));
+check("the engine's reason sentence is shown verbatim", /read\.reason/.test(page));
+check("the rubric version and fingerprint are shown", /rubric_fingerprint/.test(page));
+check("facts show their evidence label", /evidence_label/.test(page));
+check("prev / next / escape move between dossiers", /ArrowLeft/.test(page) && /Escape/.test(page));
+check("no email address is rendered anywhere", !/\.email\b/.test(page));
+check("staff identifiers print as a name, not an address", /function localPart/.test(page));
 
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);

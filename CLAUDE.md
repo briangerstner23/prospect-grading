@@ -90,15 +90,28 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             "who do I call today" board — a different question (all applied)
             (the 16 Sep set above was written on branch claude/new-session-glwxzh and merged
             17 Sep; a few of its inline §-references point at sections that branch never wrote
-            and have been dropped — DECISIONS §38)
+            and have been dropped — DECISIONS §38) ·
+            20260917200000 board public read (SUPERSEDED — a view grant cannot work here) ·
+            210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
+            `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
+            260000 board carries account_id · 270000 call attendees by name only.
+            The 17 Sep set was transcribed from the database after it ran; each file is
+            byte-identical to schema_migrations.statements (verified by md5).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)
-web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41): the prospect board, live.
-            Reads pb_board() (a SECURITY DEFINER function — the view itself stays closed to anon,
-            because it sits on seventeen objects) and renders the engine's own chase_rank_key
-            order. Public, no sign-in, no data baked in. scripts/board_page_test.ts pins it.
+web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the prospect board, live,
+            AND the dossier behind every row. Reads pb_board() for the list and pb_dossier(uuid)
+            for one agency — both SECURITY DEFINER functions, because the view and its sources stay
+            closed to anon (seventeen objects under the board, nine more under the dossier) and
+            granting them all is a far larger decision than exposing two read functions. Renders the
+            engine's own chase_rank_key order and the 16 Sep artifact's own dossier sections, in its
+            order. Public, no sign-in (owner ruling §43), no data baked in. Light by default with a
+            remembered dark toggle; every localStorage touch wrapped. NO EMAIL ADDRESSES reach the
+            page — not from pb_contacts, not from call attendees (names and side only). Adding a
+            section, or dropping one, means updating scripts/board_page_test.ts, which pins all 13
+            section names and 54 checks in total.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
             Both are one file each, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)

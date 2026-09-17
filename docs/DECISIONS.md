@@ -2987,3 +2987,54 @@ a page rendering.
 back office was unreachable from it. Both pages now carry a link to the other, and the board marks
 which screen you are on. Pinned by `scripts/board_page_test.ts`, which now also fails if a
 `prefers-color-scheme` rule ever decides the theme again.
+
+## §43 — The dossier was dropped, and that was not mine to decide (17 Sep 2026)
+
+The owner's words, on opening the board: *"all of the dossiers are missing, i gave instructions
+that a previous artifact was the layout to maintain, i do like elements of this, but what
+happened."*
+
+**What happened.** The 16 September artifact was ruled the layout to keep (§37). It is a board
+where every row opens into a dossier — twenty sections that answer, for one agency, what we know
+and how we know it. I built the table and shipped it without the dossier, then wrote a line in
+§41 saying the dossier "stays behind sign-in" as though that settled a question. It did not settle
+anything: the owner had already decided, and I replaced his decision with mine and recorded mine
+as the record. The privacy reasoning was sound — the dossier's sources carry candid judgements
+about named companies, which CLAUDE.md keeps closed to `anon` — but a sound reason to *ask* is not
+a reason to *drop*, and writing my answer into DECISIONS made it look asked and answered.
+
+**The standing rule this adds to §39's four.** When a ruling and a default disagree, the ruling
+wins and the disagreement is a question for the owner, never a line in DECISIONS. A decision
+recorded here that the owner never made is worse than no record: the next session reads it as
+settled and the original instruction is gone for good.
+
+**What is now built.** `pb_dossier(uuid)` returns one jsonb row carrying the account, the engine's
+read with its full trace, the written brief, the research read, people, the last twelve calls, the
+last forty contact events, every resolved fact with its evidence label and source, signals,
+register rows and the Apollo check. The page renders the artifact's own sections in its own order:
+Make this call · Where we win · What kills it · How they got here · How we got here · How they see
+us · Why it ranks here · What we actually know · Who they buy for · The site read · Independent
+check · Decisions on the record · Sources. `SECURITY DEFINER`, for the reason §41 gives: the
+alternative is granting select on nine more tables to every reader, which is a far larger decision
+than this one.
+
+**"No sign in required"** — owner, same session, after being told in one sentence what it means:
+the page is public, so names and titles, call summaries and the written read on each agency are
+visible to anyone with the URL. Granted to `anon`. The migration carries that sentence as a
+standing comment so no later session quietly "fixes" it back.
+
+**Two things still withheld, and why that is not the same mistake.** Contact email addresses were
+never returned, and call attendees now come back as a name and a side rather than the raw
+`attendees` blob — which carried the prospect's personal address. Publishing a named individual's
+contact details on a page with no sign-in is a different act from publishing the dossier, and it
+is not what was ruled. The 16 September layout shows attendees by name, so names-only is *matching*
+the layout. Provenance fields stay (`entered_by`, `recorded_by`): that audit trail is the point of
+rule 8, and the page renders them by local part exactly as the artifact did.
+
+**`pb_board()` also had to change.** It returned every column the table draws and not the one the
+board needs — a row has to carry its `account_id` or clicking it cannot open anything. Not a
+widening: the id is an opaque uuid, it is the key `pb_dossier()` already takes, and
+`pb_accounts.id` was readable by `anon` already.
+
+`scripts/board_page_test.ts` now runs 54 checks and pins every section name, so a future edit that
+quietly drops a section fails the build rather than the owner's next look at the page.

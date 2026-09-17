@@ -56,13 +56,14 @@ disqualifiers (Prospeo, Breadcrumbs — *practitioner*/*vendor data*; Dawes for 
 *independent*, settled). Weights re-cut from the seller's own lift on a holdout once outcomes
 exist (Ignacio — *practitioner*; the published data floors — *vendor data*). Fit never decays; it
 is refreshed. Which attributes carry weight for a white-label dev shop is local; the agency
-research (Promethean, SoDA, Agency Core, SparkToro — *independent*) says which are worth testing.
+research (Promethean, SoDA, SparkToro and an agency-operations benchmarking body — *independent*)
+says which are worth testing.
 
 | Aspect | Standard | WLIQ today | Verdict |
 |---|---|---|---|
 | Fit is a separate read, never summed with engagement | Forrester, HubSpot, Marketo; matrix-vs-scorecard literature | Four reads, `what_the_grade_is_for.consequence`: rank + band, never a composite | **matches / ahead** (four reads, not two) |
 | 4–6 attributes, equal weight | Dawes; Prospeo | **0.1.4 (active):** base tier from a six-way ICP map (`dimension_b.base_tier_from_icp`, `unruled_default`) then **14** adjustment rules capped at net ±1 rung (`net_cap_up/down`). **0.2 (draft):** six observable criteria, one point each, bands 5+/3+/0 (`base_tier_from_fit`, DECISIONS §8) | **deliberately in transition, recorded** — §8 retires ICP as the fit read; 0.2 matches the standard exactly. Until 0.2 activates, 14 rules exceed the "4–6" guidance, but the ±1 cap (ruled, July) bounds what they can do. |
-| Attributes chosen from evidence | Promethean, Agency Core, SoDA (*independent*) | 0.1.4's ADJ rules carry the research's own attribute list (recurring model, niche, AM/PM split, badges, peer network, AI posture, tiny/in-house/dev-shop/shrinking negatives), each with a `source` line | **matches** |
+| Attributes chosen from evidence | Promethean, SoDA, an agency-operations benchmarking body (*independent*) | 0.1.4's ADJ rules carry the research's own attribute list (recurring model, niche, AM/PM split, badges, peer network, AI posture, tiny/in-house/dev-shop/shrinking negatives), each with a `source` line | **matches** |
 | Weights from own lift, checked on a holdout | Ignacio; every vendor floor | Not run. Decision 3 in DECISIONS §1 chose equal weights first; no outcomes to fit yet (2 won, 67 lost, 31 retrodictable) | **behind, recorded** — correct posture at this n; the loop that will change it is §36 |
 | Direct end-clients in an agency book | The research recommended removal | Kept, flagged, excluded from agency-only rules — PRO-4 (2026-09-04) | **deliberately diverged, recorded** — register ruling |
 | Fit refreshed on a rhythm, ≤20% churn per quarter | Winning by Design (*practitioner*); Breadcrumbs' rebuild trigger | Facts arrive from sweeps and webhooks continuously (rule 8, §9); no quarterly refresh job, no churn cap | **behind (not built)** — an operations gap, not a method divergence |
@@ -293,3 +294,13 @@ preview away once the owner says which way. It does not re-derive the research's
 inherits them and says so. And it does not claim the field's numbers as WLIQ's: every "matches" on
 a threshold above means the *method* of setting it matches, and the value itself remains local
 and unmeasured until the loop that started on 17 Sep has outcomes to cut against.
+
+---
+
+**A note on one citation.** Two of the independent sources above are named; one is not, and is
+described instead. It is an agency-operations benchmarking body whose name also appears on the
+live prospect roster, so `scripts/no_prospect_names.ts` flags it and rule 2 gives it no exemption:
+this repository is public, and a reader cannot tell a cited research body from a graded account.
+The citation keeps its force — the claim is still traceable by anyone inside WLIQ — without
+publishing a name the rule reserves. That collision will recur: industry bodies are also agencies.
+Describe the source, do not name it.

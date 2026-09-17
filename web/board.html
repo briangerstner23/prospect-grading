@@ -147,12 +147,119 @@ td.flags{min-width:150px}
 .note.warn{border-left-color:var(--alert)}
 footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Roboto Mono",monospace;
   font-size:11.5px;color:var(--ink-3);line-height:1.65}
+
+/* ---------- dossier ---------- */
+.dnav{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--rule)}
+.dnav .wrap{display:flex;align-items:center;gap:8px;padding-block:9px}
+.btn{font-family:"Roboto Mono",monospace;font-size:11.5px;letter-spacing:.05em;padding:5px 10px;
+  border:1px solid var(--rule);background:var(--surface-2);color:var(--ink-2);cursor:pointer}
+.btn:hover{color:var(--ink);border-color:var(--ink-3)}
+.btn[disabled]{opacity:.4;cursor:default}
+.dwho{margin-left:auto;font-family:"Roboto Mono",monospace;font-size:11.5px;color:var(--ink-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dhero{background:var(--surface);border-bottom:1px solid var(--rule)}
+.dhero .wrap{display:flex;flex-direction:column;gap:11px;padding-block:24px 22px}
+.rankline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rk{font-family:"Roboto Mono",monospace;font-size:12px;color:var(--ink-3);letter-spacing:.06em}
+.dhero h1{font-size:clamp(24px,4.4vw,36px)}
+.dhero .sub{font-size:16px;color:var(--ink-2);max-width:66ch;line-height:1.5}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:"Roboto Mono",monospace;font-size:11px;letter-spacing:.05em;padding:3px 8px;
+  border:1px solid var(--rule);background:var(--surface-2);color:var(--ink-2)}
+.chip.warn{border-color:var(--alert);color:var(--alert);background:var(--alert-bg)}
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);
+  border:1px solid var(--rule);margin-block:24px 0}
+@media (max-width:700px){ .strip{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.cellf{background:var(--surface);padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.cellf .k{font-family:"Roboto Mono",monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+.cellf .v{font-family:"Roboto Mono",monospace;font-size:15px;font-weight:500;color:var(--ink);
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cellf .v.sm{font-size:12.5px;font-weight:400;line-height:1.35}
+.cellf .b{font-size:11.5px;color:var(--ink-3);line-height:1.4}
+.cellf.alert .v{color:var(--alert)}
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:26px;padding-block:26px 10px}
+@media (min-width:920px){ .dgrid{grid-template-columns:minmax(0,1fr) 320px;gap:32px} }
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+.blk{background:var(--surface);border:1px solid var(--rule);padding:15px 16px;
+  display:flex;flex-direction:column;gap:9px}
+.blk>h3{display:flex;align-items:baseline;gap:9px;font-size:15px}
+.blk>h3 .tag{font-family:"Roboto Mono",monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.blk p{font-size:14.5px;color:var(--ink-2);line-height:1.55;max-width:66ch}
+.blk.act{box-shadow:inset 3px 0 0 var(--go)}
+.blk.act p{color:var(--ink);font-size:16px;font-weight:600;line-height:1.45}
+.blk.kill{box-shadow:inset 3px 0 0 var(--alert)}
+.blk.win{box-shadow:inset 3px 0 0 var(--steel)}
+.blk.gap{box-shadow:inset 3px 0 0 var(--none-line);background:var(--surface-2)}
+ul.people,ul.sig,ul.rulings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+ul.people li,ul.sig li,ul.rulings li{padding:9px 0;border-bottom:1px solid var(--rule-2)}
+ul.people li:last-child,ul.sig li:last-child,ul.rulings li:last-child{border-bottom:none;padding-bottom:0}
+ul.people li:first-child,ul.sig li:first-child,ul.rulings li:first-child{padding-top:0}
+ul.people .nm{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+ul.people .dm{font-family:"Roboto Mono",monospace;font-size:9.5px;letter-spacing:.1em;
+  color:var(--steel);border:1px solid var(--plat-line);background:var(--plat-bg);padding:0 4px}
+ul.people .ti{font-size:12.5px;color:var(--ink-2);line-height:1.35}
+ul.people .mt{font-family:"Roboto Mono",monospace;font-size:10.5px;color:var(--ink-3)}
+ol.rail{list-style:none;margin:0;padding:0 0 0 15px;display:flex;flex-direction:column;
+  border-left:1px solid var(--rule);position:relative}
+ol.rail li{padding:9px 0;position:relative;display:flex;flex-direction:column;gap:2px}
+ol.rail li:first-child{padding-top:0} ol.rail li:last-child{padding-bottom:0}
+ol.rail li::before{content:"";position:absolute;left:-19px;top:14px;width:7px;height:7px;
+  background:var(--steel);border-radius:50%}
+ol.rail li:first-child::before{top:4px}
+ol.rail .dt{font-family:"Roboto Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:.04em}
+ol.rail .tl{font-size:14px;font-weight:600;line-height:1.3;margin-top:1px}
+ol.rail .mt{font-family:"Roboto Mono",monospace;font-size:10.5px;color:var(--ink-3);margin-top:2px}
+ol.rail a{font-family:"Roboto Mono",monospace;font-size:11px;margin-top:3px;align-self:flex-start}
+ul.sig li{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+ul.sig .wt{font-family:"Roboto Mono",monospace;font-size:11.5px;padding:1px 6px;
+  border:1px solid var(--go-line);background:var(--go-bg);color:var(--go);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+ul.sig .wt.neg{border-color:var(--alert);background:var(--alert-bg);color:var(--alert)}
+ul.sig .wt.zero{border-color:var(--rule);background:var(--surface-2);color:var(--ink-3)}
+ul.sig .lb{font-weight:600;font-size:14px}
+ul.sig .dt{font-family:"Roboto Mono",monospace;font-size:11px;color:var(--ink-3);margin-left:auto}
+ul.rulings li{display:flex;flex-direction:column;gap:4px}
+ul.rulings .kd{font-family:"Roboto Mono",monospace;font-size:9.5px;letter-spacing:.1em;padding:1px 6px;
+  border:1px solid var(--plat-line);background:var(--plat-bg);color:var(--plat);align-self:flex-start}
+ul.rulings p{font-size:13.5px;line-height:1.5}
+ul.rulings .by{font-family:"Roboto Mono",monospace;font-size:10.5px;color:var(--ink-3)}
+.reason{font-family:"Roboto Mono",monospace;font-size:12.5px;line-height:1.65;color:var(--ink-2);
+  background:var(--surface-2);border:1px solid var(--rule-2);padding:11px 12px}
+table.fx{border-collapse:collapse;width:100%;min-width:420px}
+table.fx th{font-family:"Roboto Mono",monospace;font-size:10px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500;text-align:left;
+  padding:0 10px 6px 0;border-bottom:1px solid var(--rule)}
+table.fx td{padding:7px 10px 7px 0;border-bottom:1px solid var(--rule-2);font-size:13.5px;
+  color:var(--ink-2);vertical-align:top}
+table.fx td.k{font-weight:600;color:var(--ink);white-space:nowrap;width:1%}
+table.fx td.v{font-family:"Roboto Mono",monospace;font-size:12.5px}
+table.fx tr:last-child td{border-bottom:none}
+.ev{font-family:"Roboto Mono",monospace;font-size:9.5px;letter-spacing:.09em;padding:1px 5px;
+  border:1px solid var(--none-line);background:var(--none-bg);color:var(--ink-2);white-space:nowrap}
+.ev.hard{border-color:var(--go-line);background:var(--go-bg);color:var(--go)}
+.ev.soft{border-color:var(--rule);background:var(--surface-2);color:var(--ink-3)}
+.scrollx{overflow-x:auto;max-width:100%}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--rule-2)}
+.kv div{background:var(--surface);padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.kv .k{font-family:"Roboto Mono",monospace;font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3)}
+.kv .v{font-family:"Roboto Mono",monospace;font-size:12.5px;color:var(--ink);line-height:1.3}
+.fam{display:flex;flex-wrap:wrap;gap:5px}
+.fam span{font-size:12.5px;padding:3px 8px;border:1px solid var(--rule);background:var(--surface-2);
+  color:var(--ink-2);line-height:1.35}
+.fam.core span{border-color:var(--plat-line);background:var(--plat-bg);color:var(--plat);font-weight:600}
+.src{font-family:"Roboto Mono",monospace;font-size:11px;color:var(--ink-3);line-height:1.7}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--surface-2)}
 @media (max-width:640px){ section{padding-block:24px} .mast{padding-block:22px 18px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 
+<div id="boardview">
 <nav class="topnav"><div class="wrap">
   <a class="navlink is-here" href="board.html" aria-current="page">Board</a>
   <a class="navlink" href="index.html">Back office<span class="navnote">sign-in</span></a>
@@ -224,6 +331,17 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
     <div style="margin-top:7px" id="footnote"></div>
   </footer>
 </div>
+</div>
+
+<div id="dossierview" hidden>
+  <div class="dnav"><div class="wrap">
+    <button type="button" class="btn" id="dback">&larr; The board</button>
+    <button type="button" class="btn" id="dprev">&larr; prev</button>
+    <button type="button" class="btn" id="dnext">next &rarr;</button>
+    <span class="dwho" id="dwho"></span>
+  </div></div>
+  <div id="dbody"></div>
+</div>
 
 <script>
 (function () {
@@ -252,7 +370,7 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
         Authorization: "Bearer " + SUPABASE_KEY,
         "Content-Type": "application/json"
       },
-      body: o.method === "POST" ? "{}" : undefined
+      body: o.method === "POST" ? JSON.stringify(o.args || {}) : undefined
     }).then(function (res) {
       if (!res.ok) return res.text().then(function (t) { throw new Error(res.status + " " + t.slice(0, 200)); });
       return res.json();
@@ -263,7 +381,7 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
   // security-invoker over seventeen objects — the chase weights, the identity registry, the Orbit
   // snapshot — and opening those to read a board would publish far more than the board. pb_board()
   // returns the board's own columns and nothing else (migration 20260917210000).
-  function rpc(fn) { return req("rpc/" + fn, { method: "POST" }); }
+  function rpc(fn, args) { return req("rpc/" + fn, { method: "POST", args: args }); }
 
   /* ---------- distribution ---------- */
   function renderDist() {
@@ -338,7 +456,8 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
       var replied = r.they_last_replied
         ? '<span class="mono">' + esc(r.they_last_replied) + "</span>"
         : '<span class="never">never</span>';
-      return '<tr' + (r.untouched_high_potential ? ' class="untouched"' : "") + ">" +
+      return '<tr data-account="' + esc(r.account_id) + '"' +
+        (r.untouched_high_potential ? ' class="untouched"' : "") + ">" +
         '<td class="rank">' + esc(r.rank) + "</td>" +
         '<td class="co">' + esc(r.name) +
           (r.duplicate_records ? '<span class="dup">' + esc(r.records) + " records for this company</span>" : "") +
@@ -390,6 +509,290 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
     renderDist();
     render();
   }).catch(function (e) { fail(e.message || String(e)); });
+
+
+  /* ==================== dossier ====================
+     The 16 September layout, section for section (DECISIONS §37, §43). The page renders what
+     pb_dossier() returns and derives nothing: where the artifact showed a computed sentence,
+     that sentence now comes from the brief a person wrote or from the engine's own reason. */
+  var dossierview = el("dossierview"), boardview = el("boardview"),
+      dbody = el("dbody"), dwho = el("dwho");
+  var current = null, cache = {};
+
+  function has(v) { return v != null && String(v).length > 0; }
+  function localPart(e) { return has(e) ? String(e).split("@")[0] : ""; }
+  function day(x) { return has(x) ? String(x).slice(0, 10) : ""; }
+  function daysAgo(x) {
+    if (!has(x)) return null;
+    var t = Date.parse(x); if (!isFinite(t)) return null;
+    return Math.max(0, Math.round((Date.now() - t) / 86400000));
+  }
+  function blk(title, tag, body, cls) {
+    return '<div class="blk' + (cls ? " " + cls : "") + '"><h3>' + esc(title) +
+      (tag ? ' <span class="tag">' + esc(tag) + "</span>" : "") + "</h3>" + body + "</div>";
+  }
+  function para(t) { return "<p>" + esc(t) + "</p>"; }
+  function cellf(k, v, b, cls, small) {
+    return '<div class="cellf' + (cls ? " " + cls : "") + '"><span class="k">' + esc(k) +
+      '</span><span class="v' + (small ? " sm" : "") + '">' + v + "</span>" +
+      (has(b) ? '<span class="b">' + esc(b) + "</span>" : "") + "</div>";
+  }
+
+  function openDossier(row) {
+    current = row;
+    boardview.hidden = true; dossierview.hidden = false;
+    window.scrollTo(0, 0);
+    dwho.textContent = row.name;
+    dbody.innerHTML = '<div class="wrap"><p class="loading">Reading the dossier…</p></div>';
+    var i = rows.indexOf(row);
+    el("dprev").disabled = i <= 0;
+    el("dnext").disabled = i >= rows.length - 1;
+
+    var done = function (d) { cache[row.account_id] = d; if (current === row) dbody.innerHTML = dossierHtml(row, d); };
+    if (cache[row.account_id]) { done(cache[row.account_id]); return; }
+    rpc("pb_dossier", { p_account_id: row.account_id })
+      .then(done)
+      .catch(function (e) {
+        dbody.innerHTML = '<div class="wrap"><div class="err"><strong>The dossier could not be read.</strong><br>' +
+          esc(e.message || String(e)) + "</div></div>";
+      });
+  }
+
+  function dossierHtml(r, d) {
+    d = d || {};
+    var br = (d.brief && d.brief.brief) || {}, rd = d.research || {},
+        rf = (rd.fields) || {}, read = d.read || {}, h = [];
+
+    /* ---- hero ---- */
+    h.push('<div class="dhero"><div class="wrap">');
+    h.push('<div class="rankline"><span class="rk">RANK ' + esc(r.rank) + " OF " + rows.length + "</span>" +
+      '<span class="tier t-' + esc(r.effective_tier || "Ungraded") + '">' + esc(r.effective_tier || "Ungraded") + "</span>" +
+      '<span class="chip">' + esc(r.confidence || "no") + " confidence</span>" +
+      '<span class="chip warn">UNVALIDATED (PRO-8)</span>' +
+      (r.untouched_high_potential ? '<span class="chip warn">never contacted</span>' : "") + "</div>");
+    h.push("<h1>" + esc(r.name) + "</h1>");
+    var lede = has(br.what_they_do) ? br.what_they_do : (has(rd.summary) ? rd.summary : null);
+    h.push('<p class="sub">' + (lede ? esc(lede) :
+      "Nobody has written this account up yet. Everything below is what the book itself holds — the " +
+      "engine's read, the CRM and the contact log. Nothing here is inferred.") + "</p>");
+    var chips = [];
+    if (has(br.location)) chips.push(br.location);
+    else if (has(rf.country)) chips.push(rf.country);
+    if (has(read.qualification_label)) chips.push(read.qualification_label);
+    chips.push("anticipated ceiling " + (r.ceiling || "unknown"));
+    if (r.records > 1) chips.push(r.records + " records, not yet merged");
+    h.push('<div class="chips">' + chips.map(function (c) {
+      return '<span class="chip">' + esc(c) + "</span>"; }).join("") + "</div>");
+    h.push("</div></div>");
+
+    /* ---- the strip ---- */
+    h.push('<div class="wrap"><div class="strip">');
+    h.push(cellf("Anticipated tier", esc(r.effective_tier || "—"),
+      (r.confidence || "no") + " confidence · never summed"));
+    h.push(cellf("Ceiling", esc(r.ceiling || "—"), "headroom " + (r.headroom_band || "unknown")));
+    h.push(cellf("Year one", esc(r.year1_band || "unknown"), "band, not a forecast"));
+    h.push(cellf("Qualification", esc(r.facts_present == null ? "—" : r.facts_present) +
+      '<span style="color:var(--ink-3)">/4</span>', r.qualification_label || "",
+      (r.facts_present || 0) < 3 ? "alert" : ""));
+    var hc = has(br.headcount) ? br.headcount : (has(rf.headcount_named) ? rf.headcount_named : null);
+    h.push(cellf("Headcount", esc(has(hc) ? hc : "unknown"),
+      has(br.headcount_basis) ? br.headcount_basis : (has(hc) ? "named on their own team page" : "not on file"),
+      has(hc) ? "" : "alert", !has(hc)));
+    h.push(cellf("Engagement", esc(r.engagement === "unknown" ? "never contacted" : (r.engagement || "unknown")),
+      "signal urgency: " + (r.signal_urgency || "—"), r.engagement === "unknown" ? "alert" : "", true));
+    var ev = d.events || [], last = ev.length ? ev[0].occurred_at : null, ago = daysAgo(last);
+    h.push(cellf("Last touch", last ? esc(day(last)) : "&mdash;",
+      ago != null ? ago + " days ago · " + ev.length + " logged" : "nothing logged",
+      (ago != null && ago >= 90) ? "alert" : "", true));
+    h.push(cellf("They replied", r.they_last_replied ? esc(r.they_last_replied) : "&mdash;",
+      r.they_last_replied ? "most recent inbound" : "no inbound on record",
+      r.they_last_replied ? "" : "alert", true));
+    h.push("</div>");
+
+    h.push('<div class="dgrid"><div class="col">');
+
+    /* ---- the one action ---- */
+    var dm = (d.people || []).filter(function (p) { return p.is_decision_maker; })[0] || (d.people || [])[0];
+    var who = dm ? esc(dm.name) + (has(dm.title) ? ", " + esc(dm.title) : "") : null;
+    if (has(br.next_step)) {
+      h.push(blk("Make this call", "the one action", para(br.next_step), "act"));
+    } else {
+      h.push(blk("Make this call", "the one action",
+        "<p>" + (r.engagement === "unknown"
+          ? (who ? "Nobody has ever contacted them. Open the first conversation with " + who + "."
+                 : "Nobody has ever contacted them, and no person is on file yet — find one.")
+          : (r.they_last_replied
+             ? "They last replied " + esc(r.they_last_replied) + ". Pick the thread back up" + (who ? " with " + who : "") + "."
+             : "We have reached out and they have never answered" + (who ? "; " + who + " is who we know" : "") + ".")) +
+        "</p>", "act"));
+    }
+
+    /* ---- where we win ---- */
+    if (has(br.partner_angle)) h.push(blk("Where we win", "the angle", para(br.partner_angle), "win"));
+    else if (has(rf.recommended_wedge)) h.push(blk("Where we win", "the wedge, from the research read", para(rf.recommended_wedge), "win"));
+    else h.push(blk("Where we win", "no wedge found",
+      "<p>No angle has been written and the research read proposes none. This is the gap to close before calling.</p>", "gap"));
+
+    /* ---- what kills it ---- */
+    if (has(br.watch_out)) h.push(blk("What kills it", "the risk", para(br.watch_out), "kill"));
+    var flags = Array.isArray(rf.red_flags) ? rf.red_flags : [];
+    if (flags.length) {
+      h.push(blk("What kills it", "flagged by the research read",
+        "<ul class='people'>" + flags.map(function (f) {
+          var t = typeof f === "string" ? f : (f && (f.note || f.reason || JSON.stringify(f)));
+          return "<li><div class='ti'>" + esc(t) + "</div></li>";
+        }).join("") + "</ul>", "kill"));
+    }
+
+    /* ---- live signals ---- */
+    var sg = d.signals || [];
+    if (sg.length) {
+      h.push(blk("How they got here", "live signals",
+        "<ul class='sig'>" + sg.slice(0, 12).map(function (s) {
+          var w = Number(s.weight || 0);
+          var cls = w > 0 ? "" : (w < 0 ? " neg" : " zero");
+          return "<li><span class='wt" + cls + "'>" + (w > 0 ? "+" : "") + esc(w) + "</span>" +
+            "<span class='lb'>" + esc(s.type) + "</span>" +
+            "<span class='dt'>" + esc(day(s.observed_at)) + "</span></li>";
+        }).join("") + "</ul>"));
+    }
+
+    /* ---- the record ---- */
+    var calls = d.calls || [];
+    if (calls.length) {
+      h.push(blk("How we got here", "the record",
+        "<ol class='rail'>" + calls.map(function (k) {
+          var att = (k.attendees || []).map(function (a) { return a.name; }).filter(Boolean).join(", ");
+          return "<li><span class='dt'>" + esc(day(k.held_at)) + "</span>" +
+            "<span class='tl'>" + esc(k.title || "Recorded call") + "</span>" +
+            (att ? "<span class='mt'>" + esc(att) + "</span>" : "") +
+            (has(k.recorded_by) ? "<span class='mt'>recorded by " + esc(localPart(k.recorded_by)) + "</span>" : "") +
+            (has(k.url) ? "<a href='" + esc(k.url) + "' target='_blank' rel='noopener'>open the recording &rarr;</a>" : "") +
+            "</li>";
+        }).join("") + "</ol>"));
+    }
+    if (has(br.our_history)) h.push(blk("How we got here", "written up", para(br.our_history)));
+    if (has(br.their_view_of_us)) h.push(blk("How they see us", "in their words", para(br.their_view_of_us)));
+
+    /* ---- why it ranks here: the engine, verbatim ---- */
+    h.push(blk("Why it ranks here", "the engine, verbatim",
+      '<div class="reason">' + esc(read.reason || "No reason sentence on this read.") + "</div>" +
+      '<p class="src">rubric ' + esc(read.rubric_version || "?") + " · fingerprint " +
+      esc(read.rubric_fingerprint || "?") + " · scored " + esc(day(read.as_of)) + "</p>" +
+      ((read.flags || []).length
+        ? '<div class="fam">' + (read.flags || []).map(function (f) {
+            return "<span>" + esc(f) + "</span>"; }).join("") + "</div>"
+        : "")));
+    if (has(br.why_this_rank)) h.push(blk("Why it ranks here", "written up", para(br.why_this_rank)));
+
+    /* ---- the facts the grade stands on ---- */
+    var fx = d.facts || [];
+    if (fx.length) {
+      h.push(blk("What we actually know", "every fact, with its evidence",
+        '<div class="scrollx"><table class="fx"><thead><tr><th>Fact</th><th>Value</th><th>Evidence</th><th>Source</th></tr></thead><tbody>' +
+        fx.map(function (f) {
+          var lab = f.evidence_label === "evidence" ? "hard" : (f.evidence_label === "inferred" ? "soft" : "");
+          var v = typeof f.value === "object" ? JSON.stringify(f.value) : String(f.value);
+          return "<tr><td class='k'>" + esc(f.key) + "</td><td class='v'>" + esc(v.replace(/^"|"$/g, "")) +
+            "</td><td><span class='ev " + lab + "'>" + esc(f.evidence_label) + "</span></td>" +
+            "<td class='v'>" + esc(f.source) + "</td></tr>";
+        }).join("") + "</tbody></table></div>"));
+    }
+
+    h.push("</div><div class='col'>");
+
+    /* ---- right column: people, the site read, apollo, register, sources ---- */
+    var pe = d.people || [];
+    if (pe.length) {
+      h.push(blk("Who they buy for", "the people on file",
+        "<ul class='people'>" + pe.slice(0, 12).map(function (p) {
+          return "<li><div class='nm'>" + esc(p.name) +
+            (p.is_decision_maker ? "<span class='dm'>DECISION MAKER</span>" : "") + "</div>" +
+            (has(p.title) ? "<div class='ti'>" + esc(p.title) + "</div>" : "") +
+            "<div class='mt'>" + esc(p.source || "") + "</div></li>";
+        }).join("") + "</ul>"));
+    } else {
+      h.push(blk("Who they buy for", "gap", "<p>No person is on file for this account.</p>", "gap"));
+    }
+
+    if (rd.read_at) {
+      var fam = Array.isArray(rf.services_listed) ? rf.services_listed : [];
+      h.push(blk("The site read", "what the page itself says",
+        (has(rd.summary) ? para(rd.summary) : "") +
+        (fam.length ? "<div class='fam'>" + fam.slice(0, 14).map(function (x) {
+          return "<span>" + esc(typeof x === "string" ? x : JSON.stringify(x)) + "</span>"; }).join("") + "</div>" : "") +
+        '<div class="kv">' +
+          ["agency_type", "white_label_signal", "delivery_headcount", "sells_build_work",
+           "recurring_work_shape", "client_budget_size"].map(function (k) {
+            return has(rf[k]) ? "<div><span class='k'>" + esc(k.replace(/_/g, " ")) +
+              "</span><span class='v'>" + esc(String(rf[k])) + "</span></div>" : ""; }).join("") +
+        "</div>" +
+        '<p class="src">read ' + esc(day(rd.read_at)) + " · " + esc(rd.method || "") +
+        (rd.verified ? " · verified" : "") + "</p>"));
+    } else {
+      h.push(blk("The site read", "gap", "<p>Their website has not been read yet.</p>", "gap"));
+    }
+
+    if (d.apollo) {
+      var ap = d.apollo;
+      h.push(blk("Independent check", "Apollo, third-party",
+        '<div class="kv">' +
+          [["employees", ap.employees], ["engineers", ap.eng_headcount], ["industry", ap.industry],
+           ["founded", ap.founded_year]].map(function (kv) {
+            return has(kv[1]) ? "<div><span class='k'>" + esc(kv[0]) + "</span><span class='v'>" +
+              esc(String(kv[1])) + "</span></div>" : ""; }).join("") +
+        "</div><p class='src'>fetched " + esc(day(ap.fetched_at)) +
+        " · a third party's numbers, never blended with ours</p>"));
+    }
+
+    var rg = d.register || [];
+    if (rg.length) {
+      h.push(blk("Decisions on the record", "the register",
+        "<ul class='rulings'>" + rg.map(function (g) {
+          return "<li><span class='kd'>" + esc(g.kind) + "</span><p>" + esc(g.text || "") + "</p>" +
+            "<span class='by'>" + esc(localPart(g.made_by)) + " · " + esc(day(g.created_at)) + "</span></li>";
+        }).join("") + "</ul>"));
+    }
+
+    var acc = d.account || {};
+    h.push(blk("Sources", "every line above",
+      "<p class='src'>" +
+      ["roster: " + esc(acc.roster_source || "unknown") + (acc.roster_certified ? " (certified)" : " (uncertified)"),
+       (d.brief ? "brief by " + esc(localPart((d.brief || {}).author)) + " " + esc(day((d.brief || {}).generated_at)) : "no brief written"),
+       (rd.read_at ? "site read " + esc(day(rd.read_at)) : "no site read"),
+       (d.calls || []).length + " recorded call(s)",
+       (d.events || []).length + " contact event(s)",
+       fx.length + " resolved fact(s)",
+       sg.length + " signal(s)"].join("<br>") + "</p>"));
+
+    h.push("</div></div></div>");
+    return h.join("");
+  }
+
+  function closeDossier() {
+    dossierview.hidden = true; boardview.hidden = false; current = null; window.scrollTo(0, 0);
+  }
+  function step(n) {
+    var i = rows.indexOf(current);
+    if (i < 0) return;
+    var next = rows[i + n];
+    if (next) openDossier(next);
+  }
+  el("dback").addEventListener("click", closeDossier);
+  el("dprev").addEventListener("click", function () { step(-1); });
+  el("dnext").addEventListener("click", function () { step(1); });
+  document.addEventListener("keydown", function (e) {
+    if (dossierview.hidden) return;
+    if (e.key === "Escape") closeDossier();
+    if (e.key === "ArrowLeft") step(-1);
+    if (e.key === "ArrowRight") step(1);
+  });
+  el("tb").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr[data-account]");
+    if (!tr) return;
+    var row = rows.filter(function (x) { return x.account_id === tr.dataset.account; })[0];
+    if (row) openDossier(row);
+  });
 
   // Theme: light unless the reader chose dark, and the choice is remembered on this browser.
   // localStorage can throw in a private window, so every touch of it is guarded and the page
