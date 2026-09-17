@@ -95,7 +95,12 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)
-web/        index.html — the page, one file, no build step
+web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41): the prospect board, live.
+            Reads pb_board() (a SECURITY DEFINER function — the view itself stays closed to anon,
+            because it sits on seventeen objects) and renders the engine's own chase_rank_key
+            order. Public, no sign-in, no data baked in. scripts/board_page_test.ts pins it.
+            index.html — the signed-in back office: sign-in, candidate review, merges, register.
+            Both are one file each, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
             HANDOFF-2026-09-17.md — start here if you are new: goal, environment, what was

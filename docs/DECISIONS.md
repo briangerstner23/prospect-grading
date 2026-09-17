@@ -2921,3 +2921,18 @@ run them** — `set role anon` found this in one statement, while reading the mi
 `web/index.html`, because `pb_contacts`, `pb_briefs` and `pb_account_reads` are closed and should
 stay closed (they carry candid judgements about named companies). The board answers "who is worth
 chasing"; the dossier answers "what do we know about them", and only the first is public.
+
+**Deployed 17 Sep 18:24 UTC**, and the deploy found the same root cause one more time. The first
+dispatch, from `main`, failed in one second with no logs: the GitHub Pages environment admits the
+repository's DEFAULT branch only, and the default is still the stale session branch. Since that
+branch is fully contained in this line of work, fast-forwarding it (47 commits, nothing rewritten,
+nothing lost) let Pages publish and put the board up now rather than waiting on a settings change.
+It is the third thing in two days blocked by the same setting — the scheduled reconcile, the
+deploy job, and now Pages — which is the argument for making `main` the default rather than a
+preference about names.
+
+The page is served at the repository's GitHub Pages URL, `/board.html`. It could not be fetched
+back from this container to confirm — the egress policy here refuses `github.io` — so what is
+verified is the deploy job's success and the file it published (commit `d75f261`, the tested one),
+not a byte-for-byte read of the live page. A person opening it is the remaining check.
+
