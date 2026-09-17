@@ -17,7 +17,8 @@ Aggregate counts only, per rule 2. Every figure below is reproducible from the q
 | Active version | **0.1.3** — activated 2026-09-16 17:32 UTC, 829 reads |
 | Had a file before this commit | **No.** `grep -r "0.1.3"` over the repo returned zero hits |
 | Recovered to | `core/rubric.prospect.v0.1.3.json`, written from `pb_rubric_versions.spec` |
-| Canonical fingerprint | `8befc1aef2719120` (sha256 over key-sorted, separator-free JSON) |
+| **Engine fingerprint** | **`909b3747`** — `fingerprint()` from `core/engine.ts`, the value every `pb_reads` row stores. All 829 reads under 0.1.3 carry it; the recovered file produces it. This is the pin that matters |
+| sha256 (informational) | `8befc1aef2719120` over key-sorted, separator-free JSON |
 
 Every rubric file now in `core/`, with its fingerprint:
 
@@ -130,7 +131,7 @@ never summed (`CLAUDE.md` rule: "never a composite number"). Nothing prevented i
 | Source | Newest row | Live? |
 |---|---|---|
 | Pipedrive | 16 Sep 2026 | **Yes** — 236 deliveries, `user-agent: Pipedrive Webhooks`, latency 0.18–2.52 s |
-| Fathom | `pb_calls` newest held 11 Sep 2026 | **No.** 990 inbox rows, all `user-agent: pg_net/0.19.5`, all from the 13–14 Sep back-fill. **Zero Fathom-originated deliveries, ever** |
+| Fathom | `pb_calls` newest held 11 Sep 2026 | **No.** 988 `source=fathom` inbox rows, every one `user-agent: pg_net/0.19.5`, all 13 Sep (the back-fill posting to its own endpoint). The only other `pg_net` rows are 2 Pipedrive receiver tests on 14 Sep. **Zero Fathom-originated deliveries in the table's life**; nothing purges it |
 | Orbit | client rows added by hand 16 Sep | **No automated path.** No function, cron job or code path reads Orbit |
 | Gmail | — | **No credential in Vault**; the channel is skipped every night |
 

@@ -1431,3 +1431,95 @@ session can read is a larger unblock than anything in the ledger.
 No threshold moves. No gate mode changes. No rubric is activated. Geography stays `off`, the
 white-label signal stays out of the fit read, and decision 4 stays unanswered — all three are now
 written down where the next session will trip over them instead of rediscovering them.
+
+## 23 · What the 17 September audit found: the rubric grading the book had no file (17 September 2026)
+
+**Not a ruling.** A measurement, a version point, and a rule adopted for how work lands from now
+on. Every figure is from the database on 17 Sep and reproducible from `docs/STATE-SNAPSHOT-2026-09-17.md`.
+
+### What prompted it
+
+The owner asked whether iteration had damaged the foundation and where in the build he actually
+was. §22 had compared the repo to the research's ten requirements and found the gaps were all in
+the measuring half of the design. That comparison was made against a file — and the file was not
+the rubric grading the book.
+
+### The version point
+
+Commit `e20b702`. Its companion is `docs/STATE-SNAPSHOT-2026-09-17.md`, generated from live queries.
+
+### What was found, in order of harm
+
+**Fathom has never delivered.** All 988 `source=fathom` rows in `pb_webhook_inbox` carry
+`user-agent: pg_net/0.19.5` — this database posting to its own endpoint during the 13 Sep
+back-fill. The Pipedrive rows carry `user-agent: Pipedrive Webhooks` and are unambiguously
+external. The newest call in `pb_calls` was held 11 Sep. `docs/PHASE0.md` recorded P0-2 and P1-4
+as Pass citing those 988 rows; both are corrected. Calls held since 11 Sep with real prospects
+are not in the book. This is the only finding with ongoing loss.
+
+**The active rubric existed only as a database row.** Version 0.1.3 was activated 16 Sep 17:32
+UTC and has graded 829 accounts. `grep -r "0.1.3"` over the repository returned nothing. It is
+now `core/rubric.prospect.v0.1.3.json`, recovered from `pb_rubric_versions.spec`. Verified by the
+engine's own `fingerprint()`: the file produces `909b3747`, and every one of the 829 reads
+recorded `909b3747`. The 9,439 reads under 0.1.0 likewise match `core/rubric.prospect.v0.1.json`
+at `18e704f2`. Both lineages reproduce.
+
+**Recovering it showed that §17 is not in the live rubric.** 0.1.3 is 0.1.1 plus the §20 ceiling
+change. Its climb-signal set is the pre-§17 five — including "2nd project scoped" and "Referred
+someone", which §17 retired as impossible for a prospect — and `lift_requires` is absent. §17
+exists only in the 0.1.2 file, a registered draft with zero reads. Consequence: `notes_sweep.ts`
+may propose `Champion identified` and `Future-state language`, which the running rubric does not
+recognise. The extractor and the engine disagree about what a climb signal is. Because §20 set
+`caps_ceiling: false`, the missing bar changes no tier today; the vocabulary split is real
+regardless.
+
+**Thirty-three applied migrations have no file.** 64 Prospect Book migrations are applied (the
+project is shared; 75 in total), 31 `.sql` files are on disk, matched by name because the
+timestamps differ. Everything from `prospect_book_research_log` (16 Sep) onward — boards, an MDM
+registry, contact events, a chase score — is a second system built entirely in the database with
+no file, no test and no entry here.
+
+**A composite score was built.** `pb_chase_scores` holds 146 rows of a summed −18..123. The
+founding rule of this instrument is four reads, never summed. Nothing prevented it.
+
+**Every write lane on the page is unused.** Register kinds are only `decision` and `note`: zero
+overrides, zero promotions, zero manual signals, ever. Two owners, zero raters.
+
+**Documents described a system that was not running.** PHASE0.md (two false Pass entries),
+METHOD.md (generated from a file, not from the active rubric), and CLAUDE.md's own layout line
+(named two rubric files when there were six — which is why §22's gate checks were run against
+the retired 0.1.0 and reported as if active). PHASE0 and CLAUDE.md are corrected in the version
+point; METHOD.md waits on repair item 5.
+
+### Where the build actually is
+
+Measured against the brief's own acceptance tests: two-thirds through Phase 2, on a Phase 0 that
+was never finished and has since gone dark, with Phase 3 machinery built and never used and
+Phase 4 not started. No phase is accepted. Phase 2 — the engine, the four reads, rubric-as-data —
+is much the best-built part.
+
+### What did not need tearing up
+
+Recorded so the repair does not overreach. The §20 ruling measured, predicted and verified
+(predicted Partner 6→139 and Platinum 2→66; got 143 and 67). The contract held twice under
+pressure (`build_demand_exceeds_capacity` and `delivery_headcount` were added as new questions
+rather than re-reading old keys). The frozen 10 Sep baseline still reproduces byte-identically.
+Every read carries version, fingerprint, run, as-of date, scorecard, hash and a trace — all
+10,268 are individually reconstructible, which is the expensive half of governance and is done.
+`BASELINE.md`'s power arithmetic is more careful than any sales-tooling source found.
+
+### The rule adopted
+
+**Nothing is activated that does not have a file, and nothing has a file that is not tested.**
+The cause of all of the above is one asymmetry: the Supabase tooling makes writing to the
+database exactly as easy as writing to a file, and a file requires a commit while a database
+write does not. The remedy is not to ask a person to remember; it is
+`scripts/conformance_test.ts` (hardened 17 Sep: completeness gate, expiring manual claims, the
+active rubric pinned by the engine's fingerprint) and a `scripts/reconcile.ts` that compares the
+file to the database — specified in `docs/RESEARCH-CONFORMANCE.md`, not yet built.
+
+### What this does not decide
+
+Whether the 16 Sep boards and the chase score stay or go; whether the page or the boards are the
+working surface; whether there is ever a second rater; whether the gate should bite. Those are
+the owner's, listed in `docs/REPAIR-PLAN.md`. No threshold moves and nothing is activated.
