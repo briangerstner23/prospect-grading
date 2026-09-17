@@ -1624,3 +1624,32 @@ reads carry its note). Read versions from `list_edge_functions`, as the file alr
 
 Whether climb evidence should cap again; whether the gate bites; anything in Track B. One ruling
 put back where it belonged.
+
+
+## 26 · Four migrations that ran without a file, filed verbatim (17 September 2026)
+
+**Not a ruling.** Repair item 3, first half.
+
+Supabase stores every applied migration's SQL in `supabase_migrations.schema_migrations.statements`,
+so filing a migration that ran without a file is transcription, not reconstruction: the body is
+byte-for-byte what executed. Of the 33 unfiled entries in the version point, 4 predate the 16 Sep
+boards work and are now in `supabase/migrations/`, each headed with the version it was applied as:
+
+| Filed as | Applied as | What it is |
+|---|---|---|
+| `20260913060100_…movement_views_null_rank_fix` | `20260913002739` | the `pb_movement` view, null-rank safe |
+| `20260915090100_…fact_source_precedence` | `20260915233744` | `pb_current_facts` gains a source-precedence tier between evidence label and recency |
+| `20260915090200_…website_team_pages` | `20260915233846` | `pb_website_reads.path`; `pb_website_fetch_begin` takes paths |
+| `20260915090300_…website_retry_window` | `20260915234417` | the fetch retries on last-tried, not last-ok; duplicate reads pruned |
+
+Filed timestamps follow the on-disk clock, not the applied one, so a fresh replay keeps order;
+the reconciliation check (repair item 4) matches by name. The second is worth a note on its own:
+it changed the rule-9 resolution order — `evidence > inferred > unknown`, **then source
+precedence (rater, fathom_call, pipedrive_note, website, notion_master, apollo, pipedrive)**, then
+recency — on 15 Sep, and `ingest/resolve_features.ts::latestFactPerKey` must be checked against
+it. That check is queued, not done.
+
+The remaining 29 — `prospect_book_research_log` through `prospect_book_prospect_board`, the
+boards, the MDM registry, contact events, the chase score — are held until the owner decides
+whether that system stays (decision 2). Their SQL is saved outside the repository so the decision
+can be taken without losing anything either way.

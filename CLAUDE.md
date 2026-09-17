@@ -44,14 +44,17 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260911180000 restore view invoker · 20260912130000 score cron timeout ·
             20260912140000 revoke authenticated writes ·
             20260912150000 nightly watchdog ·
-            20260913060000 movement views ·
+            20260913060000 movement views · 060100 movement views null-rank fix (transcribed 17 Sep) ·
             20260913160000 account cohort ·
             20260913200000 call meeting key ·
             20260913210000/210100/210200/210300 fathom back-fill (staging, stepper, retry, driver) ·
             20260913220000 roster drift ·
             20260914150000 bulk reject fact candidates ·
             20260914210000 pipedrive field map ·
-            20260915090000 website reads (all applied)
+            20260915090000 website reads · 090100 fact source precedence · 090200 website team pages ·
+            090300 website retry window (the last three transcribed 17 Sep from the database, where
+            they had run without a file — DECISIONS §26). All applied. 29 MORE are applied with no
+            file — the 16 Sep boards system — held until owner decision 2 (docs/REPAIR-PLAN.md).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;

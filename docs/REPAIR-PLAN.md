@@ -100,6 +100,8 @@ the book is right.
 
 ## 3 · Write down the 33 migrations that are running
 
+*First half executed 17 Sep — DECISIONS §26: the 4 pre-16-Sep migrations filed verbatim from `schema_migrations.statements`. The 29 boards migrations wait on decision 2; their SQL is saved externally.*
+
 > 64 Prospect Book migrations are applied to the database; 31 `.sql` files are on disk. **33 are
 > running with no file.** They are listed by name in `docs/STATE-SNAPSHOT-2026-09-17.md` §2.
 > Filenames on disk do not share timestamps with applied versions, so match by name, never by

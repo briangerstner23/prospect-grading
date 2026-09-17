@@ -63,6 +63,8 @@ The signal-vocabulary mismatch is real regardless.
 
 ## 2 · Migrations: what is applied versus what is filed
 
+*Point-in-time. Later the same day the 4 pre-16-Sep entries were filed verbatim (DECISIONS §26); the 29 boards entries wait on decision 2.*
+
 64 Prospect Book migrations applied (75 total in a project shared with other WLIQ systems);
 31 `.sql` files on disk. **33 applied with no file.**
 

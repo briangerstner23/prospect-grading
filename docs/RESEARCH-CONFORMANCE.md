@@ -68,7 +68,7 @@ decision entry. Whether it stays is owner decision 2.
 | Fathom never connected; status doc said Pass | 988 inbox rows all `pg_net`, zero Fathom user agents ever; newest call 11 Sep | **item 1 done 17 Sep; proof pending first delivery** |
 | Active rubric had no file | 0.1.3, 829 reads, zero repo hits; recovered 17 Sep, engine fp `909b3747` | done |
 | Active rubric lacks §17; extractor vocabulary split | `Champion identified` proposed by the sweep, unknown to the engine | **item 2 done 17 Sep — 0.1.4 active, 829/0 changed** |
-| 33 applied migrations with no file | 64 applied vs 31 on disk, by name | item 3 |
+| 33 applied migrations with no file | 64 applied vs 31 on disk, by name | **4 filed 17 Sep; 29 (boards) wait on decision 2** |
 | Composite score in the database | `pb_chase_scores`, 146 rows | decision 2 |
 | Docs described a system not running | PHASE0 (corrected), METHOD.md (regenerate from active), CLAUDE.md layout (corrected) | item 5 |
 
@@ -544,7 +544,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "count pb migrations in supabase_migrations.schema_migrations vs ls supabase/migrations — match by NAME, timestamps differ.",
-      "claim": "BREAK: 64 Prospect Book migrations applied, 31 files on disk — 33 running with no file, listed by name in docs/STATE-SNAPSHOT-2026-09-17.md §2. Repair item 3."
+      "claim": "29 Prospect Book migrations are applied with no file — ALL in the 16 Sep boards group (research_log → prospect_board), held until owner decision 2. The 4 pre-16-Sep ones were transcribed verbatim from schema_migrations.statements on 17 Sep (repair item 3, first half). Their SQL is also saved outside the repo so nothing is lost while the decision is open."
     },
     {
       "id": "RECON-fathom-proof-pending",
