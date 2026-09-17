@@ -53,7 +53,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260914210000 pipedrive field map ·
             20260915090000 website reads · 090100 fact source precedence · 090200 website team pages ·
             090300 website retry window (the last three transcribed 17 Sep from the database, where
-            they had run without a file — DECISIONS §26). All applied. 29 MORE are applied with no
+            they had run without a file — DECISIONS §26) ·
+            20260917100000 reconcile state (§28) · 110000 potential snapshot key (§30). All applied. 29 MORE are applied with no
             file — the 16 Sep boards system — held until owner decision 2 (docs/REPAIR-PLAN.md).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/

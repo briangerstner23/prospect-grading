@@ -75,6 +75,63 @@ export function buildReadRow(sc: ProspectScorecard, runId: string | null, scorec
   };
 }
 
+/**
+ * The pb_potential_snapshots row for one scorecard, or null when the row is not ranked.
+ *
+ * DECISIONS §30. The snapshot records what the engine CLAIMED on `as_of`, in the shape the
+ * research asked for (p10/p50/p90, two binaries), filled only where the active rubric actually
+ * produces a value: p10_12m and p90_12m are the year-one band's edges (the lowest band's floor
+ * is 0; the top band is open, so its p90 is null); p50, the 24-month interval and the two
+ * probabilities are null — PRO-16 dropped the point estimate and no estimator for the rest
+ * exists yet. A null here is an explicit "not estimated", never a zero. Every input a later
+ * estimator could re-derive from is kept in `assumptions`, so the accumulation starts now and
+ * the estimator can be replaced without losing the history (the `estimator` column names it).
+ *
+ * The band edges are read from the rubric that graded the card, never typed here.
+ */
+export function buildSnapshotRow(sc: ProspectScorecard, rubric: unknown, runId: string | null): Rec | null {
+  if (sc.status !== "Ranked" && sc.status !== "Overridden") return null;
+  const takenAt = isoDate(sc.as_of) ?? sc.as_of;
+  const pot = sc.potential;
+  const bands = ((rubric as { potential?: { year1_bands?: unknown } })?.potential?.year1_bands ?? []) as Array<{ label?: string; min?: number; max?: number }>;
+  const band = pot?.year1_band && pot.year1_band !== "unknown" ? bands.find((b) => b.label === pot.year1_band) ?? null : null;
+  const p10 = band ? (typeof band.min === "number" ? band.min : 0) : null;
+  const p90 = band ? (typeof band.max === "number" ? band.max : null) : null;
+  return {
+    account_id: sc.account_id,
+    taken_at: takenAt,
+    estimator: `year1_band_edges@${sc.rubric_version}`,
+    p10_12m: p10,
+    p50_12m: null,
+    p90_12m: p90,
+    p10_24m: null,
+    p50_24m: null,
+    p90_24m: null,
+    p_35k_12m: null,
+    p_100k_24m: null,
+    assumptions: {
+      run_id: runId,
+      rubric_version: sc.rubric_version,
+      rubric_fingerprint: sc.rubric_fingerprint,
+      status: sc.status,
+      effective_tier: sc.effective_tier,
+      year1_band: pot?.year1_band ?? null,
+      year1_basis: pot?.year1_basis ?? null,
+      headroom: pot?.headroom ?? null,
+      headroom_band: pot?.headroom_band ?? null,
+      ceiling: pot?.ceiling ?? null,
+      ceiling_proposed: pot?.ceiling_proposed ?? null,
+      wallet: pot?.wallet ?? null,
+      winnable_share: pot?.winnable_share ?? null,
+      winnable_basis: pot?.winnable_basis ?? null,
+      potential_confidence: pot?.confidence ?? null,
+      facts_present: typeof sc.qualification?.present_count === "number" ? sc.qualification.present_count : null,
+      urgency: sc.signals?.urgency ?? null,
+      not_estimated: "p50_12m, the 24-month interval and the two probabilities: no estimator yet (PRO-16 dropped the point estimate; DECISIONS §30)",
+    },
+  };
+}
+
 /** The listing columns pb-score refreshes on pb_accounts after each read. */
 export function listingPatch(sc: ProspectScorecard): { status: string; effective_tier: string | null; cell: string | null } {
   return { status: sc.status, effective_tier: sc.effective_tier, cell: sc.cell };

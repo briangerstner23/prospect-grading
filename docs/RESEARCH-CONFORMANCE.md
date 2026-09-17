@@ -47,7 +47,7 @@ or diverges — and whether each divergence is a recorded tuning or an accident.
 | R1 | One record per agency; identity keys; deterministic match; merge queue; grade carried at promotion | **partial** | 993 candidates, 80 with a proposed match, none reviewed since 13 Sep. Promotion confirmer unruled (PRO-18) |
 | R2 | Signals with provenance/weight/lifespan; six connectors; nightly recompute; expire, never delete | **partial** | `email` channel has no credential; **Fathom has never delivered** (see RECON) |
 | R3 | Four reads separately, **gates first**, never summed, no bare numbers | **partial** | Only `service_shape` and `economics` park. `broker_character` is `flag` (PRO-2r-a unruled); **`geography` is `off`** with no ruling |
-| R4 | Wallet/winnable/headroom with editable anchors; climb evidence; **P10/P50/P90 frozen at first SOW, scored at 6/12/24 months, hit-rate, error, Brier** | **schema complete, loop absent** | `pb_potential_snapshots` has the brief's exact columns and zero rows. Nothing inserts. Largest gap against the research |
+| R4 | Wallet/winnable/headroom with editable anchors; climb evidence; **P10/P50/P90 frozen at first SOW, scored at 6/12/24 months, hit-rate, error, Brier** | **accumulating since 17 Sep; scoring pass absent** | pb-score writes one snapshot per ranked account per night (band edges as p10/p90; p50 and the probabilities null — no estimator yet). The freeze is a selection at `first_invoice_at` (DECISIONS §30). Nothing scores against actuals yet |
 | R5 | Fathom extraction; seven quote-backed fields; `not discussed`; rep confirms before write | **divergent** | Quote verification is *stronger* than asked. Extracted set is Dimension A + climb signals, not the seven fields; high-confidence facts write without a human step. **And the extractor's climb vocabulary does not match the active rubric's** |
 | R6 | Deal warnings with **thresholds from WLIQ's own stage medians**; stage-exit criteria | **partial** | Stage median still the placeholder default. Stage-exit noted, not enforced |
 | R7 | Tiers that name a play; capacity cap; owner + SLA; strong signal creates a task | **not met** | Engine emits a chase key and stops. Tier-1 sizing is open decision 1 |
@@ -280,10 +280,24 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       }
     },
     {
-      "id": "R4-nothing-writes-snapshots",
+      "id": "R4-score-writes-snapshots",
       "r": "R4",
       "mode": "auto",
-      "claim": "GAP: no function AND no migration inserts into pb_potential_snapshots — the calibration loop does not run. (The 16 Sep probe scanned supabase/functions only; this repo builds machinery in migrations, so that probe would have stayed green through R4 being built.) Expect >= 1 once repair item 6 lands.",
+      "claim": "pb-score writes pb_potential_snapshots on every non-preview run: one row per ranked account per day per estimator, upserted on that key (migration 20260917110000; DECISIONS §30). Closed 17 Sep; the row before it (R4-nothing-writes-snapshots, equals 0) is what this replaced. The scoring pass at 6/12/24 months is NOT built — see R4-scoring-pass-absent.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "supabase/functions/pb-score/index.ts"
+        ],
+        "pattern": "upsertBatches\\(db, \"pb_potential_snapshots\"",
+        "equals": 1
+      }
+    },
+    {
+      "id": "R4-scoring-pass-absent",
+      "r": "R4",
+      "mode": "auto",
+      "claim": "GAP: nothing writes actual_6m/12m/24m, scored_at or brier — the snapshots accumulate, the scoring pass that reads Orbit/QuickBooks actuals does not exist (Phase 4). Expect >= 1 when it lands.",
       "probe": {
         "kind": "count_matches",
         "paths": [
@@ -294,7 +308,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
           ".ts",
           ".sql"
         ],
-        "pattern": "insert into (public\\.)?pb_potential_snapshots",
+        "pattern": "actual_12m\\s*=|actual_12m:",
         "equals": 0
       }
     },
@@ -303,8 +317,8 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "r": "R4",
       "mode": "manual",
       "verified_on": "2026-09-17",
-      "reverify": "select count(*) from pb_potential_snapshots;",
-      "claim": "Zero rows. No estimate has ever been frozen."
+      "reverify": "select taken_at, estimator, count(*) from pb_potential_snapshots group by 1, 2 order by 1 desc limit 5;",
+      "claim": "First rows written 17 Sep 2026 by the first pb-score run after deploy (count recorded in DECISIONS §30). Before that: zero rows, ever."
     },
     {
       "id": "R5-quote-check-present",

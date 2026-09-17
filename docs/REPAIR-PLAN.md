@@ -211,6 +211,8 @@ the book is right.
 > at the promotion boundary without crossing it, and put the answer in `docs/DECISIONS.md` before
 > you build. The nightly accumulation does not depend on that answer; the freeze does.
 
+*Executed 17 Sep — DECISIONS §30 (the freeze is a selection at `pb_promotions.first_invoice_at`; actuals come from Orbit/QuickBooks, never the Client Book). pb-score upserts one row per ranked account per day per estimator; migration 20260917110000 is the key. The 6/12/24-month scoring pass is not built, and the ledger says so (`R4-scoring-pass-absent`).*
+
 ---
 
 ## Track B · Standards alignment — runs ALONGSIDE the repairs, read-only

@@ -1752,3 +1752,47 @@ What changed:
 
 The 0.1.0 fixtures and `docs/BASELINE.md` are untouched; the fixture half of item 5 landed in
 §25 (PB04 and PB20 pinned on 0.1.4).
+
+## 30 · Potential snapshots accumulate nightly; the freeze at promotion is a selection, not a write (17 September 2026)
+
+REPAIR-PLAN item 6. `pb_potential_snapshots` had the research's full schema and zero rows since
+9 Sep. Requirement R4 — freeze what the book claimed, score it against what happened — is the
+only mechanism that can ever say whether the grade predicts anything, and every night it does
+not run is evidence lost. The plan asked one question to be settled before code: the brief says
+freeze "at first SOW", which is a Client Book event, and this repository may never read the
+Client Book's tables or import its keys (PRO-17). How is a snapshot frozen at the promotion
+boundary without crossing it?
+
+**The ruling in code.** Nothing crosses. Three parts:
+
+1. **Accumulate every night.** pb-score writes one row per ranked account (status `Ranked` or
+   `Overridden`) on every non-preview run: `taken_at` = the run's `as_of` date, `estimator` =
+   `year1_band_edges@<rubric version>`. A re-run the same day replaces the day's row (unique on
+   account, day, estimator — migration `20260917110000`), so evidence is never doubled.
+2. **Freeze by selection.** The promotion boundary already exists inside this book:
+   `pb_promotions.first_invoice_at`, the date a *person* confirms under PRO-18. The frozen
+   snapshot for a promoted account is the newest row with `taken_at <= first_invoice_at` for the
+   estimator being scored. No second write, no flag, no Client Book key: a query.
+3. **Actuals from the systems of record, not the Client Book.** The rubric's own note says the
+   snapshot is "scored against Orbit and QuickBooks actuals". Orbit is already a source here
+   (`ingest/orbit_quotes.ts`); QuickBooks would be another. The scoring pass (6/12/24 months)
+   reads billing, not `client-grading`'s tables, and is NOT built today — the ledger carries
+   `R4-scoring-pass-absent` so its absence stays visible.
+
+**What a snapshot holds.** Only what the engine actually claims. `p10_12m` and `p90_12m` are the
+active rubric's year-one band edges (the lowest band's floor is 0; the top band is open, so its
+p90 is null). `p50_12m`, the 24-month interval and the two probabilities are **null**: PRO-16
+dropped the point estimate, and no estimator for the rest exists. A null is an explicit "not
+estimated", never a zero — unknown is never evidence, in this table as everywhere. `assumptions`
+keeps every input a later estimator could re-derive from (headroom, wallet, winnable share,
+ceiling, confidence, facts present, urgency, rubric fingerprint, run id), so the estimator can be
+replaced without losing the history; the `estimator` column names which one produced a row.
+
+**What this does not do.** It does not choose the estimator that will eventually fill p50 and
+the probabilities; the cohort quartiles in `year1_bands_basis` (n = 31) are the obvious
+candidate for a naive baseline, and that is Track B's question, not this repair's. It does not
+score anything. It does not touch grants: service role writes, `authenticated` reads through
+the 9 Sep policy, `anon` holds nothing on this table.
+
+First rows: written by the first pb-score run after deploy on 17 Sep; the count is in the
+ledger row `R4-snapshots-empty` (kept under that id so the flip is visible in history).

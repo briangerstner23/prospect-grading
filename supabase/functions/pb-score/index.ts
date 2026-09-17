@@ -10,6 +10,7 @@
  * not yet expired, open non-CJ deals, and register overrides. Per account:
  * resolveFeatures → grade. Then, unless preview:
  *   - insert pb_reads (scorecard_sha256 over JSON.stringify(scorecard))
+ *   - upsert pb_potential_snapshots, one per ranked account per day per estimator (DECISIONS §30)
  *   - update pb_accounts.status / effective_tier / cell (listing columns)
  *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors}
  * A per-account failure is collected into errors and the run continues.
@@ -23,7 +24,7 @@
  * Deploy with verify_jwt = false: the bearer is our own token, not a Supabase JWT.
  */
 
-import { serviceClient, insertBatches, selectAll, selectIn } from "../_shared/db.ts";
+import { serviceClient, insertBatches, selectAll, selectIn, upsertBatches } from "../_shared/db.ts";
 import { bearerOk, getSecret, SECRET_NOT_CONFIGURED } from "../_shared/auth.ts";
 import { finishRun, runStatus, startRun } from "../_shared/log.ts";
 import { loadRubric } from "../_shared/rubric.ts";
@@ -31,6 +32,7 @@ import { errorMessage, isRec, json, queryParams, sha256Hex, toStr, truthyParam }
 import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
   buildReadRow,
+  buildSnapshotRow,
   diffEntry,
   groupBy,
   listingPatch,
@@ -223,6 +225,17 @@ Deno.serve(async (req: Request) => {
       const { error } = await db.from("pb_accounts").update(listingPatch(sc)).eq("id", sc.account_id);
       if (error) writeErrors.push(`pb_accounts ${sc.account_id}: ${error.message}`);
     }
+
+    // The calibration loop starts here (R4): what the book claimed today, kept so it can be
+    // scored against actuals later. A re-run the same day replaces the day's row, never doubles it.
+    const snapRows: Rec[] = [];
+    for (const sc of cards) {
+      const row = buildSnapshotRow(sc, rubric.spec, runId);
+      if (row) snapRows.push(row);
+    }
+    const snaps = await upsertBatches(db, "pb_potential_snapshots", snapRows, "account_id,taken_at,estimator");
+    writeErrors.push(...snaps.errors);
+    notes.push(`potential snapshots: ${snaps.wrote} written for ${snapRows.length} ranked of ${cards.length} scored`);
   } catch (e) {
     writeErrors.push(errorMessage(e));
   }
