@@ -153,6 +153,26 @@ check("points at a fact as the permanent correction", /facts never expire/.test(
 check("it names when the override actually applies", /06:15 UTC/.test(page));
 check("a refusal is attributed to the database, not the page", /the database decides this, not the page/.test(page));
 check("the owner lane is the only one offered a form", /me\.role !== "owner"/.test(page));
+
+/* 9 · the override from the list (DECISIONS §47)
+ *
+ * The tier chip on a row opens the same form the dossier carries. Three ways that goes wrong:
+ *  - the chip's click also opens the dossier, so changing a grade navigates you somewhere else;
+ *  - the chip lies, changing colour on click when the tier does not move until the nightly run;
+ *  - the dialog and the dossier panel share element ids (they are the same form) and an unscoped
+ *    getElementById hands the dialog the DOSSIER's fields — you type in one and submit another.
+ *    That one is invisible in a screenshot and cost nothing to prevent, so it is pinned here.
+ */
+check("the tier chip is a real button, not a span with a handler", /button class="tier t-' \+ tierOf\(r\)/.test(page) || /class="tier t-' \+ tierOf\(r\) \+ ' ovrchip"/.test(page));
+check("the chip opens the override, not the dossier", /button\[data-ovr\]/.test(page) && /stopPropagation/.test(page));
+check("the dialog exists and can be closed", /function openOverride/.test(page) && /function closeOverride/.test(page));
+check("Escape closes it", /e\.key === "Escape"/.test(page));
+check("focus returns to the chip it was opened from", /ovReturnFocus/.test(page));
+check("the form's lookups are SCOPED, so the dialog cannot drive the dossier's fields",
+  /function wireOverride\(r, d, onDone, root\)/.test(page) && /scope\.querySelector/.test(page));
+check("the dossier wires its own copy against its own container", /wireOverride\(row, d, null, dbody\)/.test(page));
+check("one override implementation, reached two ways", (page.match(/function overrideHtml/g) ?? []).length === 1);
+check("the chip does not pretend the tier moved", /still shows the engine's tier until then/.test(page));
 check("pb_members is read only with a session, through the auth helper",
   /authReq\("pb_members\?/.test(page) && !/get\("pb_members/.test(page));
 check("signing in is stated as optional for reading", /Reading this book needs no account/.test(page));

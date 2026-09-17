@@ -97,7 +97,23 @@ const board = existsSync(join(root, "web/board.html")) ? readFileSync(join(root,
 if (board) {
   const declared = new Set(
     contract.screens.flatMap((s) => s.sections.map((x) => x.name)));
-  const used = [...board.matchAll(/blk\(\s*"([^"]{3,60})"/g)].map((m) => m[1]);
+  // A SECTION declares itself, in one of exactly two ways, and both are checked:
+  //
+  //   blk("Name", …)          the dossier's block helper
+  //   data-section="Name"     any hand-written region
+  //
+  // Checking blk() alone is how "Change this grade" — a whole override form — sat on the dossier
+  // from §44 to §47 without the contract naming it: it is hand-written markup, not a blk() call.
+  //
+  // Scanning every <h3> instead was the obvious fix and the wrong one: it swept up Tier,
+  // Confidence and Engagement, which are sub-headings INSIDE "Three axes that never touch" — a
+  // section the contract already names. A heading is not a section because it is large; it is a
+  // section because it declares itself one. Hence the attribute, which is also what marks the
+  // board's own regions.
+  const used = [
+    ...[...board.matchAll(/blk\(\s*"([^"]{3,60})"/g)].map((m) => m[1]),
+    ...[...board.matchAll(/data-section="([^"]{3,60})"/g)].map((m) => m[1]),
+  ];
   const undeclared = [...new Set(used)].filter((t) => !declared.has(t));
   check("board.html declares no dossier section the contract does not name", undeclared.length === 0,
     undeclared.length ? `add to CONTRACT.json first: ${undeclared.join(", ")}` : "");

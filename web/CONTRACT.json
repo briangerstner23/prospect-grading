@@ -54,7 +54,8 @@
         { "name": "By anticipated tier",        "required": true, "shows": "distribution bar and legend with counts", "source": "pb_board()" },
         { "name": "Three axes that never touch","required": true, "shows": "tier / confidence / engagement, and that only the first sets the rank", "source": "pb_board()" },
         { "name": "The ranked list",            "required": true, "shows": "grouped headers Potential | Contact; columns rank, company, tier, cell, year one, facts, engagement, they replied", "source": "pb_board()" },
-        { "name": "Filters",                    "required": true, "shows": "per-tier toggles, never-contacted only, researched only, flagged only, name filter, live count", "source": "the page" }
+        { "name": "Filters",                    "required": true, "shows": "per-tier toggles, never-contacted only, researched only, flagged only, name filter, live count", "source": "the page" },
+        { "name": "Change this grade",          "required": true, "shows": "the override form, opened by clicking a row's TIER CHIP — same terms as the dossier's: owner lane, one-tier cap measured from the engine's computed tier, reason code and written reason required, expiry that always lapses. Clicking the chip must not open the dossier.", "source": "pb_board().computed_tier · writes pb_register" }
       ]
     },
 
@@ -65,6 +66,7 @@
       "purpose": "Everything the book holds about one agency, in the order the owner approved. Twenty-five blocks; the page renders what pb_dossier() returns and derives nothing.",
       "ordered": true,
       "sections": [
+        { "name": "Change this grade",             "required": true, "column": "full", "shows": "the override form, directly under the eight-cell strip: owner lane, one-tier cap, reason code and written reason required, and that a blank expiry still lapses. Built in §44 and missing from this contract until §47 — the contract test only looked at blk() titles, so a hand-written section heading slipped past it.", "source": "pb_board().computed_tier · writes pb_register" },
         { "name": "Make this call",                "required": true, "column": "left", "shows": "the one action, from the brief's next step or from the engagement state", "source": "brief.next_step" },
         { "name": "Where we win",                  "required": true, "column": "left", "shows": "the angle from the brief, else the wedge from the research read, else 'no wedge found' stated as a finding", "source": "brief.angle · research.recommended_wedge" },
         { "name": "What kills it",                 "required": true, "column": "left", "shows": "the risk in the brief's own words", "source": "brief.watch" },

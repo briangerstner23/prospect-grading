@@ -3223,3 +3223,42 @@ as it did before.
 how many accounts changed tier on each run; nothing names *which*. The dashboard now shows the
 count and says plainly that naming them is the missing half. Until that exists, a tier can change
 overnight and the only way to notice is to have remembered where it was.
+
+## §47 — Override from the list, by clicking the tier (17 Sep 2026)
+
+Owner, pointing at the TIER column: *"I want to be able to click this icon here on this page, and
+I want to be able to manually override the classification."*
+
+The override existed on the dossier (§44), which meant seeing a wrong tier in the list and having
+to open a whole dossier to correct it. The chip is where the judgement happens, so the chip is the
+control. It is now a `<button>`: keyboard reachable, labelled with the company and its current
+tier, and the row's own click handler ignores it — otherwise changing a grade would also navigate
+you into a dossier you did not ask for, and closing it would leave you somewhere else.
+
+**One form, two ways in.** The dialog renders `overrideHtml()` — the dossier's own panel, with the
+same terms, the same cap warning and the same database refusal. There is exactly one override
+implementation, pinned by a test, because two would drift and one of them would end up wrong.
+
+**`pb_board()` now carries the computed tier**, and whether a live override moved it. The shown
+tier is the *effective* one; the one-tier cap is measured from what the **engine computed**. A
+board that knows only the effective tier cannot say whether a choice will be accepted — it would
+have to stay silent or fetch a whole dossier per click just to check.
+
+**The chip does not change when you click it.** The tier moves at the nightly run, if the engine
+accepts the override; a chip that recoloured on submit would be the page telling a comfortable
+lie. The dialog says where the change went and that the board still shows the engine's answer.
+
+**A bug worth recording because it is invisible.** The dialog and the dossier panel use the same
+element ids — they are the same form — and the dossier stays in the DOM while hidden. An unscoped
+`getElementById` therefore hands the dialog the *dossier's* fields: you would type into one form
+and submit another, with no visible symptom. Every lookup is now scoped to its own container, and
+a check pins it. Renaming the ids in one copy would have "fixed" it by creating two forms that can
+drift, which is the worse repair.
+
+**And the contract caught its own gap.** "Change this grade" had been on the dossier since §44 and
+was never named in `web/CONTRACT.json` — the undeclared-section check only scanned `blk()` titles,
+and the panel is hand-written markup. Widening it to every `<h3>` was the obvious fix and the
+wrong one: it swept up *Tier*, *Confidence* and *Engagement*, which are sub-headings inside a
+section the contract already names. A heading is not a section because it is large; it is a
+section because it **declares itself one**. The check now reads `blk("Name")` and
+`data-section="Name"`, which is the convention the board's own regions already used.

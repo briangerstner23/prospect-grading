@@ -254,6 +254,37 @@ table.fx tr:last-child td{border-bottom:none}
 tbody tr{cursor:pointer}
 tbody tr:hover td{background:var(--surface-2)}
 
+/* The tier chip is a control, so it has to look like one — but quietly. A board of 599 rows with
+   599 loud buttons in it is worse than a board with none; the affordance shows up on hover and
+   focus, and the chip keeps the tier colour that makes the column scannable at a glance. */
+button.tier.ovrchip{font:inherit;font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px;
+  cursor:pointer;padding:3px 9px;position:relative}
+button.tier.ovrchip:hover{filter:brightness(.96);box-shadow:0 0 0 2px var(--surface),0 0 0 3px currentColor}
+button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+.ovmark{margin-left:5px;font-weight:700;opacity:.8}
+
+/* The dialog. Sits over the board rather than replacing it, so the row you were reading is still
+   behind you when you close it. */
+.ovback{position:fixed;inset:0;z-index:60;background:rgba(10,16,20,.52);
+  display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px 24px;overflow-y:auto}
+.ovdlg{background:var(--surface);border:1px solid var(--rule);width:min(660px,100%);
+  box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.ovhead{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--rule);
+  background:var(--surface-2)}
+.ovhead>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ovwho{font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-weight:700;font-size:16px;
+  letter-spacing:-.015em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ovrank{font-family:"Roboto Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-3);
+  letter-spacing:.05em}
+.ovx{margin-left:auto;font:inherit;font-size:20px;line-height:1;cursor:pointer;padding:2px 9px;
+  border:1px solid var(--rule);background:var(--surface);color:var(--ink-2)}
+.ovx:hover{color:var(--ink);border-color:var(--ink-3)}
+.ovdlg .ovr{margin:0;border:none;border-radius:0}
+.ovdlg .ovr>h3{border-top:none}
+.ovfoot{padding:11px 16px;border-top:1px solid var(--rule-2);background:var(--surface-2);
+  font-family:"Roboto Mono",ui-monospace,monospace;font-size:11.5px}
+@media (max-width:640px){ .ovback{padding:0} .ovdlg{width:100%;min-height:100%} }
+
 /* The override panel. The only place on this page that WRITES, so it is visually a form and
    never mistaken for a read: its own frame, its own heading, and the lane stated on it. */
 .ovr{margin:22px 0 6px;border:1px solid var(--rule);border-radius:10px;background:var(--surface);overflow:hidden}
@@ -636,7 +667,14 @@ tbody tr:hover td{background:var(--surface-2)}
         '<td class="co">' + esc(r.name) +
           (r.duplicate_records ? '<span class="dup">' + esc(r.records) + " records for this company</span>" : "") +
         "</td>" +
-        '<td class="cell"><span class="tier t-' + tierOf(r) + '">' + esc(tierOf(r)) + "</span></td>" +
+        // The tier chip is the override control (§47). A button, not a span: it is keyboard
+        // reachable, it announces itself, and the row handler below ignores clicks on it so
+        // changing a grade never opens the dossier by accident.
+        '<td class="cell"><button type="button" class="tier t-' + tierOf(r) + ' ovrchip"' +
+          ' data-ovr="' + esc(r.account_id) + '" title="Change this grade"' +
+          ' aria-label="Change the anticipated tier for ' + esc(r.name) + ', currently ' + esc(tierOf(r)) + '">' +
+          esc(tierOf(r)) + (r.overridden ? '<span class="ovmark" title="a person set this">\u00b7</span>' : "") +
+          "</button></td>" +
         '<td class="cell">' + esc(r.cell || "—") + "</td>" +
         '<td class="band">' + esc(r.year1_band || "unknown") + "</td>" +
         '<td class="facts">' + esc(r.facts_present == null ? "—" : r.facts_present) +
@@ -726,7 +764,7 @@ tbody tr:hover td{background:var(--surface-2)}
       cache[row.account_id] = d;
       if (current !== row) return;
       dbody.innerHTML = dossierHtml(row, d);
-      wireOverride(row, d);
+      wireOverride(row, d, null, dbody);
     };
     if (cache[row.account_id]) { done(cache[row.account_id]); return; }
     rpc("pb_dossier", { p_account_id: row.account_id })
@@ -753,8 +791,12 @@ tbody tr:hover td{background:var(--surface-2)}
     return Array.isArray(t) ? t.slice().reverse() : [];   // best first, as the rubric orders them
   }
   function ovBlock() { var sp = ovSpec(); return (sp && sp.override) || null; }
-  function computedTier(d) {
-    var read = d.read || {}, tr = read.trace || {};
+  /* The tier the ENGINE reached, before any override moved it — which is what the one-tier cap is
+     measured from. pb_board() now carries it on every row (§47), so the dialog on the board can
+     check the cap without fetching a dossier; the dossier's own copy is the fallback. */
+  function computedTier(r, d) {
+    if (r && r.computed_tier) return r.computed_tier;
+    var read = (d || {}).read || {}, tr = read.trace || {};
     return (tr.fit && tr.fit.computed_tier) || null;
   }
   function plusDays(n) {
@@ -782,8 +824,8 @@ tbody tr:hover td{background:var(--surface-2)}
   }
 
   function overrideHtml(r, d) {
-    var ov = ovBlock(), tiers = ovTiers(), computed = computedTier(d);
-    var head = '<section class="ovr"><h3>Change this grade</h3><div class="ovin">';
+    var ov = ovBlock(), tiers = ovTiers(), computed = computedTier(r, d);
+    var head = '<section class="ovr" data-section="Change this grade"><h3>Change this grade</h3><div class="ovin">';
     var tail = "</div></section>";
 
     if (!ov || !tiers.length) {
@@ -846,11 +888,17 @@ tbody tr:hover td{background:var(--surface-2)}
 
   /* Handlers are attached after the dossier's HTML is in the document; the panel is rebuilt on
      every open, so they are attached there too and never accumulate. */
-  function wireOverride(r, d) {
-    var go = el("ovGo");
+  /* `root` scopes every lookup. The dossier panel and the dialog use the same ids — they are the
+     same form — and the dossier stays in the DOM while hidden, so an unscoped getElementById
+     would hand the dialog the DOSSIER's fields: you would type into one form and submit another.
+     Scoping is the fix; renaming the ids in one of them would be two forms that can drift. */
+  function wireOverride(r, d, onDone, root) {
+    var scope = root || document;
+    var q = function (id) { return scope.querySelector("#" + id); };
+    var go = q("ovGo");
     if (!go) return;                                  // signed out, or no rubric: nothing to wire
-    var tier = el("ovTier"), code = el("ovCode"), exp = el("ovExp"), why = el("ovWhy"),
-        capEl = el("ovCap"), msg = el("ovMsg"), computed = computedTier(d);
+    var tier = q("ovTier"), code = q("ovCode"), exp = q("ovExp"), why = q("ovWhy"),
+        capEl = q("ovCap"), msg = q("ovMsg"), computed = computedTier(r, d);
 
     function note(node, kind, text) {
       node.className = "note " + kind;
@@ -886,7 +934,7 @@ tbody tr:hover td{background:var(--surface-2)}
           "nightly run at 06:15 UTC reads the register, applies the override \u2014 or refuses it beyond the " +
           "cap \u2014 and only then does the board show it. It is on the record below from now.");
         delete cache[r.account_id];                    // the register section is stale the moment we wrote
-        openDossier(r, true);
+        if (onDone) onDone(); else openDossier(r, true);
       }).catch(function (e) {
         go.disabled = false;
         note(msg, "warn", "Refused: " + (e.message || String(e)) +
@@ -916,6 +964,63 @@ tbody tr:hover td{background:var(--surface-2)}
     if (typeof v === "boolean") return v ? "yes" : "no";
     if (typeof v === "object") return JSON.stringify(v);
     return String(v);
+  }
+
+  /* ==================== the override, from the list ====================
+     DECISIONS §47. Owner: change the classification by clicking the tier chip, without opening
+     the dossier first. Same form, same terms, same database refusal — only the way in is
+     different, so there is one override implementation and not two that can drift.
+
+     A dialog rather than an inline row: the form needs a reason and an expiry, and a table row
+     is the wrong shape for that. Escape and the backdrop both close it; focus moves into it on
+     open and back to the chip on close, because this is now a keyboard-reachable control. */
+  var ovDlg = null, ovReturnFocus = null;
+
+  function closeOverride() {
+    if (!ovDlg) return;
+    ovDlg.remove();
+    ovDlg = null;
+    document.removeEventListener("keydown", ovKey, true);
+    if (ovReturnFocus && document.contains(ovReturnFocus)) ovReturnFocus.focus();
+    ovReturnFocus = null;
+  }
+  function ovKey(e) { if (e.key === "Escape") { e.stopPropagation(); closeOverride(); } }
+
+  function openOverride(r) {
+    closeOverride();
+    ovReturnFocus = document.querySelector('button[data-ovr="' + r.account_id + '"]');
+    ovDlg = document.createElement("div");
+    ovDlg.className = "ovback";
+    ovDlg.innerHTML =
+      '<div class="ovdlg" role="dialog" aria-modal="true" aria-label="Change the grade for ' +
+        esc(r.name) + '">' +
+      '<div class="ovhead"><div><span class="ovwho">' + esc(r.name) + "</span>" +
+        '<span class="ovrank">rank ' + esc(r.rank) + " of " + rows.length + "</span></div>" +
+        '<button type="button" class="ovx" id="ovClose" aria-label="Close">\u00d7</button></div>' +
+      overrideHtml(r, {}) +
+      '<div class="ovfoot"><a href="#" id="ovFull">Open the full dossier instead \u2192</a></div>' +
+      "</div>";
+    document.body.appendChild(ovDlg);
+
+    ovDlg.addEventListener("click", function (e) { if (e.target === ovDlg) closeOverride(); });
+    ovDlg.querySelector("#ovClose").addEventListener("click", closeOverride);
+    ovDlg.querySelector("#ovFull").addEventListener("click", function (e) {
+      e.preventDefault(); closeOverride(); openDossier(r);
+    });
+    document.addEventListener("keydown", ovKey, true);
+
+    // The write path is the dossier's, unchanged. Only what happens afterwards differs: the
+    // dialog closes and says where the change went, because there is no register section behind
+    // it to refresh. The chip itself does NOT change — the tier moves at the nightly run, and a
+    // chip that changed on click would be the page telling a comfortable lie.
+    wireOverride(r, {}, function () {
+      var msg = ovDlg.querySelector("#ovMsg");
+      if (msg) msg.textContent = msg.textContent +
+        " This dialog can be closed; the board still shows the engine's tier until then.";
+    }, ovDlg);
+
+    var first = ovDlg.querySelector("select, button.go, #ovClose");
+    if (first) first.focus();
   }
 
   function dossierHtml(r, d) {
@@ -1345,6 +1450,15 @@ tbody tr:hover td{background:var(--surface-2)}
     if (e.key === "ArrowRight") step(1);
   });
   el("tb").addEventListener("click", function (e) {
+    // The tier chip owns its own click. Without this, changing a grade would also open the
+    // dossier behind the dialog, and closing it would leave you somewhere you did not ask for.
+    var chip = e.target.closest("button[data-ovr]");
+    if (chip) {
+      e.stopPropagation();
+      var cr = rows.filter(function (x) { return x.account_id === chip.dataset.ovr; })[0];
+      if (cr) openOverride(cr);
+      return;
+    }
     var tr = e.target.closest("tr[data-account]");
     if (!tr) return;
     var row = rows.filter(function (x) { return x.account_id === tr.dataset.account; })[0];
