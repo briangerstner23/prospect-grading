@@ -3069,3 +3069,47 @@ that will run it — never by reading the diff. "I removed the field" is a descr
 not evidence of a result. The same applies to the per-key habit itself: where the concern is *a
 kind of data* rather than *a column*, apply the guard once at the boundary, because the per-key
 version is the version that misses one.
+
+## §44 — The override moves to the working surface (17 Sep 2026)
+
+Owner: *"i want to make the overrides on the main screen."*
+
+The override form existed only in the back office, which meant judging a tier wrong in one place
+and correcting it in another — with the dossier that justified the correction on the screen you
+just left. The correction belongs where the reading happens.
+
+**The board now signs in.** Reading still needs no account and never will (§43); signing in adds a
+**lane**. Written against GoTrue's REST endpoints with plain `fetch`, deliberately: the page is one
+inline script with no imports and no CDN, and pulling in a client library to send one email and
+hold one token would cost that for nothing. The magic-link fragment is captured and stripped from
+the address bar so a token is not left sitting in a copyable URL, and every storage touch is
+guarded the way the theme already was.
+
+**The page decides nothing.** It writes one `pb_register` row of kind `override`; the nightly run
+reads it back and the engine applies it or refuses it. RLS is the authority — an override is
+accepted only from a signed-in WLIQ address whose `pb_members` row says owner — so what the panel
+decides is only what to *show*, and nobody types a reason into a form that was never going to be
+accepted. A refusal is reported as the database's, not the page's.
+
+**Every term comes from the active rubric** (rule 4): which tiers exist, which reason codes, the
+one-tier cap, the default expiry. Nothing is restated in the page, because a hard-coded list keeps
+working after the rubric changes and is wrong without failing. With no readable rubric the panel
+offers nothing rather than guessing.
+
+**The correction that matters most is the one about the expiry.** The form's date field defaults to
+the rubric's 90 days, and a reader clearing it would reasonably conclude the override is then
+permanent. It is not: `set_at` is always the row's `created_at`, so the engine derives
+`set_at + expiry_default_days` whenever no date is stated, and the override lapses anyway. **That
+lapse is the one way this board changes with nobody touching it** — the computed tier silently
+returns. The panel now says so on the field itself and points at the honest alternative: a *fact*
+never expires, and it moves the tier with no cap at all, because it corrects the input rather than
+overruling the answer.
+
+`scripts/board_page_test.ts` is 74 checks. The new ones pin the rubric-not-page sourcing, that the
+page never claims to have moved a tier, that `pb_members` is read only through the authenticated
+helper and never the anonymous one, and that the blank-expiry sentence stays.
+
+**Still open, and the obvious next thing:** `pb_movement` counts how many accounts changed tier on
+each run, but nothing names *which*. Movement is a number in a table nobody opens. Until that is a
+list on this page, a tier can change overnight and the only way to notice is to have remembered
+where it was.

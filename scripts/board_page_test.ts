@@ -102,8 +102,57 @@ check("the engine's reason sentence is shown verbatim", /read\.reason/.test(page
 check("the rubric version and fingerprint are shown", /rubric_fingerprint/.test(page));
 check("facts show their evidence label", /evidence_label/.test(page));
 check("prev / next / escape move between dossiers", /ArrowLeft/.test(page) && /Escape/.test(page));
-check("no email address is rendered anywhere", !/\.email\b/.test(page));
+// The dossier must render no PROSPECT address: not a contact's, not a call attendee's, not one
+// out of a fact row. The SIGNER's own address is a different thing — the page shows it back to
+// them as "recorded as <you>", which is how they know which account the register row will carry —
+// so the ban is on the dossier's own data, by name, rather than on the word "email".
+check("no prospect email address is rendered anywhere",
+  !/\b(?:c|p|f|g|k|at|d|r|rd|br|acc)\.email\b/.test(page) && !/->>'email'/.test(page));
+check("the only address the page shows is the signer's own",
+  [...page.matchAll(/\b([A-Za-z_$][\w$]*)\.email\b/g)].every((m) => ["me", "u", "m"].includes(m[1])));
 check("staff identifiers print as a name, not an address", /function localPart/.test(page));
+
+/* 8 · the override panel (DECISIONS §44)
+ *
+ * The board writes in exactly one place, and it is the one thing on this page that can change
+ * what the book says. Each check below is a way that could go wrong quietly:
+ *
+ *  - The page must not restate the rubric. Tiers, reason codes, the cap and the expiry are the
+ *    contract (rule 4); a hard-coded list here would keep working after the rubric changed and
+ *    would be wrong without failing.
+ *  - The page must not imply it moved a tier. It writes a register row; the nightly run applies
+ *    it, or refuses it. A reader who thinks the board already changed will misread the board.
+ *  - pb_members is closed to anon. It may be read ONLY through the authenticated helper, with a
+ *    session — never through get(), which carries the publishable key. The CLOSED loop above
+ *    proves get() is not used for it; this proves the auth path is the one that reads it.
+ *  - No session token may be baked into the file, and every storage touch stays guarded.
+ */
+check("the override is on the board itself, not only in the back office", /function overrideHtml/.test(page));
+check("it writes one register row, of kind override", /kind: "override"/.test(page) && /authReq\("pb_register"/.test(page));
+check("the write goes through the authenticated helper, never the anon one",
+  !/get\("pb_register/.test(page) && !/rpc\("pb_register/.test(page));
+check("tiers come from the rubric, not from a list in the page",
+  /sp\.vocabulary && sp\.vocabulary\.tiers/.test(page));
+check("reason codes come from the rubric", /ov\.reason_codes/.test(page));
+check("the one-tier cap comes from the rubric", /ov\.max_tiers_moved/.test(page));
+check("the expiry default comes from the rubric", /ov\.expiry_default_days/.test(page));
+check("with no rubric it offers nothing rather than guessing", /offers nothing/.test(page));
+check("the cap is stated before the reason is typed", /function capWarning/.test(page));
+check("it never claims to have moved the tier", /does not move yet/.test(page));
+// The lapse is the one way this board changes without anyone touching it, and a blank expiry
+// field reads as "forever" while the engine actually derives set_at + the rubric default. If the
+// page ever stops saying so, the reader is being quietly misled about the only silent change.
+check("says plainly that a blank expiry is not forever", /clearing that date does not mean forever/.test(page));
+check("points at a fact as the permanent correction", /facts never expire/.test(page));
+check("it names when the override actually applies", /06:15 UTC/.test(page));
+check("a refusal is attributed to the database, not the page", /the database decides this, not the page/.test(page));
+check("the owner lane is the only one offered a form", /me\.role !== "owner"/.test(page));
+check("pb_members is read only with a session, through the auth helper",
+  /authReq\("pb_members\?/.test(page) && !/get\("pb_members/.test(page));
+check("signing in is stated as optional for reading", /Reading this book needs no account/.test(page));
+check("no session token is baked into the page", !/access_token"\s*:\s*"[A-Za-z0-9._-]{20,}/.test(page));
+check("every session-storage touch is guarded, like the theme",
+  (page.match(/try \{ return localStorage|try \{ localStorage|try \{ return JSON\.parse/g) ?? []).length >= 3);
 
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);

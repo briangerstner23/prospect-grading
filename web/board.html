@@ -253,6 +253,30 @@ table.fx tr:last-child td{border-bottom:none}
 .src{font-family:"Roboto Mono",monospace;font-size:11px;color:var(--ink-3);line-height:1.7}
 tbody tr{cursor:pointer}
 tbody tr:hover td{background:var(--surface-2)}
+
+/* The override panel. The only place on this page that WRITES, so it is visually a form and
+   never mistaken for a read: its own frame, its own heading, and the lane stated on it. */
+.ovr{margin:22px 0 6px;border:1px solid var(--rule);border-radius:10px;background:var(--surface);overflow:hidden}
+.ovr>h3{margin:0;padding:12px 16px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--surface-2);border-bottom:1px solid var(--rule-2)}
+.ovr .ovin{padding:14px 16px}
+.ovr .lead{margin:0 0 12px;color:var(--ink-2);font-size:14px;line-height:1.55}
+.ovr .frow{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+.ovr .fld{display:flex;flex-direction:column;gap:5px;min-width:170px;flex:1}
+.ovr label{font-size:12px;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase}
+.ovr select,.ovr input,.ovr textarea{font:inherit;font-size:14px;color:var(--ink);
+  background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;width:100%}
+.ovr textarea{min-height:74px;resize:vertical}
+.ovr .foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.ovr button.go{font:inherit;font-size:14px;font-weight:600;cursor:pointer;color:#fff;
+  background:var(--steel);border:1px solid var(--steel);border-radius:6px;padding:9px 16px}
+.ovr button.go[disabled]{opacity:.55;cursor:not-allowed}
+.ovr .lane{font-size:12px;color:var(--ink-3)}
+.ovr .note{margin-top:12px;padding:10px 12px;border-radius:6px;font-size:13px;line-height:1.5}
+.ovr .note.warn{background:var(--alert-bg);color:var(--alert);border:1px solid var(--alert)}
+.ovr .note.ok{background:var(--go-bg);color:var(--go);border:1px solid var(--go-line)}
+.ovr .note[hidden]{display:none}
+.topnav .navbtn.who{max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:640px){ section{padding-block:24px} .mast{padding-block:22px 18px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -263,6 +287,7 @@ tbody tr:hover td{background:var(--surface-2)}
 <nav class="topnav"><div class="wrap">
   <a class="navlink is-here" href="board.html" aria-current="page">Board</a>
   <a class="navlink" href="index.html">Back office<span class="navnote">sign-in</span></a>
+  <button type="button" class="navbtn who" id="whobtn">Sign in</button>
   <button type="button" class="navbtn" id="themebtn" aria-pressed="false">Dark</button>
 </div></nav>
 
@@ -383,6 +408,153 @@ tbody tr:hover td{background:var(--surface-2)}
   // returns the board's own columns and nothing else (migration 20260917210000).
   function rpc(fn, args) { return req("rpc/" + fn, { method: "POST", args: args }); }
 
+  /* ==================== sign-in ====================
+     READING this page needs no account and never will (owner ruling, §43). Signing in adds a
+     LANE — it is what lets the owner set an override from here instead of from the back office
+     (§44). Written against GoTrue's REST endpoints with plain fetch, on purpose: the page is one
+     inline script with no imports and no CDN, and pulling in a client library to send one email
+     and hold one token would cost that for nothing.
+
+     The database is the authority, not this code. Every control below can be bypassed by anyone
+     with the browser console; RLS is what actually refuses a write (pb_register accepts an
+     override only from a signed-in WLIQ address whose pb_members row says owner). What the page
+     decides is only what to SHOW, so nobody types a reason into a form that was never going to
+     be accepted. */
+  var AUTH = SUPABASE_URL + "/auth/v1";
+  var sess = null;          // { access_token, refresh_token, expires_at }
+  var me = { email: null, role: null };
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window */ } }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* private window */ } }
+
+  function saveSess(x) {
+    sess = x;
+    if (x) lsSet("pb-sess", JSON.stringify(x)); else lsDel("pb-sess");
+  }
+  function loadSess() {
+    var raw = lsGet("pb-sess");
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { lsDel("pb-sess"); return null; }
+  }
+
+  /** An authenticated read. Separate from get() on purpose — see scripts/board_page_test.ts. */
+  function authReq(path, opts) {
+    var o = opts || {};
+    return fetch(SUPABASE_URL + "/rest/v1/" + path, {
+      method: o.method || "GET",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: "Bearer " + (sess ? sess.access_token : SUPABASE_KEY),
+        "Content-Type": "application/json",
+        Prefer: o.prefer || "return=minimal"
+      },
+      body: o.body ? JSON.stringify(o.body) : undefined
+    }).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(res.status + " " + t.slice(0, 300)); });
+      return res.status === 204 ? null : res.text().then(function (t) { return t ? JSON.parse(t) : null; });
+    });
+  }
+
+  function authPost(url, body, token) {
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: "Bearer " + (token || SUPABASE_KEY),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body || {})
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { j = null; }
+        if (!res.ok) throw new Error((j && (j.msg || j.error_description || j.message)) || (res.status + " " + t.slice(0, 200)));
+        return j;
+      });
+    });
+  }
+
+  /* The magic link comes back as a URL fragment. Take it, store it, and strip it from the
+     address bar so the token is not left sitting in a link anyone might copy or bookmark. */
+  function captureHash() {
+    if (!window.location.hash || window.location.hash.indexOf("access_token") < 0) return null;
+    var q = new URLSearchParams(window.location.hash.slice(1));
+    var at = q.get("access_token");
+    if (!at) return null;
+    var x = {
+      access_token: at,
+      refresh_token: q.get("refresh_token"),
+      expires_at: Date.now() + (Number(q.get("expires_in") || 3600) * 1000)
+    };
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    return x;
+  }
+
+  function refreshIfStale() {
+    // A minute of headroom: a token that expires mid-request is a refusal the reader cannot act on.
+    if (!sess || !sess.refresh_token) return Promise.resolve(sess);
+    if (sess.expires_at && sess.expires_at - Date.now() > 60000) return Promise.resolve(sess);
+    return authPost(AUTH + "/token?grant_type=refresh_token", { refresh_token: sess.refresh_token })
+      .then(function (j) {
+        saveSess({ access_token: j.access_token, refresh_token: j.refresh_token,
+                   expires_at: Date.now() + (Number(j.expires_in || 3600) * 1000) });
+        return sess;
+      })
+      .catch(function () { saveSess(null); return null; });
+  }
+
+  /** Who is signed in, and what lane they hold. Both come from the server, never from the token. */
+  function loadMe() {
+    if (!sess) { me = { email: null, role: null }; return Promise.resolve(me); }
+    return fetch(AUTH + "/user", { headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + sess.access_token } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (u) {
+        me.email = u && u.email ? String(u.email).toLowerCase() : null;
+        if (!me.email) { saveSess(null); me.role = null; return me; }
+        // pb_members is closed to anon; this read happens only with a session, and its own policy
+        // returns the signer's row alone unless they are owner.
+        return authReq("pb_members?select=email,role,active", { prefer: "return=representation" })
+          .then(function (ms) {
+            var mine = (ms || []).filter(function (m) {
+              return String(m.email).toLowerCase() === me.email && m.active !== false; })[0];
+            me.role = mine ? mine.role : null;
+            return me;
+          })
+          .catch(function () { me.role = null; return me; });
+      })
+      .catch(function () { saveSess(null); me = { email: null, role: null }; return me; });
+  }
+
+  function paintWho() {
+    var b = el("whobtn");
+    if (!b) return;
+    b.textContent = me.email ? me.email : "Sign in";
+    b.title = me.email
+      ? (me.role === "owner" ? "Signed in — owner lane. Sign out." : "Signed in as " + me.email + ". Sign out.")
+      : "Reading needs no account. Sign in to set an override from this page.";
+  }
+
+  function signIn() {
+    var addr = window.prompt("White Label IQ email address.\n\nWe send a sign-in link; opening it " +
+      "brings you back to this page signed in. Reading the board never needs this — it is what " +
+      "lets the owner set an override from here.");
+    if (!addr) return;
+    addr = addr.trim().toLowerCase();
+    if (!addr) return;
+    authPost(AUTH + "/otp?redirect_to=" + encodeURIComponent(window.location.origin + window.location.pathname),
+             { email: addr, create_user: true })
+      .then(function () { window.alert("Sign-in link sent to " + addr + ". Open it on this device and you will land back here, signed in."); })
+      .catch(function (e) { window.alert("Could not send the link: " + (e.message || String(e))); });
+  }
+
+  function signOut() {
+    var t = sess ? sess.access_token : null;
+    saveSess(null); me = { email: null, role: null }; paintWho();
+    if (current) openDossier(current, true);
+    if (t) authPost(AUTH + "/logout", {}, t).catch(function () { /* the local session is already gone */ });
+  }
+
+
   /* ---------- distribution ---------- */
   function renderDist() {
     var counts = {}, total = rows.length;
@@ -486,7 +658,7 @@ tbody tr:hover td{background:var(--surface-2)}
 
   Promise.all([
     rpc("pb_board"),
-    get("pb_rubric_versions?select=version,activated_at&status=eq.active"),
+    get("pb_rubric_versions?select=version,activated_at,spec&status=eq.active"),
     get("pb_runs?select=finished_at,counts&source=eq.pb-score&status=eq.success&order=finished_at.desc&limit=1")
   ]).then(function (out) {
     rows = out[0] || [];
@@ -538,17 +710,22 @@ tbody tr:hover td{background:var(--surface-2)}
       (has(b) ? '<span class="b">' + esc(b) + "</span>" : "") + "</div>";
   }
 
-  function openDossier(row) {
+  function openDossier(row, keepScroll) {
     current = row;
     boardview.hidden = true; dossierview.hidden = false;
-    window.scrollTo(0, 0);
+    if (!keepScroll) window.scrollTo(0, 0);
     dwho.textContent = row.name;
-    dbody.innerHTML = '<div class="wrap"><p class="loading">Reading the dossier…</p></div>';
+    if (!cache[row.account_id]) dbody.innerHTML = '<div class="wrap"><p class="loading">Reading the dossier…</p></div>';
     var i = rows.indexOf(row);
     el("dprev").disabled = i <= 0;
     el("dnext").disabled = i >= rows.length - 1;
 
-    var done = function (d) { cache[row.account_id] = d; if (current === row) dbody.innerHTML = dossierHtml(row, d); };
+    var done = function (d) {
+      cache[row.account_id] = d;
+      if (current !== row) return;
+      dbody.innerHTML = dossierHtml(row, d);
+      wireOverride(row, d);
+    };
     if (cache[row.account_id]) { done(cache[row.account_id]); return; }
     rpc("pb_dossier", { p_account_id: row.account_id })
       .then(done)
@@ -556,6 +733,164 @@ tbody tr:hover td{background:var(--surface-2)}
         dbody.innerHTML = '<div class="wrap"><div class="err"><strong>The dossier could not be read.</strong><br>' +
           esc(e.message || String(e)) + "</div></div>";
       });
+  }
+
+  /* ==================== the override, on the working surface ====================
+     DECISIONS §44. This was in the back office only, which meant deciding a tier was wrong in
+     one place and correcting it in another. The correction belongs where the reading happens.
+
+     Nothing here decides anything. It writes one pb_register row; the nightly run reads it back
+     and the engine applies it, or refuses it — the page is not allowed to move a tier and does
+     not pretend to. Every term of the contract (which tiers exist, which reason codes, the cap,
+     the default expiry) is read from the ACTIVE RUBRIC, never written here: rule 4. If the
+     rubric cannot be read, the panel says so and offers nothing rather than guessing. */
+
+  function ovSpec() { return (meta.rubric && meta.rubric.spec) || null; }
+  function ovTiers() {
+    var sp = ovSpec(), t = sp && sp.vocabulary && sp.vocabulary.tiers;
+    return Array.isArray(t) ? t.slice().reverse() : [];   // best first, as the rubric orders them
+  }
+  function ovBlock() { var sp = ovSpec(); return (sp && sp.override) || null; }
+  function computedTier(d) {
+    var read = d.read || {}, tr = read.trace || {};
+    return (tr.fit && tr.fit.computed_tier) || null;
+  }
+  function plusDays(n) {
+    var t = new Date(Date.now() + n * 86400000);
+    return t.toISOString().slice(0, 10);
+  }
+  /** The engine refuses more than max_tiers_moved. Say so before the reason is typed, not after. */
+  function capWarning(chosen, computed) {
+    var ov = ovBlock(), tiers = ovTiers();
+    if (!chosen || !ov) return "";
+    var cap = typeof ov.max_tiers_moved === "number" ? ov.max_tiers_moved : 1;
+    if (!computed) {
+      return "The last read carries no computed tier, so the one-tier cap cannot be checked here. " +
+             "The engine refuses the override until this account has a computed tier.";
+    }
+    var a = tiers.indexOf(chosen), b = tiers.indexOf(computed);
+    if (a < 0 || b < 0) return "";
+    var moved = Math.abs(a - b);
+    if (moved === 0) return "That is the tier the engine already computed, so the override would change nothing.";
+    if (moved > cap) {
+      return computed + " \u2192 " + chosen + " is " + moved + " tiers. The engine refuses more than " +
+             cap + " and keeps " + computed + ", flagging the row \u201cOverride refused: beyond one-tier cap\u201d.";
+    }
+    return "";
+  }
+
+  function overrideHtml(r, d) {
+    var ov = ovBlock(), tiers = ovTiers(), computed = computedTier(d);
+    var head = '<section class="ovr"><h3>Change this grade</h3><div class="ovin">';
+    var tail = "</div></section>";
+
+    if (!ov || !tiers.length) {
+      return head + '<p class="lead">The active rubric could not be read, so this panel cannot offer ' +
+        'the tiers, reason codes or the cap it is required to enforce. Rather than guess at them, it ' +
+        'offers nothing. The back office has the same form.</p>' + tail;
+    }
+    if (!me.email) {
+      return head + '<p class="lead">Reading this book needs no account. <strong>Setting an override does</strong> \u2014 ' +
+        'it is recorded against a person, with a reason and an expiry, and the owner lane is the only ' +
+        'one that may set one (PRO-5). Sign in at the top of the page and this becomes a form.</p>' + tail;
+    }
+    if (me.role !== "owner") {
+      return head + '<p class="lead">Signed in as ' + esc(me.email) + '. Override authority sits with the ' +
+        'owner alone (PRO-5, revised 4 Sep 2026), and this address is on record as ' +
+        esc(me.role || "no write lane") + '. You can still change what the book KNOWS \u2014 entering a fact ' +
+        'in the back office moves the tier with no cap at all, because it corrects the input rather ' +
+        'than overruling the answer.</p>' + tail;
+    }
+
+    var codes = Array.isArray(ov.reason_codes) ? ov.reason_codes : [];
+    var days = typeof ov.expiry_default_days === "number" ? ov.expiry_default_days : null;
+    var cap = typeof ov.max_tiers_moved === "number" ? ov.max_tiers_moved : 1;
+
+    return head +
+      '<p class="lead">' +
+      (computed
+        ? "The engine computed <strong>" + esc(computed) + "</strong> on the last read. "
+        : "The last read carries no computed tier. ") +
+      "You may move it " + cap + " tier" + (cap === 1 ? "" : "s") + " at most; beyond that the engine " +
+      "refuses the override and keeps its own answer. A reason code and a written reason are both " +
+      "required (July, ruled)." +
+      (days ? " It expires on the date below \u2014 and <strong>clearing that date does not mean forever</strong>: " +
+              "the engine falls back to " + days + " days from today, so an override always lapses unless you " +
+              "set a later date on purpose. When it lapses the computed tier returns, which is the one way this " +
+              "board changes under you. If the correction is permanent, the honest fix is a FACT, not an " +
+              "override \u2014 facts never expire." : "") +
+      '</p>' +
+      '<div class="frow">' +
+        '<div class="fld"><label for="ovTier">Anticipated tier</label><select id="ovTier">' +
+          '<option value="">choose a tier</option>' +
+          tiers.map(function (t) { return '<option value="' + esc(t) + '">anticipated ' + esc(t) + "</option>"; }).join("") +
+        "</select></div>" +
+        '<div class="fld"><label for="ovCode">Reason code</label><select id="ovCode">' +
+          codes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; }).join("") +
+        "</select></div>" +
+        '<div class="fld"><label for="ovExp">Expires</label>' +
+          '<input type="date" id="ovExp" value="' + (days ? plusDays(days) : "") + '">' +
+          '<span class="lane">blank still expires in ' + (days || "?") + ' days</span></div>' +
+      "</div>" +
+      '<div class="fld" style="margin-bottom:12px"><label for="ovWhy">Reason \u2014 what you know that the book does not</label>' +
+        '<textarea id="ovWhy" placeholder="Required. This is the record; write it for someone reading it in six months."></textarea></div>' +
+      '<div class="note warn" id="ovCap" hidden></div>' +
+      '<div class="foot"><button type="button" class="go" id="ovGo">Set override</button>' +
+        '<span class="lane">recorded as ' + esc(me.email) + ' \u00b7 owner lane \u00b7 ' +
+        'applied at the next nightly run (06:15 UTC), not now</span></div>' +
+      '<div class="note" id="ovMsg" hidden></div>' +
+      tail;
+  }
+
+  /* Handlers are attached after the dossier's HTML is in the document; the panel is rebuilt on
+     every open, so they are attached there too and never accumulate. */
+  function wireOverride(r, d) {
+    var go = el("ovGo");
+    if (!go) return;                                  // signed out, or no rubric: nothing to wire
+    var tier = el("ovTier"), code = el("ovCode"), exp = el("ovExp"), why = el("ovWhy"),
+        capEl = el("ovCap"), msg = el("ovMsg"), computed = computedTier(d);
+
+    function note(node, kind, text) {
+      node.className = "note " + kind;
+      node.textContent = text;
+      node.hidden = !text;
+    }
+    tier.addEventListener("change", function () { note(capEl, "warn", capWarning(tier.value, computed)); });
+
+    go.addEventListener("click", function () {
+      if (!tier.value || !why.value.trim()) {
+        note(msg, "warn", "A tier and a written reason are both required \u2014 the engine ignores an override without them.");
+        return;
+      }
+      var expiresAt = exp.value ? new Date(exp.value + "T00:00:00Z").toISOString() : null;
+      go.disabled = true;
+      note(msg, "ok", "Recording\u2026");
+      refreshIfStale().then(function (ok) {
+        if (!ok) throw new Error("Your sign-in has expired. Sign in again and the form will be here.");
+        return authReq("pb_register", {
+          method: "POST",
+          body: {
+            kind: "override",
+            account_id: r.account_id,
+            made_by: me.email,
+            reason_code: code.value,
+            text: why.value.trim(),
+            payload: { tier: tier.value, expires_at: expiresAt },
+            expires_at: expiresAt
+          }
+        });
+      }).then(function () {
+        note(msg, "ok", "Recorded under " + me.email + ". The tier on this page does not move yet: the " +
+          "nightly run at 06:15 UTC reads the register, applies the override \u2014 or refuses it beyond the " +
+          "cap \u2014 and only then does the board show it. It is on the record below from now.");
+        delete cache[r.account_id];                    // the register section is stale the moment we wrote
+        openDossier(r, true);
+      }).catch(function (e) {
+        go.disabled = false;
+        note(msg, "warn", "Refused: " + (e.message || String(e)) +
+          " \u2014 the database decides this, not the page. An override needs the owner lane on a White Label IQ address.");
+      });
+    });
   }
 
   function dossierHtml(r, d) {
@@ -608,6 +943,8 @@ tbody tr:hover td{background:var(--surface-2)}
       r.they_last_replied ? "most recent inbound" : "no inbound on record",
       r.they_last_replied ? "" : "alert", true));
     h.push("</div>");
+
+    h.push('<div class="wrap">' + overrideHtml(r, d) + "</div>");
 
     h.push('<div class="dgrid"><div class="col">');
 
@@ -816,6 +1153,25 @@ tbody tr:hover td{background:var(--surface-2)}
   el("filter").addEventListener("input", render);
   el("untouchedOnly").addEventListener("change", render);
   el("flaggedOnly").addEventListener("change", render);
+
+  /* Sign-in, last and entirely optional. The board has already been requested above; nothing on
+     the reading path waits for any of this, so a broken or expired session costs a button, never
+     the page. If a dossier is open when the lane resolves, it is repainted so the panel appears
+     without the reader having to do anything. */
+  el("whobtn").addEventListener("click", function () { if (me.email) signOut(); else signIn(); });
+  (function bootAuth() {
+    var fromLink = captureHash();
+    if (fromLink) saveSess(fromLink); else sess = loadSess();
+    paintWho();
+    if (!sess) return;
+    refreshIfStale()
+      .then(loadMe)
+      .then(function () {
+        paintWho();
+        if (current) openDossier(current, true);
+      })
+      .catch(function () { saveSess(null); me = { email: null, role: null }; paintWho(); });
+  })();
 })();
 </script>
 </body>
