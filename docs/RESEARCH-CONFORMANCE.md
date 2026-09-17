@@ -65,7 +65,7 @@ decision entry. Whether it stays is owner decision 2.
 
 | Break | Evidence | Repair |
 |---|---|---|
-| Fathom never connected; status doc said Pass | 988 inbox rows all `pg_net`, zero Fathom user agents ever; newest call 11 Sep | item 1 |
+| Fathom never connected; status doc said Pass | 988 inbox rows all `pg_net`, zero Fathom user agents ever; newest call 11 Sep | **item 1 done 17 Sep; proof pending first delivery** |
 | Active rubric had no file | 0.1.3, 829 reads, zero repo hits; recovered 17 Sep, engine fp `909b3747` | done |
 | Active rubric lacks §17; extractor vocabulary split | `Champion identified` proposed by the sweep, unknown to the engine | item 2 |
 | 33 applied migrations with no file | 64 applied vs 31 on disk, by name | item 3 |
@@ -543,12 +543,12 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "claim": "BREAK: 64 Prospect Book migrations applied, 31 files on disk — 33 running with no file, listed by name in docs/STATE-SNAPSHOT-2026-09-17.md §2. Repair item 3."
     },
     {
-      "id": "RECON-fathom-dark",
+      "id": "RECON-fathom-proof-pending",
       "r": "RECON",
       "mode": "manual",
       "verified_on": "2026-09-17",
-      "reverify": "select source, headers->>'user-agent', count(*), max(received_at) from pb_webhook_inbox group by 1,2; select max(held_at) from pb_calls;",
-      "claim": "BREAK, ongoing loss: Fathom has never delivered. 988 source=fathom rows all carry user-agent pg_net/0.19.5 from the 13 Sep back-fill; the only 2 other pg_net rows are 14 Sep Pipedrive receiver tests. Newest pb_calls.held_at is 11 Sep. Repair item 1."
+      "reverify": "select headers->>'user-agent', verified, count(*), max(received_at) from pb_webhook_inbox where source='fathom' group by 1,2; -- passes when a non-pg_net agent appears with verified=true",
+      "claim": "Repair item 1 executed 17 Sep: webhook NYMFoCciM4MNbUi3 created via REST (201), receiver 200, secret verified, 12-17 Sep back-filled (7 external calls). PROOF STILL PENDING: no pb_webhook_inbox row has ever carried a Fathom user agent. This row closes only when one does. Until then treat Fathom as unproven, not as fixed."
     },
     {
       "id": "RECON-checks-unbuilt",

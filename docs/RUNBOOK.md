@@ -187,6 +187,47 @@ select status_code, content from net._http_response where id = <id>;
 
 ## 4 · Register the Fathom webhook
 
+**Re-done 17 Sep 2026, from the database.** The 12 Sep entry below claimed a UI-created webhook
+existed; it never delivered once (DECISIONS §24). On 17 Sep a webhook was created through the REST
+API from `pg_net` — id `NYMFoCciM4MNbUi3`, `201 Created` — and the 12–17 Sep gap back-filled.
+Three corrections to what follows:
+
+- **The request field is `destination_url`, not `url`.** Sending `url` gets `400 {"error":"Url
+  can't be blank"}` — a Rails validation on the model's `url` attribute, which the parameter never
+  reached. The response echoes it back as `url`. The 12 Sep diagnosis that the MCP "drops the
+  field" was wrong: the MCP sends `destination_url`, which is correct.
+- **Fathom's signing secret is per-account, not per-webhook.** The secret returned on 17 Sep is
+  byte-identical to the 12 Sep one. Rotating `PB_FATHOM_WEBHOOK_SECRET` on webhook creation is a
+  no-op; the old value is kept as `PB_FATHOM_WEBHOOK_SECRET_20260912` anyway.
+- **Handle the response in SQL, then scrub it.** `net._http_response` holds the secret in
+  plaintext until pg_net's TTL. Move it with `vault.update_secret(... (select content::jsonb->>'secret'
+  from net._http_response where id = <rid>))`, verify shape only (`left(...,6)='whsec_'`,
+  24-byte key), then `delete from net._http_response where id = <rid>`. Never `select` it.
+
+The create call, verbatim minus nothing secret:
+
+```sql
+select net.http_post(
+  url := 'https://api.fathom.ai/external/v1/webhooks',
+  headers := jsonb_build_object('content-type','application/json',
+                                'X-Api-Key', public.pb_secret('PB_FATHOM_API_KEY')),
+  body := '{"destination_url":"<FN>/pb-fathom-webhook","include_transcript":true,
+           "include_summary":true,"include_action_items":true,"include_crm_matches":true,
+           "triggered_for":["my_recordings","shared_team_recordings"]}'::jsonb,
+  timeout_milliseconds := 30000);
+```
+
+**Proof of life is a delivery, not a 201.** The only evidence the webhook works is a
+`pb_webhook_inbox` row whose `headers->>'user-agent'` is Fathom's, `verified = true`, that becomes a
+`pb_calls` row. A `pg_net` row proves nothing — that is exactly the evidence that produced the
+false Pass in PHASE0 for five days. There is still no list endpoint, so a stale webhook from 12 Sep
+may exist in the Fathom UI; a duplicate delivery is harmless (calls dedupe on meeting key) but the
+owner should delete anything that is not `NYMFoCciM4MNbUi3`.
+
+---
+
+*The 12 Sep entry, kept for the record:*
+
 **Done, 12 Sep 2026** — the webhook exists (created in the Fathom UI) and
 `PB_FATHOM_WEBHOOK_SECRET` is set: a `whsec_` whose 32 base64 characters decode to a 24-byte
 key, checked with `decode(substring(d from 7),'base64')` rather than assumed.

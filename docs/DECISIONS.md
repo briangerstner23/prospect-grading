@@ -1523,3 +1523,54 @@ file to the database — specified in `docs/RESEARCH-CONFORMANCE.md`, not yet bu
 Whether the 16 Sep boards and the chase score stay or go; whether the page or the boards are the
 working surface; whether there is ever a second rater; whether the gate should bite. Those are
 the owner's, listed in `docs/REPAIR-PLAN.md`. No threshold moves and nothing is activated.
+
+
+## 24 · Fathom, reconnected from the database, and what the 12 September entry got wrong (17 September 2026)
+
+**Not a ruling.** Repair item 1 of `docs/REPAIR-PLAN.md`, executed; the record of what was found
+on the way.
+
+### What was done
+
+A webhook was created through Fathom's REST API from `pg_net`, with the API key read inside the
+call: `POST /external/v1/webhooks`, `201 Created`, id `NYMFoCciM4MNbUi3`, destination
+`<FN>/pb-fathom-webhook`, both trigger types, all four includes. The receiver answers `200
+{"ok":true}`. The signing secret was moved from the response row into Vault by SQL, verified by
+shape only, and the plaintext response rows scrubbed; the 12 Sep value is kept as
+`PB_FATHOM_WEBHOOK_SECRET_20260912`.
+
+The 12–17 Sep gap was back-filled with the existing crawl: one page of Fathom's newest-first
+list landed 10 new meetings, all on 16 Sep — Fathom's own list shows nothing recorded 12–15 Sep
+(a weekend, then two quiet days). All 10 posted through the receiver and verified; 7 were
+external and became `pb_calls` rows with attendees, the other 3 were internal and correctly did
+not.
+
+### Three things the runbook had wrong
+
+**The field is `destination_url`.** Sending `url` returns `400 {"error":"Url can't be blank"}` —
+a Rails validation on an attribute the parameter never reached. That is the same error the MCP
+produced on 12 Sep, and the runbook concluded the MCP was dropping the field. It was not; the
+MCP sends `destination_url`, which is right. Whatever failed on 12 Sep, it was not that.
+
+**The signing secret is per-account.** The secret Fathom returned on 17 Sep is byte-identical to
+the one stored on 12 Sep. So the receiver was always able to verify a delivery; none ever came.
+Rotating the secret on webhook creation is a no-op and the runbook now says so.
+
+**"Done" was written on the wrong evidence.** The 12 Sep entry, and PHASE0's two Pass rows,
+rested on 988 "verified deliveries" that were this database posting to itself. The runbook now
+states the only acceptable proof: an inbox row carrying Fathom's user agent that verifies and
+becomes a call.
+
+### What is still not proven
+
+Exactly that. No `pb_webhook_inbox` row has ever carried a Fathom user agent, and none can be
+manufactured — it needs a recording to finish. The ledger row is `RECON-fathom-proof-pending`
+and it closes only on that evidence. Until it does, Fathom is *set up*, not *fixed*. There is no
+list endpoint, so a stale 12 Sep webhook may still exist in the Fathom UI; a duplicate delivery
+is harmless (calls dedupe on meeting key), and the owner should delete anything that is not
+`NYMFoCciM4MNbUi3`.
+
+### What this does not decide
+
+Nothing about the rubric, the reads, or any threshold. One connector, one gap, one correction to
+the record.

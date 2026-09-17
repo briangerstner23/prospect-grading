@@ -128,6 +128,8 @@ never summed (`CLAUDE.md` rule: "never a composite number"). Nothing prevented i
 
 ## 4 · Source liveness
 
+*Point-in-time. The Fathom row was acted on later the same day — DECISIONS §24.*
+
 | Source | Newest row | Live? |
 |---|---|---|
 | Pipedrive | 16 Sep 2026 | **Yes** — 236 deliveries, `user-agent: Pipedrive Webhooks`, latency 0.18–2.52 s |
