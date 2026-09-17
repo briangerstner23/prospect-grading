@@ -1,11 +1,11 @@
 # How a prospect is graded
 
-> Generated from core/rubric.prospect.v0.1.5.json. Do not edit by hand.
+> Generated from core/rubric.prospect.v0.1.6.json. Do not edit by hand.
 > Regenerate with `node --experimental-strip-types explain/generate_method.ts`.
 > `explain/method_test.ts` fails the build if this file is out of date, so what you
 > read here is what the engine actually does — not what someone once wrote down.
 
-**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.5 · **Status:** DRAFT · **Created:** 2026-09-09
+**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.6 · **Status:** DRAFT · **Created:** 2026-09-17
 
 Every anticipated grade is produced by a pure function of stored inputs:
 
@@ -455,17 +455,17 @@ Enforced both in Pipedrive required fields and here, because API writes bypass P
 
 ## 13 · Override contract
 
-**Ruling.** PRO-5 revision (2026-09-04): override authority sits with the owner alone. July (ruled): one grade max, written reason required.
+**Ruling.** PRO-5 revision (2026-09-04): override authority sits with the owner alone. 17 Sep 2026, owner: the one-tier cap is REMOVED — max_tiers_moved is null, so an override may move a tier to any value in vocabulary.tiers. This retires the July ruling's "one grade max"; the rest of that ruling stands, and a written reason is still required. DECISIONS §49.
 
 | Term | Value |
 |---|---|
 | Who may override | the **owner** lane only |
-| How far | at most **1** tier from the computed tier |
+| How far | at most **null** tier from the computed tier |
 | Reason code | **required**, one of `data_wrong`, `relationship_known`, `timing_known`, `conflict`, `other` |
 | Written reason | **required** — an override without one is ignored |
 | Default expiry | 90 days after it was set, when no expiry is stated |
 | Expires-soon warning | raised when **14 days** or fewer remain before the expiry |
-| Beyond the cap | refused — the engine rejects an override more than one tier from the computed tier rather than applying it |
+| Beyond the cap | not applicable while max_tiers_moved is null — no override is refused for distance. A number here restores the cap and the engine refuses beyond it. |
 | Recorded in the register | yes |
 
 An override is applied only when the approver is named, a reason code from the list is given, a written reason is present and it has not expired. A refused override leaves the computed tier standing and raises the flag "Override refused: beyond one-tier cap". An override within **14 days** of its expiry raises "Override expires soon".
@@ -517,6 +517,7 @@ A flag warns and never caps (Client Book principle carried over). Every flag is 
 - Prior grade differs
 - Stand-in entry
 - Override refused: beyond one-tier cap
+- Override moved more than one tier
 - Override expires soon
 - Conversation only
 - Below the small-shop project floor

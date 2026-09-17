@@ -3292,3 +3292,53 @@ the other page signed out. It is held in memory, used until it expires, and then
 some way nobody looks for. The right repair was one *read* across the boundary, plus an explicit
 rule about which copy owns the token — not a second refresh loop, and not renaming keys until the
 symptom went away.
+
+## §49 — The one-tier override cap is removed (17 Sep 2026)
+
+Owner, refused by his own engine while moving a Platinum to Bronze: *"I need to remove this rule."*
+
+It is his to remove. Override authority sits with Brian alone (PRO-5 revision, 4 Sep 2026) and the
+cap is the July ruling's *"one grade max"* — a rule about how far **he** may move a tier. The rest
+of that ruling stands: a reason code, a written reason, the owner lane and an expiry are all still
+required and all still enforced.
+
+**Rubric 0.1.6, fingerprint `9a911e2c`.** The rubric is data (rule 4), so this is a new version and
+not a code edit: `override.max_tiers_moved` is `null`, the `ruling` text records who removed it and
+when, and a `cap_history` array keeps the July value beside it — a rubric that silently forgets what
+it used to say is how the register and the running system drift apart.
+
+**`null` means no cap; an ABSENT key is still an error.** That distinction is the design. A rubric
+that forgot to mention the cap must never quietly become an uncapped one, so the strict read stays
+and only an explicit `null` opens it.
+
+**A move of more than one tier is flagged.** Removing the limit does not make a three-tier move
+ordinary. The trace says how far it went and the row carries `Override moved more than one tier`, so
+a later reader sees the size of the claim rather than just its result.
+
+**The page was about to reimpose the cap on its own.** `capWarning` defaulted to 1 whenever
+`max_tiers_moved` was not a number — so a removed cap would have lived on in the interface while the
+engine allowed the move. Both pages read `null` properly now.
+
+**Ordering, and a near miss.** The engine changed, so pb-score was deployed against the new commit
+*before* 0.1.6 was registered: v11 reads that key with `reqNum` and would have thrown on `null` for
+every account. **v12 went out with `verify_jwt` defaulted to TRUE** — the deploy call does not carry
+the previous value forward, and pg_cron sends the Book's own bearer, not a user JWT, so the gateway
+would have refused every nightly run before the function was reached. Caught by reading the deploy
+response; v13 is the same commit at `verify_jwt: false`. **Check that field on every deploy.**
+
+**Previewed on the real book before activation**, as the runbook requires: 830 scored, 0 errors,
+**2 changed**, both explained. One is the owner's own Conduit Digital override — written at 22:08,
+refused by the cap under 0.1.5, applied under 0.1.6: **Platinum → Bronze, rank 3 → 231**, with the
+new flag on the row. The other is a Pipedrive account added the same day and has nothing to do with
+the rubric. Nothing else in the book moved. The real run then wrote 830 reads at fingerprint
+`9a911e2c`, which is the local file's fingerprint exactly — so the spec in the database and the
+committed file are provably the same rubric.
+
+**METHOD.md was stale and said it was current.** `explain/generate_method.ts` still pointed at
+0.1.5, so the generator happily reported "the published method matches the rubric" while documenting
+a retired one. Repointed, regenerated, and `ACTIVE-method-source` in the conformance ledger caught
+the same drift independently — which is the check working exactly as §35 intended.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository (RECON-register-
+unread: no session has read them directly). This entry records the owner's ruling as made; the
+Grading Register should be updated to match, and if it ever disagrees, **the register wins**.

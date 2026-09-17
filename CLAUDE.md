@@ -19,8 +19,12 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ```
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
-            rubric.prospect.v0.1.5.json is ACTIVE (17 Sep 18:02 UTC, fp 517f4476: four owner
-            rulings, DECISIONS §40 — adds dimension_b.flag_rules; previewed 829/0 changed).
+            rubric.prospect.v0.1.6.json is ACTIVE (17 Sep 22:27 UTC, fp 9a911e2c: the override
+            distance cap removed — max_tiers_moved null, DECISIONS §49; previewed 830 scored,
+            2 changed, both explained: the owner's own Conduit Digital override, which the cap had
+            been refusing, and one Pipedrive row added the same day).
+            v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §40 — added
+            dimension_b.flag_rules; previewed 829/0 changed).
             v0.1.4 (retired 17 Sep; it was 0.1.3 + DECISIONS §17 restored, §31).
             v0.1.3 (retired; recovered from the database 17 Sep — it had had no file; see
             docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
@@ -178,7 +182,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
 6. **Never edit a read by hand.** `pb_reads` is written by `pb-score` only. The page changes
    facts, signals and register rows; the nightly run changes reads.
 7. **Overrides go through the register.** `pb_register` kind `override`, owner lane only,
-   one tier max, reason code and expiry. The engine refuses anything beyond the cap.
+   reason code, written reason and expiry — all still required, all still enforced by the engine.
+   The **distance cap is gone**: `override.max_tiers_moved` is `null` in rubric 0.1.6 (owner,
+   17 Sep 2026 — DECISIONS §49 retires July's "one grade max"), so an override may move a tier to
+   any value in `vocabulary.tiers`. A move of more than one tier raises
+   `Override moved more than one tier` and the trace says how far it went. A **number** in that
+   key restores the cap; an **absent** key is still an error, because "no cap" has to be stated on
+   purpose and a rubric that forgot to mention it must not silently become an uncapped one.
 8. Identity never auto-merges below `high` confidence; medium/low become
    `pb_identity_candidates` for a person to review. **Facts read out of prose follow the same
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
@@ -237,12 +247,16 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
   took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
-- Deployed versions as of **17 Sep 2026**: **pb-score v11** (commit `5d6254a`, deployed as a
+- Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
   **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
-  `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40). This line has
+  `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
+  the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have
+  thrown for every account (§49). **Check `verify_jwt` in the deploy response every time**: the
+  call defaults it to TRUE, and v12 went out that way — the gateway would have refused pg_cron's
+  bearer before the function was reached. v13 is the same commit, correctly at false. This line has
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift
   against each function's real import closure (RUNBOOK §3). All five carry the
   `helpers.ts` / `db.ts` paging fixes; pb-score also carries the 17 Sep rule-9 source precedence

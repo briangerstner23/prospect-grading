@@ -118,9 +118,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
   ],
   "manual_max_age_days": 45,
   "active_rubric": {
-    "version": "0.1.5",
-    "file": "core/rubric.prospect.v0.1.5.json",
-    "engine_fingerprint": "517f4476",
+    "version": "0.1.6",
+    "file": "core/rubric.prospect.v0.1.6.json",
+    "engine_fingerprint": "9a911e2c",
     "reads_verified_on": "2026-09-17"
   },
   "checks": [
