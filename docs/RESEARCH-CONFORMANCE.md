@@ -78,95 +78,285 @@ Keep it in step with the tables above.
   "compiled_on": "2026-09-16",
   "source": "Prospect Grading Research, 9 Sep 2026 (external). Advisory; the register governs.",
   "checks": [
-    { "id": "R3-gate-order", "r": "R3", "mode": "auto",
+    {
+      "id": "R3-gate-order",
+      "r": "R3",
+      "mode": "auto",
       "claim": "Four gates, in the research's stated evaluation order",
-      "probe": { "kind": "rubric_equals", "version": "0.1", "path": "gates.evaluation_order",
-                 "value": ["service_shape", "economics", "broker_character", "geography"] } },
-
-    { "id": "R3-service-parks", "r": "R3", "mode": "auto",
+      "probe": {
+        "kind": "rubric_equals",
+        "version": "0.1",
+        "path": "gates.evaluation_order",
+        "value": [
+          "service_shape",
+          "economics",
+          "broker_character",
+          "geography"
+        ]
+      }
+    },
+    {
+      "id": "R3-service-parks",
+      "r": "R3",
+      "mode": "auto",
       "claim": "Service shape parks the account",
-      "probe": { "kind": "rubric_equals", "version": "0.1", "path": "gates.items.service_shape.mode", "value": "park" } },
-
-    { "id": "R3-economics-parks", "r": "R3", "mode": "auto",
+      "probe": {
+        "kind": "rubric_equals",
+        "version": "0.1",
+        "path": "gates.items.service_shape.mode",
+        "value": "park"
+      }
+    },
+    {
+      "id": "R3-economics-parks",
+      "r": "R3",
+      "mode": "auto",
       "claim": "Economic floor parks the account",
-      "probe": { "kind": "rubric_equals", "version": "0.1", "path": "gates.items.economics.mode", "value": "park" } },
-
-    { "id": "R3-broker-flag-only", "r": "R3", "mode": "auto",
-      "claim": "Broker character only flags; it does not park. PRO-2r-a is unruled — flip to 'park' when it is ruled",
-      "probe": { "kind": "rubric_equals", "version": "0.1", "path": "gates.items.broker_character.mode", "value": "flag" } },
-
-    { "id": "R3-geography-off", "r": "R3", "mode": "auto",
+      "probe": {
+        "kind": "rubric_equals",
+        "version": "0.1",
+        "path": "gates.items.economics.mode",
+        "value": "park"
+      }
+    },
+    {
+      "id": "R3-broker-flag-only",
+      "r": "R3",
+      "mode": "auto",
+      "claim": "Broker character only flags; it does not park. PRO-2r-a is unruled \u2014 flip to 'park' when it is ruled",
+      "probe": {
+        "kind": "rubric_equals",
+        "version": "0.1",
+        "path": "gates.items.broker_character.mode",
+        "value": "flag"
+      }
+    },
+    {
+      "id": "R3-geography-off",
+      "r": "R3",
+      "mode": "auto",
       "claim": "GAP: geography is a gate in the research and is switched off here",
-      "probe": { "kind": "rubric_equals", "version": "0.1", "path": "gates.items.geography.mode", "value": "off" } },
-
-    { "id": "DNB-no-composite", "r": "DNB", "mode": "auto",
+      "probe": {
+        "kind": "rubric_equals",
+        "version": "0.1",
+        "path": "gates.items.geography.mode",
+        "value": "off"
+      }
+    },
+    {
+      "id": "DNB-no-composite",
+      "r": "DNB",
+      "mode": "auto",
       "claim": "The contract carries no composite/total/overall score field",
-      "probe": { "kind": "count_matches", "paths": ["core/prospect_types.ts"],
-                 "pattern": "composite|total_score|overall_score", "equals": 0 } },
-
-    { "id": "R4-calibration-absent", "r": "R4", "mode": "auto",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "core/prospect_types.ts"
+        ],
+        "pattern": "composite|total_score|overall_score",
+        "equals": 0
+      }
+    },
+    {
+      "id": "R4-calibration-absent",
+      "r": "R4",
+      "mode": "auto",
       "claim": "GAP: no edge function reads or writes pb_potential_snapshots, so the calibration loop does not run. Expect > 0 once R4 is built",
-      "probe": { "kind": "count_matches", "paths": ["supabase/functions"], "exts": [".ts"],
-                 "pattern": "pb_potential_snapshots", "equals": 0 } },
-
-    { "id": "R5-quote-check-present", "r": "R5", "mode": "auto",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "supabase/functions"
+        ],
+        "exts": [
+          ".ts"
+        ],
+        "pattern": "pb_potential_snapshots",
+        "equals": 0
+      }
+    },
+    {
+      "id": "R5-quote-check-present",
+      "r": "R5",
+      "mode": "auto",
       "claim": "The verbatim-quote check exists and is exported",
-      "probe": { "kind": "count_matches", "paths": ["ingest/notes_sweep.ts"],
-                 "pattern": "export function verifyClaims", "equals": 1 } },
-
-    { "id": "R5-seven-fields-absent", "r": "R5", "mode": "auto",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "ingest/notes_sweep.ts"
+        ],
+        "pattern": "export function verifyClaims",
+        "equals": 1
+      }
+    },
+    {
+      "id": "R5-seven-fields-absent",
+      "r": "R5",
+      "mode": "auto",
       "claim": "GAP: the seven SPICED fields are not extractable keys. Decision 5 is unruled",
-      "probe": { "kind": "count_matches", "paths": ["ingest/notes_sweep.ts"],
-                 "pattern": "(price_reaction|risk_words|critical_event|next_step)\\s*:", "equals": 0 } },
-
-    { "id": "R6-thresholds-not-recut", "r": "R6", "mode": "auto",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "ingest/notes_sweep.ts"
+        ],
+        "pattern": "(price_reaction|risk_words|critical_event|next_step)\\s*:",
+        "equals": 0
+      }
+    },
+    {
+      "id": "R6-thresholds-not-recut",
+      "r": "R6",
+      "mode": "auto",
       "claim": "GAP: deal-health thresholds still carry the pre-Pipedrive placeholder. Remove the phrase when they are cut from WLIQ's own stage medians",
-      "probe": { "kind": "count_matches", "paths": ["core/rubric.prospect.v0.1.json"],
-                 "pattern": "defaults below until then", "equals": 1 } },
-
-    { "id": "R7-no-plays", "r": "R7", "mode": "auto",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "core/rubric.prospect.v0.1.json"
+        ],
+        "pattern": "defaults below until then",
+        "equals": 1
+      }
+    },
+    {
+      "id": "R7-no-plays",
+      "r": "R7",
+      "mode": "auto",
       "claim": "GAP: no tier carries a play or an SLA in either rubric",
-      "probe": { "kind": "count_matches",
-                 "paths": ["core/rubric.prospect.v0.1.json", "core/rubric.prospect.v0.2.json"],
-                 "pattern": "\"(sla|play|plays)\"", "equals": 0 } },
-
-    { "id": "R9-fixtures", "r": "R9", "mode": "auto",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "core/rubric.prospect.v0.1.json",
+          "core/rubric.prospect.v0.2.json"
+        ],
+        "pattern": "\"(sla|play|plays)\"",
+        "equals": 0
+      }
+    },
+    {
+      "id": "R9-fixtures",
+      "r": "R9",
+      "mode": "auto",
       "claim": "At least the ~10 golden fixtures the research asked for",
-      "probe": { "kind": "json_len", "file": "fixtures/golden.json", "min": 10 } },
-
-    { "id": "FIT-six-criteria", "r": "FIT", "mode": "auto",
+      "probe": {
+        "kind": "json_len",
+        "file": "fixtures/golden.json",
+        "min": 10
+      }
+    },
+    {
+      "id": "FIT-six-criteria",
+      "r": "FIT",
+      "mode": "auto",
       "claim": "Rubric 0.2 carries exactly six equal-weight fit criteria",
-      "probe": { "kind": "json_len", "file": "core/rubric.prospect.v0.2.json",
-                 "path": "dimension_b.base_tier_from_fit.criteria", "equals": 6 } },
-
-    { "id": "FIT-wl-signal-absent", "r": "FIT", "mode": "auto",
-      "claim": "GAP: the white-label signal — the strongest predictor in WLIQ's own data — is not a fit criterion",
-      "probe": { "kind": "rubric_absent", "version": "0.2",
-                 "path": "dimension_b.base_tier_from_fit", "needle": "wl_signal" } },
-
-    { "id": "R2-email-channel-dark", "r": "R2", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "The email channel has no credential in Vault and is skipped every night" },
-
-    { "id": "R4-snapshots-empty", "r": "R4", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "pb_potential_snapshots holds no rows; no estimate has ever been frozen" },
-
-    { "id": "R6-thresholds-source", "r": "R6", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "Pipedrive has been readable since 12 Sep; WLIQ's own stage medians have not been computed" },
-
-    { "id": "R8-no-raters", "r": "R8", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "The rater lane is unstaffed: 2 owners, 0 raters. Research decision 4 is unanswered" },
-
-    { "id": "R8-no-writeback", "r": "R8", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "Tier and reasons are not written back to Pipedrive; the integration is inbound only" },
-
-    { "id": "R9-rituals-absent", "r": "R9", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "None of the three measurement rituals run: override acceptance-rate KPI, quarterly lift report, Blind Test" },
-
-    { "id": "QUEUE-unworked", "r": "R8", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "The fact-candidate queue is growing faster than it is worked, and the roster is growing faster than its evidence" },
-
-    { "id": "REGISTER-unread", "r": "ALL", "mode": "manual", "verified_on": "2026-09-16",
-      "claim": "The Grading Register is a Claude artifact, not a file. No session in this repo has read it directly; every claim about PRO-numbers here is second-hand via docs/DECISIONS.md" }
+      "probe": {
+        "kind": "json_len",
+        "file": "core/rubric.prospect.v0.2.json",
+        "path": "dimension_b.base_tier_from_fit.criteria",
+        "equals": 6
+      }
+    },
+    {
+      "id": "FIT-wl-signal-absent",
+      "r": "FIT",
+      "mode": "auto",
+      "claim": "GAP: the white-label signal \u2014 the strongest predictor in WLIQ's own data \u2014 is not a fit criterion",
+      "probe": {
+        "kind": "rubric_absent",
+        "version": "0.2",
+        "path": "dimension_b.base_tier_from_fit",
+        "needle": "wl_signal"
+      }
+    },
+    {
+      "id": "R2-email-channel-dark",
+      "r": "R2",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "The email channel has no credential in Vault and is skipped every night"
+    },
+    {
+      "id": "R4-snapshots-empty",
+      "r": "R4",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "pb_potential_snapshots holds no rows; no estimate has ever been frozen"
+    },
+    {
+      "id": "R6-thresholds-source",
+      "r": "R6",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "Pipedrive has been readable since 12 Sep; WLIQ's own stage medians have not been computed"
+    },
+    {
+      "id": "R8-no-raters",
+      "r": "R8",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "The rater lane is unstaffed: 2 owners, 0 raters. Research decision 4 is unanswered"
+    },
+    {
+      "id": "R8-no-writeback",
+      "r": "R8",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "Tier and reasons are not written back to Pipedrive; the integration is inbound only"
+    },
+    {
+      "id": "R9-rituals-absent",
+      "r": "R9",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "None of the three measurement rituals run: override acceptance-rate KPI, quarterly lift report, Blind Test"
+    },
+    {
+      "id": "QUEUE-unworked",
+      "r": "R8",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "The fact-candidate queue is growing faster than it is worked, and the roster is growing faster than its evidence"
+    },
+    {
+      "id": "REGISTER-unread",
+      "r": "ALL",
+      "mode": "manual",
+      "verified_on": "2026-09-16",
+      "claim": "The Grading Register is a Claude artifact, not a file. No session in this repo has read it directly; every claim about PRO-numbers here is second-hand via docs/DECISIONS.md"
+    },
+    {
+      "id": "ACTIVE-rubric-filed",
+      "r": "RECON",
+      "mode": "auto",
+      "claim": "The rubric that is ACTIVE in the database (0.1.3 as of 17 Sep) has a file in core/. Recovered 17 Sep; it had none.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "core/rubric.prospect.v0.1.3.json"
+        ],
+        "pattern": "\"version\": \"0.1.3\"",
+        "equals": 1
+      }
+    },
+    {
+      "id": "ACTIVE-rubric-pinned",
+      "r": "RECON",
+      "mode": "auto",
+      "claim": "The active rubric file still matches the database row it was recovered from (canonical sha256 8befc1aef2719120). Offline check: it pins the FILE against silent edits. It cannot see the database \u2014 the real reconciliation check is still unbuilt.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "docs/STATE-SNAPSHOT-2026-09-17.md"
+        ],
+        "pattern": "8befc1aef2719120",
+        "equals": 2
+      }
+    },
+    {
+      "id": "RECON-checks-unbuilt",
+      "r": "RECON",
+      "mode": "manual",
+      "verified_on": "2026-09-17",
+      "claim": "The three reconciliation checks (rubric drift vs DB, migration drift vs DB, source liveness) are NOT built. 33 migrations are applied with no file and Fathom has been dark since 11 Sep."
+    }
   ]
 }
 ```

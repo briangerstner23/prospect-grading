@@ -19,7 +19,11 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ```
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
-            rubric.prospect.v0.1.json (active) · rubric.prospect.v0.2.json (draft, spec as data)
+            rubric.prospect.v0.1.3.json is ACTIVE (recovered from the database 17 Sep — it had no
+            file; see docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
+            v0.1.1 and v0.3 (files with NO pb_rubric_versions row), v0.1.2 and v0.2 (registered
+            drafts, 0 reads). SIX files, four registered — run `ls core/rubric*` rather than
+            trusting this line, and check pb_rubric_versions for which is active.
             engine.ts (pure grade()) · classify.ts · decay.ts · reason.ts · engine_test.ts
 fixtures/   golden.json — synthetic accounts with expected scorecards per rubric version
 ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes.ts
@@ -54,6 +58,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
 web/        index.html — the page, one file, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
+            STATE-SNAPSHOT-2026-09-17.md — the version point: what was ACTUALLY running on
+            17 Sep, measured from the database. Read it before trusting PHASE0/METHOD/the
+            deployed-versions line; on 17 Sep all three described a system that was not running.
             RESEARCH-CONFORMANCE.md — how the build compares to the 9 Sep research's ten
             requirements; ADVISORY (the register governs). Its fenced JSON block is run by
             scripts/conformance_test.ts on every npm test, so closing a gap OR reopening one
