@@ -159,7 +159,8 @@ nothing emitted by hand, no bundle, no backslash or trailing-newline hazards, an
 record is the git sha, which `git show` can always reproduce. `deploy_edge_function` takes
 `entrypoint_path = index.ts`, `verify_jwt = false`, and `files = [{ name: "index.ts", content }]`
 (a few hundred bytes). pb-score **v9** was deployed this way from `c467352` and proved with the
-preview call below (200, 829 scored, 0 changed) before its first real run. Two cautions: use the
+preview call below (200, 829 scored, 0 changed) before its first real run; **v10** from `94d8fbc`
+the same way an hour later. Two cautions: use the
 full 40-character sha, never a branch name (a branch moves; a version must not), and the commit
 must be on GitHub before you deploy (push first, then `curl` the raw URL and compare its sha256
 with the local file — the pre-flight that was run for v9). The bundle route above still works

@@ -615,7 +615,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "get_edge_function pb-score → its index.ts is one import pinned to a full commit sha; that sha must be >= the last commit touching core/, ingest/ or supabase/functions/ (git log -1 --format=%H -- core ingest supabase/functions). If it is older, redeploy per RUNBOOK §3 (pinned-commit entrypoint).",
-      "claim": "CLOSED 17 Sep: pb-score v9 deployed from commit c467352 by a pinned-commit entrypoint (RUNBOOK §3) — the deployed function IS the committed source, so SOURCE_RANK (§27) and buildSnapshotRow (§30) are in it by construction. Proved by preview (200; 829 scored, 598 ranked, 224 unclassified, 7 parked, 0 changed against current reads) and then a real run. v8 (16 Sep) had been behind source by the rule-9 fix; production reads were unaffected because pb-score consumes the already-resolved view. The other four functions are unchanged since 14 Sep."
+      "claim": "CLOSED 17 Sep: pb-score v9 deployed from commit c467352, then v10 from 94d8fbc (snapshot count into pb_runs.counts), both by a pinned-commit entrypoint (RUNBOOK §3) — the deployed function IS the committed source, so SOURCE_RANK (§27) and buildSnapshotRow (§30) are in it by construction. Proved by preview (200; 829 scored, 598 ranked, 224 unclassified, 7 parked, 0 changed against current reads) and then a real run. v8 (16 Sep) had been behind source by the rule-9 fix; production reads were unaffected because pb-score consumes the already-resolved view. The other four functions are unchanged since 14 Sep."
     },
     {
       "id": "RECON-reconcile-script-present",

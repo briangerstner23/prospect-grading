@@ -158,7 +158,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
   enough to make the sweep do real work. A channel with no credential is skipped and said so in
   the run's notes.
-- Deployed versions as of **17 Sep 2026**: **pb-score v9** (commit `c467352`, deployed as a
+- Deployed versions as of **17 Sep 2026**: **pb-score v10** (commit `94d8fbc`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
   **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). This line has
