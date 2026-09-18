@@ -275,7 +275,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
 - Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
-  **pb-fathom-webhook v2**, **pb-verify v1** (commit `5378733`, pinned-commit entrypoint, `verify_jwt: false` confirmed in the deploy response) (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
+  **pb-fathom-webhook v2**, **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in the deploy response; v1 `5378733`, v2 `9c253b5` — both superseded by lexicon corrections, DECISIONS §52a/§52b) (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
   `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
   the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have

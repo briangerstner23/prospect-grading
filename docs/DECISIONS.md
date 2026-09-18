@@ -3538,3 +3538,86 @@ decision, and it should be made after the full run, not before.
 
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository. If it ever
 disagrees, **the register wins**.
+
+
+### §52a — The full run, and what the backstop got wrong (18 Sep 2026)
+
+**Owner instruction:** run the whole remaining queue. Done — **1,150 claims audited**, driven by a
+temporary `pb-verify-step` cron every three minutes (the roster stepper's idiom; removed when the
+queue drained, and the eight standing jobs were checked untouched afterwards).
+
+| verdict | n | share |
+|---|---|---|
+| `states` | 352 | 31% |
+| `implies` | 425 | 37% |
+| `unsupported` | 373 | **32%** |
+
+**A third of every machine-read claim in the book had a sentence that did not bear on it.** All 373
+are now refused from every lane, corroboration included.
+
+**66 claims became newly eligible**, across 46 accounts, every one of them via `support = 'states'`
+— that is, admitted because the sentence was audited and holds up, not because of who read it.
+Fourteen sampled from that set were **all correct**: founding years and agency types stated outright,
+service lists naming build work explicitly, a budget band stated in the sentence. That is the §50
+gate finally doing what it was for, rather than what it could manage with only a per-reader signal.
+
+**The lexicon was the worst-performing part of this, and it is worth being plain about that.** Across
+1,150 verdicts it fired six times, and on review it was wrong or too harsh nearly every time. Three
+separate corrections were needed, each found by reading its output rather than by reasoning about it:
+
+1. `client_budget_size` came out of the counting rule. It is a BAND, not a count, and the rule
+   misfired on *"Local SMBs: Businesses in a 3-county area (e.g., construction, restaurants)"* — a
+   sentence that states the band, where the "e.g." names which industries rather than how many.
+2. The absence rule's ceiling dropped from `unsupported` to `implies`. It was calling *"Key
+   Challenge: RFPs are often incomplete"* **about something else**, which is simply false.
+3. `NEGATION_MARKERS` was built from grammatical negation and missed how records actually record a
+   gap. *"Unknown for Dave's org (absent)."* says absent in so many words; *"A scope of work is
+   needed"* is what a missing specification looks like in a call summary. The rule fired on both and
+   held back a reader that had them right.
+
+The honest summary: **the model was right and the hand-written rules were wrong, every time they
+disagreed.** The rules never once caught something the reader missed. They are kept, corrected and
+narrowed, only because they cost nothing and are the floor if a future model is worse — but nothing
+here should be read as evidence that they are earning their place. A backstop that overrules correct
+readings is worse than no backstop, and that is what this one was for most of the day.
+
+**Left for the nightly.** The 66 are not hand-approved; `pb-autoconfirm` takes them at 06:00 on the
+lanes already switched on. Watching the system do it is worth more than seeing it done.
+
+**Still not scheduled.** `pb-verify` stays on request. It should be judged on this run before it is
+given a place in the nightly chain, and that is the owner's call.
+
+
+### §52b — Four strikes: the lexicon should stop overruling the reader (18 Sep 2026)
+
+The six lexicon rows were reset and re-audited under v3. The negation fix worked — *"Unknown for
+Dave's org (absent)."* now reaches the reader, which calls it `states`, correctly. So do the two
+scope-gap sentences, which the reader calls `implies`, also correctly.
+
+And the lexicon produced a **fourth** false positive on the same six rows:
+
+> *"With a 30+ person in-house team, we serve industries like auto repair, legal, medical and home
+> services."* → `headcount = 30`
+
+The sentence states the headcount outright. The word "like" belongs to a different clause, about
+industries served. The reader said `states` and was right; the illustrative-marker rule matched
+"like" anywhere in the sentence and held it to `implies`.
+
+**The record across 1,150 verdicts is now unambiguous.** The lexicon fired six times. Every single
+disagreement with the reader was resolved in the reader's favour on inspection, across four distinct
+failures, after three separate corrections. **It has never once caught something the reader missed.**
+
+That is not an argument for a fifth patch — a proximity check on "like" would fix this row and find
+another row tomorrow. It is an argument that the premise is wrong. The lexicon was written on the
+assumption that a cheap string rule is a safe floor under a fallible reader; on this evidence it is
+a fallible rule under a reader that has been better than it every time.
+
+**Recommendation, for the owner, not taken unilaterally:** demote the lexicon from *overruling* to
+*flagging*. Keep every rule, keep recording when it disagrees — that disagreement is the only
+measurement anyone has of whether the reader is drifting — but let the reader's verdict stand and
+surface the conflict for a person instead. That keeps the whole safety argument (we can see a
+disagreement) and drops the part that is actually costing accuracy (the rule wins it).
+
+Until that is ruled, the lexicon still overrules, and it is wrong roughly once in two hundred
+claims. The cost of each is one true claim held in a queue somebody was going to read — the cheap
+direction, by design. Nothing it has ever done has put a fact in the book.
