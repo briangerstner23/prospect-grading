@@ -16,9 +16,15 @@
  * A per-account failure is collected into errors and the run continues.
  *
  * ?preview=1 scores under the named (draft) rubric, writes NOTHING — no reads, no run — and
- * returns {diff: [{account_id, name, from_tier, to_tier, from_status, to_status}], counts}
- * against the current reads: the preview-before-activate pattern. A non-active rubric can only
- * be scored with preview=1; reads are the record and carry the active version only.
+ * returns {diff: [{account_id, name, from_tier, to_tier, from_status, to_status, from_rank,
+ * to_rank, order_changed}], counts, changed, reordered} against the current reads: the
+ * preview-before-activate pattern. Since 18 Sep the diff reports ORDER as well as tier — a rubric
+ * that reorders the whole book without moving a tier previewed as "0 changed" before (DECISIONS
+ * §10, §52). A non-active rubric can only be scored with preview=1; reads are the record and
+ * carry the active version only.
+ *
+ * Also loads pb_engagement (recorded contact, DECISIONS §24) per account and hands it to the
+ * resolver: from rubric 0.1.7 readiness reads it. It never touches the tier.
  *
  * The engine never reads a clock; as_of is this handler's clock (or body.as_of for a replay).
  * Deploy with verify_jwt = false: the bearer is our own token, not a Supabase JWT.
@@ -36,6 +42,7 @@ import {
   diffEntry,
   groupBy,
   listingPatch,
+  rankDiff,
   scorecardJson,
   tallyScorecards,
   toResolveAccount,
@@ -43,7 +50,7 @@ import {
 import type { CurrentRead, DiffEntry } from "../_shared/score_pure.ts";
 import { grade } from "../_shared/core/engine.ts";
 import { resolveFeatures } from "../_shared/ingest/resolve_features.ts";
-import type { DealRow, FactRow, RegisterRow, SignalRow } from "../_shared/ingest/resolve_features.ts";
+import type { DealRow, EngagementRow, FactRow, RegisterRow, SignalRow } from "../_shared/ingest/resolve_features.ts";
 import type { ProspectScorecard } from "../_shared/core/prospect_types.ts";
 
 const ACCOUNT_COLS = "id,key,name,relationship_type,roster_source,roster_certified,lineage,book";
@@ -108,6 +115,7 @@ Deno.serve(async (req: Request) => {
   let signalsBy: Map<string, SignalRow[]>;
   let dealsBy: Map<string, DealRow[]>;
   let overridesBy: Map<string, RegisterRow[]>;
+  let engagementBy: Map<string, EngagementRow> = new Map();
   let currentBy: Map<string, CurrentRead> = new Map();
   try {
     accounts = await selectAll(db, "pb_accounts", ACCOUNT_COLS, (q: DbLike) => {
@@ -126,6 +134,13 @@ Deno.serve(async (req: Request) => {
     // unique order column. Passing the wrong one is a loud 500, not a silent truncation.
     const deals = await selectIn(db, "pb_deals", "account_id", ids, "*", 100, "pipedrive_deal_id");
     const overrides = await selectIn(db, "pb_register", "account_id", ids, "*");
+    // Recorded contact, one row per account (a view; account_id is its natural order column).
+    const engagement = await selectIn(db, "pb_engagement", "account_id", ids, "account_id,engagement,days_since_engaged,last_engaged", 100, "account_id");
+    engagementBy = new Map();
+    for (const r of engagement) {
+      const id = toStr(r.account_id);
+      if (id !== null && !engagementBy.has(id)) engagementBy.set(id, r as unknown as EngagementRow);
+    }
 
     factsBy = groupBy(facts as unknown as FactRow[], "account_id");
     // Expiry is judged against as_of by the resolver; pre-filter only what can never be live.
@@ -149,7 +164,7 @@ Deno.serve(async (req: Request) => {
 
     if (preview) {
       // distinct on (account_id), so account_id is unique here — and it is already selected.
-      const current = await selectIn(db, "pb_current_reads", "account_id", ids, "account_id,effective_tier,status,confidence_grade", 100, "account_id");
+      const current = await selectIn(db, "pb_current_reads", "account_id", ids, "account_id,effective_tier,status,confidence_grade,chase_rank_key:scorecard->chase_rank_key", 100, "account_id");
       currentBy = new Map();
       for (const r of current) {
         currentBy.set(String(r.account_id), {
@@ -157,6 +172,7 @@ Deno.serve(async (req: Request) => {
           effective_tier: toStr(r.effective_tier),
           status: toStr(r.status),
           confidence_grade: toStr(r.confidence_grade),
+          chase_rank_key: r.chase_rank_key ?? null,
         });
       }
     }
@@ -177,6 +193,7 @@ Deno.serve(async (req: Request) => {
         signals: signalsBy.get(id) ?? [],
         deals: dealsBy.get(id) ?? [],
         override_rows: overridesBy.get(id) ?? [],
+        engagement: engagementBy.get(id) ?? null,
         as_of: asOf,
         rubric: rubric.spec,
       });
@@ -191,9 +208,10 @@ Deno.serve(async (req: Request) => {
 
   /* ---- preview: nothing written ---- */
   if (preview) {
+    const ranks = rankDiff(cards, currentBy);
     const diff: DiffEntry[] = cards
-      .map((sc) => diffEntry(sc, currentBy.get(sc.account_id) ?? null))
-      .sort((x, y) => Number(y.changed) - Number(x.changed) || x.name.localeCompare(y.name));
+      .map((sc) => diffEntry(sc, currentBy.get(sc.account_id) ?? null, ranks.get(sc.account_id) ?? null))
+      .sort((x, y) => Number(y.changed) - Number(x.changed) || Number(y.order_changed) - Number(x.order_changed) || x.name.localeCompare(y.name));
     return json({
       ok: errors.length === 0,
       preview: true,
@@ -202,6 +220,7 @@ Deno.serve(async (req: Request) => {
       as_of: asOf,
       counts,
       changed: diff.filter((d) => d.changed).length,
+      reordered: diff.filter((d) => d.order_changed).length,
       diff,
       errors,
     });

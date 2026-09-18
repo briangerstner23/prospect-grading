@@ -420,7 +420,7 @@ check("grade: a scorecard came back", SC.account_id === ACCOUNT.id && SC.anticip
   check("diffEntry: same → unchanged", !same.changed);
   const moved = diffEntry(SC, { account_id: SC.account_id, effective_tier: "Bronze", status: SC.status });
   check("diffEntry: tier move → changed", moved.changed && moved.from_tier === "Bronze");
-  eq("diffEntry: shape", Object.keys(d0), ["account_id", "name", "from_tier", "to_tier", "from_status", "to_status", "from_confidence_grade", "to_confidence_grade", "changed"]);
+  eq("diffEntry: shape", Object.keys(d0), ["account_id", "name", "from_tier", "to_tier", "from_status", "to_status", "from_confidence_grade", "to_confidence_grade", "changed", "from_rank", "to_rank", "order_changed"]);
 }
 
 {

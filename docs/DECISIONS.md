@@ -659,8 +659,8 @@ that network, and it fires on real accounts — while the network it names is tr
 the book. (Named here originally; shaped on 16 Sep when those organisations entered the roster
 and rule 2 began to bite — see the note at the end of §28.)
 
-That stage also mixes cohorts: peer bodies sit beside vendors (WP Engine) and ordinary agencies
-(Spindustry, SJ Innovation, B Squared Media). "Friends of WLIQ" is a journey stage, not a cohort,
+That stage also mixes cohorts: peer bodies sit beside a hosting vendor and ordinary agencies
+(three of them on the roster). "Friends of WLIQ" is a journey stage, not a cohort,
 and cannot be lifted wholesale.
 
 ### What was done
@@ -705,8 +705,8 @@ carry. Both were read:
 
 46 book accounts matched a typed Orbit client on domain or exact name. **10 were corrected or
 filled**, each recorded in `pb_register` with the Orbit client id, its `client_type` and how it
-matched — four that Orbit calls an Agency were sitting outside the agency focus, and *Call to
-Freedom*, currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
+matched — four that Orbit calls an Agency were sitting outside the agency focus, and one account,
+currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
 
 | cohort | accounts | ranked | confirmed by Orbit |
 |---|---|---|---|
@@ -1130,8 +1130,8 @@ The rubric predicted this in its own words. The criterion's `failure_mode` read:
 > The strongest single predictor in the July research and the easiest to get wrong: a two-person
 > dev team can mean overflow need, not no need.
 
-Miranda is that sentence, live. The criterion asked *"is there a developer in the building"* when
-the thing that predicts a sale is *"do they have more build work than they can absorb"*. Miranda
+That agency is that sentence, live. The criterion asked *"is there a developer in the building"* when
+the thing that predicts a sale is *"do they have more build work than they can absorb"*. That agency
 answers no to the first and yes to the second.
 
 ### Ruled
@@ -1176,7 +1176,7 @@ as it did before the re-wording, and improves only as the new fact is gathered. 
 is the portfolio read discussed the same day: an agency that lists build services while
 outsourcing them, or advertises for developers it cannot keep, is telling you about its capacity.
 
-Miranda's own three facts were recorded during the session that produced this ruling:
+The agency's own three facts were recorded during the session that produced this ruling:
 `client_budget_size = buys_real_projects`, `sells_build_work = true`, `no_inhouse_dev_team = false`
 — the last with the reasoning above in its note, so the record shows why a false there is not the
 mark against them it looks like.
@@ -3327,7 +3327,7 @@ would have refused every nightly run before the function was reached. Caught by 
 response; v13 is the same commit at `verify_jwt: false`. **Check that field on every deploy.**
 
 **Previewed on the real book before activation**, as the runbook requires: 830 scored, 0 errors,
-**2 changed**, both explained. One is an override the owner had written himself — at 22:08,
+**2 changed**, both explained. One is the owner's own override on a single agency — written at 22:08,
 refused by the cap under 0.1.5, applied under 0.1.6: **Platinum → Bronze, rank 3 → 231**, with the
 new flag on the row. The other is a Pipedrive account added the same day and has nothing to do with
 the rubric. Nothing else in the book moved. The real run then wrote 830 reads at fingerprint
@@ -3438,6 +3438,8 @@ need the link-following fetcher above before this channel has anything of theirs
 
 ---
 
+*Numbering note (18 Sep 2026): rubric 0.1.7, draft 0.2.1, the five 18 Sep migrations and the generated `docs/METHOD.md` cite "DECISIONS §50" for the grading decisions of 18 Sep. They were written on branch `claude/keen-dirac-q146ng` before `main` took this number; those citations mean §52.*
+
 ## §51 — Bulk confirm widened to what is corroborated, not to what a model felt sure about (17 Sep 2026)
 
 **Owner ruling: "confirm bulk confirm."** Asked whether the review queue really needed reading item
@@ -3506,3 +3508,454 @@ those are disagreements, which is exactly the work a person should be doing.
 
 `web/index.html` mirrors the three classes so the button's count is the count that lands, and says
 so in the dialog. The page is a preview; the function is the rule.
+
+## §52 — The board becomes a grid: the seven decisions of 18 Sep 2026, and what shipped (18 Sep 2026)
+
+**Numbering.** Rubric 0.1.7, draft 0.2.1 and the five 18 Sep migrations cite these decisions as
+"DECISIONS §50" — and `docs/METHOD.md`, which quotes the rubric, prints the same. They were written
+on branch `claude/keen-dirac-q146ng` before `main` took §50 for the website channel and §51 for the
+widened bulk confirm. The rubric files are frozen by their fingerprints (0.1.7 has 830 reads on it)
+and the migrations by the byte-identical record in `schema_migrations`, so those citations stay as
+written: read "§50" in any 18 Sep artefact as this section. Everything else on the branch was
+renumbered.
+
+**Where it started.** `docs/GRADING-REVIEW-2026-09-18.md` read the rubric, the weights and the rank
+against the field from the live database and found one departure from the field's shape that
+explained why the board disappointed: the chase order put size first, so cold, unqualified Platinums
+sat above every qualified deal, and the grade added almost nothing to what the CRM already said. It
+proposed six moves and put seven decisions to the owner. The owner's ruling, 18 Sep 2026: *"Make all
+the changes and update the live version."* The seven, and where each landed:
+
+| | Decision | Landed in |
+|---|---|---|
+| D1 | The grid before size: readiness × potential band, the cell first in the chase key and the tier second | rubric 0.1.7 (`chase`, `chase_rank_key.order`); `pb_prospect_board` v3 / `pb_board()` v4; the page |
+| D2 | The seven-criteria fit read at a threshold of three answered criteria, a fallback "no" read as unknown, and the twelve adjustment rules that had never fired parked | the parking in 0.1.7; the criteria in draft 0.2.1 — **held**, below |
+| D3 | A stated timing stamp ages: 14 days for a week-stamp, 45 for a month, 120 for a quarter; `no_timeline` never | rubric 0.1.7 (`signals.urgency.stated_timing_max_age_days`) |
+| D4 | The composite score retired; one rank on the page and no score anywhere | migration `prospect_book_retire_composite` drops `pb_chase_scores`; the page |
+| D5 | The white-label signal as the seventh fit criterion | draft 0.2.1 — held with D2 |
+| D6 | A ceiling computed on the default winnable share is an assumption: potential confidence Low, and the card says so | rubric 0.1.7 (`potential.confidence`, flag `Ceiling assumed: vendor share defaulted`) |
+| D7 | A play, an owner role and an SLA per cell; Tier-1 is the Chase-now cell | rubric 0.1.7 (`chase.cells`) |
+
+**What the engine does under 0.1.7.** Readiness is a ladder tried top to bottom: *ready* when two or
+more qualification facts are present, or the stamp is Hot or Super Hot, or the contact is engaged or
+responsive; *stirring* when one fact, a fading or pursued contact, or a live signal; *cold*
+otherwise — the absence of a reason to work the account this week, never evidence against it (rule
+5). The potential band is the tier's band (Platinum and Gold are *big*, Silver and Bronze *small*;
+the tier stays a size label, §20, §40). The cell is the first whose rule holds over the pair:
+Chase now (big × ready, 1:1, salesperson, 7 days), Work the deal (small × ready, 1:few, 14 days),
+Open the door (big × stirring or cold, 1:few, 30 days), Nurture (otherwise, 1:many, marketing, 90
+days); a row with no tier lands in No tier yet (rater, 30 days), whose play is the four fit
+questions. The chase key is read from the rubric's own `order` — cell, tier, facts present,
+urgency, engagement recency, year-one band, name — and a rubric without an `order` gets the fixed
+five-term key every version before 0.1.7 produced. A stamp with a recorded date past its horizon no
+longer decides; the computed ladder does, and the row carries `Timing stamp aged out`. A stamp with
+no date is never aged. Whenever the headroom was computed on the default winnable share the read
+says `assumed`, potential confidence is Low and the card carries `Ceiling assumed: vendor share
+defaulted`; a recorded vendor rank (the two discovery questions) lifts it. None of this is an input
+to the tier.
+
+**The activation, with the numbers.** pb-score **v14** (commit `d14223c`, a pinned-commit
+entrypoint, `verify_jwt` false — read back from `list_edge_functions`) went out first, because the
+pre-v14 engine has no `chase` block and reads no `order`. Then, in order:
+
+1. A safety preview of the live 0.1.6 on the new engine (pg_net request 4221): 830 scored, 593
+   ranked, 223 unclassified, 7 overridden, 7 parked, 0 errors; **3 changed**, 417 reordered. The
+   three are Silver → Bronze, Ranked → Overridden — three owner overrides in the register that the
+   00:32 run had not seen, with no new fact or signal behind them. The 417 is positional cascade
+   under the five-term key.
+2. The 0.1.7 preview (request 4224, 03:27 UTC): the **same counts, the same three changes, 810
+   reordered**. 0.1.7 changes no tier of its own; it changes the order. The top 50 before: 50
+   Platinum. After: 22 Platinum, 11 Gold, 17 Silver. Rank deltas: 20 unchanged, 18 by 1–2, 177 by
+   3–10, 165 by 11–50, 433 by 51–200, 17 by more than 200.
+3. 0.1.6 retired and 0.1.7 active at 03:37:57 UTC, the preview recorded on the row.
+4. The real run (`pb_runs` a281b419, 03:38:45–03:39:03 UTC): 830 scored, 600 potential snapshots,
+   0 errors. 830 live reads now carry fingerprint `dec7d291`; the 21 reads on merged records stay
+   on 0.1.0 and never reach the board.
+
+**The per-account check, every account's last 0.1.6 read against its new one.** Computed tier
+identical on 830 of 830; effective tier identical on 827 plus the three overrides; qualification
+label and facts count identical; ceiling, headroom band and year-one band identical; fit
+confidence identical. What changed is exactly the ruled set. Urgency: 24 stamps aged out (14 Super
+Hot → Cold, 1 Super Hot → Warm, 8 Hot → Cold, 1 Warm → Cold), 806 unchanged. Potential confidence:
+3 High → Low and 454 Medium → Low, all on assumed ceilings; 366 Low → Low; 7 Medium → Medium (a
+stated ceiling standing in with no wallet to compute). Flags added: `Ceiling assumed: vendor share
+defaulted` on 457, `Timing stamp aged out` on 24; none removed. **Potential confidence is now Low
+on 823 of 830** — the honest state D6 asked for, and the reason the two discovery questions are
+the first thing to ask on every call. Readiness over the 830: ready 255, stirring 350, cold 225;
+every label re-derived from the inputs the scorecard records matches its ladder rule (489 accounts
+have no engagement on record; null is in no list, as rule 5 wants). Cells over the 830: Chase now
+33 (big × ready), Work the deal 154, Open the door 65 (51 stirring, 14 cold), Nurture 355 (254
+stirring, 101 cold), No tier yet 223. On the board — 600 companies with no delivery work — 24 /
+116 / 63 / 326 / 71.
+
+**The lift report's first rows** (`pb_lift()`, 03:38 UTC; in the last 90 days 115 accounts
+replied and 44 were quoted):
+
+| Cell | Accounts | Share | Replied | Quoted | Reply lift | Quote lift |
+|---|---|---|---|---|---|---|
+| Chase now | 33 | 4.0% | 13 | 3 | 2.84 | 1.71 |
+| Work the deal | 154 | 18.6% | 36 | 11 | 1.69 | 1.35 |
+| Open the door | 65 | 7.8% | 0 | 0 | 0.00 | 0.00 |
+| Nurture | 355 | 42.8% | 0 | 2 | 0.00 | 0.11 |
+| No tier yet | 223 | 26.9% | 66 | 28 | 2.14 | 2.37 |
+
+Lift is the cell's rate over the book's; 1.0 is chance, and the 9 Sep research wants the top band
+at twice the bottom. The two ready cells clear that against Nurture on the first reading; that is
+partly circular (a reply is one of the things that makes a row ready) and the monthly snapshots
+exist to watch whether it holds. The row that is not circular is the last one.
+
+**The no-tier finding.** The 223 accounts with no fit read hold **28 of the 44 quotes** of the
+last 90 days — 63.6% — and 68 of them are *ready* by the same ladder. They sit last because they
+have no tier, exactly as they did under the size-first sort; the grid did not move them, it made
+them visible. Their play is the four fit questions (is it an agency, do they sell build work, is
+there a capacity gap, who are their clients), and each answered set moves a row into a band. Whether
+a ready row with no tier should rank above Nurture is an owner call, not a default: the engine gives
+the unranked cell the last rank, and making that a rubric setting is one line.
+
+**0.2.1: held, with the numbers.** Registered as a draft (sha256 `ef9c8246…`, fingerprint
+`101ee7c1`) and previewed on the live book (request 4226, 03:41 UTC): 830 scored, 233 ranked,
+**587 unclassified**, 3 overridden, 7 parked, 0 errors; 523 changed. 364 ranked rows would lose
+their tier (227 Bronze, 102 Silver, 23 Gold, 12 Platinum) and 4 unclassified rows would gain one;
+among rows keeping a tier the ICP-derived tier and the criteria tier agree on 88 and disagree on
+147. Coverage is the reason: 239 of the 830 answer three or more of the seven criteria today (0:
+232, 1: 115, 2: 244, 3: 124, 4: 90, 5: 18, 6: 5, 7: 2). Per criterion, live accounts with a fact
+on file: is_agency 575, headcount 457, sells_build_work 239, the capacity gap 187 (all through
+the fallback; the re-worded question has no fact yet), wl_signal 54, recurring_work_shape 29,
+client_budget_size 17. The 145 proposed candidates that are high-confidence, quoted and
+non-conflicting (on 60 accounts) would lift 239 to 251. So the criteria read follows the
+collection sprint on the ready cells rather than preceding it, as the rubric's `still_open` says.
+The bulk confirm (§45, §51) is the owner's lane on the back office page: it resolves the caller from
+the sign-in token, which a database session does not carry, and this session did not pretend to be
+the owner to run it.
+
+**The page.** Built (commits `067712b`, `d14223c`; contract v2 adds *By chase cell*; the ranked
+list is grouped under a header per cell, each row carries its play, an assumed ceiling is marked,
+an aged stamp says so, the dossier hero names the cell and the play; still one rank, no score, no
+email address). Publishing it is blocked on one repository setting: the dispatch of
+`deploy-pages.yml` on the branch was rejected before any step ran — *Branch
+"claude/keen-dirac-q146ng" is not allowed to deploy to github-pages due to environment protection
+rules* — because the `github-pages` environment allows only the default branch,
+`claude/new-session-8qkstx`. Three dispatches earlier the same night, from another working branch
+and from `main`, failed the same way. The fix is the owner's: Settings → Environments →
+github-pages → Deployment branches and tags → add the branch (or "No restriction"), then dispatch
+again; or make the branch the default; or merge it there and dispatch from there (RUNBOOK §28.5).
+Meanwhile the published 17 Sep page reads the new order through the same `pb_board()` — it works,
+without the cell headers and plays.
+
+**A grants finding on the way.** The CLAUDE.md grants check, run after the migrations, reported
+seven views from the 16 Sep set — `pb_current_research`, `pb_engagement`, `pb_engagement_shape`,
+`pb_mdm_junk_hits`, `pb_mdm_resolution`, `pb_orbit_admission_queue`, `pb_orbit_overlap` — holding
+every privilege for `anon` and `authenticated`. All seven are `security_invoker`, so nothing was
+reachable: the base tables refuse, and `pb_current_research`'s sources hold no `anon` grant at all.
+Still wrong, and a check that reports known noise stops being read. Migration
+`prospect_book_revoke_view_writes` revokes the lot, narrows `pb_current_research` to
+`authenticated` select (its sources are `anon` nothing on purpose), and the check returns nothing
+again. Views count as new objects for the revoke rule.
+
+**Migrations, database version against file name.** The MCP stamps its own version at apply time;
+the files carry 18 Sep 10:00–14:00 names. Each recorded statement is byte-identical to its file:
+`prospect_book_board_by_cell` 20260918032803 (file 100000); `prospect_book_scoring_pass` 032853
+(120000); `prospect_book_retire_composite` 032858 (130000); `prospect_book_outcomes_and_lift`
+033410 (110000 — the first apply failed because `pb_lift()` read the snapshot table before it
+existed; the whole migration rolled back, the file was reordered and re-applied);
+`prospect_book_revoke_view_writes` 034006 (140000).
+
+**Open after this section.** The rank of a ready row with no tier. The readiness thresholds and
+the plays, a first setting to be re-cut from the lift report once outcomes exist. The Pages
+environment rule. The collection sprint and, after it, 0.2.1. The scoring pass has its table
+(`pb_actuals`, empty) and its function; nothing scores until a promotion has a first invoice and an
+actual on file. The first monthly lift snapshot fires on 1 Oct.
+## §53 — The book approves what it has nothing to weigh (18 Sep 2026)
+
+> **Renumbered 18 Sep.** This ruling and §54 were written as §50 and §52 on branch
+> `claude/wizardly-faraday-ncd1za`, while `claude/keen-dirac-q146ng` was independently writing its
+> own §50 (the website as a sweep channel), §51 (bulk confirm widened to what is corroborated) and
+> §52 (the board becomes a grid). Two collisions, found by reading the other branch rather than by
+> anything failing. Renumbered here to §53 and §54.
+>
+> **The applied migrations keep the old numbers and must.** `20260918100000`–`100300`,
+> `120000` and `120100` are byte-identical to `schema_migrations.statements`; editing a file to fix
+> a citation would break the one check that proves the record matches what ran. Their SQL comments
+> say §50/§52 and mean §53/§54. The live `comment on` strings in the database were corrected
+> separately, since those are not part of that byte-identity.
+>
+> Note that this branch's §53a repairs what `keen-dirac` calls **§51** — the corroboration rules in
+> `pb_confirm_fact_candidates`. That reference was correct when written and still is.
+
+
+**Owner ruling.** *"If there's enough confidence and the statement is clear enough, I think the
+system could approve it. There is always the ability for us to see that statement and undo it later.
+I'm not going to get through a thousand. I don't want wrong information to be entered, but I believe
+some of these you may have high enough confidence in, or it has been confirmed multiple times in
+other places, so we could automatically approve it."*
+
+§45 narrowed "never bulk confirm" to one class and gave the owner a button. This lets the BOOK press
+that button, on lanes the owner switches on by name, and adds the owner's second criterion —
+corroboration — as a lane of its own. The queue was 1,463 claims and nobody was ever going to read
+them.
+
+**Four refusals that no lane, policy row or interface can switch off.** No quote. Disagrees with what
+the book already holds. Two records proposing different values for the same key. A sentence the
+extractor itself called a judgement. These are tested first, in the view and again in the function.
+
+**The lanes**, each a row in `pb_fact_autoconfirm_policy` with its own thresholds:
+
+| lane | what it does | on? |
+|---|---|---|
+| `corroborates_book` | the book already holds this exact value — **writes nothing**, closes the row | yes |
+| `high_quote_open_key` | §45's own gate: rated high, quoted, nothing on file for the key | yes |
+| `corroborated_records` | two or more records in **two or more systems** say it, each with its own quote | yes |
+| `medium_observation` | medium confidence, extractor affirmatively called the sentence an observation | **no** |
+
+**The finding that changed the design, before a single row was approved.** The lanes first went in
+trusting the extractor's own `confidence`. Ten `high_quote_open_key` claims were then read by hand
+against their quotes, and four were inferences wearing a verbatim sentence: a delivery headcount of
+zero from a team page listing one person; "sells build work: no" from a sentence about being a
+strategic growth partner; a client-budget band from a case-study headline quoting the CLIENT's
+pipeline; a white-label signal from a sentence about staff certifications. Every gate the book had
+passed all four, because rule 8's receipt proves **provenance, not truth** — exactly what
+`written_record.ts` rule 3 exists to catch, and rule 3 was blind here because the website reader
+emits no `kind` at all.
+
+**191 of the 193 claims in that lane were website reads.** So the lane was not admitting §45's class;
+it was admitting one unvalidated extractor's self-rating, 191 times.
+
+The gate is therefore **per source, not per confidence**: a lane names the readers whose rating has
+been checked against their own quotes, and today that is only the two channels where a *person* wrote
+the sentence — a call summary and a CRM note. A website claim is not shut out; it reaches a lane by
+being corroborated, which was raised to two distinct source **systems** because two pages of one site
+are one witness and were corroborating each other 97 times.
+
+**What it did on the first run.** 263 eligible; **23 facts written**, **218 closed with nothing
+written**, 26 competing proposals closed with them, across 114 accounts. The queue went 1,463 → 1,196.
+The remaining 1,196 are 1,100 that need a person and 96 in the lane that is off.
+
+**The volume is the honest number, not the hoped-for one.** Clearing a thousand would mean trusting
+the website reader's "high", and the spot check says that costs wrong facts. The claims that stay are
+overwhelmingly website reads with no `kind`; making several hundred of them eligible needs a
+verification pass that asks one question per claim — *does this sentence state the value, or did you
+infer it?* — not a looser rule. That pass is not built.
+
+**A gap §45 left open, closed here.** `pb_confirm_fact_candidates` says in its own comment that it
+refuses "a claim that is somebody's judgement rather than an observation". It never checked: `kind`
+appeared nowhere in the function, and 11 claims the extractor had explicitly marked `judgement` were
+inside its gate, one click from being facts. The check is now in the function.
+
+**Nothing a machine read looks like a person's entry.** An automatic fact carries
+`entered_by = 'auto:<lane>'`, never an email, so rule 9's "a person outranks a machine" keeps meaning
+something. Each account's register gets one row per batch saying the word *automatically*.
+
+**Undo is half the ruling.** `pb_autoconfirm_log` records every row — candidate, fact, lane, batch —
+and `pb_undo_autoconfirm(batch)` deletes those facts, reopens those claims and says so in the
+register. It refuses to reopen a row a person has decided since: undoing the machine must not undo
+the person.
+
+**When it runs.** `pb-autoconfirm`, 06:00 UTC — after the notes sweep at 05:45 and before the score at
+06:15, so a claim approved this morning reaches this morning's tier. In-database like the watchdog,
+for the watchdog's reason.
+
+**Also caught, and it is the 12 Sep lesson repeating:** the lanes view arrived with `anon` revoked
+and `authenticated` holding DELETE, INSERT, TRUNCATE and UPDATE on it, because the migration thought
+about `anon` and stopped. Nothing could have been written through it — security_invoker over a table
+whose RLS refuses the write — but a grant that is only harmless because something else refuses it is
+not a grant anybody decided to make. Revoked in its own migration.
+
+**Still open, for the owner.** `medium_observation` (96 claims) is off and previewable; switching it
+on is a ruling, not a default. And whether the website reader ever earns a place in `sources` is a
+question about that reader's calibration, which nobody has measured.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository. This entry records
+the owner's ruling as made; if the register ever disagrees, **the register wins**.
+
+### §53a — What §53 broke on its way in, and the repair (18 Sep 2026)
+
+**§53's own migration destroyed §51.** At 23:38 on 17 Sep, another session had rewritten
+`pb_confirm_fact_candidates` around five named rules (DECISIONS §51): `already_evidenced` closes a
+claim the book already holds as evidence instead of writing a second row, `corroborates_what_is_held`
+upgrades an inferred value that now has a sentence behind it, `high_and_unheld` is §45's original
+class, and `second_independent_source` admits a medium claim when another record **from a different
+source** says the same thing with its own quote.
+
+At 11:16 on 18 Sep, §53's judgement fix replaced that function wholesale. It had been built by
+copying the 17 Sep `290000` file and adding one `elsif`, three hours after §51 landed, without
+anyone checking whether the file being copied was still what was running. It parsed, it applied, it
+reported success, and it silently deleted four of the five rules. Nothing on the queue screen would
+have looked wrong — the button still worked, it had just quietly stopped settling anything by
+corroboration.
+
+This is the 16 Sep placeholder-deploy failure in a different costume. **A `create or replace` is a
+whole-object write, and writing one from a file is only safe if the file is the current definition.**
+The database was the record; the file was three hours stale. The check that would have caught it is
+the one the repo already prescribes for edge functions — fetch the thing back and diff it — and it
+was never applied to a function definition.
+
+Restored in `20260918120000`, §51's function exactly, plus one addition stated rather than smuggled:
+`high_and_unheld` now refuses an explicit `kind = 'judgement'`, because eleven such claims were
+inside that branch and rule 3 exists to stop precisely them. A NULL kind still passes there — absent
+is not stated, and refusing it would empty the rule rather than sharpen it. §53's **source gate is
+deliberately not copied across**: it bounds what the book does unattended at 06:00, and this button
+is a person clicking. Narrowing a human decision with a rule written for a robot takes the owner's
+judgement away in the name of protecting it.
+
+**The undo had never been run, and could not have been run the way its own runbook said.** It shipped
+requiring a signed-in owner while `pb_autoconfirm_facts` — the function that *creates* the batches —
+already accepted an in-database caller so pg_cron could drive it. RUNBOOK §28 told an operator to
+call it from SQL, where it would have raised "not a WLIQ member" for anybody without a JWT. So the
+book could make a batch unattended and then refuse to let anyone take it back except through the web
+page. Fixed in `20260918120100`: same two callers as the runner.
+
+**Then it was actually round-tripped, which is the only reason any of this can be believed.**
+Batch `ed22112a` undone → queue 1,196 → **1,463** (its exact original count), 23 facts removed, 267
+log rows closed, 114 register rows written. Re-run → **263 eligible, 23 confirmed, 218 closed, 26
+superseded, 114 accounts** — identical to the first run, from a clean queue. The lanes are
+deterministic and the undo is exact.
+
+**A numbering collision to resolve at merge.** This branch wrote §53; the other branch wrote §51 and
+presumably a §53 of its own. Whoever merges must renumber rather than assume, and this entry's
+references to §51 are to *that* branch's ruling, not to anything in this file.
+
+## §54 — Does the sentence actually say it? (18 Sep 2026)
+
+**Owner instruction, 18 Sep:** build the verification pass, run it on a sample first.
+
+§53 gated the website reader out of the automatic lanes wholesale, because four of ten of its
+`high` claims were inferences wearing a verbatim quote. That gate is per READER, which was the only
+move available: nobody had asked, claim by claim, whether the quoted sentence states the value it
+was attached to.
+
+**`kind` cannot answer that and was never meant to.** It asks whether the SENTENCE is checkable,
+not whether the sentence supports the VALUE. *"a list of ~7 prospects"* is a perfectly checkable
+observation and still does not mean the agency has seven clients. So: a second, narrower column,
+three words, one question — `states` / `implies` / `unsupported`.
+
+**The asymmetry is the whole design.** This re-audits claims that already exist. A wrong
+`unsupported` costs a row staying in a queue somebody was going to read; a wrong `states` puts an
+inference in the book as evidence. So the lexicon in `ingest/verify_support.ts` may overrule the
+reader **downward only**, and an unreadable reply changes nothing at all and is asked again next
+run — it never becomes a verdict. `pb-verify` reads no source record, extracts no claim and writes
+no fact; it touches five columns on rows that have no verdict yet and cannot revise one.
+
+**The sample: 100 website claims, 4 model calls.**
+
+| verdict | n | what it means |
+|---|---|---|
+| `states` | 32 | the sentence says it outright |
+| `implies` | 29 | a fair reading gets there; the sentence doesn't say it |
+| `unsupported` | 39 | the sentence is about something else |
+
+**39% of website claims have a sentence that does not bear on the claim at all.** That is the
+§53 spot-check reproduced at scale, and it settles the question of whether that gate was an
+overreaction: it was not.
+
+Spot-checking the auditor's own work — because trusting a reader without checking it is the exact
+mistake this whole entry exists to correct — all eight sampled `unsupported` verdicts were right,
+including the two §53 had found by hand: a delivery headcount of zero read off *"Meet Our Fearless
+Leader Dave Martin, Director of Growth"*, and a headcount of eight read off *"Tal Hayek, Co-Founder,
+Chief Executive Officer"*. Seven of eight `states` were clearly right; the eighth, `sells_build_work`
+from a portfolio caption, is generous rather than wrong. **The lexicon overruled the reader zero
+times** — the model caught everything the three hand-written rules would have. The rules stay: they
+cost nothing and they are the floor if a future model is worse.
+
+**What it unlocks, and it is the point.** §53's gate says a lane trusts a reader whose ratings
+somebody has checked against its own quotes. A per-claim verdict IS that check, one claim at a time
+instead of one reader at a time — so `support = 'states'` now stands in for being on a lane's
+allow-list. The gate stops being a blanket ban on a source and becomes a demand for evidence about
+the evidence. **14 of the 100 became eligible** on that basis, every one of them via the audit.
+
+In the other direction `unsupported` is a **new hard refusal above every lane**, corroboration
+included: two sentences that both fail to say the thing do not corroborate each other.
+
+**Rate, and what the rest would cost.** 14 eligible per 100 audited, at four model calls per
+hundred — so the remaining ~1,100 claims are roughly 44 calls and, on this rate, ~150 more
+claims answered without a person, plus ~430 permanently refused on evidence rather than left to
+rot in a queue. Whether to run it is the owner's, and the sample is why there is something to
+decide with.
+
+**Not scheduled.** `pb-verify` runs on request only. Putting it in the nightly chain is a separate
+decision, and it should be made after the full run, not before.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository. If it ever
+disagrees, **the register wins**.
+
+
+### §54a — The full run, and what the backstop got wrong (18 Sep 2026)
+
+**Owner instruction:** run the whole remaining queue. Done — **1,150 claims audited**, driven by a
+temporary `pb-verify-step` cron every three minutes (the roster stepper's idiom; removed when the
+queue drained, and the eight standing jobs were checked untouched afterwards).
+
+| verdict | n | share |
+|---|---|---|
+| `states` | 352 | 31% |
+| `implies` | 425 | 37% |
+| `unsupported` | 373 | **32%** |
+
+**A third of every machine-read claim in the book had a sentence that did not bear on it.** All 373
+are now refused from every lane, corroboration included.
+
+**66 claims became newly eligible**, across 46 accounts, every one of them via `support = 'states'`
+— that is, admitted because the sentence was audited and holds up, not because of who read it.
+Fourteen sampled from that set were **all correct**: founding years and agency types stated outright,
+service lists naming build work explicitly, a budget band stated in the sentence. That is the §53
+gate finally doing what it was for, rather than what it could manage with only a per-reader signal.
+
+**The lexicon was the worst-performing part of this, and it is worth being plain about that.** Across
+1,150 verdicts it fired six times, and on review it was wrong or too harsh nearly every time. Three
+separate corrections were needed, each found by reading its output rather than by reasoning about it:
+
+1. `client_budget_size` came out of the counting rule. It is a BAND, not a count, and the rule
+   misfired on *"Local SMBs: Businesses in a 3-county area (e.g., construction, restaurants)"* — a
+   sentence that states the band, where the "e.g." names which industries rather than how many.
+2. The absence rule's ceiling dropped from `unsupported` to `implies`. It was calling *"Key
+   Challenge: RFPs are often incomplete"* **about something else**, which is simply false.
+3. `NEGATION_MARKERS` was built from grammatical negation and missed how records actually record a
+   gap. *"Unknown for Dave's org (absent)."* says absent in so many words; *"A scope of work is
+   needed"* is what a missing specification looks like in a call summary. The rule fired on both and
+   held back a reader that had them right.
+
+The honest summary: **the model was right and the hand-written rules were wrong, every time they
+disagreed.** The rules never once caught something the reader missed. They are kept, corrected and
+narrowed, only because they cost nothing and are the floor if a future model is worse — but nothing
+here should be read as evidence that they are earning their place. A backstop that overrules correct
+readings is worse than no backstop, and that is what this one was for most of the day.
+
+**Left for the nightly.** The 66 are not hand-approved; `pb-autoconfirm` takes them at 06:00 on the
+lanes already switched on. Watching the system do it is worth more than seeing it done.
+
+**Still not scheduled.** `pb-verify` stays on request. It should be judged on this run before it is
+given a place in the nightly chain, and that is the owner's call.
+
+
+### §54b — Four strikes: the lexicon should stop overruling the reader (18 Sep 2026)
+
+The six lexicon rows were reset and re-audited under v3. The negation fix worked — *"Unknown for
+Dave's org (absent)."* now reaches the reader, which calls it `states`, correctly. So do the two
+scope-gap sentences, which the reader calls `implies`, also correctly.
+
+And the lexicon produced a **fourth** false positive on the same six rows:
+
+> *"With a 30+ person in-house team, we serve industries like auto repair, legal, medical and home
+> services."* → `headcount = 30`
+
+The sentence states the headcount outright. The word "like" belongs to a different clause, about
+industries served. The reader said `states` and was right; the illustrative-marker rule matched
+"like" anywhere in the sentence and held it to `implies`.
+
+**The record across 1,150 verdicts is now unambiguous.** The lexicon fired six times. Every single
+disagreement with the reader was resolved in the reader's favour on inspection, across four distinct
+failures, after three separate corrections. **It has never once caught something the reader missed.**
+
+That is not an argument for a fifth patch — a proximity check on "like" would fix this row and find
+another row tomorrow. It is an argument that the premise is wrong. The lexicon was written on the
+assumption that a cheap string rule is a safe floor under a fallible reader; on this evidence it is
+a fallible rule under a reader that has been better than it every time.
+
+**Recommendation, for the owner, not taken unilaterally:** demote the lexicon from *overruling* to
+*flagging*. Keep every rule, keep recording when it disagrees — that disagreement is the only
+measurement anyone has of whether the reader is drifting — but let the reader's verdict stand and
+surface the conflict for a person instead. That keeps the whole safety argument (we can see a
+disagreement) and drops the part that is actually costing accuracy (the rule wins it).
+
+Until that is ruled, the lexicon still overrules, and it is wrong roughly once in two hundred
+claims. The cost of each is one true claim held in a queue somebody was going to read — the cheap
+direction, by design. Nothing it has ever done has put a fact in the book.

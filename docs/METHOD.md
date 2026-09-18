@@ -1,11 +1,11 @@
 # How a prospect is graded
 
-> Generated from core/rubric.prospect.v0.1.6.json. Do not edit by hand.
+> Generated from core/rubric.prospect.v0.1.7.json. Do not edit by hand.
 > Regenerate with `node --experimental-strip-types explain/generate_method.ts`.
 > `explain/method_test.ts` fails the build if this file is out of date, so what you
 > read here is what the engine actually does — not what someone once wrote down.
 
-**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.6 · **Status:** DRAFT · **Created:** 2026-09-17
+**Rubric:** WLIQ Prospect Book — anticipated grade, rank and band · **Version:** 0.1.7 · **Status:** DRAFT · **Created:** 2026-09-18
 
 Every anticipated grade is produced by a pure function of stored inputs:
 
@@ -45,6 +45,8 @@ Every scorecard under this version carries the stamp **UNVALIDATED**. It is a st
 **Measured so far.** Tier reached vs year-one dollars on the cohort: rho = 0.270, CI [-0.142, 0.647] (PROSPECT_PHASE0 §15). The pre-signing harvest has not run, so PRO-8's literal test is unrun. Every scorecard under this version prints UNVALIDATED.
 
 **Sizing pass mark on bands:** not yet set. Owed since PRO-16: a mark on BANDS (does the true year-one land inside the stated band at the stated rate), set against a naive baseline with the transformation disclosed, before the fit is looked at.
+
+**PRO-8 is re-run on 2026-12-15.** Owner decision, 18 Sep 2026 (DECISIONS §50, move 4): PRO-8 is re-run on this date on whatever outcomes exist — first replies, quotes sent and first invoices, by chase cell (pb_lift_by_cell) — and the date moves only by a ruling. Until then the stamp stays UNVALIDATED.
 
 ## 3 · Vocabulary
 
@@ -157,20 +159,25 @@ Basis of the downward cap: reasoned — symmetry with the ruled bump cap; resear
 |---|---|---|---|---|---|---|
 | **ADJ-WL** | High white-label signal on a boutique or consultant | ↑ up 1 | `icp_class in [ICP-3, ICP-5] AND wl_signal in [Very High, High]` | `unruled_default` | July Stage 2 | yes |
 | **ADJ-REF** | Referral from the owner / AMI / BABA network | ↑ up 1 | `referral_from_network == true` | `unruled_default` | July Stage 2; research §3: a warm path is one of the strongest inputs | no — applies to direct rows too |
-| **ADJ-ICP3-FLOOR** | Boutique clears the $10K project floor and already outsources | ↑ up 1 | `icp_class == ICP-3 AND avg_project_size >= 10000 AND already_outsources == true` | `reasoned` | Research §Fit: profitability cliff at $5K; keep ICP-3 only where average project is $10K or more and they already outsource | yes |
-| **ADJ-RECUR** | Recurring or retainer model | ↑ up 1 | `recurring_revenue_share >= 0.25` | `reasoned` | Research: 51% vs 40% consistently profitable | yes |
-| **ADJ-NICHE** | Niche or vertical positioning | ↑ up 1 | `niche_positioning == true` | `reasoned` | Research: narrowed agencies grow ~2x | yes |
-| **ADJ-AMPM** | Account management separate from project management | ↑ up 1 | `am_pm_separated == true` | `reasoned` | Research: fast-grower trait | yes |
-| **ADJ-BADGE** | Platform partner badge | ↑ up 1 | `platform_partner_badge == true` | `reasoned` | Research: badges require real managed volume | yes |
-| **ADJ-PEER** | Peer-network membership | ↑ up 1 | `peer_network_member == true` | `reasoned` | Research: referral-driven category | yes |
-| **ADJ-AI** | AI-positive posture | ↑ up 1 | `ai_posture == positive` | `reasoned` | Research: the pivot's tailwind | no — applies to direct rows too |
-| **ADJ-ICP4-UNPROVEN** | Niche specialist in an unproven vertical | ↓ down 1 | `icp_class == ICP-4 AND icp4_vertical_proven == false` | `unruled_default` | July Stage 2 | yes |
-| **ADJ-TINY** | Under 8 people, owner does everything | ↓ down 1 | `(headcount != null AND headcount < 8) AND owner_does_everything == true` | `reasoned` | Research: can't fund $35K+/yr | yes |
-| **ADJ-INHOUSE** | Large agency with an in-house dev team | ↓ down 1 | `headcount >= 40 AND inhouse_dev_team == true` | `reasoned` | Research: contractor reliance 11% → 6% | yes |
-| **ADJ-DEVSHOP** | Development-archetype agency | ↓ down 1 | `dev_archetype == true` | `reasoned` | Research: competitor and price-sensitive buyer | yes |
-| **ADJ-SHRINK** | Shrinking agency | ↓ down 1 | `shrinking == true` | `reasoned` | Research: headcount down, BD turnover, dormant marketing | yes |
 
 **Agency-only rules.** PRO-4: direct-to-client rows (relationship_type == direct or ICP-6) are excluded from agency-derived rules. ADJ-REF and ADJ-AI still apply to them. The agency-only set is: `ADJ-WL`, `ADJ-ICP3-FLOOR`, `ADJ-RECUR`, `ADJ-NICHE`, `ADJ-AMPM`, `ADJ-BADGE`, `ADJ-PEER`, `ADJ-ICP4-UNPROVEN`, `ADJ-TINY`, `ADJ-INHOUSE`, `ADJ-DEVSHOP`, `ADJ-SHRINK`.
+
+**Parked rules — kept for the record, never evaluated.** Owner decision D2, 18 Sep 2026 (DECISIONS §50): twelve of fourteen rules read facts nobody has ever collected and had never fired once on 830 accounts, while the field's standard is four to six attributes. They are parked here — kept for the record, named in every trace, never evaluated. A rule returns to `rules` when its fact has a collection path and a preview shows what it moves.
+
+| Rule | Name | Direction | Would fire when | Parked on | Why |
+|---|---|---|---|---|---|
+| **ADJ-ICP3-FLOOR** | Boutique clears the $10K project floor and already outsources | ↑ up 1 | `icp_class == ICP-3 AND avg_project_size >= 10000 AND already_outsources == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-RECUR** | Recurring or retainer model | ↑ up 1 | `recurring_revenue_share >= 0.25` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-NICHE** | Niche or vertical positioning | ↑ up 1 | `niche_positioning == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-AMPM** | Account management separate from project management | ↑ up 1 | `am_pm_separated == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-BADGE** | Platform partner badge | ↑ up 1 | `platform_partner_badge == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-PEER** | Peer-network membership | ↑ up 1 | `peer_network_member == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-AI** | AI-positive posture | ↑ up 1 | `ai_posture == positive` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-ICP4-UNPROVEN** | Niche specialist in an unproven vertical | ↓ down 1 | `icp_class == ICP-4 AND icp4_vertical_proven == false` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-TINY** | Under 8 people, owner does everything | ↓ down 1 | `(headcount != null AND headcount < 8) AND owner_does_everything == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-INHOUSE** | Large agency with an in-house dev team | ↓ down 1 | `headcount >= 40 AND inhouse_dev_team == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-DEVSHOP** | Development-archetype agency | ↓ down 1 | `dev_archetype == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
+| **ADJ-SHRINK** | Shrinking agency | ↓ down 1 | `shrinking == true` | 2026-09-18 | never fired on 830 accounts; its input has zero facts and no collection path |
 
 ## 8 · The platinum rule, and confidence
 
@@ -268,7 +275,7 @@ winnable_share = (1 - our_rank / (n_vendors + 1)) * (2 / n_vendors)
 | #1 of 3 | 0.5 |
 | #2 of 3 | 0.333 |
 
-When rank or vendor count is unknown the default is **0.5**. Reasoned — '#1 of 3'; the two discovery questions (who else do you use, where do we rank) replace it.
+When rank or vendor count is unknown the default is **0.5**. Reasoned — '#1 of 3'; the two discovery questions (who else do you use, where do we rank) replace it. A headroom computed on that default is an **assumption**, and the row carries the flag "Ceiling assumed: vendor share defaulted" until a vendor rank is recorded.
 
 **Headroom bands** (basis: research tier table: Tier 1 headroom ≥ $100K, Tier 2 $35K–100K) and the ceiling each proposes:
 
@@ -328,12 +335,13 @@ Basis of the anchors: fitted anchors — retrodiction cohort year-one billings, 
 
 | Confidence | When |
 |---|---|
+| **Low** | `assumed == true` |
 | **High** | `headcount_label == evidence AND wl_signal != null` |
 | **Medium** | `headcount_label == evidence` |
 | **Medium** | `headcount_label == inferred OR (headcount == null AND stated_ceiling != null)` |
 | **Low** | otherwise |
 
-Basis: locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch) and the WL signal is known, Medium if the headcount is evidence but the WL signal is unknown or the headcount is inferred, Low if guessed.
+Basis: owner decision D6, 18 Sep 2026 (DECISIONS §50): Low whenever the headroom was computed on the default winnable share — with no vendor rank on file the ceiling is an assumption, and the card says so until the two discovery questions (who else do you use, where do we rank) are answered. Otherwise the locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch) and the WL signal is known, Medium if the headcount is evidence but the WL signal is unknown or the headcount is inferred, Low if guessed.
 
 **Snapshot at signing** (later phase). Fields `p10_12m`, `p50_12m`, `p90_12m`, `p10_24m`, `p50_24m`, `p90_24m`, `p_35k_12m`, `p_100k_24m`, scored at 6, 12, 24 months. Phase 4. Frozen at first SOW, scored against Orbit and QuickBooks actuals; interval hit-rate, median error by estimator and ICP, Brier on the two binaries.
 
@@ -394,6 +402,15 @@ The scorecard lists the top **5** live positive signals, strongest first (displa
 | `within_1_week` | **Super Hot** |
 | `within_1_month` | **Hot** |
 | `within_3_months` | **Warm** |
+
+**A stated stamp ages.** Past the horizon for its value the stamp no longer decides and the computed ladder below does; a stamp with no date is never aged. reasoned — owner decision D3, 18 Sep 2026 (DECISIONS §50): a timing stamp is behaviour, and behaviour ages. A week-stamp is stale after 14 days, a month-stamp after 45, a quarter-stamp after 120; past its horizon the stamp no longer decides and the computed ladder does. On 18 Sep, 19 of the 55 hot stamps were over 30 days old. A stamp with no date is never aged (unknown is never evidence). `no_timeline` has no horizon: a recorded absence of a date does not become a date by ageing.
+
+| Stated timing | Decides for |
+|---|---|
+| `within_1_week` | 14 days after it was observed |
+| `within_1_month` | 45 days after it was observed |
+| `within_3_months` | 120 days after it was observed |
+| `no_timeline` | as long as it is stated (no horizon) |
 
 Otherwise the **decayed total** of live signals climbs this ladder (the first rung the total reaches, from the top). With no signals at all the row is **Cold** with basis `none`.
 
@@ -460,7 +477,7 @@ Enforced both in Pipedrive required fields and here, because API writes bypass P
 | Term | Value |
 |---|---|
 | Who may override | the **owner** lane only |
-| How far | at most **null** tier from the computed tier |
+| How far | **no cap** — any tier in the vocabulary; a move of more than one tier is flagged |
 | Reason code | **required**, one of `data_wrong`, `relationship_known`, `timing_known`, `conflict`, `other` |
 | Written reason | **required** — an override without one is ignored |
 | Default expiry | 90 days after it was set, when no expiry is stated |
@@ -487,15 +504,45 @@ Evaluated in this order; the first that applies is the row's status: **Parked** 
 
 ## 15 · Chase order
 
-**Ruling.** PRO-0: ordering is the job. Rows sort by these keys in turn, best first; the **cell** shown on the page is the anticipated tier × the ceiling.
+**Ruling.** PRO-0: ordering is the job. Owner decision D1, 18 Sep 2026 (DECISIONS §50): the chase cell comes first and the tier second. Rows sort by these keys in turn, best first; the **chase cell** (§15b) is the first key and the anticipated tier the second.
 
 | Order | Key |
 |---|---|
-| 1 | effective_tier (Platinum first) |
-| 2 | qualification.present_count (4 first) |
-| 3 | urgency (Super Hot first) |
-| 4 | year1_band (largest first) |
-| 5 | name |
+| 1 | chase cell (Chase now first; No tier yet last) |
+| 2 | effective_tier (Platinum first) |
+| 3 | qualification.present_count (4 first) |
+| 4 | urgency (Super Hot first) |
+| 5 | engagement recency (most recent reply first; no recorded reply last, inside its cell) |
+| 6 | year1_band (largest first) |
+| 7 | name |
+
+The engine reads the order as data: `cell` → `tier` → `facts_present` → `urgency` → `engagement_recency` → `year1_band` → `name`. `order` is what the engine reads (rule 4); `keys` is the same list in words for the method page. Terms the engine knows: cell, readiness, tier, facts_present, urgency, engagement_recency, year1_band, name. A rubric with no `order` gets the fixed five-term key every version before 0.1.7 produced.
+
+**The grid.** Owner decision D1, 18 Sep 2026 (DECISIONS §50): readiness comes before size in the chase order. The tier stays a size label (§20, §40). The board is a grid of potential × readiness with a play per cell — the fit-by-readiness grid the field uses, in place of a size-first sort that put 46 cold, unqualified Platinums above every qualified deal.
+
+Everything here is data (rule 4). The readiness ladder is tried top to bottom and the first rung whose rule holds names the band; `cold` is the absence of a reason to work the account this week, never evidence against it (rule 5). Cells are tried in order and the first whose rule holds is the row's cell; every row with no tier lands in the unranked cell, whose play is to answer the fit questions.
+
+### 15a · Readiness — is there a reason to work this account this week?
+
+The ladder is tried top to bottom; the first rung whose rule holds names the band (basis `reasoned — 18 Sep 2026: two qualification facts, a hot stamp or a reply within 90 days is a reason to work the account now; one fact, a fading or pursued contact or a live signal is a stir; nothing recorded is cold. First setting; re-cut from the lift-by-cell report once outcomes exist.`):
+
+| Readiness | When |
+|---|---|
+| **ready** | `qualification.present_count >= 2 OR urgency in [Hot, Super Hot] OR engagement_state in [engaged, responsive]` |
+| **stirring** | `qualification.present_count >= 1 OR engagement_state in [fading, pursued] OR signals.has_live == true` |
+| **cold** | otherwise — nothing recorded |
+
+### 15b · The chase cells and their plays
+
+Potential bands: **big** = Platinum / Gold; **small** = Silver / Bronze. Cells are tried in order; the first whose rule holds is the row's cell.
+
+| Cell | ABM tier | When | The play | Owner | SLA |
+|---|---|---|---|---|---|
+| **Chase now** | 1:1 | `potential_band == big AND readiness == ready` | Work it this week: a named next step on the calendar, the decision-maker in the room, price on the table by the second call. This is the one-to-one list; keep it to what the pod can carry. | salesperson | 7 days |
+| **Work the deal** | 1:few | `potential_band == small AND readiness == ready` | Close what is in front of you: quote it, book the next meeting, keep the reply cadence. Right-size the effort to the ticket. | salesperson | 14 days |
+| **Open the door** | 1:few | `potential_band == big AND readiness in [stirring, cold]` | Big enough to matter and nothing live: earn a first conversation — a warm introduction through the network, a peer-group touch, a piece of work they would recognise. Nurture with intent; do not wait for them. | salesperson | 30 days |
+| **Nurture** | 1:many | otherwise | Programmatic: the newsletter, the community, the quarterly check-in. Watch for a stir and promote the row when one arrives. | marketing | 90 days |
+| **No tier yet** | — | `no tier (Unclassified, Parked without a tier, or withheld)` | Answer the fit questions before anything else: is it an agency, do they sell build work, do they have more build work than they can absorb, who are their clients. Ninety seconds on the work page, or one call. | rater | 30 days |
 
 ## 16 · Flags
 
@@ -521,6 +568,8 @@ A flag warns and never caps (Client Book principle carried over). Every flag is 
 - Override expires soon
 - Conversation only
 - Below the small-shop project floor
+- Ceiling assumed: vendor share defaulted
+- Timing stamp aged out
 
 ## 17 · The reason sentence
 
@@ -534,12 +583,14 @@ Anticipated {tier} ({confidence}): {icp_class} {agency_type_words}, {qualificati
 
 Each of these is a toggle in the rubric with its current default stated; none is a new ruling.
 
-- PRO-2r-a — broker character as a safety gate (gate mode is 'flag' until ruled).
+- PRO-2r-a — broker character as a safety gate: RULED 17 Sep 2026, it stays a flag (DECISIONS §40); listed for the record.
 - How many Dimension A facts must be present before a prospect can be ranked (min_facts_to_publish_tier = 0 until ruled).
 - Is the ≥ $2K economic floor about the hourly rate or the deal size (floor_basis = deal_size until ruled).
 - Who performs the promotion confirmation under PRO-18 (owner lane until ruled).
 - The sizing pass mark on bands (PRO-16).
-- The five July elements the July ledger records as never ruled: gates as written, ICP → grade mapping, adjust rules as written, climb-evidence requirement, Grade × Ceiling output shape. All five are toggles here.
+- Activation of the criteria-based fit read (draft 0.2.1): ruled 18 Sep 2026 to follow the collection sprint on the ready cells, not to precede it (DECISIONS §50).
+- The readiness thresholds and the cell plays are a first setting (basis reasoned), to be re-cut from the lift-by-cell report once outcomes exist.
+- The five July elements the July ledger records as never ruled: gates as written, ICP → grade mapping (answered in 0.2.x), adjust rules as written (twelve parked 18 Sep), climb-evidence requirement, Grade × Ceiling output shape.
 
 ---
 

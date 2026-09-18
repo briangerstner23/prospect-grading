@@ -1,0 +1,1233 @@
+{
+  "name": "WLIQ Prospect Book — anticipated grade, rank and band",
+  "flags": {
+    "note": "A flag warns and never caps (Client Book principle carried over). Every flag is a displayed signal and an action cue.",
+    "vocabulary": [
+      "Anticipated",
+      "UNVALIDATED (PRO-8)",
+      "Direct-to-client",
+      "Roster source uncertified",
+      "Lapsed client",
+      "Service shape unknown",
+      "Economics unknown",
+      "Broker character flag",
+      "Geography flag",
+      "ICP disagrees with derivation",
+      "Headcount unknown",
+      "Ceiling capped: no climb evidence",
+      "PA signed — promotion pending (PRO-18)",
+      "Prior grade differs",
+      "Stand-in entry",
+      "Override refused: beyond one-tier cap",
+      "Override moved more than one tier",
+      "Override expires soon",
+      "Conversation only",
+      "Below the small-shop project floor",
+      "Ceiling assumed: vendor share defaulted",
+      "Timing stamp aged out"
+    ]
+  },
+  "gates": {
+    "note": "July Stage 0, kept as the frame under PRO-15 ('keep the structure, test each piece as data arrives'). The July ledger records the gates AS WRITTEN as never ruled, so each is a toggle with its basis stated. PRO-0: a gate is an operational filter, not what the grade is for — the grade is still computed and stored for a parked row; only the status changes.",
+    "items": {
+      "economics": {
+        "mode": "park",
+        "test": "Accepts real rates, at or above the floor.",
+        "basis": "unruled_default",
+        "input": "economics",
+        "label": "Economic floor",
+        "fail_when": "fail",
+        "floor_usd": 2000,
+        "floor_note": "Whether the >= $2K floor is about the hourly rate or the deal size is unruled since July (prospect_rulings still_open). deal_size is the default reading; the engine derives economics = fail when deal_size_estimate is stated and below the floor, or hourly_rate_accepted is explicitly false, and never from absence.",
+        "floor_basis": "deal_size",
+        "floor_basis_options": [
+          "deal_size",
+          "hourly_rate"
+        ]
+      },
+      "geography": {
+        "flag": "Geography flag",
+        "mode": "off",
+        "note": "Added by the 9 Sep research brief; no ruling. Off until a territory list exists. `flag` is the text raised should the mode be switched to flag.",
+        "test": "Inside the territories WLIQ serves.",
+        "basis": "reasoned",
+        "input": "geography_ok",
+        "label": "Geography",
+        "fail_when": false
+      },
+      "service_shape": {
+        "mode": "park",
+        "test": "The need is Core or Complement to what WLIQ sells. Off parks.",
+        "basis": "unruled_default",
+        "input": "service_shape",
+        "label": "Service shape",
+        "fail_when": "Off",
+        "notion_aliases": {
+          "Core": "Core",
+          "Neither": "Off",
+          "Unknown": null,
+          "Adjacent": "Complement"
+        }
+      },
+      "broker_character": {
+        "flag": "Broker character flag",
+        "mode": "flag",
+        "test": "Fair in scoping, negotiation and treatment of expertise.",
+        "basis": "ruled",
+        "input": "broker_character",
+        "label": "Broker character",
+        "fail_when": "flag",
+        "ruling_note": "PRO-2r (2026-09-07): character is NOT a grading input. PRO-2r-a RULED by the owner 17 Sep 2026: it is not a safety gate either — it stays a FLAG. A flagged agency keeps its rank and stays visible, and a person judges it case by case. This is a deliberate divergence from the outside practice that credits win-rate lift to disqualification that actually disqualifies (docs/STANDARDS.md §1); it is recorded, not accidental. DECISIONS §40."
+      }
+    },
+    "evaluation_order": [
+      "service_shape",
+      "economics",
+      "broker_character",
+      "geography"
+    ],
+    "unknown_never_parks": true
+  },
+  "raters": {
+    "note": "Under PRO-2r there are no judgment scales — raters enter FACTS with evidence. Attribution still matters: every fact carries entered_by, stand_in and observed_at.",
+    "ruling": "PRO-5: the two sales raters enter facts on their own rows; Brian may stand in, recorded AS a stand-in. Per-rater calibration is a first-class output; for a rater with few rows report an interval and say plainly when history is too thin."
+  },
+  "status": "DRAFT",
+  "created": "2026-09-18",
+  "signals": {
+    "top_n": 5,
+    "ruling": "Research §7 catalog; computed, not stamped by hand. Decay on behaviour only (MadKudu: weight * max(0, 1 - age_days / lifespan_days)). Fit never decays.",
+    "catalog": {
+      "pa_sent": {
+        "label": "Project agreement sent",
+        "decays": true,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 30
+      },
+      "quote_lost": {
+        "note": "outcome of a quote; a reason to re-qualify, not a gate",
+        "label": "Quote lost",
+        "decays": true,
+        "weight": -4,
+        "strength": "negative",
+        "lifespan_days": 180
+      },
+      "quote_sent": {
+        "label": "Quote sent",
+        "decays": true,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 30
+      },
+      "manual_note": {
+        "label": "Peer-group or conference intel entered by hand",
+        "decays": true,
+        "weight": 2,
+        "strength": "weak",
+        "lifespan_days": 90
+      },
+      "prior_grade": {
+        "note": "Every letter grade from Gotham, the Tier 1 Book, the July wave, AMIN, Pittsburgh or the Cold Pool is kept as this signal with its source. It never scores.",
+        "label": "Prior grade from an earlier list or model",
+        "decays": false,
+        "weight": 0,
+        "strength": "informational",
+        "lifespan_days": null
+      },
+      "inbound_reply": {
+        "label": "Inbound reply",
+        "decays": true,
+        "weight": 6,
+        "strength": "strong_when_stacked",
+        "lifespan_days": 14
+      },
+      "orbit_pa_sent": {
+        "label": "Project agreement sent (Orbit)",
+        "decays": true,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 30
+      },
+      "cluster_hiring": {
+        "label": "Cluster hiring for developers or designers (3+ roles)",
+        "decays": true,
+        "weight": 5,
+        "strength": "medium_two_sided",
+        "lifespan_days": 56
+      },
+      "new_client_win": {
+        "label": "New client win or AOR announcement",
+        "decays": true,
+        "weight": 6,
+        "strength": "medium_strong",
+        "lifespan_days": 90
+      },
+      "orbit_pa_signed": {
+        "flag": "PA signed — promotion pending (PRO-18)",
+        "label": "Project agreement signed (Orbit) — promotion pending",
+        "decays": false,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 60
+      },
+      "quote_requested": {
+        "label": "Quote requested",
+        "decays": true,
+        "weight": 9,
+        "strength": "strong",
+        "sla_hours": 8,
+        "lifespan_days": 14
+      },
+      "meeting_accepted": {
+        "label": "Meeting accepted",
+        "decays": true,
+        "weight": 6,
+        "strength": "strong_when_stacked",
+        "lifespan_days": 14
+      },
+      "neg_dark_21_days": {
+        "label": "21+ days dark",
+        "decays": false,
+        "weight": -6,
+        "strength": "strong_negative",
+        "lifespan_days": 90
+      },
+      "next_step_agreed": {
+        "label": "Next step agreed on a call",
+        "decays": true,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 30
+      },
+      "leadership_change": {
+        "label": "New COO, ops director or head of delivery",
+        "decays": true,
+        "weight": 5,
+        "strength": "medium",
+        "lifespan_days": 84
+      },
+      "neg_champion_left": {
+        "label": "Champion left",
+        "decays": false,
+        "weight": -8,
+        "strength": "strong_negative",
+        "lifespan_days": 90
+      },
+      "verbally_accepted": {
+        "label": "Quote verbally accepted",
+        "decays": true,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 30
+      },
+      "service_mix_change": {
+        "label": "Service-mix change",
+        "decays": true,
+        "weight": 4,
+        "strength": "medium",
+        "lifespan_days": 90
+      },
+      "champion_job_change": {
+        "label": "Past champion or contact moved to a new agency",
+        "decays": true,
+        "weight": 9,
+        "strength": "strong",
+        "sla_hours": 72,
+        "lifespan_days": 90
+      },
+      "owner_capacity_post": {
+        "label": "Owner posts about capacity or hiring pain",
+        "decays": true,
+        "weight": 4,
+        "strength": "medium",
+        "lifespan_days": 30
+      },
+      "referral_warm_intro": {
+        "label": "Warm intro or referral",
+        "decays": true,
+        "weight": 10,
+        "strength": "strong",
+        "sla_hours": 48,
+        "lifespan_days": 90
+      },
+      "platform_tier_change": {
+        "label": "Platform partner tier change",
+        "decays": true,
+        "weight": 4,
+        "strength": "medium",
+        "lifespan_days": 90
+      },
+      "freelance_dev_posting": {
+        "label": "Freelance or Upwork dev posting by the agency",
+        "decays": true,
+        "weight": 6,
+        "strength": "medium_strong",
+        "lifespan_days": 60
+      },
+      "neg_no_decision_maker": {
+        "label": "No decision-maker on calls",
+        "decays": false,
+        "weight": -5,
+        "strength": "strong_negative",
+        "lifespan_days": 90
+      },
+      "peer_group_attendance": {
+        "label": "Attends AMI, BABA, Agency Builders; joins a peer group",
+        "decays": false,
+        "weight": 3,
+        "strength": "medium",
+        "lifespan_days": 365
+      },
+      "review_award_relaunch": {
+        "label": "Review velocity, award, website relaunch",
+        "decays": true,
+        "weight": 1,
+        "strength": "weak",
+        "lifespan_days": 90
+      },
+      "neg_needs_to_figure_out": {
+        "label": "'We need to figure out…'",
+        "decays": false,
+        "weight": -5,
+        "strength": "strong_negative",
+        "lifespan_days": 90
+      },
+      "orbit_verbally_accepted": {
+        "label": "Quote verbally accepted (Orbit)",
+        "decays": true,
+        "weight": 8,
+        "strength": "strong",
+        "lifespan_days": 30
+      },
+      "neg_end_client_inhousing": {
+        "label": "End client in-housing",
+        "decays": false,
+        "weight": -6,
+        "strength": "strong_negative",
+        "lifespan_days": 90
+      },
+      "neg_hiring_inhouse_dev_lead": {
+        "label": "Hiring an in-house dev lead",
+        "decays": false,
+        "weight": -6,
+        "strength": "strong_negative",
+        "lifespan_days": 90
+      }
+    },
+    "routing": {
+      "rule": "One strong signal (weight >= 8) or two medium signals (weight >= 4) inside a 30-day window creates a task with an SLA; a single medium signal is a note; weak signals only update the profile.",
+      "basis": "research §7 routing rule",
+      "window_days": 30,
+      "default_sla_hours": 120,
+      "medium_min_weight": 4,
+      "strong_min_weight": 8
+    },
+    "urgency": {
+      "basis": "reasoned — thresholds to be re-cut where the staircase breaks once outcomes exist",
+      "from_timing": {
+        "no_timeline": "Cold",
+        "within_1_week": "Super Hot",
+        "within_1_month": "Hot",
+        "within_3_months": "Warm"
+      },
+      "from_decayed_total": [
+        {
+          "min": 15,
+          "label": "Super Hot"
+        },
+        {
+          "min": 8,
+          "label": "Hot"
+        },
+        {
+          "min": 3,
+          "label": "Warm"
+        },
+        {
+          "min": -999,
+          "label": "Cold"
+        }
+      ],
+      "stated_timing_wins": true,
+      "stated_timing_max_age_days": {
+        "within_1_week": 14,
+        "within_1_month": 45,
+        "within_3_months": 120,
+        "no_timeline": null
+      },
+      "stated_timing_age_basis": "reasoned — owner decision D3, 18 Sep 2026 (DECISIONS §50): a timing stamp is behaviour, and behaviour ages. A week-stamp is stale after 14 days, a month-stamp after 45, a quarter-stamp after 120; past its horizon the stamp no longer decides and the computed ladder does. On 18 Sep, 19 of the 55 hot stamps were over 30 days old. A stamp with no date is never aged (unknown is never evidence). `no_timeline` has no horizon: a recorded absence of a date does not become a date by ageing."
+    },
+    "top_n_note": "How many live positive signals the scorecard lists, strongest first. Display only; the decayed total counts every signal.",
+    "decay_formula": "weight_now = decays ? weight * max(0, 1 - age_days / lifespan_days) : (age_days <= lifespan_days ? weight : 0)"
+  },
+  "version": "0.1.7",
+  "override": {
+    "lane": "owner",
+    "ruling": "PRO-5 revision (2026-09-04): override authority sits with Brian alone. 17 Sep 2026, owner: the one-tier cap is REMOVED — max_tiers_moved is null, so an override may move a tier to any value in vocabulary.tiers. This retires the July ruling's \"one grade max\"; the rest of that ruling stands, and a written reason is still required. DECISIONS §49.",
+    "beyond_cap": "not applicable while max_tiers_moved is null — no override is refused for distance. A number here restores the cap and the engine refuses beyond it.",
+    "reason_codes": [
+      "data_wrong",
+      "relationship_known",
+      "timing_known",
+      "conflict",
+      "other"
+    ],
+    "into_register": true,
+    "max_tiers_moved": null,
+    "expires_soon_days": 14,
+    "expiry_default_days": 90,
+    "reason_code_required": true,
+    "written_reason_required": true,
+    "cap_history": [
+      "July 2026 (ruled): one grade max.",
+      "17 Sep 2026 (owner): removed. The reason code, the written reason, the owner lane and the expiry all remain — only the distance limit is gone."
+    ]
+  },
+  "potential": {
+    "ruling": "PRO-16 (2026-09-05): a rough band is enough; the point estimate is dropped. Headroom method from the client-grading-system skill, locked; vendor rank from the Wallet Allocation Rule (research §Potential).",
+    "headroom": "wallet * winnable_share - trailing_12m_revenue, where wallet = headcount * revenue_per_head * outsourceable_share * serviceable_share",
+    "confidence": {
+      "basis": "owner decision D6, 18 Sep 2026 (DECISIONS §50): Low whenever the headroom was computed on the default winnable share — with no vendor rank on file the ceiling is an assumption, and the card says so until the two discovery questions (who else do you use, where do we rank) are answered. Otherwise the locked headroom method: High if headcount is evidence (LinkedIn, site, Clutch) and the WL signal is known, Medium if the headcount is evidence but the WL signal is unknown or the headcount is inferred, Low if guessed",
+      "rules": [
+        {
+          "when": "assumed == true",
+          "label": "Low"
+        },
+        {
+          "when": "headcount_label == evidence AND wl_signal != null",
+          "label": "High"
+        },
+        {
+          "when": "headcount_label == evidence",
+          "label": "Medium"
+        },
+        {
+          "when": "headcount_label == inferred OR (headcount == null AND stated_ceiling != null)",
+          "label": "Medium"
+        },
+        {
+          "label": "Low",
+          "otherwise": true
+        }
+      ]
+    },
+    "year1_bands": [
+      {
+        "min": 100000,
+        "label": "≥ $100K"
+      },
+      {
+        "max": 100000,
+        "min": 46000,
+        "label": "$46K–100K"
+      },
+      {
+        "max": 46000,
+        "min": 16000,
+        "label": "$16K–46K"
+      },
+      {
+        "max": 16000,
+        "min": 6000,
+        "label": "$6K–16K"
+      },
+      {
+        "max": 6000,
+        "label": "< $6K"
+      }
+    ],
+    "climb_evidence": {
+      "basis": "ruled",
+      "rule": "Climb evidence is computed and traced but does NOT cap the ceiling. \"Project\" is a size; \"cold\" is a behaviour that changes the moment someone engages. Welding them capped 139 accounts with above-$100K headroom at a Project ceiling because no climb signal had ever been recorded (owner ruling, 15 Sep 2026, DECISIONS §20).",
+      "signals": [
+        "2nd person engaged",
+        "Champion identified",
+        "Structural break",
+        "Future-state language",
+        "Strategy question asked"
+      ],
+      "aliases": {
+        "multi_thread": "2nd person engaged",
+        "second_person_engaged": "2nd person engaged",
+        "champion": "Champion identified",
+        "champion_identified": "Champion identified",
+        "critical_event": "Structural break",
+        "Critical event": "Structural break",
+        "structural_trigger_event": "Structural break",
+        "future_state_language": "Future-state language",
+        "strategy_shaped_question": "Strategy question asked"
+      },
+      "ruled_on": "2026-09-14",
+      "strength": {
+        "2nd person engaged": "strong",
+        "Champion identified": "strong",
+        "Structural break": "strong",
+        "Future-state language": "weak",
+        "Strategy question asked": "weak"
+      },
+      "lift_requires": {
+        "strong": 1,
+        "weak": 2
+      },
+      "definitions": {
+        "2nd person engaged": "A second person from their side joins a call or thread. Stakeholder expansion; the strongest single predictor of close in the published data.",
+        "Champion identified": "Someone spends political capital for us when we are not in the room — arranges the executive meeting, shares the internal decision criteria, or briefs us on objections we would not otherwise hear. MEDDICC's champion test. Good intel alone is a coach, not a champion.",
+        "Structural break": "A dated forcing function: a budget cycle, a compliance deadline, a launch, a funding round, a departure. SPICED's Critical Event.",
+        "Future-state language": "They speak as though the decision is already made — 'when we roll this out', 'our team would use it for'. Quote it or it did not happen.",
+        "Strategy question asked": "They ask how to approach the problem rather than what it costs. Coach-level interest: real, but weaker than the three above."
+      },
+      "retired": {
+        "2nd project scoped": "Requires a first project. Not observable in a prospect (owner ruling, 14 Sep 2026).",
+        "Referred someone": "Requires a delivered outcome. Not observable in a prospect (owner ruling, 14 Sep 2026)."
+      },
+      "caps_ceiling": false,
+      "note_0_1_4": "0.1.4 (17 Sep 2026): restores DECISIONS §17 — the five engagement-depth signals with their strong/weak bar and the two retired signals — on top of §20's caps_ceiling:false. 0.1.3 had been built from 0.1.1 and silently dropped §17; the extractor (ingest/notes_sweep.ts) and the engine disagreed about which climb signals exist. Recorded in DECISIONS §25."
+    },
+    "headroom_bands": [
+      {
+        "min": 100000,
+        "label": "≥ $100K"
+      },
+      {
+        "max": 100000,
+        "min": 35000,
+        "label": "$35K–100K"
+      },
+      {
+        "max": 35000,
+        "label": "< $35K"
+      }
+    ],
+    "winnable_share": {
+      "formula": "(1 - our_rank / (n_vendors + 1)) * (2 / n_vendors)",
+      "examples": {
+        "#1 of 2": 0.667,
+        "#1 of 3": 0.5,
+        "#2 of 3": 0.333
+      },
+      "default_basis": "reasoned — '#1 of 3'; the two discovery questions (who else do you use, where do we rank) replace it",
+      "default_when_unknown": 0.5
+    },
+    "year1_bands_basis": "fitted anchors — retrodiction cohort year-one billings, n = 31 (PROSPECT_PHASE0 §14.4, 2026-09-05): Q1 $5,898 · median $16,318 · Q3 $46,151; $100K is the Tier-1 partner threshold. The July prior table ($145K/$73K/$55K/$43K/$27K/$22K) is retired as biased high (§14.5 C1).",
+    "snapshot_at_signing": {
+      "note": "Phase 4. Frozen at first SOW, scored against Orbit and QuickBooks actuals; interval hit-rate, median error by estimator and ICP, Brier on the two binaries.",
+      "fields": [
+        "p10_12m",
+        "p50_12m",
+        "p90_12m",
+        "p10_24m",
+        "p50_24m",
+        "p90_24m",
+        "p_35k_12m",
+        "p_100k_24m"
+      ],
+      "scored_at_months": [
+        6,
+        12,
+        24
+      ]
+    },
+    "headroom_bands_basis": "research tier table: Tier 1 headroom ≥ $100K, Tier 2 $35K–100K",
+    "revenue_per_head_usd": {
+      "basis": "locked headroom method; Promethean $163K avg, SPI $168K",
+      "blended": 175000,
+      "default": "blended",
+      "strategy": 200000,
+      "production": 150000
+    },
+    "year1_icp_prior_band": {
+      "map": {
+        "ICP-1": "$16K–46K",
+        "ICP-2": "$16K–46K",
+        "ICP-3": "$6K–16K",
+        "ICP-4": "$6K–16K",
+        "ICP-5": "$6K–16K",
+        "ICP-6": "$6K–16K"
+      },
+      "basis": "reasoned from cohort tier medians (Platinum $43,956 · Gold $20,374 · Silver $10,012 · Bronze $5,538, n = 31) and the ICP-definition ticket midpoints ($6K/$15K/$30K). Unfitted per ICP; labelled so."
+    },
+    "ceiling_from_headroom": {
+      "< $35K": "Project",
+      "≥ $100K": "Partner",
+      "$35K–100K": "Embedded"
+    },
+    "serviceable_share_basis": "reasoned — the skill derives it from service mapping; until that pack exists half of a blended agency's outsourceable menu is assumed to map to WLIQ's eleven service families",
+    "outsourceable_share_by_wl": {
+      "Low": 0.1,
+      "High": 0.3,
+      "basis": "locked headroom method (WL meter Low/Medium/High → 10/20/30%)",
+      "Medium": 0.2,
+      "default": 0.2,
+      "Very High": 0.3
+    },
+    "serviceable_share_default": 0.5,
+    "year1_from_quote_when_present": true,
+    "revenue_per_head_warning_below": 120000,
+    "stated_ceiling_wins_when_headroom_unknown": true,
+    "flag_when_winnable_defaulted": "Ceiling assumed: vendor share defaulted"
+  },
+  "still_open": [
+    "PRO-2r-a — broker character as a safety gate: RULED 17 Sep 2026, it stays a flag (DECISIONS §40); listed for the record.",
+    "How many Dimension A facts must be present before a prospect can be ranked (min_facts_to_publish_tier = 0 until ruled).",
+    "Is the ≥ $2K economic floor about the hourly rate or the deal size (floor_basis = deal_size until ruled).",
+    "Who performs the promotion confirmation under PRO-18 (owner lane until ruled).",
+    "The sizing pass mark on bands (PRO-16).",
+    "Activation of the criteria-based fit read (draft 0.2.1): ruled 18 Sep 2026 to follow the collection sprint on the ready cells, not to precede it (DECISIONS §50).",
+    "The readiness thresholds and the cell plays are a first setting (basis reasoned), to be re-cut from the lift-by-cell report once outcomes exist.",
+    "The five July elements the July ledger records as never ruled: gates as written, ICP → grade mapping (answered in 0.2.x), adjust rules as written (twelve parked 18 Sep), climb-evidence requirement, Grade × Ceiling output shape."
+  ],
+  "validation": {
+    "rule": "PRO-8 (pre-registered 2026-09-04): rank agreement (Spearman rho) >= 0.5 on the 31 retrodictable clients, scored as prospects on facts dated before their first invoice. Below 0.5 the grade ships stamped UNVALIDATED and may not be the sole basis for a decision. A grade is never withheld for failing; it is labelled.",
+    "status": "UNVALIDATED",
+    "measured_so_far": "Tier reached vs year-one dollars on the cohort: rho = 0.270, CI [-0.142, 0.647] (PROSPECT_PHASE0 §15). The pre-signing harvest has not run, so PRO-8's literal test is unrun. Every scorecard under this version prints UNVALIDATED.",
+    "sizing_pass_mark": null,
+    "sizing_pass_mark_note": "Owed since PRO-16: a mark on BANDS (does the true year-one land inside the stated band at the stated rate), set against a naive baseline with the transformation disclosed, before the fit is looked at.",
+    "rerun_on": "2026-12-15",
+    "rerun_note": "Owner decision, 18 Sep 2026 (DECISIONS §50, move 4): PRO-8 is re-run on this date on whatever outcomes exist — first replies, quotes sent and first invoices, by chase cell (pb_lift_by_cell) — and the date moves only by a ruling. Until then the stamp stays UNVALIDATED."
+  },
+  "vocabulary": {
+    "tiers": [
+      "Bronze",
+      "Silver",
+      "Gold",
+      "Platinum"
+    ],
+    "urgency": [
+      "Cold",
+      "Warm",
+      "Hot",
+      "Super Hot"
+    ],
+    "ceilings": [
+      "Project",
+      "Embedded",
+      "Partner"
+    ],
+    "tier_ruling": "PRO-1r (2026-09-04): same words as clients. Every prospect tier prints the word 'anticipated' and its confidence; prospect rows never sit in a client table without that label. Supersedes the July High / Medium / Low and retires the Tier 1 Opportunity Book's Platinum / Black / Gold.",
+    "urgency_note": "The July Stage 4 words are kept as the display of a COMPUTED value (research §7). A stated timing fact wins over the computation.",
+    "ceiling_aliases": {
+      "A job": "Project",
+      "Partnership": "Partner",
+      "Seat at the table": "Embedded"
+    }
+  },
+  "deal_health": {
+    "ruling": "Research §Read 4: rules, not a model. Gong-style warnings with thresholds from WLIQ's own stage medians once Pipedrive is readable; defaults below until then.",
+    "params_note": "Every threshold a rule uses sits in its `params`, by name; the `test` is the same rule in prose. The engine reads `params` and nothing else — a number typed only into the prose does not move the behaviour.",
+    "red_when_any": [
+      {
+        "id": "DH-DARK",
+        "test": "days since last buyer-initiated touch >= 21 AND no next meeting booked",
+        "params": {
+          "min_days_dark": 21
+        },
+        "message": "21+ days without a buyer touch and nothing scheduled"
+      },
+      {
+        "id": "DH-PUSHES",
+        "test": "close_date_pushes >= 3 OR largest_push_days > 21",
+        "params": {
+          "min_pushes": 3,
+          "max_push_days": 21
+        },
+        "message": "Close date pushed three times or once by more than three weeks"
+      },
+      {
+        "id": "DH-STALLED",
+        "test": "days in stage > 2 * stage median",
+        "params": {
+          "median_multiple": 2
+        },
+        "message": "Stalled in stage at more than twice WLIQ's median"
+      },
+      {
+        "id": "DH-NO-DM",
+        "test": "decision_maker_engaged == false AND calls_held >= 2",
+        "params": {
+          "min_calls": 2
+        },
+        "message": "Two or more calls and no decision-maker has attended or replied"
+      },
+      {
+        "id": "DH-INDECISION",
+        "test": "indecision_level == high OR (risk_words_present == true AND no next meeting booked)",
+        "params": {},
+        "message": "High indecision language with no next step"
+      }
+    ],
+    "yellow_when_any": [
+      {
+        "id": "DH-QUIET",
+        "test": "days since last buyer-initiated touch between 14 and 20",
+        "params": {
+          "max_days": 20,
+          "min_days": 14
+        },
+        "message": "Two weeks quiet"
+      },
+      {
+        "id": "DH-PUSHED",
+        "test": "close_date_pushes between 1 and 2",
+        "params": {
+          "max_pushes": 2,
+          "min_pushes": 1
+        },
+        "message": "Close date has moved"
+      },
+      {
+        "id": "DH-NO-NEXT",
+        "test": "no next meeting booked",
+        "params": {},
+        "message": "No next meeting booked"
+      },
+      {
+        "id": "DH-NO-PRICE",
+        "test": "price_discussed == false AND calls_held >= 2",
+        "params": {
+          "min_calls": 2
+        },
+        "message": "Price not discussed by the second call"
+      },
+      {
+        "id": "DH-THIN",
+        "test": "buyer_contacts_30d < 2",
+        "params": {
+          "min_contacts": 2
+        },
+        "message": "Fewer than two buyer contacts engaged"
+      },
+      {
+        "id": "DH-VELOCITY",
+        "test": "buyer_email_velocity_7d == 0",
+        "params": {
+          "max_emails": 0
+        },
+        "message": "No buyer email this week"
+      },
+      {
+        "id": "DH-NO-CRITICAL",
+        "test": "critical_event_captured == false AND calls_held >= 2",
+        "params": {
+          "min_calls": 2
+        },
+        "message": "No critical event captured (SPICED)"
+      }
+    ],
+    "next_meeting_note": "'No next meeting booked' is a KNOWN absence: has_next_meeting is false (the CRM activities were read and none is booked), or a booked next_meeting_at has already passed and has_next_meeting is not null. A null next_meeting_at with has_next_meeting null is unknown, and unknown never warns.",
+    "unknown_never_warns": true,
+    "stage_exit_criteria_note": "Enforced both in Pipedrive required fields and here, because API writes bypass Pipedrive's checks (R6). Phase 3.",
+    "default_stage_median_days": 21
+  },
+  "dimension_a": {
+    "items": {
+      "money": {
+        "test": "A stated budget, or a quote issued.",
+        "evidence": "PandaDoc or Orbit quote · a budget figure recorded in the CRM"
+      },
+      "timing": {
+        "test": "There is a date.",
+        "evidence": "the urgency stamp / a stated timeline"
+      },
+      "authority": {
+        "test": "Someone who can say yes, and we have met them.",
+        "evidence": "who attended the calls · who is named on the proposal · who is copied on the quote"
+      },
+      "specification": {
+        "test": "They can say what they need in enough detail to quote it.",
+        "evidence": "the brief · the RFP · the proposal · the quote"
+      }
+    },
+    "labels": [
+      {
+        "label": "Qualified",
+        "min_present": 4
+      },
+      {
+        "label": "Partly qualified",
+        "min_present": 2
+      },
+      {
+        "label": "Conversation",
+        "min_present": 0
+      }
+    ],
+    "ruling": "PRO-2r: 'Is the deal real' — money, authority, timing, specification. Facts a salesperson has or does not have; mostly a CRM read.",
+    "min_facts_note": "OPEN (prospect_rulings still_open): how many of the four must be present before a prospect can be ranked. Default 0 — the tier is always published with the qualification label beside it, because a skip is a real answer. Raise this to hide tiers on 'Conversation' rows once Brian rules.",
+    "notion_aliases": {
+      "money": {
+        "No": "absent",
+        "Yes": "present",
+        "from": "Gate: can afford us",
+        "Unknown": "unknown"
+      },
+      "timing": {
+        "Hot": "within_1_month",
+        "Cold": "no_timeline",
+        "Warm": "within_3_months",
+        "from": "Lead priority",
+        "Super Hot": "within_1_week"
+      },
+      "authority": {
+        "No": "absent",
+        "Yes": "present",
+        "from": "Key decision maker?",
+        "Unknown": "unknown"
+      },
+      "specification": {
+        "No": "absent",
+        "Yes": "present",
+        "from": "Active project / immediate need?",
+        "note": "Approximation flagged at seed: an immediate need is not a written scope. Treated as inferred.",
+        "Unknown": "unknown"
+      }
+    },
+    "min_facts_to_publish_tier": 0
+  },
+  "dimension_b": {
+    "icp": {
+      "source": "🧬 ICP Definitions & SQL Classification (2026-04-05, 185 client records). Kept verbatim under PRO-15.",
+      "definitions": {
+        "ICP-1": {
+          "name": "Established Full-Service Partner",
+          "ticket": "$10–50K",
+          "revenue": "$5–10M",
+          "employees": "11–50 (some 25–100)",
+          "wl_signal": "High",
+          "july_priority": "A"
+        },
+        "ICP-2": {
+          "name": "Ambitious Growing Agency",
+          "ticket": "$5–25K",
+          "revenue": "$1–5M",
+          "employees": "1–50",
+          "wl_signal": "High",
+          "july_priority": "A-"
+        },
+        "ICP-3": {
+          "name": "Lean Boutique Operator",
+          "ticket": "$2–10K",
+          "revenue": "<$1M to <$5M",
+          "employees": "1–10",
+          "wl_signal": "High to Very High",
+          "july_priority": "B+"
+        },
+        "ICP-4": {
+          "name": "Niche Vertical Specialist",
+          "ticket": "$5–20K",
+          "revenue": "$1–25M",
+          "employees": "11–50",
+          "wl_signal": "Medium",
+          "july_priority": "A-"
+        },
+        "ICP-5": {
+          "name": "Strategic Consultant / Fractional CMO",
+          "ticket": "$5–15K",
+          "revenue": "<$1M to $5–10M",
+          "employees": "1–10",
+          "wl_signal": "High",
+          "july_priority": "B"
+        },
+        "ICP-6": {
+          "name": "Direct End-Client",
+          "ruling": "PRO-4 (2026-09-04): in scope, flagged 'Direct-to-client', excluded from agency-only fit weights. The 9 Sep research recommended removal; the ruling stands.",
+          "ticket": "varies",
+          "revenue": "any",
+          "employees": "any",
+          "wl_signal": "n/a",
+          "july_priority": "varies"
+        }
+      },
+      "stated_wins": true,
+      "stated_wins_note": "A stated icp_class fact (Notion 'ICP class', or a rater's classification) is used as-is with its evidence label. The flow runs only when no class is stated. If both exist and disagree the stated class stands and the row carries the flag 'ICP disagrees with derivation'.",
+      "classification_flow": [
+        {
+          "step": 1,
+          "test": "is_agency == false OR agency_type == direct_end_client",
+          "then": "ICP-6"
+        },
+        {
+          "step": 2,
+          "test": "agency_type == consultancy",
+          "then": "ICP-5"
+        },
+        {
+          "step": 3,
+          "test": "agency_type == full_service AND headcount >= 11 AND revenue_band in [5-10M, 10-25M, >25M]",
+          "then": "ICP-1"
+        },
+        {
+          "step": 4,
+          "test": "agency_type == full_service (otherwise)",
+          "then": "ICP-2"
+        },
+        {
+          "step": 5,
+          "test": "agency_type in [boutique, digital_only, niche_vertical] AND vertical_depth == deep_single_vertical",
+          "then": "ICP-4"
+        },
+        {
+          "step": 6,
+          "test": "agency_type in [boutique, digital_only, niche_vertical] (otherwise)",
+          "then": "ICP-3"
+        }
+      ]
+    },
+    "ruling": "PRO-2r: 'Is it work we're good at' — service shape, economics, ICP fit. Classifications and facts, zero character judgments.",
+    "confidence": {
+      "note": "Confidence prints beside every anticipated tier (PRO-1r). It is about the INPUTS, not about validation — validation is a separate stamp (PRO-8).",
+      "basis": "reasoned",
+      "rules": [
+        {
+          "when": "icp_class_label == evidence AND qualification.present_count >= 3",
+          "label": "High"
+        },
+        {
+          "when": "icp_class_label in [evidence, inferred] AND qualification.present_count >= 1",
+          "label": "Medium"
+        },
+        {
+          "label": "Low",
+          "otherwise": true
+        }
+      ]
+    },
+    "adjustments": {
+      "rules": [
+        {
+          "id": "ADJ-WL",
+          "name": "High white-label signal on a boutique or consultant",
+          "when": "icp_class in [ICP-3, ICP-5] AND wl_signal in [Very High, High]",
+          "basis": "unruled_default",
+          "source": "July Stage 2",
+          "direction": 1
+        },
+        {
+          "id": "ADJ-REF",
+          "name": "Referral from Brian / AMI / BABA network",
+          "when": "referral_from_network == true",
+          "basis": "unruled_default",
+          "source": "July Stage 2; research §3: a warm path is one of the strongest inputs",
+          "direction": 1
+        }
+      ],
+      "ruling": "July Stage 2, ruled by Brian 2026-07-09: named rules only, every adjustment logged, bumps cap at ONE grade total, ever. The named rules AS WRITTEN were never ruled; each is a toggle with its basis.",
+      "net_cap_up": 1,
+      "net_cap_down": 1,
+      "agency_only_note": "PRO-4: direct-to-client rows (relationship_type == direct or ICP-6) are excluded from agency-derived rules. ADJ-REF and ADJ-AI still apply to them.",
+      "agency_only_rules": [
+        "ADJ-WL",
+        "ADJ-ICP3-FLOOR",
+        "ADJ-RECUR",
+        "ADJ-NICHE",
+        "ADJ-AMPM",
+        "ADJ-BADGE",
+        "ADJ-PEER",
+        "ADJ-ICP4-UNPROVEN",
+        "ADJ-TINY",
+        "ADJ-INHOUSE",
+        "ADJ-DEVSHOP",
+        "ADJ-SHRINK"
+      ],
+      "net_cap_down_basis": "reasoned — symmetry with the ruled bump cap; research sizes negatives to matter but a tier ladder has no finer unit than one rung",
+      "adjustments_never_reach": "Platinum",
+      "parked_rules": [
+        {
+          "id": "ADJ-ICP3-FLOOR",
+          "name": "Boutique clears the $10K project floor and already outsources",
+          "when": "icp_class == ICP-3 AND avg_project_size >= 10000 AND already_outsources == true",
+          "basis": "reasoned",
+          "source": "Research §Fit: profitability cliff at $5K; keep ICP-3 only where average project is $10K or more and they already outsource",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-RECUR",
+          "name": "Recurring or retainer model",
+          "when": "recurring_revenue_share >= 0.25",
+          "basis": "reasoned",
+          "source": "Research: 51% vs 40% consistently profitable",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-NICHE",
+          "name": "Niche or vertical positioning",
+          "when": "niche_positioning == true",
+          "basis": "reasoned",
+          "source": "Research: narrowed agencies grow ~2x",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-AMPM",
+          "name": "Account management separate from project management",
+          "when": "am_pm_separated == true",
+          "basis": "reasoned",
+          "source": "Research: fast-grower trait",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-BADGE",
+          "name": "Platform partner badge",
+          "when": "platform_partner_badge == true",
+          "basis": "reasoned",
+          "source": "Research: badges require real managed volume",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-PEER",
+          "name": "Peer-network membership",
+          "when": "peer_network_member == true",
+          "basis": "reasoned",
+          "source": "Research: referral-driven category",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-AI",
+          "name": "AI-positive posture",
+          "when": "ai_posture == positive",
+          "basis": "reasoned",
+          "source": "Research: the pivot's tailwind",
+          "direction": 1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-ICP4-UNPROVEN",
+          "name": "Niche specialist in an unproven vertical",
+          "when": "icp_class == ICP-4 AND icp4_vertical_proven == false",
+          "basis": "unruled_default",
+          "source": "July Stage 2",
+          "direction": -1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-TINY",
+          "name": "Under 8 people, owner does everything",
+          "when": "(headcount != null AND headcount < 8) AND owner_does_everything == true",
+          "basis": "reasoned",
+          "source": "Research: can't fund $35K+/yr",
+          "direction": -1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-INHOUSE",
+          "name": "Large agency with an in-house dev team",
+          "when": "headcount >= 40 AND inhouse_dev_team == true",
+          "basis": "reasoned",
+          "source": "Research: contractor reliance 11% → 6%",
+          "direction": -1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-DEVSHOP",
+          "name": "Development-archetype agency",
+          "when": "dev_archetype == true",
+          "basis": "reasoned",
+          "source": "Research: competitor and price-sensitive buyer",
+          "direction": -1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        },
+        {
+          "id": "ADJ-SHRINK",
+          "name": "Shrinking agency",
+          "when": "shrinking == true",
+          "basis": "reasoned",
+          "source": "Research: headcount down, BD turnover, dormant marketing",
+          "direction": -1,
+          "parked_on": "2026-09-18",
+          "parked_why": "never fired on 830 accounts; its input has zero facts and no collection path"
+        }
+      ],
+      "parked_note": "Owner decision D2, 18 Sep 2026 (DECISIONS §50): twelve of fourteen rules read facts nobody has ever collected and had never fired once on 830 accounts, while the field's standard is four to six attributes. They are parked here — kept for the record, named in every trace, never evaluated. A rule returns to `rules` when its fact has a collection path and a preview shows what it moves."
+    },
+    "platinum_rule": {
+      "why": "Platinum is POTENTIAL, not deal reality (owner, 15 Sep 2026): \"platinum does not mean the deal is real, it means that they have the potential to reach this level.\" Top base band plus a Partner-sized ceiling. Whether the deal is real is qualification.present_count, which drives confidence and the chase order — it is not part of the tier.",
+      "basis": "reasoned",
+      "requires_all": [
+        {
+          "test": "adjusted_tier == Gold",
+          "reason": "top base band"
+        },
+        {
+          "test": "potential.ceiling == Partner",
+          "reason": "Partner ceiling: headroom >= $100K band or stated Partner. Climb evidence no longer required — it raises confidence and engagement, never size (owner ruling, DECISIONS §20)."
+        }
+      ],
+      "scarcity_note": "Platinum is not scarce and is not meant to be (owner ruling, 17 Sep 2026, DECISIONS §40). It is a SIZE label — what an agency could be worth — so it says nothing about whether a deal is real, and 67 of 850 accounts reaching it is the 15 Sep ruling (§20) working as stated. The outside standard that wants a scarce top band (Reform; 6sense deciles) applies to what a team plans against, and here that is the HEAD OF THE CHASE ORDER, not the tier word: Platinum AND qualified — effective_tier Platinum with qualification.present_count >= 3 — a handful today. chase_rank_key already orders exactly that way (tier, then facts present, then urgency). No threshold moved for this ruling; when outcomes exist the cut is made from conversion data, never from the shape of the distribution."
+    },
+    "base_tier_from_icp": {
+      "map": {
+        "ICP-1": "Gold",
+        "ICP-2": "Gold",
+        "ICP-3": "Bronze",
+        "ICP-4": "Gold",
+        "ICP-5": "Bronze",
+        "ICP-6": "Silver"
+      },
+      "basis": "unruled_default",
+      "stated_rule": "The July Stage 1 mapping (ICP-1/2/4 → High · ICP-6 → Medium · ICP-3/5 → Low) restated on PRO-1r's four words: High → Gold, Medium → Silver, Low → Bronze. Platinum is never a base; it is EARNED by the platinum_rule below, mirroring the client engine's top-tier gate ('a high-revenue / weak-partner account can't buy Platinum')."
+    },
+    "flag_rules": [
+      {
+        "id": "FLAG-ICP3-BELOW-FLOOR",
+        "name": "Small shop below the project floor",
+        "when": "icp_class == ICP-3 AND avg_project_size < 10000",
+        "flag": "Below the small-shop project floor",
+        "basis": "ruled",
+        "ruled_on": "2026-09-17",
+        "source": "Owner ruling (DECISIONS §40). The 9 Sep research (The Admin Bar 2026, n = 622) put a profitability cliff at $5K and said to keep ICP-3 only above a $10K average project with outsourcing already in place — an EXCLUSION. The rubric had implemented the same condition as ADJ-ICP3-FLOOR, a +1 rung when met and silence when not, so a shop below the cliff looked like any other prospect. The owner ruled the risk visible rather than parked: the book ranks, it does not gate (PRO-0), so this raises a flag, changes no tier and hides no row. ADJ-ICP3-FLOOR is unchanged and still lifts the ones that clear the bar.",
+        "note": "Inert until someone records avg_project_size: 0 accounts carry that fact on 17 Sep 2026, which is also why ADJ-ICP3-FLOOR has never once fired. Unknown is never evidence (rule 5) — a null never flags."
+      }
+    ]
+  },
+  "architecture": {
+    "ruling": "PRO-17 (2026-09-09): an independent system from the Client Book. Connects at promotion only.",
+    "promotion": "PRO-10: an agency with an invoice is an Agency Partner; without one it is a prospect. PRO-18: a person confirms the match at the first invoice; the confirmation, the person and the date are recorded. PRO-9: prospect-era facts cross the seam as a dated prior and never overwrite a first-hand client judgment. The anticipated tier never becomes a client tier."
+  },
+  "status_rules": {
+    "Parked": "any gate with mode park has result fail",
+    "Ranked": "otherwise",
+    "Overridden": "an override with reason_code and approver is set and within the cap",
+    "precedence": [
+      "Parked",
+      "Unclassified",
+      "Overridden",
+      "Ranked"
+    ],
+    "Unclassified": "icp_class is null after the classification flow"
+  },
+  "chase_rank_key": {
+    "ruling": "PRO-0: ordering is the job. Owner decision D1, 18 Sep 2026 (DECISIONS §50): the chase cell comes first and the tier second.",
+    "order": [
+      "cell",
+      "tier",
+      "facts_present",
+      "urgency",
+      "engagement_recency",
+      "year1_band",
+      "name"
+    ],
+    "keys": [
+      "chase cell (Chase now first; No tier yet last)",
+      "effective_tier (Platinum first)",
+      "qualification.present_count (4 first)",
+      "urgency (Super Hot first)",
+      "engagement recency (most recent reply first; no recorded reply last, inside its cell)",
+      "year1_band (largest first)",
+      "name"
+    ],
+    "order_note": "`order` is what the engine reads (rule 4); `keys` is the same list in words for the method page. Terms the engine knows: cell, readiness, tier, facts_present, urgency, engagement_recency, year1_band, name. A rubric with no `order` gets the fixed five-term key every version before 0.1.7 produced."
+  },
+  "reason_sentence": {
+    "rule": "The page shows the sentence and the breakdown, never a bare number.",
+    "shape": "Anticipated {tier} ({confidence}): {icp_class} {agency_type_words}, {qualification words}; ceiling {ceiling} on {headroom_band or 'unknown headroom'}, year one likely {year1_band}; {urgency} — {top signal or 'no live signal'}."
+  },
+  "what_the_grade_is_for": {
+    "ruling": "PRO-0 (2026-09-04): who we chase first, and how much this is worth pursuing.",
+    "consequence": "The instrument outputs a RANK (an anticipated tier plus a chase-order key) and a BAND (PRO-16). It never outputs a single composite number.",
+    "explicitly_not": [
+      "A gate on who we say yes or no to.",
+      "A prediction of what the company will be like to work with once they sign."
+    ]
+  },
+  "note_0_1_5": "0.1.5 (17 Sep 2026) carries four owner rulings from DECISIONS §40 and changes exactly one behaviour: a new dimension_b.flag_rules block raises the small-shop floor flag on an ICP-3 row whose stated average project is under $10K. Everything else is recorded reasoning — broker_character stays flag (PRO-2r-a ruled), and the Platinum distribution is accepted as a size label with scarcity read off the chase order. Because avg_project_size has no facts on file, the preview against 0.1.4 changes nothing, which is the proof.",
+  "chase": {
+    "ruling": "Owner decision D1, 18 Sep 2026 (DECISIONS §50): readiness comes before size in the chase order. The tier stays a size label (§20, §40). The board is a grid of potential × readiness with a play per cell — the fit-by-readiness grid the field uses, in place of a size-first sort that put 46 cold, unqualified Platinums above every qualified deal.",
+    "note": "Everything here is data (rule 4). The readiness ladder is tried top to bottom and the first rung whose rule holds names the band; `cold` is the absence of a reason to work the account this week, never evidence against it (rule 5). Cells are tried in order and the first whose rule holds is the row's cell; every row with no tier lands in the unranked cell, whose play is to answer the fit questions.",
+    "readiness": {
+      "basis": "reasoned — 18 Sep 2026: two qualification facts, a hot stamp or a reply within 90 days is a reason to work the account now; one fact, a fading or pursued contact or a live signal is a stir; nothing recorded is cold. First setting; re-cut from the lift-by-cell report once outcomes exist.",
+      "ladder": [
+        {
+          "label": "ready",
+          "when": "qualification.present_count >= 2 OR urgency in [Hot, Super Hot] OR engagement_state in [engaged, responsive]"
+        },
+        {
+          "label": "stirring",
+          "when": "qualification.present_count >= 1 OR engagement_state in [fading, pursued] OR signals.has_live == true"
+        },
+        {
+          "label": "cold",
+          "otherwise": true
+        }
+      ]
+    },
+    "potential_bands": [
+      {
+        "label": "big",
+        "tiers": [
+          "Platinum",
+          "Gold"
+        ]
+      },
+      {
+        "label": "small",
+        "tiers": [
+          "Silver",
+          "Bronze"
+        ]
+      }
+    ],
+    "cells": [
+      {
+        "id": "chase-now",
+        "name": "Chase now",
+        "abm": "1:1",
+        "when": "potential_band == big AND readiness == ready",
+        "owner_role": "salesperson",
+        "sla_days": 7,
+        "play": "Work it this week: a named next step on the calendar, the decision-maker in the room, price on the table by the second call. This is the one-to-one list; keep it to what the pod can carry."
+      },
+      {
+        "id": "work-the-deal",
+        "name": "Work the deal",
+        "abm": "1:few",
+        "when": "potential_band == small AND readiness == ready",
+        "owner_role": "salesperson",
+        "sla_days": 14,
+        "play": "Close what is in front of you: quote it, book the next meeting, keep the reply cadence. Right-size the effort to the ticket."
+      },
+      {
+        "id": "open-the-door",
+        "name": "Open the door",
+        "abm": "1:few",
+        "when": "potential_band == big AND readiness in [stirring, cold]",
+        "owner_role": "salesperson",
+        "sla_days": 30,
+        "play": "Big enough to matter and nothing live: earn a first conversation — a warm introduction through the network, a peer-group touch, a piece of work they would recognise. Nurture with intent; do not wait for them."
+      },
+      {
+        "id": "nurture",
+        "name": "Nurture",
+        "abm": "1:many",
+        "otherwise": true,
+        "owner_role": "marketing",
+        "sla_days": 90,
+        "play": "Programmatic: the newsletter, the community, the quarterly check-in. Watch for a stir and promote the row when one arrives."
+      }
+    ],
+    "unranked_cell": {
+      "id": "no-tier",
+      "name": "No tier yet",
+      "abm": null,
+      "owner_role": "rater",
+      "sla_days": 30,
+      "play": "Answer the fit questions before anything else: is it an agency, do they sell build work, do they have more build work than they can absorb, who are their clients. Ninety seconds on the work page, or one call."
+    }
+  },
+  "note_0_1_7": "0.1.7 (18 Sep 2026) carries the owner's decisions D1, D2 (the parked rules), D3 and D6 of that day (DECISIONS §50). Behaviour that changes: the chase key gains the cell as its first term and engagement recency as a tiebreak (D1); a stated timing stamp ages against a per-value horizon (D3); potential confidence reads Low and the card carries 'Ceiling assumed' wherever the winnable share is the default (D6). Behaviour that does not change: no tier moves — the twelve parked rules had never fired, and neither readiness nor the stamp horizon is an input to the tier. Previewed on the live book before activation, order and tier both."
+}

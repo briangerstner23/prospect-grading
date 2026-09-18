@@ -31,7 +31,7 @@ type Rubric = any;
 // deno-lint-ignore no-explicit-any
 type Obj = Record<string, any>;
 
-export const DEFAULT_RUBRIC_FILE = "rubric.prospect.v0.1.6.json"; // the ACTIVE rubric; scripts/conformance_test.ts fails when this and the ledger disagree
+export const DEFAULT_RUBRIC_FILE = "rubric.prospect.v0.1.7.json"; // the ACTIVE rubric; scripts/conformance_test.ts fails when this and the ledger disagree
 
 /* ------------------------------------------------------------------ *
  * Formatting helpers
@@ -147,6 +147,7 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   para(`**Rule.** ${val.rule}`);
   para(`**Measured so far.** ${val.measured_so_far}`);
   para(`**Sizing pass mark on bands:** ${val.sizing_pass_mark === null ? "not yet set" : cell(val.sizing_pass_mark)}. ${val.sizing_pass_mark_note ?? ""}`);
+  if (typeof val.rerun_on === "string") para(`**PRO-8 is re-run on ${cell(val.rerun_on)}.** ${val.rerun_note ?? ""}`);
 
   /* ---- 3 · vocabulary ---- */
   const voc = rubric.vocabulary as Obj;
@@ -225,12 +226,41 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
     if ((d as Obj).ruling) para(`**${k}.** ${(d as Obj).ruling}`);
   }
 
-  /* ---- 6 · base tier ---- */
-  const bt = db.base_tier_from_icp as Obj;
-  w(`## 6 · Base tier from the ICP class`);
-  w();
-  para(`${bt.stated_rule} Basis: ${code(bt.basis)}.`);
-  tbl(["ICP class", "Base tier"], Object.entries(bt.map as Obj).map(([k, v]) => [`**${k}**`, `**${v}**`]));
+  /* ---- 6 · base tier: the observable criteria (0.2.x) or the ICP map (0.1.x) ---- */
+  const fit = db.base_tier_from_fit as Obj | undefined;
+  if (fit) {
+    w(`## 6 · Base tier from the observable fit criteria`);
+    w();
+    para(`${fit.stated_rule} Basis: ${code(fit.basis)}. Source: ${cell(fit.source)}.`);
+    w(`Each criterion is answered **yes**, **no** or **unknown**; unknown scores nothing and counts neither way. ` +
+      `Fewer than **${fit.unclassified_when_answered_below}** answered → **Unclassified**` +
+      (fit.fallback_no_is_unknown === true ? `; a no that only a fallback question answered counts as unknown.` : `.`));
+    w();
+    tbl(
+      ["#", "Criterion", "Reads", "Kind", "Yes when", "Falls back to", "Basis"],
+      (fit.criteria as Obj[]).map((c, i) => [
+        String(i + 1), `**${cell(c.key)}**`, code(c.feature),
+        c.kind === "range" ? `range ${c.min}–${c.max}` : c.kind === "equals" ? `equals ${code(c.yes_value)}` : c.kind === "in" ? `one of ${(c.yes_values as string[]).map((v) => code(v)).join(", ")}` : cell(c.kind),
+        c.rule, c.fallback_feature ? code(c.fallback_feature) : "—", code(c.basis),
+      ]),
+    );
+    w(`**Bands** (count of yeses):`);
+    w();
+    tbl(["Yeses", "Base tier", "Reading"], (fit.bands as Obj[]).map((b) => [`${b.min_yes} or more`, `**${cell(b.tier)}**`, cell(b.label)]));
+    if (typeof fit.bands_note === "string") para(fit.bands_note);
+    if (typeof fit.unclassified_note === "string") para(fit.unclassified_note);
+    const retired = db.base_tier_from_icp_retired as Obj | undefined;
+    if (retired) {
+      para(`**The ICP class no longer sets the base tier.** ${retired.retired_why ?? ""} The retired map, kept for the record:`);
+      tbl(["ICP class", "Base tier (retired)"], Object.entries(retired.map as Obj).map(([k, v]) => [`**${k}**`, v]));
+    }
+  } else {
+    const bt = db.base_tier_from_icp as Obj;
+    w(`## 6 · Base tier from the ICP class`);
+    w();
+    para(`${bt.stated_rule} Basis: ${code(bt.basis)}.`);
+    tbl(["ICP class", "Base tier"], Object.entries(bt.map as Obj).map(([k, v]) => [`**${k}**`, `**${v}**`]));
+  }
 
   /* ---- 7 · adjustments ---- */
   const adj = db.adjustments as Obj;
@@ -251,6 +281,15 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
     ]),
   );
   para(`**Agency-only rules.** ${adj.agency_only_note} The agency-only set is: ${(adj.agency_only_rules as string[]).map((r) => code(r)).join(", ")}.`);
+  const parked = adj.parked_rules as Obj[] | undefined;
+  if (parked && parked.length) {
+    w(`**Parked rules — kept for the record, never evaluated.** ${roleize(String(adj.parked_note ?? ""))}`);
+    w();
+    tbl(
+      ["Rule", "Name", "Direction", "Would fire when", "Parked on", "Why"],
+      parked.map((r) => [`**${cell(r.id)}**`, r.name, direction(r.direction), code(r.when), cell(r.parked_on), r.parked_why]),
+    );
+  }
 
   /* ---- 8 · platinum + confidence ---- */
   const pr = db.platinum_rule as Obj;
@@ -319,7 +358,8 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   w("```");
   w();
   tbl(["Our rank", "Winnable share"], Object.entries(ws.examples as Obj).map(([k, v]) => [k, String(v)]));
-  para(`When rank or vendor count is unknown the default is **${ws.default_when_unknown}**. ${sentence(ws.default_basis)}.`);
+  para(`When rank or vendor count is unknown the default is **${ws.default_when_unknown}**. ${sentence(ws.default_basis)}.` +
+    (typeof pot.flag_when_winnable_defaulted === "string" ? ` A headroom computed on that default is an **assumption**, and the row carries the flag "${cell(pot.flag_when_winnable_defaulted)}" until a vendor rank is recorded.` : ``));
   w(`**Headroom bands** (basis: ${cell(pot.headroom_bands_basis)}) and the ceiling each proposes:`);
   w();
   tbl(
@@ -401,6 +441,12 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   w((urg.stated_timing_wins ? `**A stated timing fact wins.** When the timing fact is present it sets urgency directly:` : `Urgency from a stated timing fact:`));
   w();
   tbl(["Stated timing", "Urgency"], Object.entries(urg.from_timing as Obj).map(([k, v]) => [code(k), `**${v}**`]));
+  const horizons = urg.stated_timing_max_age_days as Obj | undefined;
+  if (horizons) {
+    w(`**A stated stamp ages.** Past the horizon for its value the stamp no longer decides and the computed ladder below does; a stamp with no date is never aged. ${roleize(String(urg.stated_timing_age_basis ?? ""))}`);
+    w();
+    tbl(["Stated timing", "Decides for"], Object.entries(horizons).map(([k, v]) => [code(k), v === null ? "as long as it is stated (no horizon)" : `${v} days after it was observed`]));
+  }
   w(`Otherwise the **decayed total** of live signals climbs this ladder (the first rung the total reaches, from the top). With no signals at all the row is **${cell((urg.from_decayed_total as Obj[])[(urg.from_decayed_total as Obj[]).length - 1].label)}** with basis \`none\`.`);
   w();
   tbl(["Urgency", "Decayed total at least"], (urg.from_decayed_total as Obj[]).map((r) => [`**${cell(r.label)}**`, String(r.min)]));
@@ -449,7 +495,7 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
   para(`**Ruling.** ${ov.ruling}`);
   tbl(["Term", "Value"], [
     ["Who may override", `the **${cell(ov.lane)}** lane only`],
-    ["How far", `at most **${ov.max_tiers_moved}** tier from the computed tier`],
+    ["How far", ov.max_tiers_moved === null ? `**no cap** — any tier in the vocabulary; a move of more than one tier is flagged` : `at most **${ov.max_tiers_moved}** tier from the computed tier`],
     ["Reason code", ov.reason_code_required ? `**required**, one of ${(ov.reason_codes as string[]).map((c) => code(c)).join(", ")}` : `optional; when given, one of ${(ov.reason_codes as string[]).map((c) => code(c)).join(", ")}`],
     ["Written reason", ov.written_reason_required ? "**required** — an override without one is ignored" : "optional"],
     ["Default expiry", `${ov.expiry_default_days} days after it was set, when no expiry is stated`],
@@ -474,10 +520,32 @@ export function generateMethod(rubric: Rubric, sourceFile: string = DEFAULT_RUBR
 
   /* ---- 15 · chase order ---- */
   const ck = rubric.chase_rank_key as Obj;
+  const chase = rubric.chase as Obj | undefined;
   w(`## 15 · Chase order`);
   w();
-  para(`**Ruling.** ${ck.ruling} Rows sort by these keys in turn, best first; the **cell** shown on the page is the anticipated tier × the ceiling.`);
+  para(`**Ruling.** ${ck.ruling} Rows sort by these keys in turn, best first${chase ? `; the **chase cell** (§15b) is the first key and the anticipated tier the second` : `; the **cell** shown on the page is the anticipated tier × the ceiling`}.`);
   tbl(["Order", "Key"], (ck.keys as string[]).map((k, i) => [String(i + 1), k]));
+  if (Array.isArray(ck.order)) para(`The engine reads the order as data: ${(ck.order as string[]).map((t) => code(t)).join(" → ")}. ${ck.order_note ?? ""}`);
+  if (chase) {
+    para(`**The grid.** ${chase.ruling}`);
+    para(chase.note);
+    const rd = chase.readiness as Obj;
+    w(`### 15a · Readiness — is there a reason to work this account this week?`);
+    w();
+    w(`The ladder is tried top to bottom; the first rung whose rule holds names the band (basis ${code(rd.basis)}):`);
+    w();
+    tbl(["Readiness", "When"], (rd.ladder as Obj[]).map((r) => [`**${cell(r.label)}**`, r.otherwise ? "otherwise — nothing recorded" : code(r.when)]));
+    w(`### 15b · The chase cells and their plays`);
+    w();
+    w(`Potential bands: ${(chase.potential_bands as Obj[]).map((b) => `**${cell(b.label)}** = ${(b.tiers as string[]).join(" / ")}`).join("; ")}. Cells are tried in order; the first whose rule holds is the row's cell.`);
+    w();
+    tbl(
+      ["Cell", "ABM tier", "When", "The play", "Owner", "SLA"],
+      [...(chase.cells as Obj[]), { ...(chase.unranked_cell as Obj), when: "no tier (Unclassified, Parked without a tier, or withheld)" }].map((c) => [
+        `**${cell(c.name)}**`, c.abm ?? "—", c.otherwise ? "otherwise" : code(c.when), c.play, c.owner_role ?? "—", typeof c.sla_days === "number" ? `${c.sla_days} days` : "—",
+      ]),
+    );
+  }
 
   /* ---- 16 · flags ---- */
   const fl = rubric.flags as Obj;
