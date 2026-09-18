@@ -163,6 +163,10 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
 .rk{font-family:"Roboto Mono",monospace;font-size:12px;color:var(--ink-3);letter-spacing:.06em}
 .dhero h1{font-size:clamp(24px,4.4vw,36px)}
 .dhero .sub{font-size:16px;color:var(--ink-2);max-width:66ch;line-height:1.5}
+.dlinks{font-size:14px;color:var(--ink-2);display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.dlink{color:var(--ink-2);text-decoration:underline;text-underline-offset:2px}
+.dlink:hover,.dlink:focus-visible{color:var(--ink)}
+.lsep{color:var(--rule)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font-family:"Roboto Mono",monospace;font-size:11px;letter-spacing:.05em;padding:3px 8px;
   border:1px solid var(--rule);background:var(--surface-2);color:var(--ink-2)}
@@ -1125,6 +1129,25 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       '<span class="chip warn">UNVALIDATED (PRO-8)</span>' +
       (r.untouched_high_potential ? '<span class="chip warn">never contacted</span>' : "") + "</div>");
     h.push("<h1>" + esc(r.name) + "</h1>");
+
+    /* Where to find them. Both are PUBLIC identifiers of a COMPANY — the same class as the
+       name above — so neither widens what this page exposes (§5, §43). No email address
+       appears here or anywhere else on the page.
+       The LinkedIn URL is re-checked against the company-page shape before it is allowed to
+       become an href: the database constrains the column, but a page that trusts its input
+       because something upstream promised to is how a bad link gets rendered. */
+    var acct = d.account || {};
+    var links = [];
+    if (has(acct.domain)) {
+      links.push('<a class="dlink" href="https://' + esc(acct.domain) +
+        '" target="_blank" rel="noopener noreferrer">' + esc(acct.domain) + "</a>");
+    }
+    if (/^https:\/\/www\.linkedin\.com\/company\/[A-Za-z0-9%._&-]+$/.test(String(acct.linkedin_url || ""))) {
+      links.push('<a class="dlink" href="' + esc(acct.linkedin_url) +
+        '" target="_blank" rel="noopener noreferrer">LinkedIn</a>');
+    }
+    if (links.length) h.push('<p class="dlinks">' + links.join('<span class="lsep">\u00b7</span>') + "</p>");
+
     var lede = has(br.what_they_do) ? br.what_they_do : (has(rd.summary) ? rd.summary : null);
     h.push('<p class="sub">' + (lede ? esc(lede) :
       "Nobody has written this account up yet. Everything below is what the book itself holds — the " +

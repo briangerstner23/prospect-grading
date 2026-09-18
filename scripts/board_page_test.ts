@@ -198,6 +198,27 @@ check("no session token is baked into the page", !/access_token"\s*:\s*"[A-Za-z0
 check("every session-storage touch is guarded, like the theme",
   (page.match(/try \{ return localStorage|try \{ localStorage|try \{ return JSON\.parse/g) ?? []).length >= 3);
 
+
+/* ---- the LinkedIn link (migration 20260918110000) ----
+   The dossier hero renders the account's public identifiers. The risk was never the company
+   page; it is a PERSON's profile reaching a public page behind a company row. Three of the
+   roster's own Pipedrive values are personal /in/ profiles. The shape is therefore guarded in
+   three independent places — normalizeLinkedinCompany() in the pure path, a check constraint on
+   pb_accounts, and the page itself. These pin the page's guard, which is the last one standing
+   if a row ever reaches the column another way. */
+check("the dossier reads linkedin_url off the account object the function returns",
+  page.includes("acct.linkedin_url") && page.includes("d.account"));
+check("the href is guarded by an explicit company-page test, not rendered blind",
+  page.includes("linkedin\\.com") && page.includes("[A-Za-z0-9%._&-]+$/"),
+  "an unguarded href renders whatever the column holds");
+check("the guard is anchored at the start, so a host cannot be prefixed",
+  page.includes("/^https:"));
+check("the guard names /company/, which is what excludes /in/, /pub/ and /school/",
+  page.includes("\\/company\\/") && page.includes("acct.linkedin_url"));
+check("every new-tab link carries the opener guard",
+  (page.match(/target="_blank"/g) ?? []).length ===
+  (page.match(/rel="noopener noreferrer"/g) ?? []).length);
+
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);
 process.exit(failures.length ? 1 : 0);
