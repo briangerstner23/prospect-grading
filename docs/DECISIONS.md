@@ -787,8 +787,8 @@ remaining 589 accounts are still graded on CRM fields alone.
 ### The finding underneath
 
 Of the top forty companies by meeting count over seven months, **four are accounts in the book**.
-The busiest — 39 meetings, the most recent three days ago — is not one. Neither is Agency
-Management Institute, at twelve meetings, whose network `ADJ-REF` exists to reward.
+The busiest — 39 meetings, the most recent three days ago — is not one. Neither is the
+agency-owner membership body at twelve meetings — the very network `ADJ-REF` exists to reward.
 
 So the roster and the calendar disagree about who WLIQ's prospects are, and the calendar is the
 one with evidence behind it. 874 identity candidates across roughly 120 external domains are
@@ -4175,3 +4175,135 @@ comparison. 91 checks, up from 82; the contract's 60 are untouched.
 
 **Not a ruling.** Whether $175K is the right figure is the owner's, and PRO-16's sizing pass mark
 is still open. This changes what the page discloses, not what the engine computes.
+
+## §58 — The names check reported clean on two names it could not see (18 Sep 2026)
+
+**Not a ruling. A gap in an existing one, found and closed here so it is on the record — the same
+shape as §23, one level down: §23 was the rule being broken, this is the *check* for it missing.**
+
+On 18 September `scripts/no_prospect_names.ts` reported clean against the live roster while
+`docs/DECISIONS.md` still carried two roster names. A person found both by reading. Neither was
+hiding: each was in ordinary prose, in plain sight, in a shape the matcher had no way to see.
+
+### The two shapes
+
+1. **A multi-word name broken across a line break.** The first word ended one line and the rest
+   began the next. The roster holds a space there; the file held a newline. The script matched each
+   roster entry against the raw file text, so the space in the pattern could never meet the newline
+   in the text and the name was invisible. Every hard-wrapped document in `docs/` is a lottery on
+   this: whether a name is caught depends on where the line happened to break, which is to say on
+   nothing.
+2. **A name referred to by its distinctive first word alone.** The roster entry was
+   `Firstword Something, Inc`; the prose said `Firstword`, three times. Only whole roster entries
+   were matched, so a first word that identifies the account to anyone holding the roster — and the
+   people this rule protects against are exactly the people who can get a roster — read as clean.
+
+That session shaped out what it had seen and left the check as it was. That is the whole reason
+this entry exists, and the first run of the repaired check proved the point immediately: **two
+wrapped names and three bare first-word references were still in `docs/DECISIONS.md`** when the
+new rules were pointed at the live roster (below). A breach repaired by eye and a check left
+unchanged is a breach that comes back, because the eye that repaired it is the eye that missed it.
+
+### What changed in the script
+
+**Whitespace is normalised before matching.** Every run of whitespace in the scanned text —
+newlines included — collapses to one space, and the roster's own entries are flattened the same
+way, so the two sides meet. The normaliser carries an index back into the original text for every
+character it keeps, so line numbers survive it: a wrapped match is reported as a range,
+`docs/FILE.md:41-42`, and a single-line match still prints its source line exactly as before.
+
+A free result of the same step: JavaScript's `\s` includes U+00A0, so a roster name spelled with a
+non-breaking space now matches prose spelled with an ordinary one. §28 found exactly that
+character in one account name, one byte in 826, and the old matcher would have missed it in both
+directions.
+
+**The first word of each roster entry is matched too**, under three guards, because the whole
+value of this check is that people keep running it:
+
+- at least six characters — a shorter word is too weak to stand as evidence of a name;
+- not in `GENERIC`, the ordinary-English account names the script already skips (which is also why
+  an entry dropped as generic contributes no first word: an entry like `second mile` must not turn
+  `second` into a rule);
+- not in `FIRST_TOKEN_ALLOW`, which is ordinary English. It began as ten words that lead a great
+  many agency names and had to grow to about four hundred on first contact with the real roster
+  (below). Every word in it is a blind spot, so the rule for adding one is written at the set:
+  **a word goes in because it is ordinary English used in its ordinary sense, never because a
+  finding was inconvenient.**
+
+A first-word hit prints **the word and the roster entry it came from**, and says it is a first
+word. A full name is proof; a first word is circumstantial, and a report that does not let the
+reader judge it is a report that gets ignored on its second false positive. A first word sitting
+inside a full-name hit is not reported twice.
+
+Exit codes are unchanged: 0 clean, 1 a name was found, 2 no roster was given.
+
+### What it costs, and what is still invisible
+
+The guards are a real trade and they are set on the noisy side on purpose. A roster entry whose
+first word is five characters, or ordinary, is matched only as a whole name — so `Firstword` still
+gets through when Firstword is short. That is the price of a check that runs.
+
+An entry whose first word is a leading article keeps only its whole-name rule, because `The` is
+under the floor and the second word is not the first. Stepping past the article was considered and
+left out: a word chosen for being second is not a word chosen for being distinctive, and this check
+buys its usefulness with its false-positive rate.
+
+Still invisible: whole words only. A name split by a hyphen, an initialism, a middle word, a
+paraphrase. And history, as §23 recorded — this reads the working tree.
+
+`scripts/no_prospect_names_test.ts` pins both shapes and the ordinary-first-word case against a
+throwaway roster and a throwaway git repository, so neither rule can be quietly lost. It runs in
+`npm test`, needs no roster and touches no database. RUNBOOK §27 carries the operator's version.
+
+### What the first run against the live roster found
+
+The tuning above is not a guess; it is what the first real run forced. Against all 851 account
+names, the two rules behaved completely differently:
+
+| rule | hits | distinct | verdict |
+|---|---|---|---|
+| whole roster entry | 4 | 3 entries | all four real |
+| first word, as first specified | 453 | 24 words | 23 words ordinary English, 1 a real breach |
+
+The whole-name rule is precise because a full company name in a public repository is not a
+coincidence. The first-word rule, at ten allowlisted words, produced **453 findings to carry one
+real one** — a tier name in the rubric's own vocabulary, a TypeScript global, a journey stage, and
+twenty more words this repository writes constantly. That is the failure mode rule 2 cannot
+afford: a report nobody reads. Growing the allowlist to ordinary English took it to 18, which a
+person can read in ten seconds, and the one real first-word breach is still in it.
+
+The temptation was to allowlist all 24 words and be green. That is why the rule for adding a word
+is written down: one of the 24 was an account named by its first word alone, three times, in a
+passage about that account. A word chosen for being ordinary keeps the check honest; a word chosen
+for being in the way makes it a formality.
+
+**What the run repaired.** Seven edits, none of which changed what a passage says:
+
+- **two roster names broken across a line break**, both in `docs/DECISIONS.md`, both invisible to
+  the old matcher and both there since the passages were written. This is shape 1, in the wild.
+- **one roster name on a single line, in two files.** The *old* check would have caught this one,
+  which means it entered after the last clean run — the §28 lesson again, from the other end: a
+  check is only as good as the last time it was run.
+- **three bare first-word references to one account**, in a section whose opening sentence had
+  already been shaped to "one account is a…". The shaping had been done and these three were
+  simply missed by the eye that did it. This is shape 2, in the wild.
+- **one line naming three agencies that are not on the roster** — surfaced only because one of
+  their names shares a first word with an account that *is*. Not a roster breach today; §28 says
+  plainly that is a statement about today. Shaped.
+- **one synthetic fixture renamed.** An invented agency name in a test shared its first word with
+  a real roster entry. §23 renamed a fixture rather than argue about it; so did this.
+
+**The roster file was checksummed, not trusted.** It reaches the check by being carried out of the
+database by hand, which is a lossy channel: the first transcription was wrong in exactly two
+single characters out of 14,072 bytes, and both looked perfectly ordinary. `md5(string_agg(name,
+E'\n' order by name))` in the database against `md5` of the file found it; per-100-row checksums
+localised the block, per-row checksums localised the line, and the line was rebuilt from its
+codepoints. §28 learned this on a non-breaking space. The point stands: **the checksum is the
+count of the thing the script counts**, and a check run against a file nobody verified is a check
+against a file nobody verified.
+
+**The lesson, which is §28's lesson from the other side.** §28 recorded that rule 2 is not a thing
+you pass once, because the roster moves under prose that was clean when it was written. This one
+records the other half: the *check* is not a thing you write once either. A clean run means clean
+in the shapes the matcher can see, and that sentence is worth saying out loud every time a check
+reports clean.

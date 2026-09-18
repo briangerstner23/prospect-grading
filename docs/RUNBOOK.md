@@ -2090,14 +2090,49 @@ Keep the example and drop the name — "an agency Apollo listed at 68 with 35 pe
 page" carries the whole point and identifies nobody. Same for money: "a five-figure deal still
 open", not the invoice number.
 
-Matching is case-sensitive on word boundaries, and a short list of account names that are ordinary
-English (`Agency`, `Momentum`, `Snap`, `Test`, `None`…) is skipped in the script. If the roster
-grows a name that is a common word, add it there rather than letting the check cry wolf — a noisy
-check is one nobody runs.
+**What it matches.** Two rules, both case-sensitive on word boundaries:
+
+1. **Every roster entry**, against the file's text with whitespace normalised — every run of
+   whitespace, newlines included, collapsed to one space before matching. A name broken across a
+   line break by a text wrap therefore still matches, and so does a name whose roster spelling
+   carries a non-breaking space where the prose carries an ordinary one (§28 found one of those in
+   the roster itself). Line numbers survive the flattening; a match that wraps is reported as a
+   range, `docs/FILE.md:41-42`.
+2. **The first word of every roster entry**, when it is six characters or more, is not one of the
+   ordinary-English account names the script already skips, and is not in `FIRST_TOKEN_ALLOW` —
+   the script's list of ordinary English, about four hundred words: what agency names are made of,
+   the book's own vocabulary, and the plain English this repository writes. (It began as ten words
+   and grew on first contact with the real roster; DECISIONS §50 has the numbers that forced it.)
+   A distinctive first word alone
+   identifies the account to anyone holding the roster. A first-word hit prints the word **and the
+   roster entry it came from**, because a first word is circumstantial where a full name is not —
+   the reader has to be able to judge it. A first word sitting inside a full-name hit is not
+   reported twice, and an entry skipped as ordinary English contributes no first word either.
+
+Case-insensitive matching is deliberately not a third rule: the roster holds `Agency`, `Momentum`,
+`Snap`, `Test` and `None` as literal account names. If the roster grows a name that is a common
+word, add it to `GENERIC` in the script (or, when only its first word is ordinary, to
+`FIRST_TOKEN_ALLOW`) rather than letting the check cry wolf — a noisy check is one nobody runs.
+**Add a word because it is ordinary English used in its ordinary sense, never because a finding
+was inconvenient.** Every word in either list is an account the check can then catch only by its
+full name, and the first live run turned up a word that fired 453 times as noise sitting beside
+one that fired three times as a real breach (DECISIONS §50).
+
+A finding on a first word is not automatically a name to remove. Three outcomes are all correct,
+and the report prints the roster entry so you can tell them apart: **shape the prose** (it really
+is a reference to that account); **rename the fixture** (an invented name that happens to share a
+first word with a real one); or **add the word to `FIRST_TOKEN_ALLOW`** (it is ordinary English
+and the collision is an accident of vocabulary).
+
+`scripts/no_prospect_names_test.ts` runs in `npm test` and pins both shapes against a throwaway
+roster, so the two rules cannot be quietly lost. It needs no roster and no database.
 
 **What the script cannot do:** it reads the working tree, not history. A name already pushed stays
 in the commits that carried it until someone rewrites history or the repository goes private, and
-both are the owner's call (DECISIONS §23).
+both are the owner's call (DECISIONS §23). It also still matches **whole words only**: a name split
+by a hyphen, referred to by a middle word, initialised, or paraphrased is invisible to it. The two
+shapes it grew on 18 Sep were both found by a person reading, while the script reported clean
+(DECISIONS §58) — it narrows what a reader has to catch, it does not replace the reader.
 
 ## 28 · The grid, the lift report, the scoring pass, and activating 0.2.1
 

@@ -194,7 +194,12 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
             index.js, the one payload small enough to deploy through the MCP) · page_pure_test.ts ·
             no_prospect_names.ts (rule 2 made mechanical — takes the roster from outside the repo;
-            run it before any commit that adds prose. DECISIONS §23, RUNBOOK §27)
+            run it before any commit that adds prose. DECISIONS §23, RUNBOOK §27. It matches whole
+            roster entries against WHITESPACE-NORMALISED text, so a name wrapped across a line break
+            is caught, AND each entry's distinctive first word — ≥6 characters, not in GENERIC, not
+            in FIRST_TOKEN_ALLOW — because "Firstword" alone names the account to anyone holding the
+            roster. Both shapes reported clean on 18 Sep while two names sat in docs/; DECISIONS §50)
+            · no_prospect_names_test.ts (pins both shapes; needs no roster and no database)
             reconcile.ts (DECLARED vs RUNNING: calls pb_reconcile_state() — no secrets — and fails
             when the active rubric, the applied migrations, source liveness or rule 9 disagree with
             the record; CI runs it on push and every 6h; `--state f.json` runs offline) · reconcile_test.ts
