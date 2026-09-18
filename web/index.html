@@ -1614,14 +1614,143 @@ async function openQueue() {
     return;
   }
   el.replaceChildren(back(), h("div", { class: "sub" }, "Loading the queue…"));
-  const { data, error } = await state.db.from("pb_fact_candidates").select("*").eq("status", "proposed").order("created_at");
+  const [{ data, error }, lanes, policy, lastBatch] = await Promise.all([
+    state.db.from("pb_fact_candidates").select("*").eq("status", "proposed").order("created_at"),
+    state.db.from("pb_fact_candidate_lanes").select("id,lane,why,lane_enabled,source"),
+    state.db.from("pb_fact_autoconfirm_policy").select("*").order("rank"),
+    state.db.from("pb_autoconfirm_log").select("batch_id,lane,action,ran_by,ran_at")
+      .is("undone_at", null).order("ran_at", { ascending: false }).limit(1000),
+  ]);
   if (window.location.hash !== "#queue") return; // the reader moved on
   if (error) {
     el.replaceChildren(back(), h("div", { class: "notice bad" }, "Could not read the queue: " + error.message, h("pre", null, errorDetail(error))));
     return;
   }
   state.queueRows = data ?? [];
+  // The lane view, the policy and the log are the automatic half of this screen. None of them is
+  // required to answer a claim, so a failure on any of them hides that panel rather than the queue.
+  state.queueLanes = lanes.error ? null : (lanes.data ?? []);
+  state.queuePolicy = policy.error ? null : (policy.data ?? []);
+  state.queueLog = lastBatch.error ? null : (lastBatch.data ?? []);
   drawQueue();
+}
+
+/* ---- what the book approves on its own (DECISIONS §53) ----
+ *
+ * The queue below is what a person still has to read. This panel is the other half: which claims
+ * the book will answer without one, on which rule, and what it already answered that way.
+ *
+ * Three things it must never do, because each is how automatic approval stops being trustworthy:
+ * invent a count the database would not agree with (every number here comes from the lane view,
+ * which IS the rule), present a lane as running when the policy has it off, or offer a run without
+ * offering the undo beside it.
+ */
+function autoconfirmPanel() {
+  const lanes = state.queueLanes, policy = state.queuePolicy;
+  if (!lanes || !policy) return null;
+
+  const counts = new Map();
+  for (const r of lanes) counts.set(r.lane, (counts.get(r.lane) ?? 0) + 1);
+  const waiting = counts.get("needs_a_person") ?? 0;
+  const ready = policy.filter((p) => p.enabled).reduce((n, p) => n + (counts.get(p.lane) ?? 0), 0);
+  const owner = state.role === "owner";
+
+  const msg = h("div", { class: "notice hidden" });
+  const live = (state.queueLog ?? []).filter((r) => r.action !== "superseded");
+  const batches = [...new Set(live.map((r) => r.batch_id))];
+  const lastId = live.length ? live[0].batch_id : null;
+  const lastN = lastId ? live.filter((r) => r.batch_id === lastId).length : 0;
+
+  const laneRow = (p) => {
+    const n = counts.get(p.lane) ?? 0;
+    const toggle = owner
+      ? h("button", { type: "button", class: p.enabled ? "ghost" : "primary" }, p.enabled ? "Switch off" : "Switch on")
+      : null;
+    if (toggle) toggle.addEventListener("click", async () => {
+      toggle.disabled = true;
+      const { error } = await state.db.from("pb_fact_autoconfirm_policy")
+        // pb_me() lowercases the JWT email and the policy's with-check compares against it, so a
+      // mixed-case address here would be refused by RLS rather than written.
+      .update({ enabled: !p.enabled, updated_at: new Date().toISOString(), updated_by: (state.email || "").toLowerCase() })
+        .eq("lane", p.lane);
+      if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); toggle.disabled = false; return; }
+      flash("ok", `The ${p.lane} rule is now ${p.enabled ? "off" : "on"}. Nothing is approved until you run it.`);
+      await openQueue();
+    });
+    return h("div", { class: "item" },
+      h("div", { class: "top" },
+        h("span", { class: "mono" }, p.lane),
+        chip(p.enabled ? "on" : "off", p.enabled ? "c-good" : "c-warn"),
+        chip(`${n} waiting`),
+        p.writes_a_fact ? null : chip("writes nothing", "c-info"),
+        p.sources ? chip("only " + p.sources.join(", ")) : null,
+        toggle,
+      ),
+      h("div", { class: "sub" }, p.what),
+    );
+  };
+
+  const run = owner ? h("button", { type: "button", class: "primary" }, "Approve what the rules allow") : null;
+  if (run) run.addEventListener("click", async () => {
+    run.disabled = true;
+    // Dry run first, always. The number in the dialog is then the number that lands, and it comes
+    // from the same function that will do the writing rather than from this page's arithmetic.
+    const pre = await state.db.rpc("pb_autoconfirm_facts", { p_dry_run: true, p_limit: 2000 });
+    if (pre.error) { setNotice(msg, "bad", "Refused: " + pre.error.message, errorDetail(pre.error)); run.disabled = false; return; }
+    const d = pre.data ?? {};
+    if (!d.eligible) { setNotice(msg, "info", "Nothing qualifies right now. Every claim left is one a person has to read."); run.disabled = false; return; }
+    if (!window.confirm(
+      `Approve ${d.eligible} claim${d.eligible === 1 ? "" : "s"} across ${d.accounts} account(s)?\n\n` +
+      `${d.confirmed} become facts, entered under the rule that admitted them rather than under your name.\n` +
+      `${d.closed} are closed without writing anything, because the book already holds that value.\n\n` +
+      Object.entries(d.by_lane ?? {}).map(([k, v]) => `  ${v} × ${k}`).join("\n") + "\n\n" +
+      `They reach the grades at the next nightly run, every account's register says this was automatic, ` +
+      `and the whole batch can be undone from this screen.`
+    )) { run.disabled = false; return; }
+    const { data, error } = await state.db.rpc("pb_autoconfirm_facts", { p_dry_run: false, p_limit: 2000 });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); run.disabled = false; return; }
+    const why = data?.skipped_why && Object.keys(data.skipped_why).length
+      ? " Left alone: " + Object.entries(data.skipped_why).map(([k, v]) => `${v} × ${k}`).join("; ") + "."
+      : "";
+    flash("ok", `Approved ${data?.confirmed ?? 0} claim${data?.confirmed === 1 ? "" : "s"} and closed ${data?.closed ?? 0} ` +
+      `that the book already held, across ${data?.accounts ?? 0} account(s).${why} Batch ${data?.batch_id} — undo it from here if it looks wrong.`);
+    await loadBook();
+    await openQueue();
+  });
+
+  const undo = owner && lastId ? h("button", { type: "button", class: "danger" }, `Undo the last batch (${lastN})`) : null;
+  if (undo) undo.addEventListener("click", async () => {
+    if (!window.confirm(
+      `Undo the last automatic batch?\n\n${lastN} claim(s) go back into the queue and every fact that batch wrote is removed. ` +
+      `A claim somebody has since decided by hand is left exactly as they left it.`
+    )) return;
+    undo.disabled = true;
+    const { data, error } = await state.db.rpc("pb_undo_autoconfirm", { p_batch: lastId, p_note: null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); undo.disabled = false; return; }
+    flash("ok", `Undone: ${data?.facts_removed ?? 0} fact(s) removed and ${data?.candidates_reopened ?? 0} claim(s) back in the queue. ` +
+      `Each account's register says so.`);
+    await loadBook();
+    await openQueue();
+  });
+
+  return group("What the book approves on its own", `${ready}`,
+    `${waiting} claim${waiting === 1 ? "" : "s"} need a person. ${ready} sit in a rule that is switched on.`,
+    h("div", { class: "notice info" },
+      h("b", null, "Four refusals nothing can switch off. "),
+      "A claim with no quote, one that disagrees with what the book already holds, one where two records " +
+      "propose different answers for the same key, and one whose sentence the extractor itself called an " +
+      "assessment rather than an observation — none of those is ever answered automatically, whatever the " +
+      "rules below say. ",
+      h("b", null, "And a lane trusts a reader, not a confidence score: "),
+      "an extractor's own “high” counts only once somebody has checked that reader's ratings against its " +
+      "own quotes. Everything else has to be corroborated by a second system.",
+    ),
+    list(policy.map(laneRow), "No rules are defined."),
+    owner
+      ? h("div", { class: "card pad" }, h("div", { class: "inline" }, run, undo), msg)
+      : h("div", { class: "card pad" }, h("div", { class: "sub" }, "Switching a rule on, running it and undoing it are the owner's lane."), msg),
+    batches.length ? h("div", { class: "sub" }, `${live.length} claim(s) across ${batches.length} batch(es) are live from earlier automatic runs; each one's account register names the batch.`) : null,
+  );
 }
 
 function drawQueue() {
@@ -1824,6 +1953,10 @@ function drawQueue() {
       "Reject writes nothing at all: the claim is closed, the decision is recorded in the register, and the sweep may propose it again tomorrow. Because it writes nothing, rejection can be given in bulk far more freely.",
     ),
   );
+  // The automatic half, above the queue rather than below it: what is left to read only makes
+  // sense once you know what is no longer going to be read (DECISIONS §53).
+  const auto = autoconfirmPanel();
+  if (auto) parts.push(auto);
   for (const g of groups) {
     parts.push(group(
       g.key,

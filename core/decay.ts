@@ -11,7 +11,7 @@
  */
 
 import type { SignalInput, SignalTask, SignalTrace, Timing, Urgency } from "./prospect_types.ts";
-import { reqArr, reqBool, reqNum, reqNumIn, reqObj, reqStrIn, RubricError } from "./classify.ts";
+import { reqArr, reqBool, reqNum, reqNumIn, reqObj, reqStrIn, rubricAt, RubricError } from "./classify.ts";
 
 // deno-lint-ignore no-explicit-any
 type Rubric = any;
@@ -107,32 +107,66 @@ export function decaySignals(signals: SignalInput[], asOf: string, rubric: Rubri
   return { total, top, negatives, traces, has_live: traces.some((t) => t.weight_now !== 0), notes };
 }
 
+export interface UrgencyResult {
+  urgency: Urgency;
+  basis: "stated_timing" | "computed" | "none";
+  /** True when a stated stamp existed but was older than its rubric horizon, so the ladder decided. */
+  aged_out: boolean;
+  /** The horizon the stamp was measured against, when the rubric names one. */
+  horizon_days: number | null;
+}
+
 /**
  * Urgency: a stated timing fact wins; else the decayed-total ladder when any live signal
  * exists; else Cold with basis `none`.
+ *
+ * A stated stamp AGES (owner decision D3, 18 Sep 2026, DECISIONS §52): when the rubric carries
+ * `signals.urgency.stated_timing_max_age_days` and the stamp's age is known and past the horizon
+ * for its value, the stamp no longer decides and the computed ladder takes over. A stamp with no
+ * date cannot be aged and still wins (unknown is never evidence — not even against a stamp).
+ * A rubric without the block behaves exactly as before, so 0.1.0 – 0.1.6 score unchanged.
  */
 export function computeUrgency(
   timing: Timing | null,
   decayed: { total: number; has_live: boolean },
   rubric: Rubric,
-): { urgency: Urgency; basis: "stated_timing" | "computed" | "none" } {
+  stampAgeDays: number | null = null,
+): UrgencyResult {
   const statedWins = reqBool(rubric, "signals.urgency.stated_timing_wins");
   const fromTiming = reqObj(rubric, "signals.urgency.from_timing");
   const ladder = reqArr<Record<string, unknown>>(rubric, "signals.urgency.from_decayed_total");
+  let agedOut = false;
+  let horizon: number | null = null;
   if (timing && statedWins) {
-    const word = fromTiming[timing];
-    if (typeof word !== "string") throw new RubricError(rubric, `signals.urgency.from_timing.${timing}`, "an urgency word for this stated timing", word);
-    return { urgency: word as Urgency, basis: "stated_timing" };
+    const horizons = rubricAt(rubric, "signals.urgency.stated_timing_max_age_days");
+    if (horizons !== undefined) {
+      if (horizons === null || typeof horizons !== "object" || Array.isArray(horizons)) {
+        throw new RubricError(rubric, "signals.urgency.stated_timing_max_age_days", "an object of {stated timing: days or null}", horizons);
+      }
+      const h = (horizons as Record<string, unknown>)[timing];
+      if (h !== undefined && h !== null) {
+        if (typeof h !== "number" || !Number.isFinite(h) || h < 0) {
+          throw new RubricError(rubric, `signals.urgency.stated_timing_max_age_days.${timing}`, "a number of days, or null for no horizon", h);
+        }
+        horizon = h;
+        if (stampAgeDays !== null && stampAgeDays > h) agedOut = true;
+      }
+    }
+    if (!agedOut) {
+      const word = fromTiming[timing];
+      if (typeof word !== "string") throw new RubricError(rubric, `signals.urgency.from_timing.${timing}`, "an urgency word for this stated timing", word);
+      return { urgency: word as Urgency, basis: "stated_timing", aged_out: false, horizon_days: horizon };
+    }
   }
   if (decayed.has_live) {
     for (let i = 0; i < ladder.length; i++) {
       const band = ladder[i];
       const min = reqNumIn(rubric, band, "min", `signals.urgency.from_decayed_total[${i}]`);
       const label = reqStrIn(rubric, band, "label", `signals.urgency.from_decayed_total[${i}]`);
-      if (decayed.total >= min) return { urgency: label as Urgency, basis: "computed" };
+      if (decayed.total >= min) return { urgency: label as Urgency, basis: "computed", aged_out: agedOut, horizon_days: horizon };
     }
   }
-  return { urgency: "Cold", basis: "none" };
+  return { urgency: "Cold", basis: "none", aged_out: agedOut, horizon_days: horizon };
 }
 
 /**

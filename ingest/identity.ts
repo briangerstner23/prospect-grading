@@ -350,3 +350,56 @@ export function proposeMatches(
 
   return { attach, candidates };
 }
+
+/* ------------------------------------------------------------------ *
+ * LinkedIn company pages
+ * ------------------------------------------------------------------ */
+
+/**
+ * A LinkedIn **company** page as `linkedin.com/company/<slug>`, or null.
+ *
+ * Accepts a full URL, a locale host (`uk.linkedin.com`), a bare `company/<slug>` path or a
+ * naked slug. Rejects, deliberately and with null:
+ *
+ *   - `/in/<slug>` — a PERSON. Three of the roster's own Pipedrive values are personal
+ *     profiles, and a person is not an organisation: attaching one to a graded account would
+ *     put an owner's private profile behind a company row on a public board.
+ *   - `/school/`, `/showcase/`, `/groups/` — a real LinkedIn object, but not the company.
+ *
+ * The slug is kept verbatim apart from case: LinkedIn slugs are case-insensitive but may
+ * carry digits, hyphens and percent-escapes, and rewriting them loses pages.
+ */
+export function normalizeLinkedinCompany(input: string | null | undefined): string | null {
+  if (input === null || input === undefined) return null;
+  let s = String(input).trim();
+  if (s.length === 0) return null;
+
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/^\/\//, "");
+  s = s.replace(/^([a-z0-9-]+\.)?linkedin\.com\//i, "");
+  s = s.replace(/^\/+/, "");
+
+  // Anything still carrying a host is not a LinkedIn URL at all.
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+\//i.test(s)) return null;
+
+  const kind = s.match(/^(company|in|school|showcase|groups|pub|profile)\//i);
+  if (kind !== null) {
+    if (kind[1].toLowerCase() !== "company") return null;
+    s = s.slice(kind[0].length);
+  }
+
+  s = s.split(/[?#]/)[0];
+  s = s.replace(/\/+$/, "");
+  // `/company/<slug>/about`, `/jobs`, `/people` — keep the company, drop the sub-page.
+  s = s.split("/")[0];
+  s = s.trim().toLowerCase();
+
+  if (s.length === 0) return null;
+  // `&` is legal in a path segment and six of the roster's own values are agencies with an
+  // ampersand in the name, typed in by a person. Rule 9 — a person outranks a machine — so the
+  // slug is kept verbatim rather than dropped or re-encoded into a guess.
+  if (!/^[a-z0-9%._&-]+$/.test(s)) return null;
+  // A slug that is only punctuation is not a page.
+  if (!/[a-z0-9]/.test(s)) return null;
+
+  return `https://www.linkedin.com/company/${s}`;
+}

@@ -372,6 +372,8 @@ interface Acct {
   key: string;
   name: string;
   domain: string | null;
+  /** The LinkedIn company page, normalised. Identity, not a graded feature — never a fact. */
+  linkedin_url: string | null;
   pipedrive_org_id: number | null;
   orbit_client_id: number | null;
   notion_client_id: string | null;
@@ -536,7 +538,7 @@ for (const a of pd.accounts) {
   if (existing_row) existingReused++;
   pdKeyToId.set(a.key, id);
   addAccount({
-    id, key, name: a.name, domain: a.domain, pipedrive_org_id: a.pipedrive_org_id, orbit_client_id: null,
+    id, key, name: a.name, domain: a.domain, linkedin_url: a.linkedin_url, pipedrive_org_id: a.pipedrive_org_id, orbit_client_id: null,
     notion_client_id: null, notion_page_id: null, book: a.book, roster_source: "pipedrive", roster_certified: true,
     relationship_type: a.relationship_type, sources: new Set(["pipedrive"]), flags: [...a.flags], existing_row, notion_names: [],
   });
@@ -666,7 +668,7 @@ for (const n of nt.accounts) {
     id = newAccountId(key);
   }
   const acct = addAccount({
-    id, key, name: n.name, domain, pipedrive_org_id: null, orbit_client_id: null, notion_client_id: n.notion_client_id,
+    id, key, name: n.name, domain, linkedin_url: null, pipedrive_org_id: null, orbit_client_id: null, notion_client_id: n.notion_client_id,
     notion_page_id: n.notion_page_id ?? null, book: "prospect", roster_source: "notion_master", roster_certified: false,
     relationship_type: n.relationship_type, sources: new Set(["notion_master"]), flags, existing_row, notion_names: [n.name],
   });
@@ -1073,11 +1075,12 @@ for (const f of readdirSync(args.out_dir)) if (/^\d\d_.*\.sql$/.test(f)) unlinkS
 // 01 · accounts
 writeInsert(
   "01_accounts",
-  "insert into pb_accounts (id, key, name, domain, pipedrive_org_id, orbit_client_id, notion_client_id, notion_page_id, book, roster_source, roster_certified, relationship_type) values\n",
-  accounts.map((a) => row(uuid(a.id), lit(a.key), lit(a.name), lit(a.domain), num(a.pipedrive_org_id), num(a.orbit_client_id), lit(a.notion_client_id), lit(a.notion_page_id), lit(a.book), lit(a.roster_source), bool(a.roster_certified), lit(a.relationship_type))),
+  "insert into pb_accounts (id, key, name, domain, linkedin_url, pipedrive_org_id, orbit_client_id, notion_client_id, notion_page_id, book, roster_source, roster_certified, relationship_type) values\n",
+  accounts.map((a) => row(uuid(a.id), lit(a.key), lit(a.name), lit(a.domain), lit(a.linkedin_url), num(a.pipedrive_org_id), num(a.orbit_client_id), lit(a.notion_client_id), lit(a.notion_page_id), lit(a.book), lit(a.roster_source), bool(a.roster_certified), lit(a.relationship_type))),
   `\non conflict (key) do update set
   name = excluded.name,
   domain = coalesce(pb_accounts.domain, excluded.domain),
+  linkedin_url = coalesce(pb_accounts.linkedin_url, excluded.linkedin_url),
   pipedrive_org_id = coalesce(pb_accounts.pipedrive_org_id, excluded.pipedrive_org_id),
   orbit_client_id = coalesce(pb_accounts.orbit_client_id, excluded.orbit_client_id),
   notion_client_id = coalesce(pb_accounts.notion_client_id, excluded.notion_client_id),

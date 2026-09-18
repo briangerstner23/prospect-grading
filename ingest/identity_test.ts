@@ -17,6 +17,7 @@ import {
   domainFromEmail,
   norm,
   normalizeDomain,
+  normalizeLinkedinCompany,
   proposeMatches,
   trigram,
   TRIGRAM_LOW_THRESHOLD,
@@ -253,6 +254,64 @@ const KNOWN: KnownAccount[] = [
   const weird: KnownAccount[] = [{ id: "z", key: "", name: "Harbor Pine", domain: null, pipedrive_org_id: null, orbit_client_id: null }];
   eq("an empty key falls back to norm(name)", proposeMatches({ source: "sheet", name: "harbor pine" }, weird).candidates[0]?.confidence, "medium");
 }
+
+
+/* ------------------------------------------------------------------ *
+ * normalizeLinkedinCompany
+ * ------------------------------------------------------------------ */
+
+const LI = "https://www.linkedin.com/company/";
+
+// The four URL shapes the roster's own Pipedrive field actually carries.
+check("linkedin: https + www + trailing slash",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/example-agency/") === LI + "example-agency");
+check("linkedin: bare http, no www",
+  normalizeLinkedinCompany("http://linkedin.com/company/example-agency") === LI + "example-agency");
+check("linkedin: locale host",
+  normalizeLinkedinCompany("https://uk.linkedin.com/company/example-agency") === LI + "example-agency");
+check("linkedin: naked slug",
+  normalizeLinkedinCompany("example-agency") === LI + "example-agency");
+check("linkedin: bare company path",
+  normalizeLinkedinCompany("company/example-agency") === LI + "example-agency");
+
+// A PERSON is never an organisation. This is the check that keeps an owner's private
+// profile off a company row on the public board.
+check("linkedin: /in/ personal profile is refused",
+  normalizeLinkedinCompany("https://www.linkedin.com/in/some-person") === null);
+check("linkedin: /pub/ personal profile is refused",
+  normalizeLinkedinCompany("https://www.linkedin.com/pub/some-person") === null);
+check("linkedin: /school/ is refused",
+  normalizeLinkedinCompany("https://www.linkedin.com/school/some-university") === null);
+check("linkedin: /showcase/ is refused",
+  normalizeLinkedinCompany("https://www.linkedin.com/showcase/some-product") === null);
+
+// Query strings, fragments and sub-pages all resolve to the company itself.
+check("linkedin: tracking query dropped",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/example-agency/?originalSubdomain=ca") === LI + "example-agency");
+check("linkedin: /about sub-page dropped",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/example-agency/about/") === LI + "example-agency");
+check("linkedin: fragment dropped",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/example-agency#feed") === LI + "example-agency");
+
+// Case folds; digits, dots and percent-escapes survive.
+check("linkedin: case folded",
+  normalizeLinkedinCompany("https://www.LinkedIn.com/company/Example-Agency") === LI + "example-agency");
+check("linkedin: ampersand slug kept — a person typed it, rule 9",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/example-&-associates/") === LI + "example-&-associates");
+check("linkedin: digits and dots kept",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/agency8200.io") === LI + "agency8200.io");
+
+// Junk is null, never a guess.
+check("linkedin: empty is null", normalizeLinkedinCompany("") === null);
+check("linkedin: whitespace is null", normalizeLinkedinCompany("   ") === null);
+check("linkedin: null in, null out", normalizeLinkedinCompany(null) === null);
+check("linkedin: undefined in, null out", normalizeLinkedinCompany(undefined) === null);
+check("linkedin: another host is refused",
+  normalizeLinkedinCompany("https://example.com/company/example-agency") === null);
+check("linkedin: bare linkedin.com with no company is null",
+  normalizeLinkedinCompany("https://www.linkedin.com/") === null);
+check("linkedin: punctuation-only slug is null",
+  normalizeLinkedinCompany("https://www.linkedin.com/company/---") === null);
 
 /* ------------------------------------------------------------------ *
  * report

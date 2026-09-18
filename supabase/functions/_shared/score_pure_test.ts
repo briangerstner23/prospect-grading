@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 
 import { grade } from "./core/engine.ts";
 import type { ProspectFeatures, ProspectScorecard } from "./core/prospect_types.ts";
-import { buildSnapshotRow } from "./score_pure.ts";
+import { buildSnapshotRow, compareKey, diffEntry, rankDiff } from "./score_pure.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const load = (p: string) => JSON.parse(readFileSync(join(here, p), "utf8"));
@@ -83,6 +83,40 @@ for (const sc of unranked) {
 
 /* ---- 4 · deterministic ---- */
 check("same card, same row", JSON.stringify(buildSnapshotRow(ranked[0], rubric, "x")) === JSON.stringify(buildSnapshotRow(ranked[0], rubric, "x")));
+
+
+/* ------------------------------------------------------------------ *
+ * the order-aware preview (DECISIONS §10, §52): a rubric that reorders the whole book without
+ * moving a tier previewed as "0 changed" until 18 Sep. compareKey orders keys best first across
+ * the two shapes the book has produced; rankDiff says where each account sits before and after.
+ * ------------------------------------------------------------------ */
+{
+  check("compareKey: the first differing number decides", compareKey([0, -3], [1, -3]) < 0 && compareKey([1, -3], [0, -3]) > 0);
+  check("compareKey: equal numbers fall through to the next term", compareKey([0, -3, "a"], [0, -3, "b"]) < 0);
+  check("compareKey: equal keys are equal", compareKey([0, -3, "a"], [0, -3, "a"]) === 0);
+  check("compareKey: a shorter key that agrees on its prefix sorts after the longer one", compareKey([0, -3], [0, -3, 5]) > 0);
+  check("compareKey: a missing key sorts last", compareKey(null, [0]) > 0 && compareKey([0], undefined) < 0 && compareKey(null, null) === 0);
+  check("compareKey: the five-term key and the seven-term key still order by their shared prefix", compareKey([-3, -4, -3, -4, "x"], [-2, 0, 0, 0, 100000, -1, "y"]) < 0);
+  check("compareKey: a number against a string compares as text rather than throwing", typeof compareKey([1], ["a"]) === "number");
+
+  const card = (id: string, key: Array<number | string>): ProspectScorecard => ({ ...cardOf("PB04"), account_id: id, name: id, chase_rank_key: key });
+  const cards = [card("a", [2, -3, 0]), card("b", [0, -3, -2]), card("c", [3, 0, 0])];
+  const current = new Map([
+    ["a", { account_id: "a", effective_tier: "Platinum", status: "Ranked", chase_rank_key: [-3, 0, 0, -2, "a"] }],
+    ["c", { account_id: "c", effective_tier: "Bronze", status: "Ranked", chase_rank_key: [0, 0, 0, -1, "c"] }],
+  ]);
+  const ranks = rankDiff(cards, current);
+  check("rankDiff: the draft order is b, a, c", [ranks.get("b")?.to_rank, ranks.get("a")?.to_rank, ranks.get("c")?.to_rank].join() === "1,2,3", JSON.stringify([...ranks]));
+  check("rankDiff: the current order counts only accounts with a current key", ranks.get("a")?.from_rank === 1 && ranks.get("c")?.from_rank === 2 && ranks.get("b")?.from_rank === null, JSON.stringify([...ranks]));
+  const d = diffEntry(cards[0], current.get("a")!, ranks.get("a")!);
+  check("diffEntry: tier unchanged but the position moved → order_changed, not changed", d.changed === false && d.order_changed === true && d.from_rank === 1 && d.to_rank === 2, JSON.stringify(d));
+  const dNew = diffEntry(cards[1], null, ranks.get("b")!);
+  check("diffEntry: an account with no current read has no from_rank and no order change", dNew.from_rank === null && dNew.order_changed === false && dNew.changed === true, JSON.stringify(dNew));
+  const dSame = diffEntry(cards[2], current.get("c")!, { from_rank: 3, to_rank: 3 });
+  check("diffEntry: the same position is not an order change", dSame.order_changed === false, JSON.stringify(dSame));
+  const dLegacy = diffEntry(cards[2], current.get("c")!);
+  check("diffEntry: without ranks the old shape still works, with nulls", dLegacy.from_rank === null && dLegacy.to_rank === null && dLegacy.order_changed === false);
+}
 
 console.log(`score_pure_test: ${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  FAIL  ${f}`);

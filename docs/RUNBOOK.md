@@ -2090,11 +2090,427 @@ Keep the example and drop the name — "an agency Apollo listed at 68 with 35 pe
 page" carries the whole point and identifies nobody. Same for money: "a five-figure deal still
 open", not the invoice number.
 
-Matching is case-sensitive on word boundaries, and a short list of account names that are ordinary
-English (`Agency`, `Momentum`, `Snap`, `Test`, `None`…) is skipped in the script. If the roster
-grows a name that is a common word, add it there rather than letting the check cry wolf — a noisy
-check is one nobody runs.
+**What it matches.** Two rules, both case-sensitive on word boundaries:
+
+1. **Every roster entry**, against the file's text with whitespace normalised — every run of
+   whitespace, newlines included, collapsed to one space before matching. A name broken across a
+   line break by a text wrap therefore still matches, and so does a name whose roster spelling
+   carries a non-breaking space where the prose carries an ordinary one (§28 found one of those in
+   the roster itself). Line numbers survive the flattening; a match that wraps is reported as a
+   range, `docs/FILE.md:41-42`.
+2. **The first word of every roster entry**, when it is six characters or more, is not one of the
+   ordinary-English account names the script already skips, and is not in `FIRST_TOKEN_ALLOW` —
+   the script's list of ordinary English, about four hundred words: what agency names are made of,
+   the book's own vocabulary, and the plain English this repository writes. (It began as ten words
+   and grew on first contact with the real roster; DECISIONS §50 has the numbers that forced it.)
+   A distinctive first word alone
+   identifies the account to anyone holding the roster. A first-word hit prints the word **and the
+   roster entry it came from**, because a first word is circumstantial where a full name is not —
+   the reader has to be able to judge it. A first word sitting inside a full-name hit is not
+   reported twice, and an entry skipped as ordinary English contributes no first word either.
+
+Case-insensitive matching is deliberately not a third rule: the roster holds `Agency`, `Momentum`,
+`Snap`, `Test` and `None` as literal account names. If the roster grows a name that is a common
+word, add it to `GENERIC` in the script (or, when only its first word is ordinary, to
+`FIRST_TOKEN_ALLOW`) rather than letting the check cry wolf — a noisy check is one nobody runs.
+**Add a word because it is ordinary English used in its ordinary sense, never because a finding
+was inconvenient.** Every word in either list is an account the check can then catch only by its
+full name, and the first live run turned up a word that fired 453 times as noise sitting beside
+one that fired three times as a real breach (DECISIONS §50).
+
+A finding on a first word is not automatically a name to remove. Three outcomes are all correct,
+and the report prints the roster entry so you can tell them apart: **shape the prose** (it really
+is a reference to that account); **rename the fixture** (an invented name that happens to share a
+first word with a real one); or **add the word to `FIRST_TOKEN_ALLOW`** (it is ordinary English
+and the collision is an accident of vocabulary).
+
+`scripts/no_prospect_names_test.ts` runs in `npm test` and pins both shapes against a throwaway
+roster, so the two rules cannot be quietly lost. It needs no roster and no database.
 
 **What the script cannot do:** it reads the working tree, not history. A name already pushed stays
 in the commits that carried it until someone rewrites history or the repository goes private, and
-both are the owner's call (DECISIONS §23).
+both are the owner's call (DECISIONS §23). It also still matches **whole words only**: a name split
+by a hyphen, referred to by a middle word, initialised, or paraphrased is invisible to it. The two
+shapes it grew on 18 Sep were both found by a person reading, while the script reported clean
+(DECISIONS §58) — it narrows what a reader has to catch, it does not replace the reader.
+
+## 28 · The grid, the lift report, the scoring pass, and activating 0.2.1
+
+DECISIONS §52 records the seven decisions of 18 Sep 2026 and what shipped. This is the operator's
+side of them.
+
+### 28.1 · Reading the board by cell
+
+Rubric 0.1.7 puts the CHASE CELL first in the chase key and the tier second. A row's cell is its
+potential band (big = Platinum or Gold, small = Silver or Bronze; the tier stays a size label)
+crossed with its readiness. Both are the rubric's own text (`chase.readiness.ladder`,
+`chase.cells`); this table is a copy for the reader, not the rule.
+
+| Readiness | Rule, tried top to bottom |
+|---|---|
+| ready | two or more qualification facts present, OR a Hot / Super Hot stamp, OR an engaged or responsive contact |
+| stirring | one qualification fact, OR a fading or pursued contact, OR a live signal |
+| cold | nothing recorded — the absence of a reason to work the account this week, never evidence against it |
+
+| Cell | Owner | SLA | Play |
+|---|---|---|---|
+| Chase now (big × ready) | salesperson, 1:1 | 7 days | a named next step on the calendar, the decision-maker in the room, price on the table by the second call |
+| Work the deal (small × ready) | salesperson, 1:few | 14 days | quote it, book the next meeting, keep the reply cadence |
+| Open the door (big × stirring or cold) | salesperson, 1:few | 30 days | earn a first conversation — an introduction, a peer-group touch, a piece of work they would recognise |
+| Nurture (small × stirring or cold) | marketing, 1:many | 90 days | programmatic; promote the row when a stir arrives |
+| No tier yet (no fit read) | rater | 30 days | answer the fit questions: is it an agency, do they sell build work, is there a capacity gap, who are their clients |
+
+Inside a cell the order is the tier, then facts present, then urgency, then the most recent reply,
+then the year-one band, then the name. What moves a row up: a recorded Dimension A fact, a reply, a
+fresh timing stamp, a vendor rank. Until a vendor rank is on file the ceiling is an assumption:
+potential confidence prints Low and the card says `Ceiling assumed` — the two discovery questions
+(who else do you use, where do we rank) are what lift it. A timing stamp ages: a week-stamp stops
+deciding after 14 days, a month-stamp after 45, a quarter-stamp after 120; the row is flagged
+`Timing stamp aged out` and the computed ladder decides. A stamp with no recorded date is never
+aged.
+
+The cell and its play are columns of `pb_board()` — `cell_id`, `cell_name`, `cell_play`,
+`cell_rank`, `cell_owner_role`, `cell_sla_days`, `cell_abm`, `readiness`, `ceiling_assumed`,
+`timing_aged_out` — read out of the scorecard. Nothing in SQL restates a threshold (rule 4).
+
+### 28.2 · The lift report
+
+```sql
+select public.pb_lift();               -- any role: today's rows and up to sixty monthly snapshot rows, counts only
+select * from public.pb_lift_by_cell;  -- service role: the same rows as a table
+select public.pb_snapshot_lift();      -- service role: write (or rewrite) today's snapshot rows
+```
+
+Per cell: accounts and their share of the book, how many replied and how many were quoted in the
+last 90 days, how many won and how many were promoted, the cell's share of the quotes, and LIFT —
+the cell's quote (or reply) rate over the book's. 1.0 is chance; the 9 Sep research wants the top
+band to convert at twice the bottom. A reply is one of the things that makes a row *ready*, so
+the ready cells' reply lift is partly circular; the quote lift and the won column are not. The
+cron job `pb-monthly-lift` runs `pb_snapshot_lift()` at 07:30 UTC on the 1st of each month; the
+history comes back inside `pb_lift()` under `history`. The first reading (18 Sep) is in DECISIONS
+§52.
+
+### 28.3 · The scoring pass
+
+At 6, 12 and 24 months after a promoted account's first invoice, read what it actually billed
+(QuickBooks, or Orbit — read only, rule 11) and record it. Nothing here reaches either system.
+
+```sql
+insert into public.pb_actuals (account_id, months, revenue_usd, source, period_start, period_end, recorded_by, note)
+values ('<account uuid>', 12, <dollars billed>, 'quickbooks', '<period start>', '<period end>', '<who>', '<invoices counted>');
+
+select public.pb_score_snapshots();    -- fills the frozen snapshot's actual_6m / 12m / 24m, stamps scored_at; idempotent
+select * from public.pb_calibration;   -- per estimator: scored, with_12m, hits_12m, hit_rate_12m
+```
+
+The freeze is a selection (DECISIONS §36): the last snapshot on or before
+`pb_promotions.first_invoice_at`, per account and estimator. `pb_actuals` is service role only and
+unique on (account, months, source): a second reading of the same horizon needs a different
+`source` or a delete of the first, and the pass takes the most recently recorded row per horizon. `pb_actuals` is empty on 18 Sep; nothing scores
+until a promotion has a first invoice and an actual on file.
+
+### 28.4 · Activating 0.2.1 when the facts are in
+
+0.2.1 is registered (fingerprint `101ee7c1`) and held: previewed 18 Sep 03:41 UTC, 587 of 830
+would be Unclassified because only 239 accounts answer three of the seven criteria, the threshold
+(DECISIONS §52). The sprint: the four fit questions on the ready cells first — Chase now, Work the
+deal, and the 68 ready rows in No tier yet. Facts land through the page (rater lane), through the
+sweep's candidates confirmed on the back office page (the bulk confirm is the owner lane, §45,
+§51 — it needs the owner signed in; it cannot run from a database session and must not be
+impersonated), or through a call the sweep reads.
+
+Preview again (writes nothing):
+
+```sql
+select net.http_post(
+  url     := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-score?rubric=0.2.1&preview=1',
+  headers := jsonb_build_object(
+    'Content-Type',  'application/json',
+    'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'PB_SYNC_TOKEN' limit 1)),
+  body    := jsonb_build_object('triggered_by', 'owner-session', 'kind', 'score'),
+  timeout_milliseconds := 150000
+) as request_id;
+
+-- a minute later, with the request id it returned:
+select status_code, (content::jsonb) -> 'counts', (content::jsonb) ->> 'changed', (content::jsonb) ->> 'reordered'
+  from net._http_response where id = <request_id>;
+```
+
+The tier transitions are in the response's `diff` (`from_tier`, `to_tier`, `from_rank`, `to_rank`).
+Activate when the Unclassified count is one you can defend:
+
+```sql
+update public.pb_rubric_versions set status = 'retired' where version = '0.1.7' and status = 'active';
+update public.pb_rubric_versions
+   set status = 'active', activated_at = now(),
+       activated_by = 'owner:<email> — <what the preview showed, and on which pb-score version>',
+       preview_diff = '<the preview counts, as jsonb>'
+ where version = '0.2.1' and status = 'draft';
+```
+
+Then run the score — the nightly does it at 06:15 UTC, or run the `pb-nightly-score` command from
+`cron.job` with `triggered_by` changed — and check that `pb_current_reads` carries fingerprint
+`101ee7c1` on 830 rows.
+
+### 28.5 · Publishing the page
+
+`deploy-pages.yml` is dispatched by hand, and the `github-pages` environment allows only the
+repository's default branch (`claude/new-session-8qkstx` on 18 Sep). A dispatch from any other
+branch fails in seconds with no step run, no log, and one annotation on the run: *Branch "…" is
+not allowed to deploy to github-pages due to environment protection rules.* To publish from a
+working branch: Settings → Environments → github-pages → Deployment branches and tags → add the
+branch (or choose "No restriction"), then dispatch again (Actions → Deploy Prospect Book page →
+Run workflow → the branch); or make the branch the default; or merge it to the default branch and
+dispatch from there. The 18 Sep board waits on that setting; the 17 Sep page keeps working against
+the new order meanwhile, without the cell headers.
+
+**Still unset at 10:09 UTC on 18 Sep.** A fourth dispatch, on the branch head that carries the
+grid, was rejected identically after four seconds: one job, no steps, no log to download, and the
+same pair of annotations on the check run — the named branch, then *The deployment was rejected or
+didn't satisfy other protection rules.* The annotations are the only place the reason appears, and
+they are not in the job log, so read them rather than the run page:
+`/repos/<owner>/<repo>/check-runs/<job id>/annotations`. A rejection before any step is always the
+environment rule; a failure inside `configure-pages` or `deploy-pages` is the workflow or the
+token, and is a different problem. Nothing in the repository can lift this — the environments API
+is not reachable from the build container either, so it is the owner in the UI or nothing.
+
+**Publishing is the only thing left.** With the deploy blocked, the page was verified where it
+could be: served from the branch on a loopback port and driven in headless Chromium, with the three
+reads answered from the live functions' own output (fetched through the database MCP, because the
+egress policy refuses `*.supabase.co` from this container). Fifteen checks, all passing — the five
+cell headers in the ruled order, each carrying its play; the lift table's five rows; assumed
+ceilings and aged stamps marked on rows; the dossier opening from a row and naming the cell and the
+play; and no email address in the markup. The one address the page contains is the sign-in field's
+placeholder, a literal inside the inline script, never data and not rendered until the override
+panel opens. So the artifact is not in question: only the setting is.
+
+### 28.6 · The 18 Sep migrations: database version against file name
+
+The MCP stamps its own version at apply time; the files carry 18 Sep 10:00–14:00 names. Each
+recorded statement is byte-identical to its file (`md5(statements[1])` against `md5sum` of the
+file): `prospect_book_board_by_cell` 20260918032803 = `7c874798…`, `prospect_book_scoring_pass`
+032853 = `f483ce60…`, `prospect_book_retire_composite` 032858 = `b5aa0671…`,
+`prospect_book_outcomes_and_lift` 033410 = `87bf642c…` (the first apply failed — `pb_lift()` read
+the snapshot table before it existed; `apply_migration` is one transaction, so nothing partial
+survived; the file was reordered and re-applied), `prospect_book_revoke_view_writes` 034006 =
+`7d090400…`.
+
+## 29 · Automatic approval: switching a lane, running it, taking it back
+
+The fact queue has two halves. The manual half is §27's screen — read the sentence, confirm or
+reject. The automatic half is `pb_fact_autoconfirm_policy` and it answers the claims where a reader
+would have nothing to weigh. Both live on the same back-office screen (`#queue`). DECISIONS §53.
+
+**See what would happen, without doing it.** The dry run is the default, so this is safe to run at
+any time and from anywhere:
+
+```sql
+select public.pb_autoconfirm_facts();                 -- dry run, at most 500
+select public.pb_autoconfirm_facts(true, 2000);       -- dry run, the whole queue
+```
+
+It returns `eligible`, `confirmed` (facts it would write), `closed` (rows it would close without
+writing), `by_lane` and `accounts`. The page calls exactly this before it offers the real run, which
+is why the number in the dialog is the number that lands.
+
+**Read the lanes before you trust them.** Never switch a lane on from the count alone — the count
+says how many, not whether they are right:
+
+```sql
+select lane, count(*), count(distinct account_id) from public.pb_fact_candidate_lanes
+ group by 1 order by 2 desc;
+
+-- and then, always, a dozen actual sentences from the lane you are about to admit:
+select key, value, source, agreeing_systems, left(quote, 140)
+  from public.pb_fact_candidate_lanes where lane = '<lane>' order by random() limit 12;
+```
+
+Read them against the key. A quote that is really in the source and still does not *say* the value
+is the failure mode that matters, and it is the one that put the source gate into §53 — four of ten
+sampled website claims were inferences wearing a verbatim sentence. If more than one of twelve is
+wrong, the lane is not ready.
+
+**Switch a lane on or off** (owner, from the page, or by hand):
+
+```sql
+update public.pb_fact_autoconfirm_policy
+   set enabled = true, updated_at = now(), updated_by = '<you>@whitelabeliq.com'
+ where lane = 'medium_observation';
+```
+
+The same table carries `min_source_records`, `min_source_systems` and `sources`. A reader belongs in
+`sources` once its ratings have been checked against its own quotes, and not before — that is the
+whole point of the column.
+
+**Run it for real.** Only after a dry run you have read:
+
+```sql
+select public.pb_autoconfirm_facts(false, 500);
+```
+
+Keep the `batch_id` it returns. `pb-autoconfirm` does the same thing at 06:00 UTC nightly, between
+the notes sweep and the score.
+
+**Take a batch back.** Owner lane through the page, or an operator in-database — the same two
+callers as the runner, because a batch the book made unattended has to be undoable the same way.
+It is complete: the facts are deleted, the claims go back to `proposed`, and each account's register
+says so.
+
+```sql
+select public.pb_undo_autoconfirm('<batch_id>'::uuid, 'why');
+```
+
+It will not reopen a claim a person has decided since the batch ran. Undoing the machine must never
+undo the person.
+
+This path has been round-tripped on the real book (DECISIONS §53a): undoing the first batch put the
+queue back to its exact original count and removed every fact, and re-running reproduced the same
+263/23/218/26 to the row. If you undo and re-run and the numbers move, something else changed the
+book in between — find out what before trusting the second run.
+
+**What was approved automatically, and where it came from:**
+
+```sql
+select l.ran_at, l.batch_id, l.lane, l.action, l.key, l.value, f.note
+  from public.pb_autoconfirm_log l
+  left join public.pb_facts f on f.id = l.fact_id
+ where l.undone_at is null
+ order by l.ran_at desc limit 50;
+
+-- every fact in the book that no person read:
+select count(*) from public.pb_facts where entered_by like 'auto:%';
+```
+
+`entered_by` is `auto:<lane>`, never an email. If you ever see an automatic fact signed with a
+person's address, something has gone wrong with rule 9 and it is worth stopping to find out what.
+
+
+## 30 · Auditing the sentence behind a claim
+
+`pb-verify` asks one question of claims the book already has: does the stored quote STATE this
+value for this key? It reads no source record, extracts nothing and writes no fact — it fills
+`pb_fact_candidates.support` and nothing else. DECISIONS §54.
+
+Only rows with `support is null` are selected, so a verdict is never revised by a re-run. Deployed
+as a pinned-commit entrypoint (§3), `verify_jwt = false`, called with the Book's own bearer. This
+container has no route to the gateway, so drive it from the database:
+
+```sql
+-- what it WOULD do (no model call, nothing written)
+select net.http_post(
+  url := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-verify',
+  headers := jsonb_build_object('Content-Type','application/json',
+             'Authorization','Bearer ' || public.pb_secret('PB_SYNC_TOKEN')),
+  body := jsonb_build_object('dry_run', true, 'limit', 100),
+  timeout_milliseconds := 120000);
+
+-- for real, one source at a time; 'source' is optional and 'limit' caps the batch
+select net.http_post(
+  url := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-verify',
+  headers := jsonb_build_object('Content-Type','application/json',
+             'Authorization','Bearer ' || public.pb_secret('PB_SYNC_TOKEN')),
+  body := jsonb_build_object('limit', 200, 'source', 'website'),
+  timeout_milliseconds := 300000);
+```
+
+`net.http_post` returns a request id; read the answer from `net._http_response` by that id. A run
+of 100 took about two minutes in four batches, so give it time before deciding it failed — and
+check the count directly rather than waiting on the response row, which appears only at the end:
+
+```sql
+select count(*) filter (where support is not null) audited,
+       count(*) filter (where support = 'states')      states,
+       count(*) filter (where support = 'implies')     implies,
+       count(*) filter (where support = 'unsupported') unsupported,
+       count(*) filter (where support_basis = 'lexicon') lexicon_overruled
+  from pb_fact_candidates;
+```
+
+**Read the auditor before you trust it.** This is the same mistake §53 made about the website
+reader, and it is available here too — a reader that rates its own work is not evidence. After any
+sizeable run, read a dozen of each verdict against the sentence:
+
+```sql
+select support, key, value, left(quote, 100), left(support_reason, 80)
+  from pb_fact_candidates where support = 'unsupported' order by random() limit 12;
+```
+
+`support_basis = 'lexicon'` means one of the three hand-written rules in `ingest/verify_support.ts`
+overruled the model downward. On the first 100 that never fired. If it starts firing often, the
+model has got worse and the rules are doing work they were only meant to backstop.
+
+A `support` of `unsupported` refuses the claim from every lane, corroboration included. A `states`
+stands in for the claim's source being on a lane's allow-list — which is why the audit, not the
+gate, is what lets a website claim reach a lane.
+
+## 31 · Taking an agency off the board, and putting one back
+
+DECISIONS §59. Removal is an **owner-lane register row**, not a delete and not an override. It has
+no expiry and cannot be given one.
+
+### From the board
+
+Sign in (the sign-in is on the override panel itself, §48), open the agency — either by clicking its
+row, or by clicking its tier chip for the dialog — and use **Remove from the board**, directly under
+"Change this grade". Choose:
+
+* **Do not contact them** — permission and relationship. They asked; it conflicts with a client, a
+  partner or a contract. No review date, and nothing reopens it but you.
+* **They do not belong in this book** — fit. Not an agency, out of business, too small, buys no
+  build work. You may set a **review date**, which queues them in `pb_removal_due_review` on that
+  day and *changes nothing by itself*.
+
+A written reason is required; the database refuses the row without one. The row leaves the board
+immediately — unlike an override, a removal is not waiting on the 06:15 run, because `pb_board()`
+reads the register directly.
+
+### Putting one back
+
+The board grows an **Off the board** section for a signed-in owner (hidden for everyone else, and
+hidden when nothing has been removed). Every removal is listed with its disposition, reason, who and
+when, anything past its review date first, and a **Put back** button. That is the only route back —
+`pb_board()` no longer returns the row, so the dossier cannot be reached from the list.
+
+A reinstatement is a second register row, never a deletion: the removal stays on the record and the
+reinstatement outranks it. The agency returns at **today's** tier, because removed accounts never
+stopped being scored.
+
+### Changing the reasons
+
+They are rows, not code:
+
+```sql
+select disposition, code, label, allows_review_date, active
+  from public.pb_removal_reasons order by disposition, sort;
+
+-- retire one without losing the rows that used it
+update public.pb_removal_reasons set active = false
+ where disposition = 'unqualified' and code = 'duplicate_record';
+```
+
+`allows_review_date` must stay `false` on every `do_not_contact` row: the guard refuses a
+do-not-contact carrying a review date, and the page hides the field. The page reads this table on
+load, so a change is live on the next reload with no deploy.
+
+### Checking the state
+
+```sql
+select * from public.pb_removals;            -- currently off the board
+select * from public.pb_removal_due_review;  -- review dates that have arrived
+select count(*) from public.pb_board();      -- the board, removals already excluded
+```
+
+`pb_removals` and `pb_removal_due_review` are service-role only. From a signed-in session use
+`pb_removed()` and `pb_removal(uuid)`, which are granted to `authenticated`: a removal's written
+reason is a candid judgement about a named company and stays off the anon surface, and
+`pb_dossier()` skips both kinds for the same reason.
+
+### What it does NOT do
+
+No row is deleted. `pb_accounts.book` is untouched — `parked` still means the Pipedrive Client
+Journey parked stage and nothing else. The nightly score still reads them, so nothing has to be
+re-seeded to undo a mistake. And no tier moves: removal is not a grading concept and never reaches
+the engine or the rubric.
+
+**`pb_chase_board` is not filtered** (§50, open). Nothing reads it today, so nothing shows a removed
+agency — but anything built on it must exclude `pb_removals` itself.

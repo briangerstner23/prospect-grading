@@ -241,12 +241,12 @@ eq("runStatus: nothing to do, no errors", runStatus(0, 0), "success");
   check("COLUMNS: pb_deals has close_date_pushes not close_date_push", COLUMNS.pb_deals.includes("close_date_pushes") && !COLUMNS.pb_deals.includes("close_date_push"));
 }
 
-const KEY_MAP = { "harbor pine creative": "11111111-1111-1111-1111-111111111111", "juniper lane studio": "22222222-2222-2222-2222-222222222222" };
+const KEY_MAP = { "harbor pine creative": "11111111-1111-1111-1111-111111111111", "sedgewick lane studio": "22222222-2222-2222-2222-222222222222" };
 eq("accountKeys: union across packs, sorted", accountKeys({
-  accounts: [{ key: "juniper lane studio", name: "Juniper Lane Studio" }],
+  accounts: [{ key: "sedgewick lane studio", name: "Sedgewick Lane Studio" }],
   facts: [{ account_key: "harbor pine creative" }],
-  signals: [{ account_key: "juniper lane studio" }, { account_id: "x" }],
-}), ["harbor pine creative", "juniper lane studio"]);
+  signals: [{ account_key: "sedgewick lane studio" }, { account_id: "x" }],
+}), ["harbor pine creative", "sedgewick lane studio"]);
 
 {
   const r = resolveAccountRef({ account_key: "harbor pine creative", key: "headcount" }, KEY_MAP);
@@ -339,7 +339,7 @@ eq("accountKeys: union across packs, sorted", accountKeys({
 {
   const p = prepareCalls([{ fathom_recording_id: 123, title: "Discovery", attendees: [], external_domains: [], transcript_available: true, extra: 1 }, { title: "no id" }]);
   check("prepareCalls: id coerced to string, extra dropped, missing id refused", p.rows.length === 1 && p.rows[0].fathom_recording_id === "123" && !("extra" in p.rows[0]) && p.errors.length === 1);
-  const c = prepareCandidates([{ source: "orbit", source_name: "Juniper Lane Studio", matched_on: "none", confidence: "low", note: "n" }, { source_name: "no source" }]);
+  const c = prepareCandidates([{ source: "orbit", source_name: "Sedgewick Lane Studio", matched_on: "none", confidence: "low", note: "n" }, { source_name: "no source" }]);
   check("prepareCandidates: status defaults proposed; missing source refused", c.rows.length === 1 && c.rows[0].status === "proposed" && c.errors.length === 1);
 }
 
@@ -420,7 +420,7 @@ check("grade: a scorecard came back", SC.account_id === ACCOUNT.id && SC.anticip
   check("diffEntry: same → unchanged", !same.changed);
   const moved = diffEntry(SC, { account_id: SC.account_id, effective_tier: "Bronze", status: SC.status });
   check("diffEntry: tier move → changed", moved.changed && moved.from_tier === "Bronze");
-  eq("diffEntry: shape", Object.keys(d0), ["account_id", "name", "from_tier", "to_tier", "from_status", "to_status", "from_confidence_grade", "to_confidence_grade", "changed"]);
+  eq("diffEntry: shape", Object.keys(d0), ["account_id", "name", "from_tier", "to_tier", "from_status", "to_status", "from_confidence_grade", "to_confidence_grade", "changed", "from_rank", "to_rank", "order_changed"]);
 }
 
 {

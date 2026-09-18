@@ -659,8 +659,8 @@ that network, and it fires on real accounts — while the network it names is tr
 the book. (Named here originally; shaped on 16 Sep when those organisations entered the roster
 and rule 2 began to bite — see the note at the end of §28.)
 
-That stage also mixes cohorts: peer bodies sit beside vendors (WP Engine) and ordinary agencies
-(Spindustry, SJ Innovation, B Squared Media). "Friends of WLIQ" is a journey stage, not a cohort,
+That stage also mixes cohorts: peer bodies sit beside a hosting vendor and ordinary agencies
+(three of them on the roster). "Friends of WLIQ" is a journey stage, not a cohort,
 and cannot be lifted wholesale.
 
 ### What was done
@@ -705,8 +705,8 @@ carry. Both were read:
 
 46 book accounts matched a typed Orbit client on domain or exact name. **10 were corrected or
 filled**, each recorded in `pb_register` with the Orbit client id, its `client_type` and how it
-matched — four that Orbit calls an Agency were sitting outside the agency focus, and *Call to
-Freedom*, currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
+matched — four that Orbit calls an Agency were sitting outside the agency focus, and one account,
+currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
 
 | cohort | accounts | ranked | confirmed by Orbit |
 |---|---|---|---|
@@ -787,8 +787,8 @@ remaining 589 accounts are still graded on CRM fields alone.
 ### The finding underneath
 
 Of the top forty companies by meeting count over seven months, **four are accounts in the book**.
-The busiest — 39 meetings, the most recent three days ago — is not one. Neither is Agency
-Management Institute, at twelve meetings, whose network `ADJ-REF` exists to reward.
+The busiest — 39 meetings, the most recent three days ago — is not one. Neither is the
+agency-owner membership body at twelve meetings — the very network `ADJ-REF` exists to reward.
 
 So the roster and the calendar disagree about who WLIQ's prospects are, and the calendar is the
 one with evidence behind it. 874 identity candidates across roughly 120 external domains are
@@ -1130,8 +1130,8 @@ The rubric predicted this in its own words. The criterion's `failure_mode` read:
 > The strongest single predictor in the July research and the easiest to get wrong: a two-person
 > dev team can mean overflow need, not no need.
 
-Miranda is that sentence, live. The criterion asked *"is there a developer in the building"* when
-the thing that predicts a sale is *"do they have more build work than they can absorb"*. Miranda
+That agency is that sentence, live. The criterion asked *"is there a developer in the building"* when
+the thing that predicts a sale is *"do they have more build work than they can absorb"*. That agency
 answers no to the first and yes to the second.
 
 ### Ruled
@@ -1176,7 +1176,7 @@ as it did before the re-wording, and improves only as the new fact is gathered. 
 is the portfolio read discussed the same day: an agency that lists build services while
 outsourcing them, or advertises for developers it cannot keep, is telling you about its capacity.
 
-Miranda's own three facts were recorded during the session that produced this ruling:
+The agency's own three facts were recorded during the session that produced this ruling:
 `client_budget_size = buys_real_projects`, `sells_build_work = true`, `no_inhouse_dev_team = false`
 — the last with the reasoning above in its note, so the record shows why a false there is not the
 mark against them it looks like.
@@ -3327,7 +3327,7 @@ would have refused every nightly run before the function was reached. Caught by 
 response; v13 is the same commit at `verify_jwt: false`. **Check that field on every deploy.**
 
 **Previewed on the real book before activation**, as the runbook requires: 830 scored, 0 errors,
-**2 changed**, both explained. One is an override the owner had written himself — at 22:08,
+**2 changed**, both explained. One is the owner's own override on a single agency — written at 22:08,
 refused by the cap under 0.1.5, applied under 0.1.6: **Platinum → Bronze, rank 3 → 231**, with the
 new flag on the row. The other is a Pipedrive account added the same day and has nothing to do with
 the rubric. Nothing else in the book moved. The real run then wrote 830 reads at fingerprint
@@ -3438,6 +3438,8 @@ need the link-following fetcher above before this channel has anything of theirs
 
 ---
 
+*Numbering note (18 Sep 2026): rubric 0.1.7, draft 0.2.1, the five 18 Sep migrations and the generated `docs/METHOD.md` cite "DECISIONS §50" for the grading decisions of 18 Sep. They were written on branch `claude/keen-dirac-q146ng` before `main` took this number; those citations mean §52.*
+
 ## §51 — Bulk confirm widened to what is corroborated, not to what a model felt sure about (17 Sep 2026)
 
 **Owner ruling: "confirm bulk confirm."** Asked whether the review queue really needed reading item
@@ -3506,3 +3508,959 @@ those are disagreements, which is exactly the work a person should be doing.
 
 `web/index.html` mirrors the three classes so the button's count is the count that lands, and says
 so in the dialog. The page is a preview; the function is the rule.
+
+## §52 — The board becomes a grid: the seven decisions of 18 Sep 2026, and what shipped (18 Sep 2026)
+
+**Numbering.** Rubric 0.1.7, draft 0.2.1 and the five 18 Sep migrations cite these decisions as
+"DECISIONS §50" — and `docs/METHOD.md`, which quotes the rubric, prints the same. They were written
+on branch `claude/keen-dirac-q146ng` before `main` took §50 for the website channel and §51 for the
+widened bulk confirm. The rubric files are frozen by their fingerprints (0.1.7 has 830 reads on it)
+and the migrations by the byte-identical record in `schema_migrations`, so those citations stay as
+written: read "§50" in any 18 Sep artefact as this section. Everything else on the branch was
+renumbered.
+
+**Where it started.** `docs/GRADING-REVIEW-2026-09-18.md` read the rubric, the weights and the rank
+against the field from the live database and found one departure from the field's shape that
+explained why the board disappointed: the chase order put size first, so cold, unqualified Platinums
+sat above every qualified deal, and the grade added almost nothing to what the CRM already said. It
+proposed six moves and put seven decisions to the owner. The owner's ruling, 18 Sep 2026: *"Make all
+the changes and update the live version."* The seven, and where each landed:
+
+| | Decision | Landed in |
+|---|---|---|
+| D1 | The grid before size: readiness × potential band, the cell first in the chase key and the tier second | rubric 0.1.7 (`chase`, `chase_rank_key.order`); `pb_prospect_board` v3 / `pb_board()` v4; the page |
+| D2 | The seven-criteria fit read at a threshold of three answered criteria, a fallback "no" read as unknown, and the twelve adjustment rules that had never fired parked | the parking in 0.1.7; the criteria in draft 0.2.1 — **held**, below |
+| D3 | A stated timing stamp ages: 14 days for a week-stamp, 45 for a month, 120 for a quarter; `no_timeline` never | rubric 0.1.7 (`signals.urgency.stated_timing_max_age_days`) |
+| D4 | The composite score retired; one rank on the page and no score anywhere | migration `prospect_book_retire_composite` drops `pb_chase_scores`; the page |
+| D5 | The white-label signal as the seventh fit criterion | draft 0.2.1 — held with D2 |
+| D6 | A ceiling computed on the default winnable share is an assumption: potential confidence Low, and the card says so | rubric 0.1.7 (`potential.confidence`, flag `Ceiling assumed: vendor share defaulted`) |
+| D7 | A play, an owner role and an SLA per cell; Tier-1 is the Chase-now cell | rubric 0.1.7 (`chase.cells`) |
+
+**What the engine does under 0.1.7.** Readiness is a ladder tried top to bottom: *ready* when two or
+more qualification facts are present, or the stamp is Hot or Super Hot, or the contact is engaged or
+responsive; *stirring* when one fact, a fading or pursued contact, or a live signal; *cold*
+otherwise — the absence of a reason to work the account this week, never evidence against it (rule
+5). The potential band is the tier's band (Platinum and Gold are *big*, Silver and Bronze *small*;
+the tier stays a size label, §20, §40). The cell is the first whose rule holds over the pair:
+Chase now (big × ready, 1:1, salesperson, 7 days), Work the deal (small × ready, 1:few, 14 days),
+Open the door (big × stirring or cold, 1:few, 30 days), Nurture (otherwise, 1:many, marketing, 90
+days); a row with no tier lands in No tier yet (rater, 30 days), whose play is the four fit
+questions. The chase key is read from the rubric's own `order` — cell, tier, facts present,
+urgency, engagement recency, year-one band, name — and a rubric without an `order` gets the fixed
+five-term key every version before 0.1.7 produced. A stamp with a recorded date past its horizon no
+longer decides; the computed ladder does, and the row carries `Timing stamp aged out`. A stamp with
+no date is never aged. Whenever the headroom was computed on the default winnable share the read
+says `assumed`, potential confidence is Low and the card carries `Ceiling assumed: vendor share
+defaulted`; a recorded vendor rank (the two discovery questions) lifts it. None of this is an input
+to the tier.
+
+**The activation, with the numbers.** pb-score **v14** (commit `d14223c`, a pinned-commit
+entrypoint, `verify_jwt` false — read back from `list_edge_functions`) went out first, because the
+pre-v14 engine has no `chase` block and reads no `order`. Then, in order:
+
+1. A safety preview of the live 0.1.6 on the new engine (pg_net request 4221): 830 scored, 593
+   ranked, 223 unclassified, 7 overridden, 7 parked, 0 errors; **3 changed**, 417 reordered. The
+   three are Silver → Bronze, Ranked → Overridden — three owner overrides in the register that the
+   00:32 run had not seen, with no new fact or signal behind them. The 417 is positional cascade
+   under the five-term key.
+2. The 0.1.7 preview (request 4224, 03:27 UTC): the **same counts, the same three changes, 810
+   reordered**. 0.1.7 changes no tier of its own; it changes the order. The top 50 before: 50
+   Platinum. After: 22 Platinum, 11 Gold, 17 Silver. Rank deltas: 20 unchanged, 18 by 1–2, 177 by
+   3–10, 165 by 11–50, 433 by 51–200, 17 by more than 200.
+3. 0.1.6 retired and 0.1.7 active at 03:37:57 UTC, the preview recorded on the row.
+4. The real run (`pb_runs` a281b419, 03:38:45–03:39:03 UTC): 830 scored, 600 potential snapshots,
+   0 errors. 830 live reads now carry fingerprint `dec7d291`; the 21 reads on merged records stay
+   on 0.1.0 and never reach the board.
+
+**The per-account check, every account's last 0.1.6 read against its new one.** Computed tier
+identical on 830 of 830; effective tier identical on 827 plus the three overrides; qualification
+label and facts count identical; ceiling, headroom band and year-one band identical; fit
+confidence identical. What changed is exactly the ruled set. Urgency: 24 stamps aged out (14 Super
+Hot → Cold, 1 Super Hot → Warm, 8 Hot → Cold, 1 Warm → Cold), 806 unchanged. Potential confidence:
+3 High → Low and 454 Medium → Low, all on assumed ceilings; 366 Low → Low; 7 Medium → Medium (a
+stated ceiling standing in with no wallet to compute). Flags added: `Ceiling assumed: vendor share
+defaulted` on 457, `Timing stamp aged out` on 24; none removed. **Potential confidence is now Low
+on 823 of 830** — the honest state D6 asked for, and the reason the two discovery questions are
+the first thing to ask on every call. Readiness over the 830: ready 255, stirring 350, cold 225;
+every label re-derived from the inputs the scorecard records matches its ladder rule (489 accounts
+have no engagement on record; null is in no list, as rule 5 wants). Cells over the 830: Chase now
+33 (big × ready), Work the deal 154, Open the door 65 (51 stirring, 14 cold), Nurture 355 (254
+stirring, 101 cold), No tier yet 223. On the board — 600 companies with no delivery work — 24 /
+116 / 63 / 326 / 71.
+
+**The lift report's first rows** (`pb_lift()`, 03:38 UTC; in the last 90 days 115 accounts
+replied and 44 were quoted):
+
+| Cell | Accounts | Share | Replied | Quoted | Reply lift | Quote lift |
+|---|---|---|---|---|---|---|
+| Chase now | 33 | 4.0% | 13 | 3 | 2.84 | 1.71 |
+| Work the deal | 154 | 18.6% | 36 | 11 | 1.69 | 1.35 |
+| Open the door | 65 | 7.8% | 0 | 0 | 0.00 | 0.00 |
+| Nurture | 355 | 42.8% | 0 | 2 | 0.00 | 0.11 |
+| No tier yet | 223 | 26.9% | 66 | 28 | 2.14 | 2.37 |
+
+Lift is the cell's rate over the book's; 1.0 is chance, and the 9 Sep research wants the top band
+at twice the bottom. The two ready cells clear that against Nurture on the first reading; that is
+partly circular (a reply is one of the things that makes a row ready) and the monthly snapshots
+exist to watch whether it holds. The row that is not circular is the last one.
+
+**The no-tier finding.** The 223 accounts with no fit read hold **28 of the 44 quotes** of the
+last 90 days — 63.6% — and 68 of them are *ready* by the same ladder. They sit last because they
+have no tier, exactly as they did under the size-first sort; the grid did not move them, it made
+them visible. Their play is the four fit questions (is it an agency, do they sell build work, is
+there a capacity gap, who are their clients), and each answered set moves a row into a band. Whether
+a ready row with no tier should rank above Nurture is an owner call, not a default: the engine gives
+the unranked cell the last rank, and making that a rubric setting is one line.
+
+**0.2.1: held, with the numbers.** Registered as a draft (sha256 `ef9c8246…`, fingerprint
+`101ee7c1`) and previewed on the live book (request 4226, 03:41 UTC): 830 scored, 233 ranked,
+**587 unclassified**, 3 overridden, 7 parked, 0 errors; 523 changed. 364 ranked rows would lose
+their tier (227 Bronze, 102 Silver, 23 Gold, 12 Platinum) and 4 unclassified rows would gain one;
+among rows keeping a tier the ICP-derived tier and the criteria tier agree on 88 and disagree on
+147. Coverage is the reason: 239 of the 830 answer three or more of the seven criteria today (0:
+232, 1: 115, 2: 244, 3: 124, 4: 90, 5: 18, 6: 5, 7: 2). Per criterion, live accounts with a fact
+on file: is_agency 575, headcount 457, sells_build_work 239, the capacity gap 187 (all through
+the fallback; the re-worded question has no fact yet), wl_signal 54, recurring_work_shape 29,
+client_budget_size 17. The 145 proposed candidates that are high-confidence, quoted and
+non-conflicting (on 60 accounts) would lift 239 to 251. So the criteria read follows the
+collection sprint on the ready cells rather than preceding it, as the rubric's `still_open` says.
+The bulk confirm (§45, §51) is the owner's lane on the back office page: it resolves the caller from
+the sign-in token, which a database session does not carry, and this session did not pretend to be
+the owner to run it.
+
+**The page.** Built (commits `067712b`, `d14223c`; contract v2 adds *By chase cell*; the ranked
+list is grouped under a header per cell, each row carries its play, an assumed ceiling is marked,
+an aged stamp says so, the dossier hero names the cell and the play; still one rank, no score, no
+email address). Publishing it is blocked on one repository setting: the dispatch of
+`deploy-pages.yml` on the branch was rejected before any step ran — *Branch
+"claude/keen-dirac-q146ng" is not allowed to deploy to github-pages due to environment protection
+rules* — because the `github-pages` environment allows only the default branch,
+`claude/new-session-8qkstx`. Three dispatches earlier the same night, from another working branch
+and from `main`, failed the same way. The fix is the owner's: Settings → Environments →
+github-pages → Deployment branches and tags → add the branch (or "No restriction"), then dispatch
+again; or make the branch the default; or merge it there and dispatch from there (RUNBOOK §28.5).
+Meanwhile the published 17 Sep page reads the new order through the same `pb_board()` — it works,
+without the cell headers and plays.
+
+*Not published as of 18 Sep 10:09 UTC.* A fourth dispatch, on the commit that carries the grid,
+was refused in four seconds with the same annotation, so the setting had not been changed. This
+line is where the deploy gets recorded when it happens: published on <date> from <branch>.
+
+What the block does **not** leave open is whether the page is right. It was served from the branch
+and driven in a real browser, with `pb_board()`, `pb_lift()` and `pb_dossier()` answered from their
+own live output — the database MCP can read them; the container's egress policy refuses
+`*.supabase.co`, so the browser could not. Fifteen checks passed: rows grouped under the five cell
+headers in the order Chase now → Work the deal → Open the door → Nurture → No tier yet, each header
+carrying its play; the *By chase cell* table showing the five lift rows, the no-tier cell at 2.37×
+against the book and the nurture cell at 0.11×; assumed ceilings and aged stamps marked on the rows
+that carry them; the dossier opening from a row and naming both the cell and the play; and no email
+address in the markup. The measurement behind the last one is the stronger claim: across all 600
+board rows and all 600 dossiers, not one address appears in the data at all. The single match in the
+page is the sign-in placeholder — a string literal in the inline script, rendered only when the
+override panel opens, which is the narrowing §44 already recorded rather than a leak.
+
+**A grants finding on the way.** The CLAUDE.md grants check, run after the migrations, reported
+seven views from the 16 Sep set — `pb_current_research`, `pb_engagement`, `pb_engagement_shape`,
+`pb_mdm_junk_hits`, `pb_mdm_resolution`, `pb_orbit_admission_queue`, `pb_orbit_overlap` — holding
+every privilege for `anon` and `authenticated`. All seven are `security_invoker`, so nothing was
+reachable: the base tables refuse, and `pb_current_research`'s sources hold no `anon` grant at all.
+Still wrong, and a check that reports known noise stops being read. Migration
+`prospect_book_revoke_view_writes` revokes the lot, narrows `pb_current_research` to
+`authenticated` select (its sources are `anon` nothing on purpose), and the check returns nothing
+again. Views count as new objects for the revoke rule.
+
+**Migrations, database version against file name.** The MCP stamps its own version at apply time;
+the files carry 18 Sep 10:00–14:00 names. Each recorded statement is byte-identical to its file:
+`prospect_book_board_by_cell` 20260918032803 (file 100000); `prospect_book_scoring_pass` 032853
+(120000); `prospect_book_retire_composite` 032858 (130000); `prospect_book_outcomes_and_lift`
+033410 (110000 — the first apply failed because `pb_lift()` read the snapshot table before it
+existed; the whole migration rolled back, the file was reordered and re-applied);
+`prospect_book_revoke_view_writes` 034006 (140000).
+
+**Open after this section.** The rank of a ready row with no tier. The readiness thresholds and
+the plays, a first setting to be re-cut from the lift report once outcomes exist. The Pages
+environment rule. The collection sprint and, after it, 0.2.1. The scoring pass has its table
+(`pb_actuals`, empty) and its function; nothing scores until a promotion has a first invoice and an
+actual on file. The first monthly lift snapshot fires on 1 Oct.
+## §53 — The book approves what it has nothing to weigh (18 Sep 2026)
+
+> **Renumbered 18 Sep.** This ruling and §54 were written as §50 and §52 on branch
+> `claude/wizardly-faraday-ncd1za`, while `claude/keen-dirac-q146ng` was independently writing its
+> own §50 (the website as a sweep channel), §51 (bulk confirm widened to what is corroborated) and
+> §52 (the board becomes a grid). Two collisions, found by reading the other branch rather than by
+> anything failing. Renumbered here to §53 and §54.
+>
+> **The applied migrations keep the old numbers and must.** `20260918100000`–`100300`,
+> `120000` and `120100` are byte-identical to `schema_migrations.statements`; editing a file to fix
+> a citation would break the one check that proves the record matches what ran. Their SQL comments
+> say §50/§52 and mean §53/§54. The live `comment on` strings in the database were corrected
+> separately, since those are not part of that byte-identity.
+>
+> Note that this branch's §53a repairs what `keen-dirac` calls **§51** — the corroboration rules in
+> `pb_confirm_fact_candidates`. That reference was correct when written and still is.
+
+
+**Owner ruling.** *"If there's enough confidence and the statement is clear enough, I think the
+system could approve it. There is always the ability for us to see that statement and undo it later.
+I'm not going to get through a thousand. I don't want wrong information to be entered, but I believe
+some of these you may have high enough confidence in, or it has been confirmed multiple times in
+other places, so we could automatically approve it."*
+
+§45 narrowed "never bulk confirm" to one class and gave the owner a button. This lets the BOOK press
+that button, on lanes the owner switches on by name, and adds the owner's second criterion —
+corroboration — as a lane of its own. The queue was 1,463 claims and nobody was ever going to read
+them.
+
+**Four refusals that no lane, policy row or interface can switch off.** No quote. Disagrees with what
+the book already holds. Two records proposing different values for the same key. A sentence the
+extractor itself called a judgement. These are tested first, in the view and again in the function.
+
+**The lanes**, each a row in `pb_fact_autoconfirm_policy` with its own thresholds:
+
+| lane | what it does | on? |
+|---|---|---|
+| `corroborates_book` | the book already holds this exact value — **writes nothing**, closes the row | yes |
+| `high_quote_open_key` | §45's own gate: rated high, quoted, nothing on file for the key | yes |
+| `corroborated_records` | two or more records in **two or more systems** say it, each with its own quote | yes |
+| `medium_observation` | medium confidence, extractor affirmatively called the sentence an observation | **no** |
+
+**The finding that changed the design, before a single row was approved.** The lanes first went in
+trusting the extractor's own `confidence`. Ten `high_quote_open_key` claims were then read by hand
+against their quotes, and four were inferences wearing a verbatim sentence: a delivery headcount of
+zero from a team page listing one person; "sells build work: no" from a sentence about being a
+strategic growth partner; a client-budget band from a case-study headline quoting the CLIENT's
+pipeline; a white-label signal from a sentence about staff certifications. Every gate the book had
+passed all four, because rule 8's receipt proves **provenance, not truth** — exactly what
+`written_record.ts` rule 3 exists to catch, and rule 3 was blind here because the website reader
+emits no `kind` at all.
+
+**191 of the 193 claims in that lane were website reads.** So the lane was not admitting §45's class;
+it was admitting one unvalidated extractor's self-rating, 191 times.
+
+The gate is therefore **per source, not per confidence**: a lane names the readers whose rating has
+been checked against their own quotes, and today that is only the two channels where a *person* wrote
+the sentence — a call summary and a CRM note. A website claim is not shut out; it reaches a lane by
+being corroborated, which was raised to two distinct source **systems** because two pages of one site
+are one witness and were corroborating each other 97 times.
+
+**What it did on the first run.** 263 eligible; **23 facts written**, **218 closed with nothing
+written**, 26 competing proposals closed with them, across 114 accounts. The queue went 1,463 → 1,196.
+The remaining 1,196 are 1,100 that need a person and 96 in the lane that is off.
+
+**The volume is the honest number, not the hoped-for one.** Clearing a thousand would mean trusting
+the website reader's "high", and the spot check says that costs wrong facts. The claims that stay are
+overwhelmingly website reads with no `kind`; making several hundred of them eligible needs a
+verification pass that asks one question per claim — *does this sentence state the value, or did you
+infer it?* — not a looser rule. That pass is not built.
+
+**A gap §45 left open, closed here.** `pb_confirm_fact_candidates` says in its own comment that it
+refuses "a claim that is somebody's judgement rather than an observation". It never checked: `kind`
+appeared nowhere in the function, and 11 claims the extractor had explicitly marked `judgement` were
+inside its gate, one click from being facts. The check is now in the function.
+
+**Nothing a machine read looks like a person's entry.** An automatic fact carries
+`entered_by = 'auto:<lane>'`, never an email, so rule 9's "a person outranks a machine" keeps meaning
+something. Each account's register gets one row per batch saying the word *automatically*.
+
+**Undo is half the ruling.** `pb_autoconfirm_log` records every row — candidate, fact, lane, batch —
+and `pb_undo_autoconfirm(batch)` deletes those facts, reopens those claims and says so in the
+register. It refuses to reopen a row a person has decided since: undoing the machine must not undo
+the person.
+
+**When it runs.** `pb-autoconfirm`, 06:00 UTC — after the notes sweep at 05:45 and before the score at
+06:15, so a claim approved this morning reaches this morning's tier. In-database like the watchdog,
+for the watchdog's reason.
+
+**Also caught, and it is the 12 Sep lesson repeating:** the lanes view arrived with `anon` revoked
+and `authenticated` holding DELETE, INSERT, TRUNCATE and UPDATE on it, because the migration thought
+about `anon` and stopped. Nothing could have been written through it — security_invoker over a table
+whose RLS refuses the write — but a grant that is only harmless because something else refuses it is
+not a grant anybody decided to make. Revoked in its own migration.
+
+**Still open, for the owner.** `medium_observation` (96 claims) is off and previewable; switching it
+on is a ruling, not a default. And whether the website reader ever earns a place in `sources` is a
+question about that reader's calibration, which nobody has measured.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository. This entry records
+the owner's ruling as made; if the register ever disagrees, **the register wins**.
+
+### §53a — What §53 broke on its way in, and the repair (18 Sep 2026)
+
+**§53's own migration destroyed §51.** At 23:38 on 17 Sep, another session had rewritten
+`pb_confirm_fact_candidates` around five named rules (DECISIONS §51): `already_evidenced` closes a
+claim the book already holds as evidence instead of writing a second row, `corroborates_what_is_held`
+upgrades an inferred value that now has a sentence behind it, `high_and_unheld` is §45's original
+class, and `second_independent_source` admits a medium claim when another record **from a different
+source** says the same thing with its own quote.
+
+At 11:16 on 18 Sep, §53's judgement fix replaced that function wholesale. It had been built by
+copying the 17 Sep `290000` file and adding one `elsif`, three hours after §51 landed, without
+anyone checking whether the file being copied was still what was running. It parsed, it applied, it
+reported success, and it silently deleted four of the five rules. Nothing on the queue screen would
+have looked wrong — the button still worked, it had just quietly stopped settling anything by
+corroboration.
+
+This is the 16 Sep placeholder-deploy failure in a different costume. **A `create or replace` is a
+whole-object write, and writing one from a file is only safe if the file is the current definition.**
+The database was the record; the file was three hours stale. The check that would have caught it is
+the one the repo already prescribes for edge functions — fetch the thing back and diff it — and it
+was never applied to a function definition.
+
+Restored in `20260918120000`, §51's function exactly, plus one addition stated rather than smuggled:
+`high_and_unheld` now refuses an explicit `kind = 'judgement'`, because eleven such claims were
+inside that branch and rule 3 exists to stop precisely them. A NULL kind still passes there — absent
+is not stated, and refusing it would empty the rule rather than sharpen it. §53's **source gate is
+deliberately not copied across**: it bounds what the book does unattended at 06:00, and this button
+is a person clicking. Narrowing a human decision with a rule written for a robot takes the owner's
+judgement away in the name of protecting it.
+
+**The undo had never been run, and could not have been run the way its own runbook said.** It shipped
+requiring a signed-in owner while `pb_autoconfirm_facts` — the function that *creates* the batches —
+already accepted an in-database caller so pg_cron could drive it. RUNBOOK §28 told an operator to
+call it from SQL, where it would have raised "not a WLIQ member" for anybody without a JWT. So the
+book could make a batch unattended and then refuse to let anyone take it back except through the web
+page. Fixed in `20260918120100`: same two callers as the runner.
+
+**Then it was actually round-tripped, which is the only reason any of this can be believed.**
+Batch `ed22112a` undone → queue 1,196 → **1,463** (its exact original count), 23 facts removed, 267
+log rows closed, 114 register rows written. Re-run → **263 eligible, 23 confirmed, 218 closed, 26
+superseded, 114 accounts** — identical to the first run, from a clean queue. The lanes are
+deterministic and the undo is exact.
+
+**A numbering collision to resolve at merge.** This branch wrote §53; the other branch wrote §51 and
+presumably a §53 of its own. Whoever merges must renumber rather than assume, and this entry's
+references to §51 are to *that* branch's ruling, not to anything in this file.
+
+## §54 — Does the sentence actually say it? (18 Sep 2026)
+
+**Owner instruction, 18 Sep:** build the verification pass, run it on a sample first.
+
+§53 gated the website reader out of the automatic lanes wholesale, because four of ten of its
+`high` claims were inferences wearing a verbatim quote. That gate is per READER, which was the only
+move available: nobody had asked, claim by claim, whether the quoted sentence states the value it
+was attached to.
+
+**`kind` cannot answer that and was never meant to.** It asks whether the SENTENCE is checkable,
+not whether the sentence supports the VALUE. *"a list of ~7 prospects"* is a perfectly checkable
+observation and still does not mean the agency has seven clients. So: a second, narrower column,
+three words, one question — `states` / `implies` / `unsupported`.
+
+**The asymmetry is the whole design.** This re-audits claims that already exist. A wrong
+`unsupported` costs a row staying in a queue somebody was going to read; a wrong `states` puts an
+inference in the book as evidence. So the lexicon in `ingest/verify_support.ts` may overrule the
+reader **downward only**, and an unreadable reply changes nothing at all and is asked again next
+run — it never becomes a verdict. `pb-verify` reads no source record, extracts no claim and writes
+no fact; it touches five columns on rows that have no verdict yet and cannot revise one.
+
+**The sample: 100 website claims, 4 model calls.**
+
+| verdict | n | what it means |
+|---|---|---|
+| `states` | 32 | the sentence says it outright |
+| `implies` | 29 | a fair reading gets there; the sentence doesn't say it |
+| `unsupported` | 39 | the sentence is about something else |
+
+**39% of website claims have a sentence that does not bear on the claim at all.** That is the
+§53 spot-check reproduced at scale, and it settles the question of whether that gate was an
+overreaction: it was not.
+
+Spot-checking the auditor's own work — because trusting a reader without checking it is the exact
+mistake this whole entry exists to correct — all eight sampled `unsupported` verdicts were right,
+including the two §53 had found by hand: a delivery headcount of zero read off a page headed
+*"Meet Our Fearless Leader"* above one person's name and the title Director of Growth, and a
+headcount of eight read off a single *"Co-Founder, Chief Executive Officer"* title line — both of
+them a leadership byline mistaken for a team size. Seven of eight `states` were clearly right; the
+eighth, `sells_build_work`
+from a portfolio caption, is generous rather than wrong. **The lexicon overruled the reader zero
+times** — the model caught everything the three hand-written rules would have. The rules stay: they
+cost nothing and they are the floor if a future model is worse.
+
+**What it unlocks, and it is the point.** §53's gate says a lane trusts a reader whose ratings
+somebody has checked against its own quotes. A per-claim verdict IS that check, one claim at a time
+instead of one reader at a time — so `support = 'states'` now stands in for being on a lane's
+allow-list. The gate stops being a blanket ban on a source and becomes a demand for evidence about
+the evidence. **14 of the 100 became eligible** on that basis, every one of them via the audit.
+
+In the other direction `unsupported` is a **new hard refusal above every lane**, corroboration
+included: two sentences that both fail to say the thing do not corroborate each other.
+
+**Rate, and what the rest would cost.** 14 eligible per 100 audited, at four model calls per
+hundred — so the remaining ~1,100 claims are roughly 44 calls and, on this rate, ~150 more
+claims answered without a person, plus ~430 permanently refused on evidence rather than left to
+rot in a queue. Whether to run it is the owner's, and the sample is why there is something to
+decide with.
+
+**Not scheduled.** `pb-verify` runs on request only. Putting it in the nightly chain is a separate
+decision, and it should be made after the full run, not before.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository. If it ever
+disagrees, **the register wins**.
+
+
+### §54a — The full run, and what the backstop got wrong (18 Sep 2026)
+
+**Owner instruction:** run the whole remaining queue. Done — **1,150 claims audited**, driven by a
+temporary `pb-verify-step` cron every three minutes (the roster stepper's idiom; removed when the
+queue drained, and the eight standing jobs were checked untouched afterwards).
+
+| verdict | n | share |
+|---|---|---|
+| `states` | 352 | 31% |
+| `implies` | 425 | 37% |
+| `unsupported` | 373 | **32%** |
+
+**A third of every machine-read claim in the book had a sentence that did not bear on it.** All 373
+are now refused from every lane, corroboration included.
+
+**66 claims became newly eligible**, across 46 accounts, every one of them via `support = 'states'`
+— that is, admitted because the sentence was audited and holds up, not because of who read it.
+Fourteen sampled from that set were **all correct**: founding years and agency types stated outright,
+service lists naming build work explicitly, a budget band stated in the sentence. That is the §53
+gate finally doing what it was for, rather than what it could manage with only a per-reader signal.
+
+**The lexicon was the worst-performing part of this, and it is worth being plain about that.** Across
+1,150 verdicts it fired six times, and on review it was wrong or too harsh nearly every time. Three
+separate corrections were needed, each found by reading its output rather than by reasoning about it:
+
+1. `client_budget_size` came out of the counting rule. It is a BAND, not a count, and the rule
+   misfired on *"Local SMBs: Businesses in a 3-county area (e.g., construction, restaurants)"* — a
+   sentence that states the band, where the "e.g." names which industries rather than how many.
+2. The absence rule's ceiling dropped from `unsupported` to `implies`. It was calling *"Key
+   Challenge: RFPs are often incomplete"* **about something else**, which is simply false.
+3. `NEGATION_MARKERS` was built from grammatical negation and missed how records actually record a
+   gap. *"Unknown for Dave's org (absent)."* says absent in so many words; *"A scope of work is
+   needed"* is what a missing specification looks like in a call summary. The rule fired on both and
+   held back a reader that had them right.
+
+The honest summary: **the model was right and the hand-written rules were wrong, every time they
+disagreed.** The rules never once caught something the reader missed. They are kept, corrected and
+narrowed, only because they cost nothing and are the floor if a future model is worse — but nothing
+here should be read as evidence that they are earning their place. A backstop that overrules correct
+readings is worse than no backstop, and that is what this one was for most of the day.
+
+**Left for the nightly.** The 66 are not hand-approved; `pb-autoconfirm` takes them at 06:00 on the
+lanes already switched on. Watching the system do it is worth more than seeing it done.
+
+**Still not scheduled.** `pb-verify` stays on request. It should be judged on this run before it is
+given a place in the nightly chain, and that is the owner's call.
+
+
+### §54b — Four strikes: the lexicon should stop overruling the reader (18 Sep 2026)
+
+The six lexicon rows were reset and re-audited under v3. The negation fix worked — *"Unknown for
+Dave's org (absent)."* now reaches the reader, which calls it `states`, correctly. So do the two
+scope-gap sentences, which the reader calls `implies`, also correctly.
+
+And the lexicon produced a **fourth** false positive on the same six rows:
+
+> *"With a 30+ person in-house team, we serve industries like auto repair, legal, medical and home
+> services."* → `headcount = 30`
+
+The sentence states the headcount outright. The word "like" belongs to a different clause, about
+industries served. The reader said `states` and was right; the illustrative-marker rule matched
+"like" anywhere in the sentence and held it to `implies`.
+
+**The record across 1,150 verdicts is now unambiguous.** The lexicon fired six times. Every single
+disagreement with the reader was resolved in the reader's favour on inspection, across four distinct
+failures, after three separate corrections. **It has never once caught something the reader missed.**
+
+That is not an argument for a fifth patch — a proximity check on "like" would fix this row and find
+another row tomorrow. It is an argument that the premise is wrong. The lexicon was written on the
+assumption that a cheap string rule is a safe floor under a fallible reader; on this evidence it is
+a fallible rule under a reader that has been better than it every time.
+
+**Recommendation, for the owner, not taken unilaterally:** demote the lexicon from *overruling* to
+*flagging*. Keep every rule, keep recording when it disagrees — that disagreement is the only
+measurement anyone has of whether the reader is drifting — but let the reader's verdict stand and
+surface the conflict for a person instead. That keeps the whole safety argument (we can see a
+disagreement) and drops the part that is actually costing accuracy (the rule wins it).
+
+Until that is ruled, the lexicon still overrules, and it is wrong roughly once in two hundred
+claims. The cost of each is one true claim held in a queue somebody was going to read — the cheap
+direction, by design. Nothing it has ever done has put a fact in the book.
+## §55 — Sourcing the LinkedIn company page (18 Sep 2026)
+
+Owner, of the 830 live accounts: *"can i source linkedin urls for all of these prospects?"*
+
+Not all. **602 of 830 — 72.5%.** What follows is how that number was reached, what it cost, and
+what the remaining 228 would take. This is a record of a sourcing run, not a ruling; rule 1 stands.
+
+**The primary source was already in hand, and had never been read.** Pipedrive carries `linkedin`
+natively on the organisation record, and `ingest/pipedrive_seed.ts` has declared that field on
+`PipedriveOrg` since the certified roster pull — line 176, typed, never referenced. 310 raw values
+were sitting there; 306 survived the normaliser. **That is 51% of the book at zero cost**, found by
+reading the seed rather than by buying anything. A paid enrichment run was the obvious first move
+and would have been the wrong one. Check what the CRM already holds before spending a credit on it.
+
+**It is an attribute of the account, not a fact.** A fact's key must be a `ProspectFeatures` key
+(CLAUDE.md, conventions) and nothing about a LinkedIn URL is graded: it fires no gate, no adjustment
+and no band. So it rides on `pb_accounts` beside `domain`, which is the same class of thing. In
+`pb_facts` it would have made every scorecard carry an input the rubric cannot read, and rule 5 —
+unknown is never evidence — would have had nothing to say about it. Three columns, all nullable and
+additive, so DECISIONS §8 holds: `linkedin_url`, `linkedin_uid` (LinkedIn's own numeric id, which
+survives a slug rename when the URL does not) and `linkedin_source`.
+
+**A person is not an organisation, and that is enforced three times.** Three of the roster's own
+Pipedrive values were personal `/in/` profiles. The board is public and signed out (§43), so without
+a guard the first sync would have published an owner's private profile on a public page. The refusal
+lives in `normalizeLinkedinCompany()` for the pure path, in a CHECK constraint on `pb_accounts`
+because the page reads the table and not the TypeScript, and in a regex on the page itself before an
+`href` is written. The constraint was proved by attempting a write, not by reading it.
+
+**The free path was ruled out with evidence rather than assumed away.** `pb_website_reads` holds 395
+readable pages and **zero** company slugs, which is implausible on its face — 311 of those pages
+contain the word "LinkedIn". The cause is migration `20260915090000`, which strips tags before
+storing: the text survives and every `href` is gone. Not recoverable without re-fetching. Worth
+knowing before anyone plans another read on top of that table.
+
+**The ampersand, and rule 9.** Six of the roster's values are agencies with `&` in the slug, typed in
+by a person. The first normaliser dropped them as malformed. `&` is legal in a path segment, and a
+person outranks a machine, so the slug is kept **verbatim** rather than dropped or re-encoded into a
+guess — TypeScript regex and database constraint both widened to `[a-z0-9%._&-]+`.
+
+**A migration that had already run was edited in place, and that was the mistake of the day.** The
+widening went into `20260918100000_…` — a file whose text was already `schema_migrations.statements`
+— which breaks the byte-identity the DECLARED-vs-RUNNING discipline depends on (§26, §33). Reverted
+to the as-applied text; the widening is its own file, `20260918100100_…`. An applied migration is a
+record of what ran. It is not a draft.
+
+**Apollo was probed before it was spent.** 10 domains first, to confirm `organizations/bulk_enrich`
+returns `linkedin_url` at all, then the full run on the owner's approval. **296 accounts written
+across 291 distinct domains**, at 1 credit per match and nothing for a miss. Apollo sometimes
+resolves a domain to an organisation whose own primary domain is a different one — a `.co` answered
+by a `.com`, a US domain answered by a `.com.br`. **22 of those went to `pb_identity_candidates` at
+`medium`, not to the account.** Rule 8: below `high` is a proposal, and a proposal is not a write.
+
+**The URL turned out to be a better duplicate-detector than the name.** 602 pages resolve to 595
+distinct ones: **seven pairs, each exactly two accounts**, six of them genuinely the same company
+entered twice and missed by name matching. Written as `linkedin_url_collision` candidates at `high`
+for a person to merge — `pb_accounts` is not deduplicated by a sweep.
+
+**What is missing, and why each one is missing.** 114 accounts have no domain, and Apollo's enrich is
+keyed on domain, so they cannot be reached that way at all; the free name→domain lookup is the route
+and it is **blocked — the Apollo session's OAuth expired and cannot be re-authorised from a
+non-interactive session.** Pipedrive has nothing left to give there: 86 of the 114 carry an org id
+and the ones inspected hold `website: null` and `linkedin: null`, so the earlier harvest was already
+complete. The other 116 have a domain and no page because Apollo returned no match — for some of
+them that is simply true, one CRM note on a domainless record reading *"limited online presence"*.
+When the name→domain path does run, the owner's instruction is that it **queues rather than writes**:
+a name match is a guess about which company, and a guess must never land on a graded account.
+
+**The sweep surfaced something the book should look at, which was not the question asked.** WLIQ's
+own domain is an account in the prospect book. A three-person home health care provider is Ranked.
+Several plainly-not-agencies are on the roster, including a school and a disposable-email domain.
+None of that is this change's to fix — `pb_roster_drift` proposes and a person decides (rule 11's
+posture, applied to the roster) — but it should not sit unremarked either.
+
+## §56 — Every field a source offers is read or refused in writing (18 Sep 2026)
+
+Owner, after §55 reported that Pipedrive had been carrying `linkedin` unread since the certified
+roster pull: *"So why am I finding all these data sources have never been pulled?"*
+
+The premise turned out to be wrong, and establishing that is most of what this section is for.
+
+**Pipedrive was never unpulled.** It is the single largest source in the book — 5,741 facts over
+641 accounts and 20 keys, more than every other source combined. §55's phrase "the primary source
+had never been read" meant the primary source *of LinkedIn URLs* and reads as something far larger.
+One field was unread. Not a source.
+
+**Three claims made while answering the question did not survive checking, and all three were
+made with full access to this repository and the database.** They are recorded because the pattern
+matters more than any one of them.
+
+1. *"Eight organisation custom fields are declared and never read."* All eight are read. The grep
+   behind the claim searched `org.<key>`; the code dereferences them as `OK.<key>`.
+2. *"72 ranked accounts are direct-to-client companies being graded with agency rules."* They are
+   not. The count came from `pb_facts`, where `relationship_type` sits on 58 accounts — but
+   `resolve_features.ts` reads `pb_accounts.relationship_type` **first** and only falls back to a
+   fact when that column is null. The column holds 421 agency and 158 direct. Measured against
+   Pipedrive directly: **556 agree, 1 disagrees, 5 are missing.** Client Type was already wired,
+   correctly, through a path the search had not looked at.
+3. *"`annual_revenue` can fill `revenue_band`."* It cannot. The values are 1 through 6, carry no
+   option labels, and 374 of 439 are literally `2`. Mapping it would have pushed fiction into the
+   key that gates ICP-1. Caught by pulling the distribution before recommending it, which is the
+   only reason it is in this list rather than in the rubric.
+
+**So the check is the deliverable, and the three errors above are the argument for it.** "Which
+field feeds which key, through which of two paths" is not a thing a person holds in their head, and
+the evidence is that a careful reader with every tool available got it wrong three times running.
+It should be a command, not a recollection.
+
+**What `scripts/source_coverage_test.ts` enforces.** Every field declared on `PipedriveOrg`,
+`PipedriveDeal` and `PipedrivePerson`, and every key in `PipedriveKeys`, is either dereferenced in
+the ingest module or carries a written reason in a ledger. Symmetric, like the conformance ledger
+(§35): a skip that has since been wired **fails** until its row is removed, so the ledger cannot
+become a place where things go to be forgotten. 131 checks.
+
+**It was proved against the bug that motivated it**, not just asserted: with the `org.linkedin`
+read removed the check fails and names the field, and with a ledger row falsely claiming `linkedin`
+is unread it fails the other way. Both directions were run, not reasoned about.
+
+**What it cannot do**, stated so nobody trusts it further than it deserves: it answers *is this
+field looked at*, never *is it read well*, and it does not reach the network to measure fill rates.
+A field whose name collides with an unrelated property access passes when it should not. That is
+the safe direction — it never invents a failure — and a person still writes every skip.
+
+**Three fields were unread when it first ran.** Two are refused in writing: `PipedrivePerson.phones`
+(no graded key wants it, `pb_contacts` has no column for it, and personal contact details are the
+class of thing §43 keeps off a signed-out board) and `PipedriveKeys.deal.orbit_project_url` (a
+pointer into Orbit, which is read and never written — rule 11 — and the overlap the book cares
+about comes from `pb_orbit_clients`, not from a link typed into a CRM field).
+
+**The third is a real gap and is left open on purpose.** Pipedrive's **native** `industry` field is
+filled on **411** of the 661 book organisations. The seed reads the **custom** "Industry Vertical"
+field instead, filled on **159**. The better-populated source is the one being ignored, and it was
+found by accident while chasing claim 1 above. It stays unwired here because `agency_type` is
+derived from industry, services and specialties together, so a second industry input moves grades
+and belongs behind a preview run rather than inside the change that added the check. The ledger row
+says so, and the test fails the day someone wires it without removing the row.
+
+**Not a ruling.** The register governs. This records a check and three corrections.
+
+## §57 — The ceiling shows its arithmetic (18 Sep 2026)
+
+Owner, on the rubric's $175,000 revenue-per-head: *"that's really aspirational. The numbers it
+generates are pure fiction. If anything, it portrays potential in a perfect world that doesn't
+exist."* And, on the word itself: *"I think that's correct to call it a ceiling, for what it's
+worth."*
+
+Both are right, and together they say what to do. A ceiling SHOULD be optimistic — that is what
+makes it an upper bound rather than a forecast. The problem was never the number. It was that the
+page printed the number and hid everything behind it.
+
+**What the strip said.** `Ceiling · Partner · headroom ≥ $100K`, and nothing else. That reads as
+something the book found out about this agency. It is five numbers multiplied:
+`headcount × revenue_per_head × outsourceable_share × serviceable_share × winnable_share`.
+
+**Measured, because the proportion is the argument.** Of the **457** accounts that get a ceiling,
+**413 have all three share factors sitting at their rubric default.** The win-odds factor is a
+default on **all 457** without exception; so is serviceable share. `archetype` has zero facts in
+the entire book, so every account resolves to the same blended $175K. For ninety percent of the
+book, "headroom ≥ $100K" is headcount wearing a dollar sign.
+
+**What does NOT change, and this matters more than what does.** `revenue_per_head` is one constant
+across all 830 accounts and `trailing_12m_revenue` is 0 for every one of them, which makes headroom
+a pure monotone rescale of headcount × shares. **The chase order is therefore identical at any
+per-head figure.** The board the owner works from does not move. Only the band label does — and
+only at the two dollar cut-points. Rescaling the whole book from $175K to $80K moves Partner from
+145 accounts to 84; the ranking underneath is untouched.
+
+**The live wire.** That invariance holds ONLY while `archetype` is unset everywhere. The moment
+anything populates it, accounts split between `strategy` $200K and `production` $150K, the constant
+becomes a per-account variable, and it genuinely reorders the board. Worth knowing before someone
+wires an archetype fact thinking it is an improvement.
+
+**So the fix is disclosure, not sourcing.** No new data, no grading change, no migration, nothing
+re-scored. Every factor was already stored in the scorecard and already returned by `pb_dossier()`
+as `read.trace` — the page simply never printed it. The strip now carries the multiplication under
+the cell that claims it, each factor labelled with where it came from.
+
+**Provenance is read, never inferred from the value.** A page that decided "0.5 means default"
+would be hard-coding a rubric constant (rule 4) and would keep saying so, wrongly and silently,
+the day the rubric moved. So whose a number is comes from what the engine itself recorded: a
+white-label signal behind the outsourceable share, `winnable_basis` behind the win odds, and a
+fact on file behind the archetype and the serviceable share. When a person has actually answered
+those questions the line renders all five factors as the agency's own, with their real basis —
+which makes the unanswered ones visible as the cheapest work in the book.
+
+**A rubric default is marked by a dot, not by dimming.** A colour-only distinction is no
+distinction at all for a reader who cannot see it.
+
+**It renders nothing when there is nothing to explain.** 373 accounts have no headcount, so the
+engine computes no wallet for them. Five "unknown"s in a row is noise pretending to be disclosure.
+
+**Not a new section.** `web/CONTRACT.json` owns the dossier's twenty-five sections (§46); this is
+part of the eight-cell strip and stays there. `scripts/board_page_test.ts` pins that position
+explicitly — between the Ceiling cell and the section grid — along with the two ways this could rot:
+the page recomputing the wallet instead of reading the engine's, and provenance by value
+comparison. 91 checks, up from 82; the contract's 60 are untouched.
+
+**Not a ruling.** Whether $175K is the right figure is the owner's, and PRO-16's sizing pass mark
+is still open. This changes what the page discloses, not what the engine computes.
+
+## §58 — The names check reported clean on two names it could not see (18 Sep 2026)
+
+**Not a ruling. A gap in an existing one, found and closed here so it is on the record — the same
+shape as §23, one level down: §23 was the rule being broken, this is the *check* for it missing.**
+
+On 18 September `scripts/no_prospect_names.ts` reported clean against the live roster while
+`docs/DECISIONS.md` still carried two roster names. A person found both by reading. Neither was
+hiding: each was in ordinary prose, in plain sight, in a shape the matcher had no way to see.
+
+### The two shapes
+
+1. **A multi-word name broken across a line break.** The first word ended one line and the rest
+   began the next. The roster holds a space there; the file held a newline. The script matched each
+   roster entry against the raw file text, so the space in the pattern could never meet the newline
+   in the text and the name was invisible. Every hard-wrapped document in `docs/` is a lottery on
+   this: whether a name is caught depends on where the line happened to break, which is to say on
+   nothing.
+2. **A name referred to by its distinctive first word alone.** The roster entry was
+   `Firstword Something, Inc`; the prose said `Firstword`, three times. Only whole roster entries
+   were matched, so a first word that identifies the account to anyone holding the roster — and the
+   people this rule protects against are exactly the people who can get a roster — read as clean.
+
+That session shaped out what it had seen and left the check as it was. That is the whole reason
+this entry exists, and the first run of the repaired check proved the point immediately: **two
+wrapped names and three bare first-word references were still in `docs/DECISIONS.md`** when the
+new rules were pointed at the live roster (below). A breach repaired by eye and a check left
+unchanged is a breach that comes back, because the eye that repaired it is the eye that missed it.
+
+### What changed in the script
+
+**Whitespace is normalised before matching.** Every run of whitespace in the scanned text —
+newlines included — collapses to one space, and the roster's own entries are flattened the same
+way, so the two sides meet. The normaliser carries an index back into the original text for every
+character it keeps, so line numbers survive it: a wrapped match is reported as a range,
+`docs/FILE.md:41-42`, and a single-line match still prints its source line exactly as before.
+
+A free result of the same step: JavaScript's `\s` includes U+00A0, so a roster name spelled with a
+non-breaking space now matches prose spelled with an ordinary one. §28 found exactly that
+character in one account name, one byte in 826, and the old matcher would have missed it in both
+directions.
+
+**The first word of each roster entry is matched too**, under three guards, because the whole
+value of this check is that people keep running it:
+
+- at least six characters — a shorter word is too weak to stand as evidence of a name;
+- not in `GENERIC`, the ordinary-English account names the script already skips (which is also why
+  an entry dropped as generic contributes no first word: an entry like `second mile` must not turn
+  `second` into a rule);
+- not in `FIRST_TOKEN_ALLOW`, which is ordinary English. It began as ten words that lead a great
+  many agency names and had to grow to about four hundred on first contact with the real roster
+  (below). Every word in it is a blind spot, so the rule for adding one is written at the set:
+  **a word goes in because it is ordinary English used in its ordinary sense, never because a
+  finding was inconvenient.**
+
+A first-word hit prints **the word and the roster entry it came from**, and says it is a first
+word. A full name is proof; a first word is circumstantial, and a report that does not let the
+reader judge it is a report that gets ignored on its second false positive. A first word sitting
+inside a full-name hit is not reported twice.
+
+Exit codes are unchanged: 0 clean, 1 a name was found, 2 no roster was given.
+
+### What it costs, and what is still invisible
+
+The guards are a real trade and they are set on the noisy side on purpose. A roster entry whose
+first word is five characters, or ordinary, is matched only as a whole name — so `Firstword` still
+gets through when Firstword is short. That is the price of a check that runs.
+
+An entry whose first word is a leading article keeps only its whole-name rule, because `The` is
+under the floor and the second word is not the first. Stepping past the article was considered and
+left out: a word chosen for being second is not a word chosen for being distinctive, and this check
+buys its usefulness with its false-positive rate.
+
+Still invisible: whole words only. A name split by a hyphen, an initialism, a middle word, a
+paraphrase. And history, as §23 recorded — this reads the working tree.
+
+`scripts/no_prospect_names_test.ts` pins both shapes and the ordinary-first-word case against a
+throwaway roster and a throwaway git repository, so neither rule can be quietly lost. It runs in
+`npm test`, needs no roster and touches no database. RUNBOOK §27 carries the operator's version.
+
+### What the first run against the live roster found
+
+The tuning above is not a guess; it is what the first real run forced. Against all 851 account
+names, the two rules behaved completely differently:
+
+| rule | hits | distinct | verdict |
+|---|---|---|---|
+| whole roster entry | 4 | 3 entries | all four real |
+| first word, as first specified | 453 | 24 words | 23 words ordinary English, 1 a real breach |
+
+The whole-name rule is precise because a full company name in a public repository is not a
+coincidence. The first-word rule, at ten allowlisted words, produced **453 findings to carry one
+real one** — a tier name in the rubric's own vocabulary, a TypeScript global, a journey stage, and
+twenty more words this repository writes constantly. That is the failure mode rule 2 cannot
+afford: a report nobody reads. Growing the allowlist to ordinary English took it to 18, which a
+person can read in ten seconds, and the one real first-word breach is still in it.
+
+The temptation was to allowlist all 24 words and be green. That is why the rule for adding a word
+is written down: one of the 24 was an account named by its first word alone, three times, in a
+passage about that account. A word chosen for being ordinary keeps the check honest; a word chosen
+for being in the way makes it a formality.
+
+**What the run repaired.** Seven edits, none of which changed what a passage says:
+
+- **two roster names broken across a line break**, both in `docs/DECISIONS.md`, both invisible to
+  the old matcher and both there since the passages were written. This is shape 1, in the wild.
+- **one roster name on a single line, in two files.** The *old* check would have caught this one,
+  which means it entered after the last clean run — the §28 lesson again, from the other end: a
+  check is only as good as the last time it was run.
+- **three bare first-word references to one account**, in a section whose opening sentence had
+  already been shaped to "one account is a…". The shaping had been done and these three were
+  simply missed by the eye that did it. This is shape 2, in the wild.
+- **one line naming three agencies that are not on the roster** — surfaced only because one of
+  their names shares a first word with an account that *is*. Not a roster breach today; §28 says
+  plainly that is a statement about today. Shaped.
+- **one synthetic fixture renamed.** An invented agency name in a test shared its first word with
+  a real roster entry. §23 renamed a fixture rather than argue about it; so did this.
+
+**The roster file was checksummed, not trusted.** It reaches the check by being carried out of the
+database by hand, which is a lossy channel: the first transcription was wrong in exactly two
+single characters out of 14,072 bytes, and both looked perfectly ordinary. `md5(string_agg(name,
+E'\n' order by name))` in the database against `md5` of the file found it; per-100-row checksums
+localised the block, per-row checksums localised the line, and the line was rebuilt from its
+codepoints. §28 learned this on a non-breaking space. The point stands: **the checksum is the
+count of the thing the script counts**, and a check run against a file nobody verified is a check
+against a file nobody verified.
+
+**The lesson, which is §28's lesson from the other side.** §28 recorded that rule 2 is not a thing
+you pass once, because the roster moves under prose that was clean when it was written. This one
+records the other half: the *check* is not a thing you write once either. A clean run means clean
+in the shapes the matcher can see, and that sentence is worth saying out loud every time a check
+reports clean.
+## §59 — Taking an agency off the board, and why that is not an override (18 Sep 2026)
+
+Owner, looking at the "Change this grade" panel: *"I need this screen to have an option where I'm
+just removing people, either because they're unqualified or because they're do not contact. Maybe
+those mean the same thing... there's this thing where the ruling has a date that expires. When I
+make some of these changes, I don't want it to expire. I'm not sure the expiration function can be
+there, but I need to understand why, and it needs to be separate from just making a full stop
+change decision."*
+
+Three questions in that, and the answers are connected.
+
+### Why the override expires at all
+
+An override is a statement about **the engine's answer**, not about the world. The inputs under it
+keep moving every night — a new fact, a call, a Pipedrive card that changed stage — and the
+override sits on top and ignores all of it. If it never lapsed, that row would be frozen against
+every piece of evidence that arrived afterwards and nobody would ever find out. The 90-day lapse is
+a **forced re-look**: it is the only mechanism in this book that makes a human judgement face new
+evidence.
+
+That is also why the panel points at a **fact** as the permanent correction. A fact changes the
+input, so the engine re-derives from it and there is nothing to go stale. An override that you want
+to last forever is almost always a fact you have not written down.
+
+### Why a removal must not expire, and why it needed to be a different act
+
+A removal is not a claim about the tier. It is a standing instruction about **whether we pursue
+them at all**. Nothing the engine learns overnight makes that stale — and a better tier is exactly
+the *wrong* reason to put someone back in front of a caller after they asked us to stop. So a
+removal does not borrow the override's machinery at all: there is no expiry field, and
+`pb_register_removal_guard` refuses the row if one is sent rather than accepting it and quietly
+lapsing in ninety days.
+
+The owner's instinct that these are two different things is the whole design. The rule of thumb:
+
+| | argues with | goes stale when | so it |
+|---|---|---|---|
+| **Fact** | the input | never | never expires |
+| **Override** | the engine's answer | new evidence arrives | lapses in 90 days |
+| **Removal** | whether we chase them | a person changes their mind | never expires, and only a person reverses it |
+
+### The two dispositions are not the same thing
+
+Same effect on the board, different meanings, and the difference shows up the moment the facts
+change.
+
+**`do_not_contact` is about permission and relationship.** They asked; it conflicts with a client or
+a partner; legal ruled. No fact reopens it, so it carries **no review date at all** and only a
+person's reinstatement brings them back.
+
+**`unqualified` is about fit.** Not an agency, out of business, too small, buys no build work. That
+is a judgement over facts, and facts change — a three-person shop becomes a thirty-person shop. So
+it may carry an optional **review date**, which is emphatically *not* an expiry: on that day the row
+appears in `pb_removal_due_review` and asks a person to look. It never returns to the board on its
+own. **An expiry undoes a decision on a timer; a review date asks a person to look again and leaves
+the decision standing.**
+
+The practical difference is the one that matters: a do-not-contact must hold even when the same
+company re-enters the book through another Pipedrive record, so `pb_board()` matches a removal by
+the account *and* by the normalised company name. An unqualified is a filter on today's board.
+
+### What a removal does not do
+
+It does not delete anything, does not stop the nightly score, and does not touch
+`pb_accounts.book`. Removed accounts keep being read and graded, so a reinstatement shows **today's**
+tier rather than a stale one and nothing has to be re-seeded to undo a mistake. `book = 'parked'`
+keeps meaning what it already means — the Pipedrive Client Journey parked stage — because
+conflating "their CRM card moved" with "the owner removed them" would make both unreadable.
+
+It is also **not a grading concept**, so it goes nowhere near the engine, the rubric or a scorecard.
+The engine grades; the register decides what we do about the grade. Putting removal in the rubric
+would have said the opposite, and the rubric is unchanged: **0.1.6 stays active, fingerprint
+`9a911e2c`, and pb-score v13 was not redeployed.** Nothing in this entry can move a tier.
+
+### The vocabulary is data, not a list in the page
+
+`pb_removal_reasons` — thirteen rows, the same posture as `pb_chase_weights` (§30): the owner can
+change the reasons without a deploy, and the page must *read* them. A list written into
+`board.html` would keep working after the table changed and would be wrong without failing, which is
+the trap rule 4 exists for. `scripts/board_page_test.ts` pins that the page reads the table and
+offers nothing at all if it cannot.
+
+### Two things this nearly got wrong
+
+**A uuid is not an order.** `pb_removals` takes the latest of an account's removal and reinstatement
+rows, and tie-broke on `id desc` — a random uuid. The harness caught it on the first run: a removal
+and a reinstatement written in one transaction share `now()`, and the board kept the account hidden
+after it had been put back. `pb_register.seq` (additive, §8) is now the tiebreak. The backfill was
+then wrong in its own turn — `add column ... bigserial` numbers rows in *physical* order, so 222 of
+295 came out in a different order from the one they were written in — and 20260918100300 renumbers
+them so the comment claiming `created_at` order is actually true.
+
+**A definer function is a hole in every policy above it.** Removal reasons were taken off the anon
+SELECT policy on `pb_register`, because "they asked us to stop after the March call" is a candid
+judgement about a named company. That was necessary and not sufficient: `pb_dossier()` is SECURITY
+DEFINER and granted to `anon` (§43), so it reads `pb_register` with RLS bypassed and would have
+handed the same text to anyone with the link. Exactly the shape §43a fixed for addresses. The
+register block now skips both kinds; the signed-in panel asks `pb_removal()` instead, which is
+granted to `authenticated` only.
+
+### Open, and the owner's call rather than mine
+
+**Every override reason written so far is public.** Nine rows of the owner's own words about named
+agencies, readable through the same dossier block by anyone with the board's URL. Narrowing that is
+a ruling about what the public dossier shows, and this session already carries one; it is raised
+here rather than changed quietly.
+
+**`pb_chase_board` is not filtered.** A removed agency is off `pb_board()` and therefore off the
+working surface and the dashboard, but the contact-ordered chase board still lists them. No page
+reads it today, so nothing shows a removed agency anywhere — but the next thing built on it would.
+
+### The register
+
+PRO-0…PRO-18 are authoritative and live outside this repository. Removal is not among them: it is
+an operational lane the owner ruled on 18 Sep, held to the same discipline PRO-5's revision puts on
+an override — owner lane, a reason code from a fixed list, a written reason, one register row, fully
+auditable and reversible. If the Grading Register ever disagrees, **the register wins**.
+
+### §50a — Another session was in this database at the same time
+
+Written down because it changes how the next reader should read the section above.
+
+While this work was applied, a second session was applying its own migrations to
+`sgagrmapuovnjwvgsxbp` from another branch. Interleaved by timestamp:
+
+```
+104513  prospect_book_account_linkedin              (theirs)
+104633  prospect_book_account_linkedin_ampersand    (theirs)
+105526  prospect_book_removals                      (this session)
+105707  prospect_book_dossier_linkedin              (theirs — rewrites pb_dossier)
+105711  prospect_book_removal_view_grants           (this session)
+105824  prospect_book_register_sequence             (this session)
+105945  prospect_book_register_sequence_backfill    (this session)
+110348  prospect_book_dossier_hides_removals        (this session — rewrites pb_dossier)
+111050  prospect_book_autoconfirm_policy            (theirs)
+111254  prospect_book_autoconfirm_runner            (theirs)
+```
+
+**Two sessions rewrote `pb_dossier()` eleven minutes apart.** `create or replace function` is a
+whole-body replacement, so whichever ran second would have silently dropped the other's change.
+This one survived only because its body was taken from `pg_get_functiondef` *after* theirs had
+landed, so it carries their `linkedin_url` line. Verified afterwards: the live function has both
+(`linkedin_url` present, removal rows filtered) and `pb_board()` still returns 600.
+
+**That is luck, not method.** If they rewrite `pb_dossier()` again from a body they captured before
+110348, the removal filter disappears and every removal reason becomes public again, with no test
+failing — nothing in this repository reads the deployed function body back. Anyone rewriting that
+function must start from `pg_get_functiondef`, not from a migration file.
+
+`scripts/reconcile.ts` reports four failures on this branch as a result, and **none of them is this
+work**: rubric **0.1.7 (`dec7d291`) is now active**, activated by that session — the ledger and the
+files on this branch still pin 0.1.6 — and twelve applied migrations have no file here because
+their files are on the other branch. All five migrations from this session are filed and
+byte-identical to `schema_migrations.statements` (md5-verified). Nothing here touches the rubric:
+0.1.6 and 0.1.7 make no difference to a removal, which never reaches the engine.

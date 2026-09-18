@@ -52,7 +52,7 @@
  */
 
 import type { EvidenceLabel, RelationshipType, Rubric, Timing } from "../core/prospect_types.ts";
-import { domainFromEmail, norm, normalizeDomain } from "./identity.ts";
+import { domainFromEmail, norm, normalizeDomain, normalizeLinkedinCompany } from "./identity.ts";
 
 /* ------------------------------------------------------------------ *
  * Field keys — ONE place to change. Labels are inferences from values (9 Sep 2026 pull).
@@ -261,6 +261,13 @@ export interface RosterAccount {
   account_key: string;
   name: string;
   domain: string | null;
+  /**
+   * The organisation's LinkedIn COMPANY page, normalised, or null. Pipedrive carries this
+   * natively on the org record (`PipedriveOrg.linkedin`); it is not a graded feature and
+   * never becomes a pb_facts row — it is an identity attribute, so it rides on the account.
+   * A personal `/in/` profile normalises to null rather than attaching a person to a company.
+   */
+  linkedin_url: string | null;
   pipedrive_org_id: number;
   roster_source: "pipedrive";
   roster_certified: true;
@@ -984,11 +991,18 @@ export function mapPipedriveRoster(input: PipedriveRosterInput): PipedriveRoster
     }
     if (card) bump(byCjStage, stageLabel(cardStage));
 
+    const linkedin_url = normalizeLinkedinCompany(org.linkedin);
+    if (org.linkedin !== null && org.linkedin !== undefined
+        && String(org.linkedin).trim().length > 0 && linkedin_url === null) {
+      notes.push(`org ${org_id}: LinkedIn value is not a company page; left unknown`);
+    }
+
     accounts.push({
       key: account_key,
       account_key,
       name,
       domain,
+      linkedin_url,
       pipedrive_org_id: org_id,
       roster_source: PIPEDRIVE_SOURCE,
       roster_certified: true,

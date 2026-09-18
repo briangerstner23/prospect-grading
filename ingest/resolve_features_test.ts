@@ -709,6 +709,23 @@ function run(partial: Partial<ResolveInput> = {}) {
   check("an unparseable as_of is noted and nothing is dropped on it", r.notes.some((n) => n.startsWith("as_of")));
 }
 
+
+/* ---- engagement and the stamp date (DECISIONS §52) ---- */
+{
+  const r = run({ engagement: { engagement: "responsive", days_since_engaged: 40, last_engaged: "2026-07-31T00:00:00Z" } });
+  eq("engagement: the pb_engagement row resolves to a state and a day count", [r.features.engagement_state, r.features.days_since_engaged], ["responsive", 40]);
+  const none = run({});
+  eq("engagement: no row → null, never 'unknown' and never 'cold'", [none.features.engagement_state, none.features.days_since_engaged], [null, null]);
+  const odd = run({ engagement: { engagement: "lukewarm", days_since_engaged: "soon" } });
+  eq("engagement: a state outside the vocabulary is noted and null", odd.features.engagement_state, null);
+  check("engagement: …and so is a day count that is not a number", odd.features.days_since_engaged === null && odd.notes.some((n) => n.startsWith("engagement ")), odd.notes.join(" | "));
+  const str = run({ engagement: { engagement: "engaged", days_since_engaged: "3" } });
+  eq("engagement: a numeric string day count is accepted (PostgREST may stringify)", str.features.days_since_engaged, 3);
+  const stamped = run({ facts: [factRow("timing", "within_1_week", { observed_at: "2026-09-01" })] });
+  eq("timing: the winning stamp's observed date travels with it", [stamped.features.timing, stamped.features.timing_observed_at], ["within_1_week", "2026-09-01"]);
+  eq("timing: no stamp, no date", [none.features.timing, none.features.timing_observed_at], [null, null]);
+}
+
 /* ------------------------------------------------------------------ *
  * report
  * ------------------------------------------------------------------ */
