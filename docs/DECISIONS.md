@@ -4464,3 +4464,57 @@ files on this branch still pin 0.1.6 — and twelve applied migrations have no f
 their files are on the other branch. All five migrations from this session are filed and
 byte-identical to `schema_migrations.statements` (md5-verified). Nothing here touches the rubric:
 0.1.6 and 0.1.7 make no difference to a removal, which never reaches the engine.
+
+---
+
+## §60 — Automatic approval opens on the FIELD, not on the reader (18 Sep 2026)
+
+**Owner: "for the auto approve, i was wanting it, but you are saying no, is that auto approve bad."**
+
+The answer given was too broad and it misrepresented the system. Automatic approval is not bad, it is
+not off, and it has been writing facts since 18 September. Three lanes are enabled and sound —
+`corroborates_book` (writes nothing by construction), `high_quote_open_key` and
+`corroborated_records`. They match zero rows today only because they have already swept everything
+eligible; the nightly sweep feeds them again.
+
+What was actually being refused was ONE lane, `medium_observation`, and the refusal stands on
+evidence: a hand read of all 77 of its claims found roughly one in three attaching a genuine,
+verbatim quote to the wrong FIELD or the wrong COMPANY. Our own agreed follow-up recorded as the
+prospect's buying timeline. "No alternative partners were mentioned on the call" recorded as "they
+have no competing vendor", twice. A leadership byline read as a team size.
+
+**Neither existing check can catch that class, and that is the whole point.** The quote check (§9)
+proves the sentence is in the note. §54's support verdict proves the sentence bears on the claim.
+Both interrogate the SENTENCE. This error is in what the sentence was filed *against* — the subject
+and the field — and every one of the 77 comes from the two channels §53's source gate already trusts.
+
+### The ruling
+
+The lane opens on the axis that BOUNDS the damage rather than describing it: the **field**. A claim
+on a key the active rubric never reads cannot move a tier, a rank or a band, however wrong it is.
+That is arithmetic, not a judgement about the extractor — and it is the only gate here that does not
+depend on trusting a reader.
+
+`pb_fact_autoconfirm_policy.keys` is the list, DATA beside `sources` (rule 4). Widening it is an
+owner decision and an update, never a code edit.
+
+### Measured before switching it on
+
+Five of the fourteen keys in the lane appear NOWHERE in rubric 0.1.7 or in `engine.ts`,
+`classify.ts`, `decay.ts` or `reason.ts`: `recurring_work_shape`, `competitive_overlap`,
+`client_evidence_count`, `sells_build_work`, `client_budget_size`. **32 claims across 25 accounts.**
+The other 45 sit on keys deciding the deal reads, the ICP class, the size ceiling or confidence, and
+stay with a person. A dry run after the change reported exactly `eligible 32, confirmed 32,
+accounts 25, skipped 0`, and wrote nothing — 600 log rows before and after.
+
+### The one thing to carry forward
+
+Three of those five keys — `recurring_work_shape` (16), `sells_build_work` (3),
+`client_budget_size` (2) — ARE read by the registered 0.2.1 draft. Inert under 0.1.7, grade-bearing
+the day 0.2.1 activates: **21 of the 32 admitted here**. The runbook's preview would show the
+movement; it would not say the facts underneath were admitted without a person. So before activating
+0.2.1, either re-audit those keys or narrow the list to the two no rubric reads at all
+(`competitive_overlap`, `client_evidence_count`) and accept 11 instead of 32.
+
+**Not a widening of rule 8.** The four hard refusals above every lane are untouched and remain
+unswitchable. This adds a fifth condition to one lane; it removes none.
