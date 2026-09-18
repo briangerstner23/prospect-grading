@@ -3475,3 +3475,66 @@ deterministic and the undo is exact.
 **A numbering collision to resolve at merge.** This branch wrote §50; the other branch wrote §51 and
 presumably a §50 of its own. Whoever merges must renumber rather than assume, and this entry's
 references to §51 are to *that* branch's ruling, not to anything in this file.
+
+## §52 — Does the sentence actually say it? (18 Sep 2026)
+
+**Owner instruction, 18 Sep:** build the verification pass, run it on a sample first.
+
+§50 gated the website reader out of the automatic lanes wholesale, because four of ten of its
+`high` claims were inferences wearing a verbatim quote. That gate is per READER, which was the only
+move available: nobody had asked, claim by claim, whether the quoted sentence states the value it
+was attached to.
+
+**`kind` cannot answer that and was never meant to.** It asks whether the SENTENCE is checkable,
+not whether the sentence supports the VALUE. *"a list of ~7 prospects"* is a perfectly checkable
+observation and still does not mean the agency has seven clients. So: a second, narrower column,
+three words, one question — `states` / `implies` / `unsupported`.
+
+**The asymmetry is the whole design.** This re-audits claims that already exist. A wrong
+`unsupported` costs a row staying in a queue somebody was going to read; a wrong `states` puts an
+inference in the book as evidence. So the lexicon in `ingest/verify_support.ts` may overrule the
+reader **downward only**, and an unreadable reply changes nothing at all and is asked again next
+run — it never becomes a verdict. `pb-verify` reads no source record, extracts no claim and writes
+no fact; it touches five columns on rows that have no verdict yet and cannot revise one.
+
+**The sample: 100 website claims, 4 model calls.**
+
+| verdict | n | what it means |
+|---|---|---|
+| `states` | 32 | the sentence says it outright |
+| `implies` | 29 | a fair reading gets there; the sentence doesn't say it |
+| `unsupported` | 39 | the sentence is about something else |
+
+**39% of website claims have a sentence that does not bear on the claim at all.** That is the
+§50 spot-check reproduced at scale, and it settles the question of whether that gate was an
+overreaction: it was not.
+
+Spot-checking the auditor's own work — because trusting a reader without checking it is the exact
+mistake this whole entry exists to correct — all eight sampled `unsupported` verdicts were right,
+including the two §50 had found by hand: a delivery headcount of zero read off *"Meet Our Fearless
+Leader Dave Martin, Director of Growth"*, and a headcount of eight read off *"Tal Hayek, Co-Founder,
+Chief Executive Officer"*. Seven of eight `states` were clearly right; the eighth, `sells_build_work`
+from a portfolio caption, is generous rather than wrong. **The lexicon overruled the reader zero
+times** — the model caught everything the three hand-written rules would have. The rules stay: they
+cost nothing and they are the floor if a future model is worse.
+
+**What it unlocks, and it is the point.** §50's gate says a lane trusts a reader whose ratings
+somebody has checked against its own quotes. A per-claim verdict IS that check, one claim at a time
+instead of one reader at a time — so `support = 'states'` now stands in for being on a lane's
+allow-list. The gate stops being a blanket ban on a source and becomes a demand for evidence about
+the evidence. **14 of the 100 became eligible** on that basis, every one of them via the audit.
+
+In the other direction `unsupported` is a **new hard refusal above every lane**, corroboration
+included: two sentences that both fail to say the thing do not corroborate each other.
+
+**Rate, and what the rest would cost.** 14 eligible per 100 audited, at four model calls per
+hundred — so the remaining ~1,100 claims are roughly 44 calls and, on this rate, ~150 more
+claims answered without a person, plus ~430 permanently refused on evidence rather than left to
+rot in a queue. Whether to run it is the owner's, and the sample is why there is something to
+decide with.
+
+**Not scheduled.** `pb-verify` runs on request only. Putting it in the nightly chain is a separate
+decision, and it should be made after the full run, not before.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository. If it ever
+disagrees, **the register wins**.

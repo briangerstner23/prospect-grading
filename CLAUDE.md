@@ -64,6 +64,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             090300 website retry window (the last three transcribed 17 Sep from the database, where
             they had run without a file — DECISIONS §26) ·
             20260917100000 reconcile state (§34) · 110000 potential snapshot key (§36). All applied.
+            20260918 claim support — pb_fact_candidates.support (states/implies/unsupported)
+            and the lanes view rebuilt around it: `unsupported` refuses a claim from EVERY
+            lane, and `states` stands in for its source being on a lane's allow-list
+            (DECISIONS §52).
             20260915090000 website reads ·
             20260915120000 fact source precedence ·
             20260915130000 website team pages ·
@@ -110,8 +114,8 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             explicit judgement, which its own comment had claimed since §45.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
-            functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
-            _shared/
+            functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
+            pb-pipedrive-webhook, _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)
 web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the prospect board, live,
@@ -271,7 +275,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
 - Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
-  **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
+  **pb-fathom-webhook v2**, **pb-verify v1** (commit `5378733`, pinned-commit entrypoint, `verify_jwt: false` confirmed in the deploy response) (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
   `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
   the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have

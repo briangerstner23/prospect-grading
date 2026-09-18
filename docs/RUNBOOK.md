@@ -2154,3 +2154,62 @@ select count(*) from public.pb_facts where entered_by like 'auto:%';
 
 `entered_by` is `auto:<lane>`, never an email. If you ever see an automatic fact signed with a
 person's address, something has gone wrong with rule 9 and it is worth stopping to find out what.
+
+
+## 29 · Auditing the sentence behind a claim
+
+`pb-verify` asks one question of claims the book already has: does the stored quote STATE this
+value for this key? It reads no source record, extracts nothing and writes no fact — it fills
+`pb_fact_candidates.support` and nothing else. DECISIONS §52.
+
+Only rows with `support is null` are selected, so a verdict is never revised by a re-run. Deployed
+as a pinned-commit entrypoint (§3), `verify_jwt = false`, called with the Book's own bearer. This
+container has no route to the gateway, so drive it from the database:
+
+```sql
+-- what it WOULD do (no model call, nothing written)
+select net.http_post(
+  url := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-verify',
+  headers := jsonb_build_object('Content-Type','application/json',
+             'Authorization','Bearer ' || public.pb_secret('PB_SYNC_TOKEN')),
+  body := jsonb_build_object('dry_run', true, 'limit', 100),
+  timeout_milliseconds := 120000);
+
+-- for real, one source at a time; 'source' is optional and 'limit' caps the batch
+select net.http_post(
+  url := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-verify',
+  headers := jsonb_build_object('Content-Type','application/json',
+             'Authorization','Bearer ' || public.pb_secret('PB_SYNC_TOKEN')),
+  body := jsonb_build_object('limit', 200, 'source', 'website'),
+  timeout_milliseconds := 300000);
+```
+
+`net.http_post` returns a request id; read the answer from `net._http_response` by that id. A run
+of 100 took about two minutes in four batches, so give it time before deciding it failed — and
+check the count directly rather than waiting on the response row, which appears only at the end:
+
+```sql
+select count(*) filter (where support is not null) audited,
+       count(*) filter (where support = 'states')      states,
+       count(*) filter (where support = 'implies')     implies,
+       count(*) filter (where support = 'unsupported') unsupported,
+       count(*) filter (where support_basis = 'lexicon') lexicon_overruled
+  from pb_fact_candidates;
+```
+
+**Read the auditor before you trust it.** This is the same mistake §50 made about the website
+reader, and it is available here too — a reader that rates its own work is not evidence. After any
+sizeable run, read a dozen of each verdict against the sentence:
+
+```sql
+select support, key, value, left(quote, 100), left(support_reason, 80)
+  from pb_fact_candidates where support = 'unsupported' order by random() limit 12;
+```
+
+`support_basis = 'lexicon'` means one of the three hand-written rules in `ingest/verify_support.ts`
+overruled the model downward. On the first 100 that never fired. If it starts firing often, the
+model has got worse and the rules are doing work they were only meant to backstop.
+
+A `support` of `unsupported` refuses the claim from every lane, corroboration included. A `states`
+stands in for the claim's source being on a lane's allow-list — which is why the audit, not the
+gate, is what lets a website claim reach a lane.
