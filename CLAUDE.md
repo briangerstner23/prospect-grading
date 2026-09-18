@@ -21,8 +21,8 @@ core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only —
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
             rubric.prospect.v0.1.6.json is ACTIVE (17 Sep 22:27 UTC, fp 9a911e2c: the override
             distance cap removed — max_tiers_moved null, DECISIONS §49; previewed 830 scored,
-            2 changed, both explained: the owner's own Conduit Digital override, which the cap had
-            been refusing, and one Pipedrive row added the same day).
+            2 changed, both explained: the owner's own Platinum-to-Bronze override, which the cap
+            had been refusing, and one Pipedrive row added the same day).
             v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §40 — added
             dimension_b.flag_rules; previewed 829/0 changed).
             v0.1.4 (retired 17 Sep; it was 0.1.3 + DECISIONS §17 restored, §31).
@@ -98,7 +98,14 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260917200000 board public read (SUPERSEDED — a view grant cannot work here) ·
             210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
             `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
-            260000 board carries account_id · 270000 call attendees by name only.
+            260000 board carries account_id · 270000 call attendees by name only ·
+            20260918100000 removals — pb_removal_reasons (the vocabulary as data) + register kinds
+            `removal` / `reinstatement` + pb_removals / pb_removal_due_review + pb_board() filters
+            them out + pb_removed() / pb_removal(uuid) (authenticated only). A removal has NO
+            expiry and the guard refuses one (DECISIONS §50) · 100100 revoke on the two new views
+            (they arrived holding everything, as this file warns) · 100200 pb_register.seq, because
+            a uuid is not an order · 100300 renumber it in created_at order · 100400 pb_dossier()
+            skips removal rows — a definer function is a hole in every policy above it.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
@@ -113,9 +120,12 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             engine's own chase_rank_key order and the 16 Sep artifact's own dossier sections, in its
             order. Public, no sign-in (owner ruling §43), no data baked in. Light by default with a
             remembered dark toggle; every localStorage touch wrapped. NO EMAIL ADDRESSES reach the
-            page — not from pb_contacts, not from call attendees (names and side only). Adding a
-            section, or dropping one, means updating scripts/board_page_test.ts, which pins all 13
-            section names and 54 checks in total.
+            page — not from pb_contacts, not from call attendees (names and side only). Also the ONE
+            PLACE an agency comes off the book: "Remove from the board", under the override and
+            deliberately unlike it — no expiry, two dispositions, and an "Off the board" list that is
+            the only route back (§50). Adding a section, or dropping one, means updating
+            web/CONTRACT.json (which owns the section names, §46) and scripts/board_page_test.ts,
+            which pins the board's BEHAVIOUR — 97 checks in total.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
             Both are one file each, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
@@ -189,6 +199,15 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    `Override moved more than one tier` and the trace says how far it went. A **number** in that
    key restores the cap; an **absent** key is still an error, because "no cap" has to be stated on
    purpose and a rubric that forgot to mention it must not silently become an uncapped one.
+7a. **A removal is not an override, and never expires.** An override argues with the ENGINE'S
+   ANSWER, whose inputs keep moving, so it lapses — that is a forced re-look, the only mechanism that
+   makes a human judgement face new evidence. A removal (`pb_register` kind `removal`, owner lane)
+   is a standing decision about whether we pursue them at all; nothing the engine learns overnight
+   makes it stale. So it carries no `expires_at` and the database refuses one. `do_not_contact` is
+   about permission and takes no review date; `unqualified` is about fit and may take one — a review
+   date QUEUES A PERSON and never returns the row by itself. Reversal is a `reinstatement` row, never
+   a delete. Removal touches no tier, no rubric and no scorecard (DECISIONS §50).
+
 8. Identity never auto-merges below `high` confidence; medium/low become
    `pb_identity_candidates` for a person to review. **Facts read out of prose follow the same
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →

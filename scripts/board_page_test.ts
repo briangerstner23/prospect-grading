@@ -30,7 +30,7 @@ const check = (name: string, cond: boolean, detail = "") => {
 };
 
 /* 1 · every table it reads is one anon may select */
-const OPEN = ["pb_rubric_versions", "pb_runs"];
+const OPEN = ["pb_rubric_versions", "pb_runs", "pb_removal_reasons"];
 const CLOSED = ["pb_members", "pb_promotions", "pb_potential_snapshots",
   "pb_webhook_inbox", "pb_chase_scores", "pb_chase_board"];
 const fetched = [...new Set([...page.matchAll(/get\("([a-z_]+)\?/g)].map((m) => m[1]))];
@@ -197,6 +197,60 @@ check("signing in is stated as optional for reading", /Reading this book needs n
 check("no session token is baked into the page", !/access_token"\s*:\s*"[A-Za-z0-9._-]{20,}/.test(page));
 check("every session-storage touch is guarded, like the theme",
   (page.match(/try \{ return localStorage|try \{ localStorage|try \{ return JSON\.parse/g) ?? []).length >= 3);
+
+/* 11 · removing an agency from the board (DECISIONS §50)
+ *
+ * The owner asked for a way to take people off — unqualified, or do not contact — and said the
+ * expiry must not follow them there. Each check below is one way that intent gets quietly undone:
+ *
+ *  - An expiry creeps back in. The whole point is that a standing decision does not lapse on a
+ *    timer, so the form must not offer one and the write must not send one. The database refuses
+ *    it too, but a form that offers a field the database rejects is a form that lies.
+ *  - The page restates the vocabulary. pb_removal_reasons is data so the owner can change it
+ *    without a deploy; a hard-coded list here keeps working after the table changes and is wrong
+ *    without failing — the same trap rule 4 exists for.
+ *  - The removal is presented as an override. They answer different questions and behave
+ *    differently; a panel that does not say so will have someone reaching for the wrong one.
+ *  - The way back disappears. A removal is reversible BY DESIGN, and a decision you cannot find
+ *    is not reversible. pb_board() no longer returns the row, so the only route is the list.
+ *  - The reason reaches the public page. It is a candid judgement about a named company.
+ */
+check("the board can take an agency off it, not only re-grade one", /function removalHtml/.test(page));
+check("one removal implementation, reached from the dossier and the dialog",
+  (page.match(/function removalHtml/g) ?? []).length === 1 && /removalHtml\(r, null\)/.test(page));
+check("it writes a register row of kind removal", /kind: "removal"/.test(page));
+check("putting one back is a register row too, never a delete",
+  /kind: "reinstatement"/.test(page) && !/method: "DELETE"/.test(page));
+// The single most important check in this block. If `expires_at` ever appears in the removal
+// write, a do-not-contact silently comes back in ninety days and someone calls them.
+// `expires_at:` with the colon — a KEY in the body being posted. The word alone appears in the
+// comment that explains its absence, and a check that fails on its own explanation teaches the
+// next person to delete the explanation.
+check("a removal carries NO expiry", !/kind: "removal"[\s\S]{0,600}expires_at\s*:/.test(page));
+check("the form offers no expiry field", !/id="rmExp"/.test(page));
+check("it says in the page why a removal does not expire",
+  /has no expiry and cannot be given one/.test(page));
+check("it distinguishes a review date from an expiry", /not an expiry/.test(page));
+check("the reasons come from the database, not from a list in the page",
+  /pb_removal_reasons\?select=/.test(page) && /meta\.removalReasons/.test(page));
+check("with no vocabulary it offers nothing rather than guessing",
+  /The removal reasons could not be read/.test(page));
+check("a review date is offered only where the vocabulary allows one", /allows_review_date/.test(page));
+check("the owner lane is the only one offered the form",
+  /me\.role !== "owner"/.test(page) && /owner lane/.test(page));
+check("the way back is on the board, where it can be found", /data-section="Off the board"/.test(page));
+check("the removed list is read through the signed-in helper, never the anon one",
+  /authRpc\("pb_removed"\)/.test(page) && !/get\("pb_removed/.test(page) && !/rpc\("pb_removed"\)/.test(page));
+check("one account's removal state is read the same way",
+  /authRpc\("pb_removal", \{ p_account_id/.test(page));
+check("the authenticated RPC does not ask for a minimal body (PostgREST answers 204)",
+  /prefer: "return=representation"/.test(page));
+check("the panel's lookups are SCOPED, like the override's",
+  /function wireRemoval\(r, state, onDone, root\)/.test(page) && /scope\.querySelector/.test(page));
+check("it does not claim the nightly run applies it — a removal is immediate",
+  /reads the register directly for this one thing/.test(page));
+check("a refusal is attributed to the database, not the page",
+  (page.match(/the database decides this, not the page/g) ?? []).length >= 2);
 
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);

@@ -2065,3 +2065,75 @@ check is one nobody runs.
 **What the script cannot do:** it reads the working tree, not history. A name already pushed stays
 in the commits that carried it until someone rewrites history or the repository goes private, and
 both are the owner's call (DECISIONS §23).
+
+## 28 · Taking an agency off the board, and putting one back
+
+DECISIONS §50. Removal is an **owner-lane register row**, not a delete and not an override. It has
+no expiry and cannot be given one.
+
+### From the board
+
+Sign in (the sign-in is on the override panel itself, §48), open the agency — either by clicking its
+row, or by clicking its tier chip for the dialog — and use **Remove from the board**, directly under
+"Change this grade". Choose:
+
+* **Do not contact them** — permission and relationship. They asked; it conflicts with a client, a
+  partner or a contract. No review date, and nothing reopens it but you.
+* **They do not belong in this book** — fit. Not an agency, out of business, too small, buys no
+  build work. You may set a **review date**, which queues them in `pb_removal_due_review` on that
+  day and *changes nothing by itself*.
+
+A written reason is required; the database refuses the row without one. The row leaves the board
+immediately — unlike an override, a removal is not waiting on the 06:15 run, because `pb_board()`
+reads the register directly.
+
+### Putting one back
+
+The board grows an **Off the board** section for a signed-in owner (hidden for everyone else, and
+hidden when nothing has been removed). Every removal is listed with its disposition, reason, who and
+when, anything past its review date first, and a **Put back** button. That is the only route back —
+`pb_board()` no longer returns the row, so the dossier cannot be reached from the list.
+
+A reinstatement is a second register row, never a deletion: the removal stays on the record and the
+reinstatement outranks it. The agency returns at **today's** tier, because removed accounts never
+stopped being scored.
+
+### Changing the reasons
+
+They are rows, not code:
+
+```sql
+select disposition, code, label, allows_review_date, active
+  from public.pb_removal_reasons order by disposition, sort;
+
+-- retire one without losing the rows that used it
+update public.pb_removal_reasons set active = false
+ where disposition = 'unqualified' and code = 'duplicate_record';
+```
+
+`allows_review_date` must stay `false` on every `do_not_contact` row: the guard refuses a
+do-not-contact carrying a review date, and the page hides the field. The page reads this table on
+load, so a change is live on the next reload with no deploy.
+
+### Checking the state
+
+```sql
+select * from public.pb_removals;            -- currently off the board
+select * from public.pb_removal_due_review;  -- review dates that have arrived
+select count(*) from public.pb_board();      -- the board, removals already excluded
+```
+
+`pb_removals` and `pb_removal_due_review` are service-role only. From a signed-in session use
+`pb_removed()` and `pb_removal(uuid)`, which are granted to `authenticated`: a removal's written
+reason is a candid judgement about a named company and stays off the anon surface, and
+`pb_dossier()` skips both kinds for the same reason.
+
+### What it does NOT do
+
+No row is deleted. `pb_accounts.book` is untouched — `parked` still means the Pipedrive Client
+Journey parked stage and nothing else. The nightly score still reads them, so nothing has to be
+re-seeded to undo a mistake. And no tier moves: removal is not a grading concept and never reaches
+the engine or the rubric.
+
+**`pb_chase_board` is not filtered** (§50, open). Nothing reads it today, so nothing shows a removed
+agency — but anything built on it must exclude `pb_removals` itself.

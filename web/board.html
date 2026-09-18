@@ -307,6 +307,22 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
 .ovr .note.warn{background:var(--alert-bg);color:var(--alert);border:1px solid var(--alert)}
 .ovr .note.ok{background:var(--go-bg);color:var(--go);border:1px solid var(--go-line)}
 .ovr .note[hidden]{display:none}
+/* The removal panel is the same form furniture in a different colour. Its own accent exists so
+   that "take them off the board" never looks like an ordinary correction, and a destructive
+   button is never the same button as a corrective one. */
+.ovr.rmv>h3{color:var(--alert)}
+.ovr button.go.danger{background:var(--alert);border-color:var(--alert)}
+.ovr .rmvstate{margin:0 0 12px;padding:10px 12px;border-radius:6px;background:var(--alert-bg);
+  border:1px solid var(--alert);color:var(--ink);font-size:13px;line-height:1.55}
+.ovr .rmvstate strong{color:var(--alert)}
+.offlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.offlist li{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:10px 12px;
+  border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+.offlist .nm{font-weight:600}
+.offlist .mt{font-size:12px;color:var(--ink-3)}
+.offlist .due{color:var(--alert);font-weight:600}
+.offlist button{font:inherit;font-size:13px;cursor:pointer;background:none;color:var(--link);
+  border:1px solid var(--rule);border-radius:6px;padding:4px 10px;margin-left:auto}
 .topnav .navbtn.who{max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:640px){ section{padding-block:24px} .mast{padding-block:22px 18px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -380,6 +396,21 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       <tbody id="tb"><tr><td colspan="9" class="loading">Reading the book…</td></tr></tbody>
     </table></div>
     <p class="empty" id="empty" hidden>Nothing matches those filters.</p>
+  </section>
+
+  <!-- Off the board. Hidden for everyone but a signed-in owner, and hidden again when nothing has
+       been removed — an empty section on a public page would be an invitation to wonder who is on
+       the list. A removal is reversible BY DESIGN, and a decision you cannot find is not
+       reversible, so the way back has to live somewhere a person can reach (DECISIONS §50). -->
+  <section id="offsec" data-section="Off the board" hidden>
+    <div class="sechead"><h2>Off the board</h2>
+      <p>Agencies taken off deliberately. <strong>None of this expires</strong> — an expiry belongs
+      to an override, which is a statement about a tier that new evidence can overtake. This is a
+      standing decision about whether we pursue them at all, and only a person puts one back.
+      Anything past its review date is listed first; a review date asks you to look again, it does
+      not return the row on its own.</p></div>
+    <ul class="offlist" id="offlist"></ul>
+    <p class="note" id="offmsg" hidden></p>
   </section>
 
   <footer>
@@ -516,6 +547,15 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       if (!res.ok) return res.text().then(function (t) { throw new Error(res.status + " " + t.slice(0, 300)); });
       return res.status === 204 ? null : res.text().then(function (t) { return t ? JSON.parse(t) : null; });
     });
+  }
+
+  /* An RPC with the signer's token rather than the publishable key. pb_removal() and pb_removed()
+     are granted to `authenticated` only: their text is a candid judgement about a named company,
+     which this book keeps off the anon surface. `return=representation` is deliberate — authReq
+     defaults to `return=minimal`, and PostgREST answers a function call under that preference with
+     204 and no body, so the panel would have read every account as "not removed". */
+  function authRpc(fn, args) {
+    return authReq("rpc/" + fn, { method: "POST", body: args || {}, prefer: "return=representation" });
   }
 
   function authPost(url, body, token) {
@@ -737,11 +777,17 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   Promise.all([
     rpc("pb_board"),
     get("pb_rubric_versions?select=version,activated_at,spec&status=eq.active"),
-    get("pb_runs?select=finished_at,counts&source=eq.pb-score&status=eq.success&order=finished_at.desc&limit=1")
+    get("pb_runs?select=finished_at,counts&source=eq.pb-score&status=eq.success&order=finished_at.desc&limit=1"),
+    // The removal vocabulary is DATA, the same way the chase weights are (pb_removal_reasons,
+    // migration 20260918100000). The page must not restate it: a list written here would keep
+    // working after the owner changed the table and would be wrong without failing — which is
+    // rule 4 applied to the one part of this screen that is not the rubric's business.
+    get("pb_removal_reasons?select=disposition,code,label,note,allows_review_date&active=is.true&order=disposition,sort")
   ]).then(function (out) {
     rows = out[0] || [];
     meta.rubric = (out[1] || [])[0] || {};
     meta.run = (out[2] || [])[0] || {};
+    meta.removalReasons = out[3] || [];
     if (!rows.length) { fail("The view returned no rows."); return; }
 
     var when = meta.run.finished_at ? new Date(meta.run.finished_at) : null;
@@ -803,7 +849,20 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       if (current !== row) return;
       dbody.innerHTML = dossierHtml(row, d);
       wireOverride(row, d, null, dbody);
+      wireRemoval(row, rmvState[row.account_id] || null, function () { openDossier(row, true); }, dbody);
     };
+    /* Is this one already off the board? Only an owner may ask — pb_removal() is granted to
+       `authenticated` and its text is a candid judgement about a named company. The answer is
+       cached per account and the dossier repaints once it arrives, so the panel is never blocked
+       on it and a reader who is not signed in never waits for a call they could not make. */
+    if (me.email && me.role === "owner" && !(row.account_id in rmvState)) {
+      authRpc("pb_removal", { p_account_id: row.account_id })
+        .then(function (hit) {
+          rmvState[row.account_id] = (hit && hit[0]) || null;
+          if (current === row && cache[row.account_id]) done(cache[row.account_id]);
+        })
+        .catch(function () { /* the panel simply offers a removal; the database is the authority */ });
+    }
     if (cache[row.account_id]) { done(cache[row.account_id]); return; }
     rpc("pb_dossier", { p_account_id: row.account_id })
       .then(done)
@@ -1027,6 +1086,290 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     });
   }
 
+
+  /* ==================== taking an agency off the board ====================
+     DECISIONS §50. The owner, looking at the override form: *"I need this screen to have an option
+     where I'm just removing people, either because they're unqualified or because they're do not
+     contact... When I make some of these changes, I don't want it to expire."*
+
+     THIS IS NOT AN OVERRIDE, and the difference is the whole design.
+
+     An override is a statement about the ENGINE'S ANSWER. Its inputs keep moving underneath it
+     every night, so it lapses: the expiry is a forced re-look, the one mechanism in the book that
+     makes a human judgement face new evidence.
+
+     A removal is a statement about WHETHER WE PURSUE THEM. Nothing the engine learns overnight
+     makes that stale, and a better tier is exactly the wrong reason to put someone back in front
+     of a caller after they asked us to stop. So there is no expiry field here at all, and the
+     database refuses the row if one is sent (pb_register_removal_guard).
+
+     The two dispositions are not synonyms:
+       do_not_contact — about permission. No fact reopens it. No review date.
+       unqualified    — about fit, which is a judgement over facts, and facts change. It may carry
+                        a REVIEW DATE, which queues a person on that day and changes nothing by
+                        itself. A review date is not an expiry.
+
+     The vocabulary is read from pb_removal_reasons, never written here (rule 4's posture applied
+     to the one part of this screen that is not the rubric's business). */
+
+  function rmvAll() { return meta.removalReasons || []; }
+  function rmvDispositions() {
+    var seen = {}, out = [];
+    rmvAll().forEach(function (x) { if (!seen[x.disposition]) { seen[x.disposition] = 1; out.push(x.disposition); } });
+    return out;
+  }
+  function rmvCodes(disp) {
+    return rmvAll().filter(function (x) { return x.disposition === disp; });
+  }
+  /* The disposition-level copy is editorial and belongs in the page; the CODES are data. An
+     unknown disposition still renders, with its own name and no invented explanation. */
+  var RMV_COPY = {
+    do_not_contact: {
+      title: "Do not contact them",
+      blurb: "About permission, not about fit. They asked us to stop, or working them would cut " +
+             "across a client, a partner or a contract. No fact reopens this and it carries no " +
+             "review date — only you put them back."
+    },
+    unqualified: {
+      title: "They do not belong in this book",
+      blurb: "About fit. Not an agency, out of business, too small, buys nothing we build. That is " +
+             "a judgement over facts and facts change, so you may set a review date: on that day " +
+             "they appear in the review queue. They do not return to the board on their own."
+    }
+  };
+  function rmvCopy(d) {
+    return RMV_COPY[d] || { title: d, blurb: "" };
+  }
+  function rmvAllowsReview(disp, code) {
+    var hit = rmvCodes(disp).filter(function (x) { return x.code === code; })[0];
+    return !!(hit && hit.allows_review_date);
+  }
+
+  /* `state` is the pb_removal() row, or null for "on the board". The dialog opened from a board
+     row passes null without asking: pb_board() does not return a removed company at all, so a row
+     you can click is a row that is on the board. */
+  function removalHtml(r, state) {
+    var head = '<section class="ovr rmv" data-section="Remove from the board">' +
+      '<h3>Remove from the board</h3><div class="ovin">';
+    var tail = "</div></section>";
+
+    if (!rmvAll().length) {
+      return head + '<p class="lead">The removal reasons could not be read, so this panel cannot ' +
+        'offer the list it is required to hold you to. Rather than invent one, it offers nothing.</p>' + tail;
+    }
+    if (!me.email) {
+      return head + '<p class="lead">Taking an agency off the board is recorded against a person, ' +
+        'with a written reason, and the owner lane is the only one that may do it (PRO-5). Sign in ' +
+        'with the form above and this becomes that control.</p>' + tail;
+    }
+    if (me.role !== "owner") {
+      return head + '<p class="lead">Signed in as ' + esc(me.email) + '. Taking an agency off the ' +
+        'board sits with the owner alone, for the same reason an override does (PRO-5, revised ' +
+        '4 Sep 2026), and this address is on record as ' + esc(me.role || "no write lane") + '.</p>' + tail;
+    }
+
+    /* Already off the board: show the decision and offer the way back, never a second removal. */
+    if (state) {
+      var c = rmvCopy(state.disposition);
+      return head +
+        '<div class="rmvstate"><strong>Off the board — ' + esc(c.title) + '.</strong> ' +
+        esc(state.label || state.reason_code || "") + ", recorded by " + esc(localPart(state.removed_by)) +
+        " on " + esc(day(state.removed_at)) + "." +
+        (state.review_on
+          ? " Review date " + esc(String(state.review_on)) +
+            (state.due_review ? ' — <span class="due">due now</span>.' : ".")
+          : " No review date.") +
+        '</div>' +
+        '<p class="lead">“' + esc(state.reason) + '”</p>' +
+        '<p class="lead">This did not expire and never will. If it was wrong, or something has ' +
+        'changed, put them back — that is a second register row, not a deletion: the removal ' +
+        'stays on the record and the reinstatement outranks it.</p>' +
+        '<div class="fld" style="margin-bottom:12px"><label for="rmBackWhy">Why they go back on</label>' +
+          '<textarea id="rmBackWhy" placeholder="Required. What changed, or what was wrong."></textarea></div>' +
+        '<div class="foot"><button type="button" class="go" id="rmBackGo">Put them back on the board</button>' +
+          '<span class="lane">recorded as ' + esc(me.email) + ' · owner lane · the board carries ' +
+          'them again immediately — at whatever tier the engine reads today, because they never ' +
+          'stopped being scored</span></div>' +
+        '<div class="note" id="rmMsg" hidden></div>' + tail;
+    }
+
+    var disps = rmvDispositions();
+    return head +
+      '<p class="lead">Different act from the one above, and it behaves differently. An override ' +
+      'argues with the tier and <strong>lapses on a timer</strong>, because the evidence under it ' +
+      'keeps moving. This is a standing decision about whether we pursue them at all — so it ' +
+      '<strong>has no expiry and cannot be given one</strong>. Nothing is deleted: they keep being ' +
+      'read and graded, they simply stop appearing, and you can put them back from the ' +
+      '“Off the board” list whenever you want.</p>' +
+      '<div class="frow">' +
+        '<div class="fld"><label for="rmDisp">Why they come off</label><select id="rmDisp">' +
+          disps.map(function (d) {
+            return '<option value="' + esc(d) + '">' + esc(rmvCopy(d).title) + "</option>"; }).join("") +
+        "</select></div>" +
+        '<div class="fld"><label for="rmCode">Which one</label><select id="rmCode"></select></div>' +
+        '<div class="fld" id="rmRevWrap"><label for="rmRev">Look again on <span class="lane">optional</span></label>' +
+          '<input type="date" id="rmRev">' +
+          '<span class="lane" id="rmRevNote"></span></div>' +
+      "</div>" +
+      '<p class="lead" id="rmBlurb"></p>' +
+      '<div class="fld" style="margin-bottom:12px"><label for="rmWhy">Reason — the record</label>' +
+        '<textarea id="rmWhy" placeholder="Required. Write it for someone reading it in two years and deciding whether it still holds."></textarea></div>' +
+      '<div class="foot"><button type="button" class="go danger" id="rmGo">Take them off the board</button>' +
+        '<span class="lane">recorded as ' + esc(me.email) + ' · owner lane · the row goes ' +
+        'immediately, and this reason is never shown on the public page</span></div>' +
+      '<div class="note" id="rmMsg" hidden></div>' +
+      tail;
+  }
+
+  /* Scoped exactly like wireOverride, and for the same reason: the dossier panel stays in the DOM
+     while hidden and shares these ids with the dialog, so an unscoped lookup would let you type
+     into one form and submit the other. */
+  function wireRemoval(r, state, onDone, root) {
+    var scope = root || document;
+    var q = function (id) { return scope.querySelector("#" + id); };
+    function note(node, kind, text) {
+      if (!node) return;
+      node.className = "note " + kind;
+      node.textContent = text;
+      node.hidden = !text;
+    }
+    var msg = q("rmMsg");
+
+    /* the way back */
+    var back = q("rmBackGo");
+    if (back) {
+      back.addEventListener("click", function () {
+        var why = q("rmBackWhy");
+        if (!why.value.trim()) {
+          note(msg, "warn", "A written reason is required to put an agency back, exactly as it was to take one off.");
+          return;
+        }
+        back.disabled = true;
+        note(msg, "ok", "Recording…");
+        refreshIfStale().then(function (ok) {
+          if (!ok) throw new Error("Your sign-in has expired. Sign in again and the form will be here.");
+          return authReq("pb_register", {
+            method: "POST",
+            body: { kind: "reinstatement", account_id: r.account_id, made_by: me.email, text: why.value.trim() }
+          });
+        }).then(function () {
+          note(msg, "ok", "Back on the board, at whatever tier today's read gives them. The removal " +
+            "stays on the record; this outranks it.");
+          delete cache[r.account_id];
+          delete rmvState[r.account_id];
+          loadOffBoard();
+          if (onDone) onDone();
+        }).catch(function (e) {
+          back.disabled = false;
+          note(msg, "warn", "Refused: " + (e.message || String(e)) + " — the database decides this, not the page.");
+        });
+      });
+      return;
+    }
+
+    var go = q("rmGo");
+    if (!go) return;                                   // no vocabulary, or not the owner lane
+    var disp = q("rmDisp"), code = q("rmCode"), rev = q("rmRev"),
+        revWrap = q("rmRevWrap"), revNote = q("rmRevNote"), blurb = q("rmBlurb"), why = q("rmWhy");
+
+    function paint() {
+      var d = disp.value;
+      code.innerHTML = rmvCodes(d).map(function (x) {
+        return '<option value="' + esc(x.code) + '" title="' + esc(x.note || "") + '">' +
+          esc(x.label) + "</option>"; }).join("");
+      blurb.textContent = rmvCopy(d).blurb;
+      paintReview();
+    }
+    function paintReview() {
+      var allowed = rmvAllowsReview(disp.value, code.value);
+      revWrap.hidden = !allowed;
+      if (!allowed) { rev.value = ""; return; }
+      var hint = rmvCodes(disp.value).filter(function (x) { return x.code === code.value; })[0];
+      revNote.textContent = (hint && hint.note ? hint.note + " " : "") +
+        "A review date queues them for you on that day. It is not an expiry — they stay off the board until you act.";
+    }
+    disp.addEventListener("change", paint);
+    code.addEventListener("change", paintReview);
+    paint();
+
+    go.addEventListener("click", function () {
+      if (!why.value.trim()) {
+        note(msg, "warn", "A written reason is required — the database refuses the row without one.");
+        return;
+      }
+      var payload = { disposition: disp.value };
+      if (rev.value && !revWrap.hidden) payload.review_on = rev.value;
+      go.disabled = true;
+      note(msg, "ok", "Recording…");
+      refreshIfStale().then(function (ok) {
+        if (!ok) throw new Error("Your sign-in has expired. Sign in again and the form will be here.");
+        return authReq("pb_register", {
+          method: "POST",
+          body: {
+            kind: "removal",
+            account_id: r.account_id,
+            made_by: me.email,
+            reason_code: code.value,
+            text: why.value.trim(),
+            payload: payload
+            // NO expires_at. Not omitted by oversight: the guard in the database refuses a removal
+            // that carries one, because a standing decision that quietly lapses in ninety days is
+            // the failure this whole panel exists to avoid.
+          }
+        });
+      }).then(function () {
+        note(msg, "ok", "Off the board, from now, with no expiry. Unlike an override this did not " +
+          "wait for the nightly run — the board reads the register directly for this one thing. " +
+          "Reload to see them gone; “Off the board” is where they are and where you undo it.");
+        delete cache[r.account_id];
+        delete rmvState[r.account_id];
+        loadOffBoard();
+        if (onDone) onDone();
+      }).catch(function (e) {
+        go.disabled = false;
+        note(msg, "warn", "Refused: " + (e.message || String(e)) +
+          " — the database decides this, not the page. A removal needs the owner lane on a " +
+          "White Label IQ address, a reason code from pb_removal_reasons and a written reason.");
+      });
+    });
+  }
+
+  /* ==================== off the board: seeing it, and undoing it ====================
+     A decision you cannot find is not reversible. This is the only route back, so it renders for a
+     signed-in owner on the board itself rather than behind a dossier that pb_board() no longer
+     returns. Anon never sees it: pb_removed() is granted to `authenticated` only. */
+  var rmvState = {};
+
+  function loadOffBoard() {
+    var sec = el("offsec");
+    if (!sec) return;
+    if (!me.email || me.role !== "owner") { sec.hidden = true; return; }
+    authRpc("pb_removed").then(function (list) {
+      list = list || [];
+      sec.hidden = list.length === 0;
+      el("offlist").innerHTML = list.map(function (x) {
+        return "<li>" +
+          '<span class="nm">' + esc(x.name) + "</span>" +
+          '<span class="mt">' + esc(x.disposition === "do_not_contact" ? "do not contact" : "unqualified") +
+            " · " + esc(x.label || x.reason_code || "") +
+            " · " + esc(localPart(x.removed_by)) + " on " + esc(day(x.removed_at)) +
+            (x.review_on
+              ? (x.due_review ? ' · <span class="due">review due ' + esc(String(x.review_on)) + "</span>"
+                              : " · review " + esc(String(x.review_on)))
+              : "") +
+          "</span>" +
+          '<button type="button" data-back="' + esc(x.account_id) + '">Put back</button>' +
+          "</li>";
+      }).join("");
+    }).catch(function (e) {
+      sec.hidden = false;
+      el("offlist").innerHTML = "";
+      var m = el("offmsg");
+      m.hidden = false;
+      m.textContent = "The removed list could not be read: " + (e.message || String(e));
+    });
+  }
+
   /* A research field is sometimes {quote, value} and sometimes the bare value — the extractor
      wraps a field when it has a sentence to cite. Unwrap either without pretending a missing
      value is an empty string, so "unknown" stays distinguishable from "". */
@@ -1082,6 +1425,9 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
         '<span class="ovrank">rank ' + esc(r.rank) + " of " + rows.length + "</span></div>" +
         '<button type="button" class="ovx" id="ovClose" aria-label="Close">\u00d7</button></div>' +
       overrideHtml(r, {}) +
+      // null, not "unknown": pb_board() does not return a removed company, so a row you can click
+      // is on the board. Nothing to fetch, and no spinner in a dialog that should open instantly.
+      removalHtml(r, null) +
       '<div class="ovfoot"><a href="#" id="ovFull">Open the full dossier instead \u2192</a></div>' +
       "</div>";
     document.body.appendChild(ovDlg);
@@ -1101,6 +1447,13 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       var msg = ovDlg.querySelector("#ovMsg");
       if (msg) msg.textContent = msg.textContent +
         " This dialog can be closed; the board still shows the engine's tier until then.";
+    }, ovDlg);
+    // A removal is not deferred to the nightly run — pb_board() reads the register itself — so the
+    // dialog closes and the list is redrawn without the row. Saying "it will change overnight"
+    // here would be as wrong as the override claiming it had already moved the tier.
+    wireRemoval(r, null, function () {
+      rows = rows.filter(function (x) { return x.account_id !== r.account_id; });
+      window.setTimeout(function () { closeOverride(); renderDist(); render(); }, 1400);
     }, ovDlg);
 
     var first = ovDlg.querySelector("select, button.go, #ovClose");
@@ -1163,7 +1516,8 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       r.they_last_replied ? "" : "alert", true));
     h.push("</div>");
 
-    h.push('<div class="wrap">' + overrideHtml(r, d) + "</div>");
+    h.push('<div class="wrap">' + overrideHtml(r, d) +
+      removalHtml(r, rmvState[r.account_id] || null) + "</div>");
 
     /* ==================================================================================
        THE TWENTY-FIVE SECTIONS, IN THE ORDER web/CONTRACT.json SETS (DECISIONS §46).
@@ -1568,6 +1922,43 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     });
   })();
 
+  /* One delegated handler for every "Put back" button, so the list can be redrawn as often as it
+     likes without accumulating listeners. It reuses the removal panel's own write path by opening
+     the dossier — there is one reinstatement implementation, not two that can drift. */
+  el("offlist").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-back]") : null;
+    if (!b) return;
+    var id = b.dataset.back;
+    b.disabled = true;
+    b.textContent = "Putting back\u2026";
+    refreshIfStale().then(function (ok) {
+      if (!ok) throw new Error("Your sign-in has expired.");
+      return authReq("pb_register", {
+        method: "POST",
+        body: {
+          kind: "reinstatement", account_id: id, made_by: me.email,
+          text: "Put back on the board from the Off the board list."
+        }
+      });
+    }).then(function () {
+      delete cache[id];
+      delete rmvState[id];
+      loadOffBoard();
+      var m = el("offmsg");
+      m.hidden = false;
+      m.className = "note";
+      m.textContent = "Back on the board, at whatever tier today's read gives them \u2014 they never " +
+        "stopped being scored. Reload to see the row return.";
+    }).catch(function (err) {
+      b.disabled = false;
+      b.textContent = "Put back";
+      var m = el("offmsg");
+      m.hidden = false;
+      m.className = "note warn";
+      m.textContent = "Refused: " + (err.message || String(err)) + " \u2014 the database decides this, not the page.";
+    });
+  });
+
   el("filter").addEventListener("input", render);
   el("untouchedOnly").addEventListener("change", render);
   el("flaggedOnly").addEventListener("change", render);
@@ -1586,6 +1977,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       .then(loadMe)
       .then(function () {
         paintWho();
+        loadOffBoard();
         if (current) openDossier(current, true);
       })
       .catch(function () { saveSess(null); me = { email: null, role: null }; paintWho(); });

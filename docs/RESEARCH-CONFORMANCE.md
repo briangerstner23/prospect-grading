@@ -409,7 +409,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "mode": "manual",
       "verified_on": "2026-09-17",
       "reverify": "select kind, count(*) from pb_register group by 1; select count(*) from pb_promotions; select count(*) from pb_signals where source='manual';",
-      "claim": "Register kinds are only decision and note: 0 overrides ever, 0 promotions ever, 0 manual signals ever. Every write lane on the page is unused."
+      "claim": "As of 18 Sep 2026 the register carries decision, note and 9 OVERRIDE rows — the owner used the lane on 17 Sep, so the 17 Sep claim that every write lane was unused no longer holds. Still 0 promotions and 0 manual signals. Kinds `removal` and `reinstatement` exist from 18 Sep (DECISIONS §50) and have no rows yet."
     },
     {
       "id": "R8-no-writeback",

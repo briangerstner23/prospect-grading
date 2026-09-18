@@ -55,7 +55,8 @@
         { "name": "Three axes that never touch","required": true, "shows": "tier / confidence / engagement, and that only the first sets the rank", "source": "pb_board()" },
         { "name": "The ranked list",            "required": true, "shows": "grouped headers Potential | Contact; columns rank, company, tier, cell, year one, facts, engagement, they replied", "source": "pb_board()" },
         { "name": "Filters",                    "required": true, "shows": "per-tier toggles, never-contacted only, researched only, flagged only, name filter, live count", "source": "the page" },
-        { "name": "Change this grade",          "required": true, "shows": "the override form, opened by clicking a row's TIER CHIP — same terms as the dossier's: owner lane, one-tier cap measured from the engine's computed tier, reason code and written reason required, expiry that always lapses. Clicking the chip must not open the dossier.", "source": "pb_board().computed_tier · writes pb_register" }
+        { "name": "Change this grade",          "required": true, "shows": "the override form, opened by clicking a row's TIER CHIP — same terms as the dossier's: owner lane, one-tier cap measured from the engine's computed tier, reason code and written reason required, expiry that always lapses. Clicking the chip must not open the dossier.", "source": "pb_board().computed_tier · writes pb_register" },
+        { "name": "Off the board",              "required": true, "shows": "every agency deliberately removed, with its disposition, reason, who and when, anything past its review date first, and a Put back on each — the only route out of a removal, so it has to be reachable. Owner lane only, hidden when empty, never rendered for anon.", "source": "pb_removed() · writes pb_register" }
       ]
     },
 
@@ -67,6 +68,7 @@
       "ordered": true,
       "sections": [
         { "name": "Change this grade",             "required": true, "column": "full", "shows": "the override form, directly under the eight-cell strip: owner lane, one-tier cap, reason code and written reason required, and that a blank expiry still lapses. Built in §44 and missing from this contract until §47 — the contract test only looked at blk() titles, so a hand-written section heading slipped past it.", "source": "pb_board().computed_tier · writes pb_register" },
+        { "name": "Remove from the board",         "required": true, "column": "full", "shows": "taking the agency off the board, directly under the override and deliberately unlike it: two dispositions (do not contact / unqualified) read from pb_removal_reasons, a written reason required, NO expiry field and none accepted, an optional review date on an unqualified removal only, and — when the agency is already off — the decision on record plus the way back.", "source": "pb_removal_reasons · pb_removal() · writes pb_register" },
         { "name": "Make this call",                "required": true, "column": "left", "shows": "the one action, from the brief's next step or from the engagement state", "source": "brief.next_step" },
         { "name": "Where we win",                  "required": true, "column": "left", "shows": "the angle from the brief, else the wedge from the research read, else 'no wedge found' stated as a finding", "source": "brief.angle · research.recommended_wedge" },
         { "name": "What kills it",                 "required": true, "column": "left", "shows": "the risk in the brief's own words", "source": "brief.watch" },
