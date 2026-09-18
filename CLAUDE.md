@@ -277,7 +277,11 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    a confidence score — an extractor's own "high" counts only once somebody has checked that
    reader's ratings against its own quotes, which the website reader has not passed (four of ten
    sampled claims were inferences wearing a verbatim sentence). An automatic fact carries
-   `entered_by = 'auto:<lane>'`, never an email. DECISIONS §53. **Facts read out of prose follow the same
+   `entered_by = 'auto:<lane>'`, never an email. DECISIONS §53. A lane may ALSO be restricted by FIELD
+   (`pb_fact_autoconfirm_policy.keys`, data like `sources`): the `medium_observation` lane is open only on
+   keys the active rubric does not read, so a wrong admission there cannot move a tier, a rank or a band —
+   the one gate that does not depend on trusting a reader. 32 of its 77 qualify; the other 45 stay with a
+   person. Three of those keys are read by the 0.2.1 draft, so re-audit before activating it (DECISIONS §60). **Facts read out of prose follow the same
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
    `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
    `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
