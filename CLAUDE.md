@@ -1,5 +1,9 @@
 # CLAUDE.md — WLIQ Prospect Book
 
+**New here? Read `docs/START-HERE.md` first.** One page: what this is, what lives OUTSIDE this
+repository (the Grading Register and every prospect fact both do), what you need connected, and
+how to prove you are oriented in five minutes.
+
 Project context for Claude Code sessions working in this repository. Read
 `docs/DESIGN.md` and `docs/DECISIONS.md` before changing anything; they are the contract.
 
@@ -372,9 +376,9 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   runs *before* anything is written — so a transient gateway failure there costs the whole run
   and leaves no `pb_runs` row at all. That is not hypothetical: it took both nightly jobs out on
   12 Sep (RUNBOOK §15).
-- All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
+- All six edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
-  Seven cron jobs (`cron.job` is the list that counts — this line has been wrong before). Three re-read the roster, entirely inside the database:
+  The cron jobs (**read `cron.job`** — a count written here goes stale and this one twice has). Three re-read the roster, entirely inside the database:
   `pb-roster-begin` 05:00 UTC clears the staging table and starts a crawl of the Client Journey
   pipeline, `pb-roster-step` every minute 05:01-05:10 walks the cursor (a stepper because pg_net
   dispatches only after the calling transaction commits; ~950 cards is two pages and the step
