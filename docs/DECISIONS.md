@@ -3416,3 +3416,68 @@ own domain is an account in the prospect book. A three-person home health care p
 Several plainly-not-agencies are on the roster, including a school and a disposable-email domain.
 None of that is this change's to fix — `pb_roster_drift` proposes and a person decides (rule 11's
 posture, applied to the roster) — but it should not sit unremarked either.
+
+## §51 — Every field a source offers is read or refused in writing (18 Sep 2026)
+
+Owner, after §50 reported that Pipedrive had been carrying `linkedin` unread since the certified
+roster pull: *"So why am I finding all these data sources have never been pulled?"*
+
+The premise turned out to be wrong, and establishing that is most of what this section is for.
+
+**Pipedrive was never unpulled.** It is the single largest source in the book — 5,741 facts over
+641 accounts and 20 keys, more than every other source combined. §50's phrase "the primary source
+had never been read" meant the primary source *of LinkedIn URLs* and reads as something far larger.
+One field was unread. Not a source.
+
+**Three claims made while answering the question did not survive checking, and all three were
+made with full access to this repository and the database.** They are recorded because the pattern
+matters more than any one of them.
+
+1. *"Eight organisation custom fields are declared and never read."* All eight are read. The grep
+   behind the claim searched `org.<key>`; the code dereferences them as `OK.<key>`.
+2. *"72 ranked accounts are direct-to-client companies being graded with agency rules."* They are
+   not. The count came from `pb_facts`, where `relationship_type` sits on 58 accounts — but
+   `resolve_features.ts` reads `pb_accounts.relationship_type` **first** and only falls back to a
+   fact when that column is null. The column holds 421 agency and 158 direct. Measured against
+   Pipedrive directly: **556 agree, 1 disagrees, 5 are missing.** Client Type was already wired,
+   correctly, through a path the search had not looked at.
+3. *"`annual_revenue` can fill `revenue_band`."* It cannot. The values are 1 through 6, carry no
+   option labels, and 374 of 439 are literally `2`. Mapping it would have pushed fiction into the
+   key that gates ICP-1. Caught by pulling the distribution before recommending it, which is the
+   only reason it is in this list rather than in the rubric.
+
+**So the check is the deliverable, and the three errors above are the argument for it.** "Which
+field feeds which key, through which of two paths" is not a thing a person holds in their head, and
+the evidence is that a careful reader with every tool available got it wrong three times running.
+It should be a command, not a recollection.
+
+**What `scripts/source_coverage_test.ts` enforces.** Every field declared on `PipedriveOrg`,
+`PipedriveDeal` and `PipedrivePerson`, and every key in `PipedriveKeys`, is either dereferenced in
+the ingest module or carries a written reason in a ledger. Symmetric, like the conformance ledger
+(§35): a skip that has since been wired **fails** until its row is removed, so the ledger cannot
+become a place where things go to be forgotten. 131 checks.
+
+**It was proved against the bug that motivated it**, not just asserted: with the `org.linkedin`
+read removed the check fails and names the field, and with a ledger row falsely claiming `linkedin`
+is unread it fails the other way. Both directions were run, not reasoned about.
+
+**What it cannot do**, stated so nobody trusts it further than it deserves: it answers *is this
+field looked at*, never *is it read well*, and it does not reach the network to measure fill rates.
+A field whose name collides with an unrelated property access passes when it should not. That is
+the safe direction — it never invents a failure — and a person still writes every skip.
+
+**Three fields were unread when it first ran.** Two are refused in writing: `PipedrivePerson.phones`
+(no graded key wants it, `pb_contacts` has no column for it, and personal contact details are the
+class of thing §43 keeps off a signed-out board) and `PipedriveKeys.deal.orbit_project_url` (a
+pointer into Orbit, which is read and never written — rule 11 — and the overlap the book cares
+about comes from `pb_orbit_clients`, not from a link typed into a CRM field).
+
+**The third is a real gap and is left open on purpose.** Pipedrive's **native** `industry` field is
+filled on **411** of the 661 book organisations. The seed reads the **custom** "Industry Vertical"
+field instead, filled on **159**. The better-populated source is the one being ignored, and it was
+found by accident while chasing claim 1 above. It stays unwired here because `agency_type` is
+derived from industry, services and specialties together, so a second industry input moves grades
+and belongs behind a preview run rather than inside the change that added the check. The ledger row
+says so, and the test fails the day someone wires it without removing the row.
+
+**Not a ruling.** The register governs. This records a check and three corrections.
