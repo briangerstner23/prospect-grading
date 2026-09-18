@@ -81,10 +81,18 @@ export interface SupportResult {
  * the lexicon — three rules, one per failure actually observed
  * ------------------------------------------------------------------ */
 
-/** Keys whose value is a COUNT or a BAND, where a number in the sentence is not the answer. */
+/**
+ * Keys whose value is a COUNT, where a number in the sentence is not automatically the answer.
+ *
+ * `client_budget_size` was in this list for one run and came out again. It is a BAND, not a count,
+ * and the rule misfired on "Local SMBs: Businesses in a 3-county area (e.g., construction,
+ * restaurants)" — a sentence that states the band outright, where the "e.g." is illustrating which
+ * INDUSTRIES, not how many. The reader had it right and the lexicon overruled it. A rule that only
+ * ever moves downward can still be wrong; it is just wrong in the cheaper direction, and that is a
+ * reason to fix it rather than to keep it.
+ */
 export const QUANTITY_KEYS: readonly string[] = [
   "client_evidence_count", "headcount", "delivery_headcount", "years_operating",
-  "client_budget_size",
 ];
 
 /**
@@ -138,10 +146,21 @@ export function lexiconCeiling(key: string, value: unknown, quote: string): { ce
   }
 
   // 3. "absent" claimed from a sentence that never says anything is missing.
+  //
+  // The ceiling here is `implies`, not `unsupported`, and the first run is why. It fired on
+  // "Key Challenge: RFPs are often incomplete" and "This requires internal consultation with
+  // leadership before proceeding" — sentences that plainly BEAR on specification and authority
+  // even though neither says the thing is absent. `unsupported` means "about something else",
+  // and calling those that is simply false. `implies` says exactly what is true of them: a fair
+  // reading gets there, the sentence does not say it, and no machine writes it as a fact.
+  //
+  // Note what this rule cannot do: the case that motivated it, `authority = absent` read out of
+  // "no job title on person", contains "no " and so never reaches here at all. The reader catches
+  // that one. This is a backstop for the silent case, not the rule that does the work.
   if (ABSENCE_KEYS.includes(key) && normalize(String(value)).replace(/"/g, "") === "absent") {
     const negated = NEGATION_MARKERS.some((m) => q.includes(m));
     if (!negated) {
-      return { ceiling: "unsupported", why: "nothing in the sentence says it is missing; silence is not absence" };
+      return { ceiling: "implies", why: "nothing in the sentence says it is missing; silence is not absence" };
     }
   }
 

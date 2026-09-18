@@ -63,6 +63,11 @@ const reply = (rows: unknown[]) => ({ verdicts: rows });
 
   const notACount = lexiconCeiling("relationship_type", "reseller", "our work includes white-label delivery");
   eq("the example rule applies only to quantity keys", notACount, null);
+
+  // The first real run's one clear false positive. A band is not a count: "e.g." here is naming
+  // which industries, not how many, and the sentence states the band outright.
+  const band = lexiconCeiling("client_budget_size", "local_small", "Local SMBs: businesses in a 3-county area (e.g., construction, restaurants)");
+  eq("a budget BAND is not subject to the counting rule", band, null);
 }
 
 /* ---- rule 2: counting prospects is not counting clients ---- */
@@ -81,8 +86,13 @@ const reply = (rows: unknown[]) => ({ verdicts: rows });
   // pretending a string match understands the sentence. That is the honest boundary of a lexicon.
   eq("a negation in the sentence is left for the reader to judge", c, null);
 
+  // `implies`, not `unsupported`. The first run fired this on "Key Challenge: RFPs are often
+  // incomplete" and on "requires internal consultation with leadership before proceeding" —
+  // sentences that bear on the claim without stating it. "About something else" would be a lie
+  // about them; "a fair reading gets there, but it does not say it" is exactly true.
   const silent = lexiconCeiling("authority", "absent", "spoke with the marketing coordinator about timelines");
-  ok("absence with no negation anywhere is refused", silent !== null && silent.ceiling === "unsupported");
+  ok("absence with no negation anywhere is held to implies", silent !== null && silent.ceiling === "implies");
+  ok("and is never called unsupported", silent !== null && silent.ceiling !== "unsupported");
 
   const said = lexiconCeiling("money", "absent", "they have no budget allocated this year");
   eq("a stated absence is left alone", said, null);
