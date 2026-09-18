@@ -99,6 +99,12 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
             `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
             260000 board carries account_id · 270000 call attendees by name only.
+            20260918100000/100100/100250/100260/100300 AUTOCONFIRM (DECISIONS §50):
+            pb_fact_autoconfirm_policy (lanes + thresholds as data) · pb_fact_candidate_lanes
+            (every proposed candidate in exactly one lane, with the reason in plain words) ·
+            pb_autoconfirm_facts() (dry run by default) · pb_autoconfirm_log +
+            pb_undo_autoconfirm() · 100200 pb_confirm_fact_candidates now actually refuses an
+            explicit judgement, which its own comment had claimed since §45.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
@@ -117,6 +123,11 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             section, or dropping one, means updating scripts/board_page_test.ts, which pins all 13
             section names and 54 checks in total.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
+            The fact queue now carries the AUTOMATIC half above the manual one (DECISIONS §50):
+            which lane each waiting claim is in, which lanes are switched on, a dry run before every
+            real run so the number in the dialog is the number that lands, and the undo beside it.
+            Every count comes from pb_fact_candidate_lanes, which IS the rule — the page never
+            restates a threshold.
             Both are one file each, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
@@ -190,7 +201,14 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    key restores the cap; an **absent** key is still an error, because "no cap" has to be stated on
    purpose and a rubric that forgot to mention it must not silently become an uncapped one.
 8. Identity never auto-merges below `high` confidence; medium/low become
-   `pb_identity_candidates` for a person to review. **Facts read out of prose follow the same
+   `pb_identity_candidates` for a person to review. **A fact candidate may be approved without a
+   person**, but only on a lane the owner switched on in `pb_fact_autoconfirm_policy`, and never
+   past four refusals nothing can widen: no quote, disagrees with what the book holds, two records
+   proposing different values for one key, or an explicit `judgement`. A lane trusts a READER, not
+   a confidence score — an extractor's own "high" counts only once somebody has checked that
+   reader's ratings against its own quotes, which the website reader has not passed (four of ten
+   sampled claims were inferences wearing a verbatim sentence). An automatic fact carries
+   `entered_by = 'auto:<lane>'`, never an email. DECISIONS §50. **Facts read out of prose follow the same
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
    `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
    `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
@@ -266,12 +284,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   12 Sep (RUNBOOK §15).
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
-  Six cron jobs. Three re-read the roster, entirely inside the database:
+  Seven cron jobs (`cron.job` is the list that counts — this line has been wrong before). Three re-read the roster, entirely inside the database:
   `pb-roster-begin` 05:00 UTC clears the staging table and starts a crawl of the Client Journey
   pipeline, `pb-roster-step` every minute 05:01-05:10 walks the cursor (a stepper because pg_net
   dispatches only after the calling transaction commits; ~950 cards is two pages and the step
   no-ops once done), and `pb-roster-report` 05:12 recomputes `pb_roster_drift`. Then
-  `pb-nightly-notes` 05:45 and `pb-nightly-score` 06:15 — the sweep runs before the score so a
+  `pb-nightly-notes` 05:45, `pb-autoconfirm` 06:00 (the lanes of §50, in-database) and
+  `pb-nightly-score` 06:15 — the sweep runs before the score so a
   note read in the morning changes that morning's tier, and the roster runs before both so a card
   that moved overnight is in the same morning's queue. Last, `pb-nightly-watchdog` 07:00 writes a
   `failed` `pb_runs` row for either nightly job if it left no finished run. The watchdog lives in
@@ -323,7 +342,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
               and table_name in ('pb_facts','pb_signals','pb_register','pb_promotions')
              then 'INSERT,SELECT'
              when grantee = 'authenticated'
-              and table_name in ('pb_fact_candidates','pb_identity_candidates')
+              and table_name in ('pb_fact_candidates','pb_identity_candidates',
+                                 'pb_fact_autoconfirm_policy')
              then 'SELECT,UPDATE'
              else 'SELECT'
            end as expected

@@ -3342,3 +3342,89 @@ the same drift independently — which is the check working exactly as §35 inte
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository (RECON-register-
 unread: no session has read them directly). This entry records the owner's ruling as made; the
 Grading Register should be updated to match, and if it ever disagrees, **the register wins**.
+
+## §50 — The book approves what it has nothing to weigh (18 Sep 2026)
+
+**Owner ruling.** *"If there's enough confidence and the statement is clear enough, I think the
+system could approve it. There is always the ability for us to see that statement and undo it later.
+I'm not going to get through a thousand. I don't want wrong information to be entered, but I believe
+some of these you may have high enough confidence in, or it has been confirmed multiple times in
+other places, so we could automatically approve it."*
+
+§45 narrowed "never bulk confirm" to one class and gave the owner a button. This lets the BOOK press
+that button, on lanes the owner switches on by name, and adds the owner's second criterion —
+corroboration — as a lane of its own. The queue was 1,463 claims and nobody was ever going to read
+them.
+
+**Four refusals that no lane, policy row or interface can switch off.** No quote. Disagrees with what
+the book already holds. Two records proposing different values for the same key. A sentence the
+extractor itself called a judgement. These are tested first, in the view and again in the function.
+
+**The lanes**, each a row in `pb_fact_autoconfirm_policy` with its own thresholds:
+
+| lane | what it does | on? |
+|---|---|---|
+| `corroborates_book` | the book already holds this exact value — **writes nothing**, closes the row | yes |
+| `high_quote_open_key` | §45's own gate: rated high, quoted, nothing on file for the key | yes |
+| `corroborated_records` | two or more records in **two or more systems** say it, each with its own quote | yes |
+| `medium_observation` | medium confidence, extractor affirmatively called the sentence an observation | **no** |
+
+**The finding that changed the design, before a single row was approved.** The lanes first went in
+trusting the extractor's own `confidence`. Ten `high_quote_open_key` claims were then read by hand
+against their quotes, and four were inferences wearing a verbatim sentence: a delivery headcount of
+zero from a team page listing one person; "sells build work: no" from a sentence about being a
+strategic growth partner; a client-budget band from a case-study headline quoting the CLIENT's
+pipeline; a white-label signal from a sentence about staff certifications. Every gate the book had
+passed all four, because rule 8's receipt proves **provenance, not truth** — exactly what
+`written_record.ts` rule 3 exists to catch, and rule 3 was blind here because the website reader
+emits no `kind` at all.
+
+**191 of the 193 claims in that lane were website reads.** So the lane was not admitting §45's class;
+it was admitting one unvalidated extractor's self-rating, 191 times.
+
+The gate is therefore **per source, not per confidence**: a lane names the readers whose rating has
+been checked against their own quotes, and today that is only the two channels where a *person* wrote
+the sentence — a call summary and a CRM note. A website claim is not shut out; it reaches a lane by
+being corroborated, which was raised to two distinct source **systems** because two pages of one site
+are one witness and were corroborating each other 97 times.
+
+**What it did on the first run.** 263 eligible; **23 facts written**, **218 closed with nothing
+written**, 26 competing proposals closed with them, across 114 accounts. The queue went 1,463 → 1,196.
+The remaining 1,196 are 1,100 that need a person and 96 in the lane that is off.
+
+**The volume is the honest number, not the hoped-for one.** Clearing a thousand would mean trusting
+the website reader's "high", and the spot check says that costs wrong facts. The claims that stay are
+overwhelmingly website reads with no `kind`; making several hundred of them eligible needs a
+verification pass that asks one question per claim — *does this sentence state the value, or did you
+infer it?* — not a looser rule. That pass is not built.
+
+**A gap §45 left open, closed here.** `pb_confirm_fact_candidates` says in its own comment that it
+refuses "a claim that is somebody's judgement rather than an observation". It never checked: `kind`
+appeared nowhere in the function, and 11 claims the extractor had explicitly marked `judgement` were
+inside its gate, one click from being facts. The check is now in the function.
+
+**Nothing a machine read looks like a person's entry.** An automatic fact carries
+`entered_by = 'auto:<lane>'`, never an email, so rule 9's "a person outranks a machine" keeps meaning
+something. Each account's register gets one row per batch saying the word *automatically*.
+
+**Undo is half the ruling.** `pb_autoconfirm_log` records every row — candidate, fact, lane, batch —
+and `pb_undo_autoconfirm(batch)` deletes those facts, reopens those claims and says so in the
+register. It refuses to reopen a row a person has decided since: undoing the machine must not undo
+the person.
+
+**When it runs.** `pb-autoconfirm`, 06:00 UTC — after the notes sweep at 05:45 and before the score at
+06:15, so a claim approved this morning reaches this morning's tier. In-database like the watchdog,
+for the watchdog's reason.
+
+**Also caught, and it is the 12 Sep lesson repeating:** the lanes view arrived with `anon` revoked
+and `authenticated` holding DELETE, INSERT, TRUNCATE and UPDATE on it, because the migration thought
+about `anon` and stopped. Nothing could have been written through it — security_invoker over a table
+whose RLS refuses the write — but a grant that is only harmless because something else refuses it is
+not a grant anybody decided to make. Revoked in its own migration.
+
+**Still open, for the owner.** `medium_observation` (96 claims) is off and previewable; switching it
+on is a ruling, not a default. And whether the website reader ever earns a place in `sources` is a
+question about that reader's calibration, which nobody has measured.
+
+**The register.** PRO-0…PRO-18 are authoritative and live outside this repository. This entry records
+the owner's ruling as made; if the register ever disagrees, **the register wins**.

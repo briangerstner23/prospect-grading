@@ -2065,3 +2065,85 @@ check is one nobody runs.
 **What the script cannot do:** it reads the working tree, not history. A name already pushed stays
 in the commits that carried it until someone rewrites history or the repository goes private, and
 both are the owner's call (DECISIONS §23).
+
+## 28 · Automatic approval: switching a lane, running it, taking it back
+
+The fact queue has two halves. The manual half is §27's screen — read the sentence, confirm or
+reject. The automatic half is `pb_fact_autoconfirm_policy` and it answers the claims where a reader
+would have nothing to weigh. Both live on the same back-office screen (`#queue`). DECISIONS §50.
+
+**See what would happen, without doing it.** The dry run is the default, so this is safe to run at
+any time and from anywhere:
+
+```sql
+select public.pb_autoconfirm_facts();                 -- dry run, at most 500
+select public.pb_autoconfirm_facts(true, 2000);       -- dry run, the whole queue
+```
+
+It returns `eligible`, `confirmed` (facts it would write), `closed` (rows it would close without
+writing), `by_lane` and `accounts`. The page calls exactly this before it offers the real run, which
+is why the number in the dialog is the number that lands.
+
+**Read the lanes before you trust them.** Never switch a lane on from the count alone — the count
+says how many, not whether they are right:
+
+```sql
+select lane, count(*), count(distinct account_id) from public.pb_fact_candidate_lanes
+ group by 1 order by 2 desc;
+
+-- and then, always, a dozen actual sentences from the lane you are about to admit:
+select key, value, source, agreeing_systems, left(quote, 140)
+  from public.pb_fact_candidate_lanes where lane = '<lane>' order by random() limit 12;
+```
+
+Read them against the key. A quote that is really in the source and still does not *say* the value
+is the failure mode that matters, and it is the one that put the source gate into §50 — four of ten
+sampled website claims were inferences wearing a verbatim sentence. If more than one of twelve is
+wrong, the lane is not ready.
+
+**Switch a lane on or off** (owner, from the page, or by hand):
+
+```sql
+update public.pb_fact_autoconfirm_policy
+   set enabled = true, updated_at = now(), updated_by = '<you>@whitelabeliq.com'
+ where lane = 'medium_observation';
+```
+
+The same table carries `min_source_records`, `min_source_systems` and `sources`. A reader belongs in
+`sources` once its ratings have been checked against its own quotes, and not before — that is the
+whole point of the column.
+
+**Run it for real.** Only after a dry run you have read:
+
+```sql
+select public.pb_autoconfirm_facts(false, 500);
+```
+
+Keep the `batch_id` it returns. `pb-autoconfirm` does the same thing at 06:00 UTC nightly, between
+the notes sweep and the score.
+
+**Take a batch back.** Owner lane, and it is complete: the facts are deleted, the claims go back to
+`proposed`, and each account's register says so.
+
+```sql
+select public.pb_undo_autoconfirm('<batch_id>'::uuid, 'why');
+```
+
+It will not reopen a claim a person has decided since the batch ran. Undoing the machine must never
+undo the person.
+
+**What was approved automatically, and where it came from:**
+
+```sql
+select l.ran_at, l.batch_id, l.lane, l.action, l.key, l.value, f.note
+  from public.pb_autoconfirm_log l
+  left join public.pb_facts f on f.id = l.fact_id
+ where l.undone_at is null
+ order by l.ran_at desc limit 50;
+
+-- every fact in the book that no person read:
+select count(*) from public.pb_facts where entered_by like 'auto:%';
+```
+
+`entered_by` is `auto:<lane>`, never an email. If you ever see an automatic fact signed with a
+person's address, something has gone wrong with rule 9 and it is worth stopping to find out what.
