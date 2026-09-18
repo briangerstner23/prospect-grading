@@ -117,6 +117,13 @@ export const NEGATION_MARKERS: readonly string[] = [
   "no ", "not ", "none", "never", "without", "lacks", "lack of", "hasn't", "has not",
   "doesn't", "does not", "don't", "do not", "isn't", "is not", "aren't", "are not",
   "cannot", "can't", "unable", "yet to", "still waiting", "no one", "nobody",
+  // Added after the full run. The first list was built from grammatical negation and missed the
+  // ways a record ACTUALLY records a gap: "Unknown for Dave's org (absent)" says absent in so many
+  // words, and "a scope of work is needed" is exactly what a missing specification looks like in a
+  // call summary. The rule fired on both and held back a reader who had them right. A backstop
+  // that overrules correct readings is worse than no backstop.
+  "absent", "unknown", "missing", "needed", "undefined", "unclear", "tbd",
+  "to be determined", "not yet", "still open", "outstanding",
 ];
 
 function normalize(s: string): string {

@@ -97,6 +97,13 @@ const reply = (rows: unknown[]) => ({ verdicts: rows });
   const said = lexiconCeiling("money", "absent", "they have no budget allocated this year");
   eq("a stated absence is left alone", said, null);
 
+  // Both from the full run, both cases where the rule overruled a reader who was right. A record
+  // records a gap in its own words, not in grammatical negation.
+  const literal = lexiconCeiling("authority", "absent", "Unknown for that org (absent).");
+  eq("a sentence that says the word absent is left to the reader", literal, null);
+  const gap = lexiconCeiling("specification", "absent", "A scope of work is needed for the new tool.");
+  eq("a sentence saying something is needed is left to the reader", gap, null);
+
   const present = lexiconCeiling("money", "confirmed", "budget is approved at 40k");
   eq("the absence rule does not touch other values", present, null);
 }
