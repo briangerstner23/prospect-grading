@@ -46,6 +46,9 @@ const RUBRICS: Record<string, Rubric> = {
   "0.1.2": load("rubric.prospect.v0.1.2.json"),
   "0.1.4": load("rubric.prospect.v0.1.4.json"),
   "0.1.5": load("rubric.prospect.v0.1.5.json"),
+  "0.1.6": load("rubric.prospect.v0.1.6.json"),
+  "0.1.7": load("rubric.prospect.v0.1.7.json"),
+  "0.2.1": load("rubric.prospect.v0.2.1.json"),
 };
 const R: Rubric = RUBRICS["0.1.0"];
 const FIXTURES: Array<{ id: string; description: string; features: ProspectFeatures; options?: { override?: unknown }; expected: Record<string, unknown> }> =
@@ -95,6 +98,9 @@ function without(path: string): Rubric {
 const PINNED_FINGERPRINT: Record<string, string> = { "0.1.0": "18e704f2", "0.1.2": "d8bc859e",
   "0.1.4": "1d83b2e3",
   "0.1.5": "517f4476",
+  "0.1.6": "9a911e2c",
+  "0.1.7": "dec7d291",
+  "0.2.1": "101ee7c1",
 };
 
 /* ------------------------------------------------------------------ *
@@ -533,13 +539,14 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("catalog: verbally_accepted is strong and routes a task with the default SLA", routeTasks([sig("verbally_accepted", 1)], AS_OF, R).map((t) => [t.signal, t.sla_hours]), [["verbally_accepted", R.signals.routing.default_sla_hours]]);
   check("catalog: the orbit_* rows are kept", ["orbit_verbally_accepted", "orbit_pa_sent", "orbit_pa_signed"].every((k) => k in R.signals.catalog));
   // urgency
-  eq("urg: stated timing wins", computeUrgency("within_1_week", { total: 0, has_live: false }, R), { urgency: "Super Hot", basis: "stated_timing" });
-  eq("urg: ladder Hot at 8", computeUrgency(null, { total: 8, has_live: true }, R), { urgency: "Hot", basis: "computed" });
+  const pick = (u: { urgency: string; basis: string }) => ({ urgency: u.urgency, basis: u.basis });
+  eq("urg: stated timing wins", pick(computeUrgency("within_1_week", { total: 0, has_live: false }, R)), { urgency: "Super Hot", basis: "stated_timing" });
+  eq("urg: ladder Hot at 8", pick(computeUrgency(null, { total: 8, has_live: true }, R)), { urgency: "Hot", basis: "computed" });
   eq("urg: ladder Warm at 3", computeUrgency(null, { total: 3, has_live: true }, R).urgency, "Warm");
   eq("urg: ladder Super Hot at 15", computeUrgency(null, { total: 15, has_live: true }, R).urgency, "Super Hot");
-  eq("urg: ladder Cold below 3, basis computed", computeUrgency(null, { total: 2.9, has_live: true }, R), { urgency: "Cold", basis: "computed" });
-  eq("urg: no live signal → Cold / none", computeUrgency(null, { total: 0, has_live: false }, R), { urgency: "Cold", basis: "none" });
-  eq("urg: stated no_timeline → Cold stated", computeUrgency("no_timeline", { total: 20, has_live: true }, R), { urgency: "Cold", basis: "stated_timing" });
+  eq("urg: ladder Cold below 3, basis computed", pick(computeUrgency(null, { total: 2.9, has_live: true }, R)), { urgency: "Cold", basis: "computed" });
+  eq("urg: no live signal → Cold / none", pick(computeUrgency(null, { total: 0, has_live: false }, R)), { urgency: "Cold", basis: "none" });
+  eq("urg: stated no_timeline → Cold stated", pick(computeUrgency("no_timeline", { total: 20, has_live: true }, R)), { urgency: "Cold", basis: "stated_timing" });
   const g = grade(base({ timing: "within_1_week", timing_state: "present", signals: [sig("manual_note", 80)] }), R);
   eq("urg: engine honours stated timing over a cold computed score", [g.signals.urgency, g.signals.urgency_basis], ["Super Hot", "stated_timing"]);
   // routing
@@ -899,6 +906,126 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   check("trace: every gate has a basis", g.gates.every((x) => ["ruled", "unruled_default", "reasoned"].includes(x.basis)));
 }
 
+
+/* rubric 0.1.7 · the grid, the aged stamp, the assumed ceiling, the parked rules (DECISIONS §50)
+ *
+ * Owner decisions of 18 Sep 2026. D1: readiness before size in the chase order — the cell is the
+ * first key term and the tier never moves for it (§20). D3: a stated timing stamp ages against a
+ * per-value horizon. D6: a ceiling computed on the default winnable share is an assumption and
+ * reads Low. D2: twelve never-fired rules are parked. A rubric without the blocks (0.1.6) scores
+ * exactly as before, which is the baseline each check below ends on.
+ */
+{
+  const R17 = RUBRICS["0.1.7"];
+  const R16 = RUBRICS["0.1.6"];
+  const cold = grade(base(), R17); // ICP-2 → Gold base, 20 people → Partner → Platinum; nothing recorded
+  eq("grid: nothing recorded is cold", cold.readiness?.label, "cold");
+  eq("grid: cold is 'nothing recorded', stated as such", cold.readiness?.rule_text, null);
+  eq("grid: a big cold account opens the door", cold.chase_cell?.id, "open-the-door");
+  eq("grid: the key's terms come from the rubric", cold.chase_rank_terms, ["cell", "tier", "facts_present", "urgency", "engagement_recency", "year1_band", "name"]);
+  eq("grid: the cell is the first key term", cold.chase_rank_key[0], 2);
+  const ready = grade(base({ money: "present", authority: "present" }), R17);
+  eq("grid: two facts → ready", ready.readiness?.label, "ready");
+  eq("grid: big and ready → Chase now, worked first", [ready.chase_cell?.id, ready.chase_cell?.rank, ready.chase_rank_key[0]], ["chase-now", 0, 0]);
+  eq("grid: the cell names its play, owner and SLA", [typeof ready.chase_cell?.play, ready.chase_cell?.owner_role, ready.chase_cell?.sla_days, ready.chase_cell?.abm], ["string", "salesperson", 7, "1:1"]);
+  const replied = grade(base({ engagement_state: "responsive", days_since_engaged: 40 }), R17);
+  eq("grid: a reply within 90 days → ready", replied.readiness?.label, "ready");
+  eq("grid: engagement recency is a key term — days since they last replied", replied.chase_rank_key[4], 40);
+  eq("grid: no recorded reply sorts last inside its cell", cold.chase_rank_key[4], 100000);
+  const small = grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5, timing: "within_1_month", timing_state: "present", timing_observed_at: "2026-09-01" }), R17);
+  eq("grid: small and hot → Work the deal", [small.effective_tier, small.readiness?.label, small.chase_cell?.id], ["Bronze", "ready", "work-the-deal"]);
+  eq("grid: fading contact is stirring", grade(base({ engagement_state: "fading", days_since_engaged: 120 }), R17).readiness?.label, "stirring");
+  eq("grid: one fact is stirring", grade(base({ money: "present" }), R17).readiness?.label, "stirring");
+  eq("grid: a live signal is stirring", grade(base({ signals: [sig("quote_lost", 10)] }), R17).readiness?.label, "stirring");
+  eq("grid: small and cold → Nurture (the otherwise cell)", grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5 }), R17).chase_cell?.id, "nurture");
+  const uncl = grade(base({ icp_class: null, agency_type: null, is_agency: null }), R17);
+  eq("grid: no tier → the unranked cell, after every named cell", [uncl.status, uncl.chase_cell?.id, uncl.chase_cell?.rank, uncl.chase_rank_key[0]], ["Unclassified", "no-tier", 4, 4]);
+  eq("grid: the cell never touches the tier (§20)", [cold.effective_tier, ready.effective_tier, cold.fit.computed_tier], ["Platinum", "Platinum", "Platinum"]);
+  check("grid: the trace names the cell and its play", cold.trace.notes.some((n) => n.includes('chase cell "Open the door"')), cold.trace.notes.join(" | "));
+  check("grid: the tier reasoning names readiness and cell", cold.trace.tier_reasoning.includes("readiness cold; cell Open the door"), cold.trace.tier_reasoning);
+  eq("grid: an unknown engagement state reads like no row at all (rule 5)", grade(base({ engagement_state: "unknown" }), R17).readiness?.label, "cold");
+  eq("grid: dormant contact is cold — nothing for six months is not a reason to chase", grade(base({ engagement_state: "dormant", days_since_engaged: 300 }), R17).readiness?.label, "cold");
+  eq("grid: the reads under 0.1.7 sort Chase now above Open the door above Nurture", [ready.chase_rank_key[0], cold.chase_rank_key[0], grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5 }), R17).chase_rank_key[0]], [0, 2, 3]);
+  const old = grade(base(), R16);
+  eq("grid: 0.1.6 has no cell, no readiness and the five-term key", [old.chase_cell, old.readiness, old.chase_rank_key.length, old.chase_rank_terms], [null, null, 5, ["tier", "facts_present", "urgency", "year1_band", "name"]]);
+  eq("grid: 0.1.6 and 0.1.7 agree on every tier for the same account", [old.effective_tier, small.effective_tier], [grade(base(), R17).effective_tier, grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5, timing: "within_1_month", timing_state: "present", timing_observed_at: "2026-09-01" }), R16).effective_tier]);
+  throws("grid: an order naming 'cell' without a chase block throws", () => { const bad = structuredClone(R17); delete bad.chase; grade(base(), bad); }, "chase_rank_key.order");
+  throws("grid: an unknown key term throws", () => { const bad = structuredClone(R17); bad.chase_rank_key.order = ["cell", "moon"]; grade(base(), bad); }, "chase_rank_key.order");
+  throws("grid: a ladder without an otherwise rung throws", () => { const bad = structuredClone(R17); bad.chase.readiness.ladder = bad.chase.readiness.ladder.slice(0, 2); grade(base(), bad); }, "chase.readiness.ladder");
+  throws("grid: a band list that misses a tier throws", () => { const bad = structuredClone(R17); bad.chase.potential_bands = [{ label: "big", tiers: ["Platinum"] }]; grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5 }), bad); }, "chase.potential_bands");
+
+  /* D3 · a stated stamp ages */
+  const stale = grade(base({ timing: "within_1_week", timing_state: "present", timing_observed_at: "2026-05-01" }), R17);
+  eq("aging: a week-stamp from May no longer decides", [stale.signals.urgency, stale.signals.urgency_basis, stale.signals.stated_timing_aged_out], ["Cold", "none", true]);
+  check("aging: the row is flagged", stale.flags.includes("Timing stamp aged out"), stale.flags.join(", "));
+  check("aging: the trace says how old and against which horizon", stale.trace.notes.some((n) => n.includes("past its 14-day horizon")), stale.trace.notes.join(" | "));
+  const fresh = grade(base({ timing: "within_1_week", timing_state: "present", timing_observed_at: "2026-09-05" }), R17);
+  eq("aging: a fresh week-stamp still wins", [fresh.signals.urgency, fresh.signals.urgency_basis, fresh.signals.stated_timing_aged_out], ["Super Hot", "stated_timing", false]);
+  eq("aging: at the horizon exactly it still decides (the rule is > horizon)", grade(base({ timing: "within_1_week", timing_state: "present", timing_observed_at: daysAgo(14) }), R17).signals.urgency_basis, "stated_timing");
+  eq("aging: one day past, it does not", grade(base({ timing: "within_1_week", timing_state: "present", timing_observed_at: daysAgo(15) }), R17).signals.stated_timing_aged_out, true);
+  eq("aging: a month-stamp has a 45-day horizon", grade(base({ timing: "within_1_month", timing_state: "present", timing_observed_at: daysAgo(46) }), R17).signals.stated_timing_aged_out, true);
+  eq("aging: a quarter-stamp has a 120-day horizon", [grade(base({ timing: "within_3_months", timing_state: "present", timing_observed_at: daysAgo(119) }), R17).signals.urgency, grade(base({ timing: "within_3_months", timing_state: "present", timing_observed_at: daysAgo(121) }), R17).signals.stated_timing_aged_out], ["Warm", true]);
+  const undated = grade(base({ timing: "within_1_week", timing_state: "present" }), R17);
+  eq("aging: a stamp with no date is never aged (unknown is never evidence)", [undated.signals.urgency, undated.signals.stated_timing_aged_out], ["Super Hot", false]);
+  const withSignal = grade(base({ timing: "within_1_month", timing_state: "present", timing_observed_at: "2026-06-01", signals: [sig("inbound_reply", 3)] }), R17);
+  eq("aging: past its horizon the computed ladder decides", [withSignal.signals.urgency, withSignal.signals.urgency_basis], ["Warm", "computed"]);
+  eq("aging: no_timeline has no horizon — a recorded absence of a date does not age into one", grade(base({ timing: "no_timeline", timing_state: "absent", timing_observed_at: "2025-01-01" }), R17).signals.urgency_basis, "stated_timing");
+  eq("aging: the qualification fact is untouched — the stamp still counts as 'there is a date'", stale.qualification.facts.timing, "present");
+  eq("aging: 0.1.6 never ages a stamp", grade(base({ timing: "within_1_week", timing_state: "present", timing_observed_at: "2026-05-01" }), R16).signals.urgency, "Super Hot");
+  throws("aging: a horizon that is not a number throws", () => { const bad = structuredClone(R17); bad.signals.urgency.stated_timing_max_age_days.within_1_week = "soon"; grade(base({ timing: "within_1_week", timing_state: "present" }), bad); }, "signals.urgency.stated_timing_max_age_days.within_1_week");
+
+  /* D6 · an assumed ceiling */
+  eq("assumed: the default winnable share makes potential confidence Low and flags the ceiling", [cold.potential.assumed, cold.potential.confidence, cold.flags.includes("Ceiling assumed: vendor share defaulted")], [true, "Low", true]);
+  const rankedV = grade(base({ n_vendors: 2, our_rank: 1, headcount_label: "evidence", wl_signal: "High" }), R17);
+  eq("assumed: a recorded vendor rank lifts it", [rankedV.potential.assumed, rankedV.potential.winnable_basis, rankedV.potential.confidence, rankedV.flags.includes("Ceiling assumed: vendor share defaulted")], [false, "wallet_allocation_rule", "High", false]);
+  eq("assumed: no wallet, nothing assumed and nothing flagged", [grade(base({ headcount: null }), R17).potential.assumed, grade(base({ headcount: null }), R17).flags.includes("Ceiling assumed: vendor share defaulted")], [false, false]);
+  eq("assumed: the ceiling itself does not move — it is printed as assumed, not withheld", [cold.potential.ceiling, old.potential.ceiling], ["Partner", "Partner"]);
+  eq("assumed: 0.1.6 raises no such flag and keeps its confidence", [old.flags.includes("Ceiling assumed: vendor share defaulted"), old.potential.confidence], [false, "Medium"]);
+  throws("assumed: a flag text outside the vocabulary throws", () => { const bad = structuredClone(R17); bad.potential.flag_when_winnable_defaulted = "Not a flag we know"; grade(base(), bad); }, "potential.flag_when_winnable_defaulted");
+
+  /* D2 · the parked rules */
+  eq("parked: only two rules are evaluated under 0.1.7", cold.fit.adjustments.map((a) => a.id), ["ADJ-WL", "ADJ-REF"]);
+  eq("parked: twelve rules are parked, named in every trace", R17.dimension_b.adjustments.parked_rules.length, 12);
+  check("parked: the trace names them", cold.trace.notes.some((n) => n.startsWith("Parked adjustment rules, not evaluated: ADJ-ICP3-FLOOR")), cold.trace.notes.join(" | "));
+  eq("parked: a parked rule's fact moves nothing", grade(base({ recurring_revenue_share: 0.9, niche_positioning: true, shrinking: true }), R17).fit.net_adjustment, 0);
+  eq("parked: the referral bump still fires", grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5, referral_from_network: true }), R17).fit.adjusted_tier, "Silver");
+  eq("parked: the white-label bump still fires under 0.1.7", grade(base({ icp_class: "ICP-3", agency_type: "boutique", headcount: 5, wl_signal: "High" }), R17).fit.adjusted_tier, "Silver");
+
+  /* the re-run date */
+  eq("validation: 0.1.7 names the date PRO-8 is re-run", R17.validation.rerun_on, "2026-12-15");
+}
+
+/* rubric 0.2.1 · the criteria read with the owner's decisions of 18 Sep (D2, D5; DECISIONS §50) */
+{
+  const R21 = RUBRICS["0.2.1"];
+  const V20 = load("rubric.prospect.v0.2.json");
+  const nothing = grade(base(), R21); // is_agency yes, size band yes: two answered
+  eq("0.2.1: fewer than three answered → Unclassified, not Bronze", [nothing.status, nothing.effective_tier, nothing.fit.criteria_answered], ["Unclassified", null, 2]);
+  check("0.2.1: the reason says how many were answered", nothing.reason.startsWith("Unclassified: only 2 of 7 fit criteria answered (the rubric needs 3)"), nothing.reason);
+  eq("0.2.1: …and the row lands in the unranked cell", nothing.chase_cell?.id, "no-tier");
+  const three = grade(base({ sells_build_work: true }), R21);
+  eq("0.2.1: three answered, three yes → Silver, Ranked", [three.status, three.fit.base_tier, three.fit.criteria_answered, three.fit.criteria_score], ["Ranked", "Silver", 3, 3]);
+  eq("0.2.1: seven criteria", R21.dimension_b.base_tier_from_fit.criteria.length, 7);
+  const wl = grade(base({ sells_build_work: true, wl_signal: "Very High" }), R21);
+  eq("0.2.1: the white-label signal is criterion 7 (kind in)", wl.fit.criteria.find((c) => c.key === "white_label_signal")?.answer, "yes");
+  eq("0.2.1: a Medium signal answers no", grade(base({ sells_build_work: true, wl_signal: "Medium" }), R21).fit.criteria.find((c) => c.key === "white_label_signal")?.answer, "no");
+  eq("0.2.1: an unknown signal answers unknown", three.fit.criteria.find((c) => c.key === "white_label_signal")?.answer, "unknown");
+  eq("0.2.1: ADJ-WL is parked, so the signal is never counted twice", wl.fit.adjustments.map((a) => a.id), ["ADJ-REF"]);
+  const fb = grade(base({ sells_build_work: true, no_inhouse_dev_team: false }), R21);
+  const gap = fb.fit.criteria.find((c) => c.key === "build_capacity_gap");
+  eq("0.2.1: a fallback no is unknown, not evidence (D2)", [gap?.answer, gap?.inputs.answered_by, gap?.inputs.fallback_no_treated_as], ["unknown", "no_inhouse_dev_team", "unknown"]);
+  eq("0.2.1: a fallback yes still answers", grade(base({ sells_build_work: true, no_inhouse_dev_team: true }), R21).fit.criteria.find((c) => c.key === "build_capacity_gap")?.answer, "yes");
+  eq("0.2.1: a recorded primary no is still a no", grade(base({ sells_build_work: true, build_demand_exceeds_capacity: false }), R21).fit.criteria.find((c) => c.key === "build_capacity_gap")?.answer, "no");
+  eq("0.2.0 unchanged: there a fallback no is a no", grade(base({ sells_build_work: true, no_inhouse_dev_team: false }), V20).fit.criteria.find((c) => c.key === "build_capacity_gap")?.answer, "no");
+  const seven = grade(base({ sells_build_work: true, build_demand_exceeds_capacity: true, client_budget_size: "buys_real_projects", recurring_work_shape: true, wl_signal: "High", money: "present", authority: "present", specification: "present" }), R21);
+  eq("0.2.1: seven yeses → Gold base → Platinum on a Partner ceiling", [seven.fit.criteria_score, seven.fit.base_tier, seven.effective_tier], [7, "Gold", "Platinum"]);
+  eq("0.2.1: fit confidence counts answered criteria and facts", seven.fit.confidence, "High");
+  eq("0.2.1: base_tier_source is criteria; the ICP label is descriptive", [seven.fit.base_tier_source, seven.fit.icp_class], ["criteria", "ICP-2"]);
+  const noLabel = grade(base({ icp_class: null, agency_type: null, sells_build_work: true }), R21);
+  eq("0.2.1: no ICP label but enough criteria → a tier and a confidence", [noLabel.status, noLabel.fit.base_tier, noLabel.fit.confidence, noLabel.fit.icp_class], ["Ranked", "Silver", "Medium", null]);
+  throws("0.2.1: a kind 'in' criterion without yes_values throws", () => { const bad = structuredClone(R21); delete bad.dimension_b.base_tier_from_fit.criteria[6].yes_values; grade(base({ sells_build_work: true, wl_signal: "High" }), bad); }, "dimension_b.base_tier_from_fit.criteria[6].yes_values");
+}
+
 /* ------------------------------------------------------------------ *
  * 2 · golden replay
  * ------------------------------------------------------------------ */
@@ -1242,8 +1369,12 @@ check("determinism: input is not mutated", (() => {
   // that answers no criterion, asserts no base tier, and is still called Ranked. That is an owner
   // ruling (docs/DECISIONS.md §8 is still a toggle), so the test pins what the rubric SAYS and
   // names the question rather than quietly deciding it.
-  eq("0.2.0: status follows the rubric's own rule — icp_class is set, so the row is Ranked", scN.status, "Ranked");
-  eq("0.2.0: …and it is Ranked with no tier, which is the open question in the draft", scN.effective_tier, null);
+  // Until 18 Sep this read "Ranked with no tier": status keyed on the ICP label while the grade
+  // came from the criteria. The 0.2.0 preview of that day showed 29 such rows, and the fix is
+  // that a row with no base tier is Unclassified whatever its label says (DECISIONS §50).
+  eq("0.2.0: too few answered criteria → Unclassified, whatever the ICP label says", scN.status, "Unclassified");
+  eq("0.2.0: …and it carries no tier", scN.effective_tier, null);
+  check("0.2.0: …and the reason says why", scN.reason.startsWith("Unclassified: only 0 of 6 fit criteria answered"), scN.reason);
 
   // Every criterion carries its rule text, its basis and the input it read.
   for (const c of sc.fit.criteria) {

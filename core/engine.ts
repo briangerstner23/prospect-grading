@@ -20,6 +20,8 @@
 import type {
   AdjustmentTrace,
   Ceiling,
+  ChaseCellRead,
+  ChaseRankKey,
   Confidence,
   DealHealthRead,
   DealInput,
@@ -37,6 +39,7 @@ import type {
   ProspectScorecard,
   ProspectStatus,
   QualificationRead,
+  ReadinessRead,
   SignalsRead,
   Tier,
 } from "./prospect_types.ts";
@@ -231,6 +234,11 @@ function runAdjustments(
     traces.push({ id, name: String(r.name), direction, fired, rule_text: when, basis, inputs });
   }
   if (direct && agencyOnly.length) notes.push("Direct-to-client row: agency-only adjustment rules skipped (PRO-4).");
+  // Rules the owner parked (D2, 18 Sep 2026): kept in the rubric for the record, never evaluated.
+  if (rubricAt(rubric, "dimension_b.adjustments.parked_rules") !== undefined) {
+    const parked = reqArr<Record<string, unknown>>(rubric, "dimension_b.adjustments.parked_rules");
+    if (parked.length) notes.push(`Parked adjustment rules, not evaluated: ${parked.map((r) => String(r.id)).join(", ")}.`);
+  }
 
   const net = Math.max(-capDown, Math.min(capUp, netRaw));
   if (net !== netRaw) notes.push(`Adjustment net ${netRaw > 0 ? "+" : ""}${netRaw} capped to ${net > 0 ? "+" : ""}${net} (net cap +${capUp} / −${capDown}).`);
@@ -261,6 +269,11 @@ function runFitCriteria(
   if (defs.length === 0) {
     throw new RubricError(rubric, "dimension_b.base_tier_from_fit.criteria", "at least one criterion", defs);
   }
+  /* Is a "no" that only the FALLBACK question answered evidence, or unknown? DECISIONS §38.4 asked;
+   * the owner ruled unknown (D2, 18 Sep 2026, §50): the fallback exists to let old facts answer a
+   * re-worded question in the direction the ruling meant, not to score against an agency on the
+   * question it replaced. Default false, so 0.2.0 scores as it always did. */
+  const fallbackNoIsUnknown = optBoolIn(rubric, reqObj(rubric, "dimension_b.base_tier_from_fit"), "fallback_no_is_unknown", "dimension_b.base_tier_from_fit", false);
   const bag = f as unknown as Record<string, unknown>;
   const criteria: FitCriterionTrace[] = [];
   let score = 0;
@@ -271,7 +284,7 @@ function runFitCriteria(
     const def = defs[i];
     const key = reqStrIn(rubric, def, "key", path);
     const feature = reqStrIn(rubric, def, "feature", path);
-    const kind = reqOneOfIn(rubric, def, "kind", path, ["boolean", "range", "equals"] as const);
+    const kind = reqOneOfIn(rubric, def, "kind", path, ["boolean", "range", "equals", "in"] as const);
     const ruleText = reqStrIn(rubric, def, "rule", path);
     const basis = reqOneOfIn(rubric, def, "basis", path, ["ruled", "unruled_default", "reasoned"] as const);
 
@@ -317,10 +330,23 @@ function runFitCriteria(
         notes.push(`Fit criterion ${key}: ${answeredBy} is not a number; treated as unknown.`);
         answer = "unknown";
       } else answer = raw >= min && raw <= max ? "yes" : "no";
+    } else if (kind === "in") {
+      // A closed list of values that answer yes; any other stated value answers no. Used for a
+      // graded fact such as the white-label signal (Very High / High → yes; Medium / Low → no).
+      const yesValues = def.yes_values;
+      if (!Array.isArray(yesValues) || yesValues.length === 0) throw new RubricError(rubric, `${path}.yes_values`, "a non-empty list of the values that answer yes", yesValues);
+      inputs.yes_values = yesValues;
+      answer = yesValues.includes(raw) ? "yes" : "no";
     } else {
       const yesValue = reqStrIn(rubric, def, "yes_value", path);
       inputs.yes_value = yesValue;
       answer = raw === yesValue ? "yes" : "no";
+    }
+
+    if (answer === "no" && fallback !== null && answeredBy === fallback && fallbackNoIsUnknown) {
+      answer = "unknown";
+      inputs.fallback_no_treated_as = "unknown";
+      notes.push(`Fit criterion ${key}: only the fallback ${fallback} answered, and it said no; a fallback no is not evidence under this rubric, so the criterion is unanswered.`);
     }
 
     if (answer === "yes") { score++; answered++; } else if (answer === "no") answered++;
@@ -621,12 +647,29 @@ function potentialOf(
     year1Basis = "icp_prior";
   }
 
+  /* An ASSUMED ceiling (owner decision D6, 18 Sep 2026, DECISIONS §50): the headroom was computed
+   * on the default winnable share because no vendor rank is on file. The number is an assumption
+   * and the card says so — a flag the rubric names, and a `winnable_basis` the confidence ladder
+   * can read. A rubric without `potential.flag_when_winnable_defaulted` raises no flag (0.1.0–0.1.6). */
+  const assumed = wallet !== null && winnableBasis === "default";
+  const assumedFlag = optStrIn(rubric, reqObj(rubric, "potential") as Record<string, unknown>, "flag_when_winnable_defaulted", "potential");
+  if (assumed && assumedFlag !== null) {
+    if (!reqArr<string>(rubric, "flags.vocabulary").includes(assumedFlag)) {
+      throw new RubricError(rubric, "potential.flag_when_winnable_defaulted", "one of flags.vocabulary", assumedFlag);
+    }
+    flags.add(assumedFlag);
+    notes.push(`Ceiling assumed: winnable share ${fmt(winnable)} is the default, not a recorded vendor rank; the two discovery questions replace it.`);
+  }
+
   // Confidence, from the rubric's rules (headcount must be known for a label to count).
   const cctx: WhenContext = {
     headcount: f.headcount,
     headcount_label: isNum(f.headcount) ? f.headcount_label : "unknown",
     wl_signal: f.wl_signal,
     stated_ceiling: f.stated_ceiling,
+    winnable_basis: winnableBasis,
+    assumed,
+    ceiling: proposed ?? "Project",
   };
   const confidence = confidenceFrom(rubric, "potential.confidence.rules", cctx);
 
@@ -643,6 +686,7 @@ function potentialOf(
     year1_band: year1Band,
     year1_basis: year1Basis,
     confidence,
+    assumed,
     inputs: {
       headcount: f.headcount,
       ...(isNum(f.delivery_headcount) ? { delivery_headcount: f.delivery_headcount, capacity_from: capacityFrom } : {}),
@@ -808,6 +852,134 @@ export function dealHealth(deals: DealHealthInput[], asOf: string, rubric: Rubri
 }
 
 /* ------------------------------------------------------------------ *
+ * readiness, the chase cell and the chase key (rubric.chase; 0.1.7 onward)
+ * ------------------------------------------------------------------ *
+ * Owner decision D1, 18 Sep 2026 (DECISIONS §50): the board is a GRID, not a sort. Potential
+ * (the tier, a size label — §20, §40) is one axis; READINESS (is there a reason to work this
+ * account this week) is the other; each cell names a play. The cell is the first element of
+ * the chase order and the tier the second, which is the fit-by-readiness grid the field uses.
+ *
+ * Everything here is rubric data: the readiness ladder, the potential bands, the cells with
+ * their plays, and the ORDER of the key's terms (rule 4). A rubric without a `chase` block
+ * produces no readiness and no cell and keeps the fixed five-term key, so 0.1.0–0.1.6 score
+ * exactly as they always did.
+ */
+
+/** `a OR b AND c` → any of the OR parts, each a conjunction: the ladder and cell rules use this shape. */
+function evalWhenOr(expr: string, ctx: WhenContext): boolean {
+  return expr.includes(" OR ") ? expr.split(" OR ").some((part) => evalWhen(part, ctx)) : evalWhen(expr, ctx);
+}
+
+/** An optional finite number in a rubric object: absent or null is null; anything else must be a number. */
+function optNumIn(rubric: Rubric, obj: Record<string, unknown>, key: string, path: string): number | null {
+  const v = obj[key];
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new RubricError(rubric, `${path}.${key}`, "a finite number when present", v);
+  return v;
+}
+
+interface ChaseRead {
+  readiness: ReadinessRead | null;
+  readiness_index: number | null;
+  potential_band: string | null;
+  cell: ChaseCellRead | null;
+}
+
+function chaseOf(rubric: Rubric, ctx: WhenContext, effectiveTier: Tier | null, notes: string[]): ChaseRead {
+  if (rubricAt(rubric, "chase") === undefined) return { readiness: null, readiness_index: null, potential_band: null, cell: null };
+
+  /* readiness: first rung of the ladder whose rule holds; the ladder must end in `otherwise` */
+  const basis = reqStr(rubric, "chase.readiness.basis");
+  const ladder = reqArr<Record<string, unknown>>(rubric, "chase.readiness.ladder");
+  const inputs: Record<string, unknown> = {
+    facts_present: ctx.facts_present ?? null,
+    urgency: ctx.urgency ?? null,
+    engagement_state: ctx.engagement_state ?? null,
+    days_since_engaged: ctx.days_since_engaged ?? null,
+    signals_live: (ctx.signals as Record<string, unknown> | undefined)?.has_live ?? null,
+  };
+  let readiness: ReadinessRead | null = null;
+  let readinessIndex: number | null = null;
+  for (let i = 0; i < ladder.length; i++) {
+    const rung = ladder[i];
+    const path = `chase.readiness.ladder[${i}]`;
+    const label = reqStrIn(rubric, rung, "label", path);
+    if (rung.otherwise === true) {
+      readiness = { label, basis, rule_text: null, inputs };
+      readinessIndex = i;
+      break;
+    }
+    const when = reqStrIn(rubric, rung, "when", path);
+    if (evalWhenOr(when, ctx)) {
+      readiness = { label, basis, rule_text: when, inputs };
+      readinessIndex = i;
+      break;
+    }
+  }
+  if (readiness === null || readinessIndex === null) {
+    throw new RubricError(rubric, "chase.readiness.ladder", "a ladder ending in an { otherwise: true } rung", ladder.map((r) => r.label));
+  }
+
+  /* potential band: which band names the effective tier (none when there is no tier) */
+  const bands = reqArr<Record<string, unknown>>(rubric, "chase.potential_bands");
+  let potentialBand: string | null = null;
+  if (effectiveTier !== null) {
+    for (let i = 0; i < bands.length; i++) {
+      const path = `chase.potential_bands[${i}]`;
+      const label = reqStrIn(rubric, bands[i], "label", path);
+      const tiers = bands[i].tiers;
+      if (!Array.isArray(tiers)) throw new RubricError(rubric, `${path}.tiers`, "a list of tier words", tiers);
+      if (tiers.includes(effectiveTier)) {
+        potentialBand = label;
+        break;
+      }
+    }
+    if (potentialBand === null) throw new RubricError(rubric, "chase.potential_bands", `a band that names the tier ${effectiveTier}`, bands.map((b) => b.label));
+  }
+
+  /* the cell: first cell whose rule holds over (potential_band, readiness, …); unranked rows get their own */
+  const cells = reqArr<Record<string, unknown>>(rubric, "chase.cells");
+  if (cells.length === 0) throw new RubricError(rubric, "chase.cells", "at least one cell", cells);
+  const readCell = (c: Record<string, unknown>, path: string, rank: number): ChaseCellRead => ({
+    id: reqStrIn(rubric, c, "id", path),
+    name: reqStrIn(rubric, c, "name", path),
+    play: reqStrIn(rubric, c, "play", path),
+    owner_role: optStrIn(rubric, c, "owner_role", path),
+    sla_days: optNumIn(rubric, c, "sla_days", path),
+    abm: optStrIn(rubric, c, "abm", path),
+    potential_band: potentialBand,
+    readiness: readiness.label,
+    rank,
+  });
+  let cell: ChaseCellRead | null = null;
+  if (effectiveTier === null) {
+    cell = readCell(reqObj(rubric, "chase.unranked_cell"), "chase.unranked_cell", cells.length);
+  } else {
+    const cctx: WhenContext = { ...ctx, potential_band: potentialBand, readiness: readiness.label, tier: effectiveTier };
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      const path = `chase.cells[${i}]`;
+      if (c.otherwise === true) {
+        cell = readCell(c, path, i);
+        break;
+      }
+      const when = reqStrIn(rubric, c, "when", path);
+      if (evalWhenOr(when, cctx)) {
+        cell = readCell(c, path, i);
+        break;
+      }
+    }
+    if (cell === null) throw new RubricError(rubric, "chase.cells", "a cell list ending in an { otherwise: true } cell", cells.map((c) => c.id));
+  }
+  notes.push(`Readiness ${readiness.label}${readiness.rule_text ? ` (${readiness.rule_text})` : " (nothing recorded)"}; chase cell "${cell.name}"${potentialBand ? ` = ${potentialBand} × ${readiness.label}` : " (no tier)"}; play: ${cell.play}`);
+  return { readiness, readiness_index: readinessIndex, potential_band: potentialBand, cell };
+}
+
+/** The fixed key every rubric before 0.1.7 produced: tier, facts present, urgency, year-one band, name. */
+const LEGACY_KEY_TERMS: readonly string[] = ["tier", "facts_present", "urgency", "year1_band", "name"];
+const KEY_TERMS: readonly string[] = ["cell", "readiness", "tier", "facts_present", "urgency", "engagement_recency", "year1_band", "name"];
+
+/* ------------------------------------------------------------------ *
  * grade
  * ------------------------------------------------------------------ */
 
@@ -857,13 +1029,14 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   let fitCriteria: FitCriterionTrace[] = [];
   let criteriaScore = 0;
   let criteriaAnswered = 0;
+  let minAnswered = 0;
 
   if (usesCriteria) {
     const run = runFitCriteria(f, rubric, notes);
     fitCriteria = run.criteria;
     criteriaScore = run.score;
     criteriaAnswered = run.answered;
-    const minAnswered = reqNum(rubric, "dimension_b.base_tier_from_fit.unclassified_when_answered_below");
+    minAnswered = reqNum(rubric, "dimension_b.base_tier_from_fit.unclassified_when_answered_below");
     if (criteriaAnswered < minAnswered) {
       notes.push(
         `Only ${criteriaAnswered} of ${fitCriteria.length} fit criteria could be answered (the rubric needs ${minAnswered}) → Unclassified. Unknown is never evidence: nothing here counts against the agency.`,
@@ -917,19 +1090,31 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
 
   /* fit confidence */
   let fitConfidence: Confidence | null = null;
-  let fitConfidenceReason = "No ICP class: confidence not set.";
-  if (icp.icp_class) {
-    const cctx: WhenContext = { icp_class_label: icpLabel, qualification: { present_count: qualification.present_count } };
+  let fitConfidenceReason = usesCriteria ? "No tier: confidence not set." : "No ICP class: confidence not set.";
+  if (icp.icp_class || computedTier !== null) {
+    const cctx: WhenContext = {
+      icp_class_label: icpLabel,
+      qualification: { present_count: qualification.present_count },
+      criteria_answered: criteriaAnswered,
+      criteria_score: criteriaScore,
+    };
     fitConfidence = confidenceFrom(rubric, "dimension_b.confidence.rules", cctx);
     const rules = reqArr<Record<string, unknown>>(rubric, "dimension_b.confidence.rules");
     const matched = rules.find((r) => r.label === fitConfidence);
     const why = matched && typeof matched.when === "string" ? matched.when : "No higher rule matched.";
-    fitConfidenceReason = `icp_class_label ${icpLabel}, ${qualification.present_count} of 4 facts present → ${fitConfidence}: ${why}`;
+    fitConfidenceReason = `icp_class_label ${icpLabel}, ${qualification.present_count} of 4 facts present` +
+      (usesCriteria ? `, ${criteriaAnswered} of ${fitCriteria.length} criteria answered` : "") +
+      ` → ${fitConfidence}: ${why}`;
   }
 
   /* 8 · signals */
   const decayed = decaySignals(f.signals ?? [], asOf, rubric);
-  const urg = computeUrgency(f.timing ?? null, decayed, rubric);
+  const stampAge = typeof f.timing_observed_at === "string" && f.timing_observed_at.length > 0 ? daysBetween(f.timing_observed_at, asOf) : null;
+  const urg = computeUrgency(f.timing ?? null, decayed, rubric, stampAge);
+  if (urg.aged_out) {
+    notes.push(`Stated timing '${f.timing}' was observed ${f.timing_observed_at}, ${stampAge} days ago, past its ${urg.horizon_days}-day horizon; the stamp no longer decides and the computed ladder gives ${urg.urgency} (basis ${urg.basis}).`);
+    if (reqArr<string>(rubric, "flags.vocabulary").includes("Timing stamp aged out")) flags.add("Timing stamp aged out");
+  }
   const tasks = routeTasks(f.signals ?? [], asOf, rubric);
   // deno-lint-ignore no-explicit-any
   const catalog = reqObj(rubric, "signals.catalog") as Record<string, any>;
@@ -944,6 +1129,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     negatives: decayed.negatives,
     urgency: urg.urgency,
     urgency_basis: urg.basis,
+    stated_timing_aged_out: urg.aged_out,
     tasks,
   };
 
@@ -1100,10 +1286,20 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     }
   }
 
-  /* 11 · status */
+  /* 11 · status
+   *
+   * Under the criteria path a row with too few answered criteria has no base tier, and it is
+   * Unclassified whatever its ICP label says (the label is descriptive there, not the grade).
+   * Under the ICP path a null base tier and a null ICP class are the same event, so nothing
+   * changes for 0.1.0–0.1.6. Found by the 0.2.0 preview of 18 Sep: 29 rows read "Ranked" with
+   * no tier (DECISIONS §50). */
+  const noBaseTier = usesCriteria && baseTier === null;
+  // Under the criteria path the base tier decides (the ICP label is descriptive); under the ICP
+  // path the label decides, exactly as before.
+  const unclassified = usesCriteria ? noBaseTier : icp.icp_class === null;
   let status: ProspectStatus;
   if (parkedGate) status = "Parked";
-  else if (icp.icp_class === null) status = "Unclassified";
+  else if (unclassified) status = "Unclassified";
   else if (applied) status = "Overridden";
   else status = "Ranked";
   if (parkedGate) notes.push(`Parked on ${parkedGate.label}; the grade is still computed and stored (PRO-0).`);
@@ -1121,13 +1317,49 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   const year1Bands = reqArr<{ label: string }>(rubric, "potential.year1_bands");
   const y1Idx = year1Bands.findIndex((b) => b.label === potential.year1_band);
   const y1Rank = y1Idx < 0 ? -1 : year1Bands.length - 1 - y1Idx;
-  const chase_rank_key: ProspectScorecard["chase_rank_key"] = [
-    effectiveTier ? -TIER_ORDER.indexOf(effectiveTier) : 1,
-    -qualification.present_count,
-    -URGENCY_ORDER.indexOf(signals.urgency),
-    -y1Rank,
-    f.name,
-  ];
+
+  /* 12b · readiness and the chase cell (rubric.chase; null under rubrics without the block) */
+  const chaseCtx: WhenContext = {
+    qualification: { present_count: qualification.present_count },
+    facts_present: qualification.present_count,
+    urgency: signals.urgency,
+    engagement_state: f.engagement_state ?? null,
+    days_since_engaged: typeof f.days_since_engaged === "number" ? f.days_since_engaged : null,
+    signals: { has_live: decayed.has_live, decayed_total: decayed.total },
+    tier: effectiveTier,
+  };
+  const chase = chaseOf(rubric, chaseCtx, effectiveTier, notes);
+
+  /* 12c · the key: its terms come from the rubric (rule 4); the fixed five-term key when the rubric names none */
+  const orderRaw = rubricAt(rubric, "chase_rank_key.order");
+  const chase_rank_terms: string[] = orderRaw === undefined ? [...LEGACY_KEY_TERMS] : reqArr<string>(rubric, "chase_rank_key.order");
+  if (chase_rank_terms.length === 0) throw new RubricError(rubric, "chase_rank_key.order", "at least one term", chase_rank_terms);
+  const chase_rank_key: ChaseRankKey = chase_rank_terms.map((term): number | string => {
+    switch (term) {
+      case "cell":
+        if (!chase.cell) throw new RubricError(rubric, "chase_rank_key.order", "a chase block when the order names 'cell'", term);
+        return chase.cell.rank;
+      case "readiness":
+        if (chase.readiness_index === null) throw new RubricError(rubric, "chase_rank_key.order", "a chase block when the order names 'readiness'", term);
+        return chase.readiness_index;
+      case "tier":
+        return effectiveTier ? -TIER_ORDER.indexOf(effectiveTier) : 1;
+      case "facts_present":
+        return -qualification.present_count;
+      case "urgency":
+        return -URGENCY_ORDER.indexOf(signals.urgency);
+      case "engagement_recency":
+        // Days since they last replied or attended, most recent first; no recorded reply sorts
+        // last INSIDE ITS CELL. An ordering among equals, never a score (rule 5 is about evidence).
+        return typeof f.days_since_engaged === "number" ? f.days_since_engaged : 100000;
+      case "year1_band":
+        return -y1Rank;
+      case "name":
+        return f.name;
+      default:
+        throw new RubricError(rubric, "chase_rank_key.order", `one of ${KEY_TERMS.join(", ")}`, term);
+    }
+  });
 
   /* 13 · flags */
   if (validation === "UNVALIDATED") flags.add("UNVALIDATED (PRO-8)");
@@ -1163,6 +1395,9 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     deal_health,
     parked_on: parkedGate?.label ?? null,
     override_reason_code: applied?.reason_code ?? null,
+    unclassified_reason: noBaseTier
+      ? `only ${criteriaAnswered} of ${fitCriteria.length} fit criteria answered (the rubric needs ${minAnswered})`
+      : null,
   }, rubric);
 
   /* 15 · trace */
@@ -1173,6 +1408,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     baseTier ? `platinum rule ${prMet ? "met" : "not met"}${prReasons.length ? ` (${prReasons.join("; ")})` : ""} → computed ${computedTier}` : null,
     applied ? `override → ${applied.tier}` : null,
     `effective ${effectiveTier ?? "none"}; status ${status}`,
+    chase.cell ? `readiness ${chase.readiness?.label}; cell ${chase.cell.name}` : null,
   ].filter((x): x is string => typeof x === "string").join("; ") + ".";
 
   if (potential.headroom !== null) {
@@ -1218,6 +1454,9 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     effective_tier: effectiveTier,
     cell,
     chase_rank_key,
+    chase_rank_terms,
+    readiness: chase.readiness,
+    chase_cell: chase.cell,
     flags: flagList,
     reason,
     trace: { tier_reasoning: tierReasoning, notes },

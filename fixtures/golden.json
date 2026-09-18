@@ -319,6 +319,22 @@
         "adjustments": [],
         "fit_confidence": "High",
         "potential_confidence": "High"
+      },
+      "0.1.7": {
+        "status": "Ranked",
+        "effective_tier": "Platinum",
+        "computed_tier": "Platinum",
+        "cell": "Platinum × Partner",
+        "qualification": "Qualified",
+        "ceiling": "Partner",
+        "year1_band": "$16K–46K",
+        "urgency": "Hot",
+        "flags": [
+          "UNVALIDATED (PRO-8)"
+        ],
+        "adjustments": [],
+        "fit_confidence": "High",
+        "potential_confidence": "High"
       }
     }
   },
@@ -1633,6 +1649,23 @@
         "potential_confidence": "Medium"
       },
       "0.1.4": {
+        "status": "Ranked",
+        "effective_tier": "Gold",
+        "computed_tier": "Gold",
+        "cell": "Gold × Embedded",
+        "qualification": "Conversation",
+        "ceiling": "Embedded",
+        "year1_band": "$16K–46K",
+        "urgency": "Cold",
+        "flags": [
+          "Headcount unknown",
+          "UNVALIDATED (PRO-8)"
+        ],
+        "adjustments": [],
+        "fit_confidence": "Medium",
+        "potential_confidence": "Medium"
+      },
+      "0.1.7": {
         "status": "Ranked",
         "effective_tier": "Gold",
         "computed_tier": "Gold",

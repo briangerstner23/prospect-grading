@@ -72,6 +72,18 @@ export type RelationshipType = "agency" | "direct";
 export type Archetype = "production" | "blended" | "strategy";
 
 /**
+ * Recorded contact, as pb_engagement derives it from dated contact events (DECISIONS §24):
+ *   engaged     they replied or attended a call within 30 days
+ *   responsive  the same within 90 days
+ *   pursued     we wrote within 30 days and they have not come back
+ *   fading      some contact within 180 days
+ *   dormant     nothing for 180 days
+ *   unknown     nothing recorded at all — which is NOT the same as cold (rule 5)
+ * Added 18 Sep 2026 (owner decision D1, DECISIONS §50) so readiness can read recorded contact.
+ */
+export type EngagementState = "engaged" | "responsive" | "pursued" | "fading" | "dormant" | "unknown";
+
+/**
  * PRO-6: Pipedrive is the roster source of truth; every other list is uncertified intake.
  * A row from an uncertified source is still graded — PRO-8's principle: a grade is
  * labelled, never withheld — and carries the flag until Pipedrive confirms it.
@@ -280,6 +292,20 @@ export interface ProspectFeatures {
   stated_ceiling: Ceiling | null; // sales' hand-set ceiling, treated as inferred
   climb_signals: string[]; // from the climb-evidence list in the rubric
 
+  /* ---- Engagement and stamp age (18 Sep 2026, DECISIONS §50) — optional, additive ----
+   *
+   * `engagement_state` and `days_since_engaged` are pb_engagement's read of the dated contact
+   * events, handed in by the resolver. They feed READINESS and the within-cell order only; they
+   * never touch the tier (§20). Absent or null means the resolver was given no engagement row,
+   * which the ladder treats exactly like `unknown`: not ready, and not evidence against anyone.
+   *
+   * `timing_observed_at` is the date the timing stamp was recorded, so the rubric can age it
+   * (signals.urgency.stated_timing_max_age_days, owner decision D3). Null = no date, never aged.
+   */
+  engagement_state?: EngagementState | null;
+  days_since_engaged?: number | null;
+  timing_observed_at?: string | null;
+
   /* ---- Dynamic ---- */
   signals: SignalInput[];
   deals: DealInput[];
@@ -398,6 +424,12 @@ export interface PotentialRead {
   year1_band: string;
   year1_basis: "quote" | "icp_prior" | "unknown";
   confidence: Confidence;
+  /**
+   * True when the headroom was computed on the DEFAULT winnable share (no vendor rank on file):
+   * the ceiling is an assumption, printed as one (owner decision D6, DECISIONS §50). Absent on
+   * reads from rubrics without `potential.flag_when_winnable_defaulted`.
+   */
+  assumed?: boolean;
   inputs: Record<string, number | string | null>;
 }
 
@@ -423,8 +455,50 @@ export interface SignalsRead {
   negatives: SignalTrace[];
   urgency: Urgency;
   urgency_basis: "stated_timing" | "computed" | "none";
+  /** True when a stated timing stamp was older than its rubric horizon and the computed ladder took over (D3). */
+  stated_timing_aged_out?: boolean;
   tasks: SignalTask[];
 }
+
+/**
+ * Readiness: is there a reason to work this account THIS WEEK? The ladder is rubric data
+ * (`chase.readiness.ladder`), read over qualification, urgency, recorded engagement and live
+ * signals. It is the second axis of the board — potential is the first — and it never touches
+ * the tier (§20). "cold" means nothing recorded, which is the absence of a reason to chase, not
+ * evidence against the agency (rule 5). Owner decision D1, 18 Sep 2026 (DECISIONS §50).
+ */
+export interface ReadinessRead {
+  label: string;
+  basis: string;
+  rule_text: string | null;
+  inputs: Record<string, unknown>;
+}
+
+/**
+ * The chase cell: potential band × readiness, with the play the rubric names for it. The cell
+ * is the FIRST element of the chase order from rubric 0.1.7 (the tier is the second), which is
+ * the fit-by-readiness grid the field uses instead of a size-first sort. `rank` is the cell's
+ * position in `chase.cells` (0 = worked first); the unranked cell sorts after every named one.
+ */
+export interface ChaseCellRead {
+  id: string;
+  name: string;
+  play: string;
+  owner_role: string | null;
+  sla_days: number | null;
+  abm: string | null;
+  potential_band: string | null;
+  readiness: string | null;
+  rank: number;
+}
+
+/**
+ * The chase key. Under rubrics up to 0.1.6 it is the fixed five-tuple (tier, facts present,
+ * urgency, year-one band, name). From 0.1.7 its terms come from `chase_rank_key.order` (rule 4:
+ * the order is data) and `chase_rank_terms` on the scorecard names them, so a reader can tell
+ * what each element is. Widened, never repurposed: the old shape is still a valid value.
+ */
+export type ChaseRankKey = [number, number, number, number, string] | Array<number | string>;
 
 export interface DealHealthRead {
   deal_id: string;
@@ -470,8 +544,14 @@ export interface ProspectScorecard {
   effective_tier: Tier | null;
   /** Fit × Ceiling, e.g. "Gold × Embedded". Null when the row is not ranked. */
   cell: string | null;
-  /** Sort keys, best first: tier, facts present, urgency, year-1 band, name. PRO-0: ordering is the job. */
-  chase_rank_key: [number, number, number, number, string];
+  /** Sort keys, best first. PRO-0: ordering is the job. The terms are named in `chase_rank_terms`. */
+  chase_rank_key: ChaseRankKey;
+  /** The name of each element of chase_rank_key, in order (e.g. cell, tier, facts_present …). */
+  chase_rank_terms: string[];
+  /** The readiness band (rubric `chase.readiness`); null under rubrics without a `chase` block. */
+  readiness: ReadinessRead | null;
+  /** The chase cell and its play (rubric `chase.cells`); null under rubrics without a `chase` block. */
+  chase_cell: ChaseCellRead | null;
 
   flags: string[];
   /** One sentence a salesperson can act on. Never a bare number. */

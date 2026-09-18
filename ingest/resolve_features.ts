@@ -22,6 +22,7 @@ import type {
   Archetype,
   Ceiling,
   DealInput,
+  EngagementState,
   EvidenceLabel,
   FactState,
   IcpClass,
@@ -156,12 +157,26 @@ export interface ResolveAccount {
   lineage: string | null;
 }
 
+/**
+ * A pb_engagement row: recorded contact, derived by the view from dated contact events
+ * (DECISIONS §24). Optional input; absent means the caller had no row, which resolves to a null
+ * engagement state — not "unknown", and never "cold" (rule 5). Added 18 Sep 2026 (§50).
+ */
+export interface EngagementRow {
+  engagement: string | null;
+  days_since_engaged: number | string | null;
+  last_engaged?: string | null;
+  account_id?: string;
+}
+
 export interface ResolveInput {
   account: ResolveAccount;
   facts: FactRow[];
   signals: SignalRow[];
   deals: DealRow[];
   override_rows: RegisterRow[];
+  /** The account's pb_engagement row, when the caller loaded one. */
+  engagement?: EngagementRow | null;
   /** ISO date or timestamp. Decay, expiry and override validity are judged against it. */
   as_of: string;
   rubric: Rubric;
@@ -206,6 +221,7 @@ const ECONOMICS: readonly Economics[] = ["pass", "fail"];
 const BROKER: readonly BrokerCharacter[] = ["pass", "flag"];
 const AI_POSTURES: readonly AiPosture[] = ["positive", "neutral", "negative"];
 const TIMINGS: readonly Timing[] = ["within_1_week", "within_1_month", "within_3_months", "no_timeline"];
+const ENGAGEMENT_STATES: readonly EngagementState[] = ["engaged", "responsive", "pursued", "fading", "dormant", "unknown"];
 const ARCHETYPES: readonly Archetype[] = ["production", "blended", "strategy"];
 const CEILINGS: readonly Ceiling[] = ["Project", "Embedded", "Partner"];
 const RELATIONSHIP_TYPES: readonly RelationshipType[] = ["agency", "direct"];
@@ -675,6 +691,21 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const timing = fact<Timing>("timing", (v) => toEnum<Timing>(v, V.timings, V.timingAliases));
   const explicitTimingState = fact<FactState>("timing_state", (v) => toEnum<FactState>(v, FACT_STATES, TIMING_STATE_ALIASES));
   const timing_state: FactState = explicitTimingState ?? (timing === null ? "unknown" : timing === "no_timeline" ? "absent" : "present");
+  // The date the winning timing stamp was observed, so the rubric can age it (DECISIONS §50, D3).
+  // A stamp with no date resolves to null and is never aged — unknown is never evidence.
+  const timing_observed_at: string | null = timing === null ? null : optStr(facts.get("timing")?.observed_at ?? null);
+
+  /* ---- engagement: recorded contact, from the pb_engagement row when one was given ---- */
+  let engagement_state: EngagementState | null = null;
+  let days_since_engaged: number | null = null;
+  if (input.engagement) {
+    const e = toEnum<EngagementState>(input.engagement.engagement, ENGAGEMENT_STATES);
+    if (e === INVALID) notes.push(`engagement ${describe(input.engagement.engagement)} is not an engagement state; treated as unknown`);
+    else engagement_state = e;
+    const d = toInt(input.engagement.days_since_engaged, 0);
+    if (d === INVALID) notes.push(`engagement days_since_engaged ${describe(input.engagement.days_since_engaged)} is not a whole number of days; treated as unknown`);
+    else days_since_engaged = d;
+  }
 
   /* ---- potential ---- */
   const stated_ceiling = fact("stated_ceiling", (v) => toEnum(v, V.ceilings, V.ceilingAliases));
@@ -968,6 +999,9 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
     specification,
     timing,
     timing_state,
+    timing_observed_at,
+    engagement_state,
+    days_since_engaged,
 
     archetype: fact("archetype", (v) => toEnum(v, V.archetypes)),
     serviceable_share: fact("serviceable_share", toRatio),

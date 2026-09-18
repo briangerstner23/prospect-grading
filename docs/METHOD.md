@@ -460,7 +460,7 @@ Enforced both in Pipedrive required fields and here, because API writes bypass P
 | Term | Value |
 |---|---|
 | Who may override | the **owner** lane only |
-| How far | at most **null** tier from the computed tier |
+| How far | **no cap** — any tier in the vocabulary; a move of more than one tier is flagged |
 | Reason code | **required**, one of `data_wrong`, `relationship_known`, `timing_known`, `conflict`, `other` |
 | Written reason | **required** — an override without one is ignored |
 | Default expiry | 90 days after it was set, when no expiry is stated |

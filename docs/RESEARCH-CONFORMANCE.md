@@ -296,19 +296,31 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R4-scoring-pass-absent",
       "r": "R4",
       "mode": "auto",
-      "claim": "GAP: nothing writes actual_6m/12m/24m, scored_at or brier — the snapshots accumulate, the scoring pass that reads Orbit/QuickBooks actuals does not exist (Phase 4). Expect >= 1 when it lands.",
+      "claim": "CLOSED 18 Sep (DECISIONS §50, move 4): pb_score_snapshots() (migration 20260918120000) fills actual_6m/12m/24m and scored_at on the frozen snapshot from pb_actuals, which an operator records from QuickBooks or Orbit; pb_calibration reports the interval hit-rate. Brier stays null until an estimator produces the two probabilities. Was equals 0 (nothing wrote the actual columns) until 18 Sep.",
       "probe": {
         "kind": "count_matches",
         "paths": [
-          "supabase/functions",
           "supabase/migrations"
         ],
         "exts": [
-          ".ts",
           ".sql"
         ],
-        "pattern": "actual_12m\\s*=|actual_12m:",
-        "equals": 0
+        "pattern": "actual_12m\\s*=",
+        "min": 1
+      }
+    },
+    {
+      "id": "R4-lift-by-cell",
+      "r": "R4",
+      "mode": "auto",
+      "claim": "The lift report exists as a filed view (pb_lift_by_cell, migration 20260918110000): share of accounts against share of quotes and replies per chase cell, and the cell's rate over the book's. Snapshotted monthly by cron pb-monthly-lift.",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "supabase/migrations/20260918110000_prospect_book_outcomes_and_lift.sql"
+        ],
+        "pattern": "create or replace view public.pb_lift_by_cell",
+        "equals": 1
       }
     },
     {
@@ -371,13 +383,38 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R7-no-plays",
       "r": "R7",
       "mode": "auto",
-      "claim": "GAP: no rubric on disk carries a play or an SLA — enumerated across every core/rubric.prospect.v*.json, not a hard-coded pair.",
+      "claim": "CLOSED 18 Sep (DECISIONS §50, owner D1/D7): rubric 0.1.7 carries four chase cells, each with a play, an owner role and an SLA in days, plus the unranked cell. Before 18 Sep no rubric on disk carried a play or an SLA.",
+      "probe": {
+        "kind": "json_len",
+        "file": "core/rubric.prospect.v0.1.7.json",
+        "path": "chase.cells",
+        "equals": 4
+      }
+    },
+    {
+      "id": "R7-plays-name-an-owner-and-sla",
+      "r": "R7",
+      "mode": "auto",
+      "claim": "Every chase cell in 0.1.7 names a play, an owner role and an SLA (five `play` keys: four cells and the unranked cell).",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "core/rubric.prospect.v0.1.7.json"
+        ],
+        "pattern": "\"play\":",
+        "equals": 5
+      }
+    },
+    {
+      "id": "R7-capacity-cap-not-in-grade",
+      "r": "R7",
+      "mode": "auto",
+      "claim": "STILL OPEN in the grade: the Tier-1 list is the Chase-now cell, sized on the page to what the pod can carry (owner D7); the engine applies no capacity cap and no rubric names one.",
       "probe": {
         "kind": "rubric_glob_absent",
         "needles": [
-          "\"sla\":",
-          "\"play\":",
-          "\"plays\":"
+          "\"capacity_cap\":",
+          "\"tier1_size\":"
         ]
       }
     },
@@ -494,9 +531,23 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "DNB-composite-table-exists",
       "r": "DNB",
       "mode": "manual",
-      "verified_on": "2026-09-17",
-      "reverify": "select count(*), min(score), max(score) from pb_chase_scores;",
-      "claim": "BREAK: pb_chase_scores holds a summed composite (146 rows, −18..123) against the founding rule that the four reads are never summed. Built in the database on 16 Sep with no file, no test, no decision entry. Whether it stays is owner decision 2."
+      "verified_on": "2026-09-18",
+      "reverify": "select to_regclass('public.pb_chase_scores'); -- must be null",
+      "claim": "CLOSED 18 Sep (owner decision D4, DECISIONS §50): pb_chase_scores — 146 rows of a summed −18..123 built on 16 Sep with no file, no test and no decision entry — is dropped by migration 20260918130000. pb_chase_weights and pb_chase_board stay; the page reads no score from either."
+    },
+    {
+      "id": "DNB-composite-dropped-in-file",
+      "r": "DNB",
+      "mode": "auto",
+      "claim": "The drop has a file (nothing applied without one).",
+      "probe": {
+        "kind": "count_matches",
+        "paths": [
+          "supabase/migrations/20260918130000_prospect_book_retire_composite.sql"
+        ],
+        "pattern": "drop table if exists public.pb_chase_scores",
+        "equals": 1
+      }
     },
     {
       "id": "FIT-six-criteria",
@@ -514,12 +565,36 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "FIT-wl-signal-absent",
       "r": "FIT",
       "mode": "auto",
-      "claim": "GAP: the white-label signal — the strongest predictor in WLIQ's own data — is not a fit criterion in 0.2.",
+      "claim": "Draft 0.2.0 (11 Sep) never had the white-label signal as a fit criterion; kept as the record of the gap. Closed in 0.2.1 (next row).",
       "probe": {
         "kind": "rubric_absent",
         "version": "0.2",
         "path": "dimension_b.base_tier_from_fit",
         "needle": "wl_signal"
+      }
+    },
+    {
+      "id": "FIT-0-2-1-seven-criteria",
+      "r": "FIT",
+      "mode": "auto",
+      "claim": "CLOSED 18 Sep (owner D5, DECISIONS §50): draft 0.2.1 carries seven equal-weight criteria — the six of 0.2.0 plus the white-label signal (kind in, yes on High / Very High) — three answered before a tier is published (D2), a fallback no treated as unknown (D2), ADJ-WL parked. Registered as a draft; activation follows the collection sprint (the owner's own sequencing).",
+      "probe": {
+        "kind": "json_len",
+        "file": "core/rubric.prospect.v0.2.1.json",
+        "path": "dimension_b.base_tier_from_fit.criteria",
+        "equals": 7
+      }
+    },
+    {
+      "id": "FIT-0-2-1-threshold-three",
+      "r": "FIT",
+      "mode": "auto",
+      "claim": "0.2.1 publishes no tier below three answered criteria (D2).",
+      "probe": {
+        "kind": "rubric_equals",
+        "version": "0.2.1",
+        "path": "dimension_b.base_tier_from_fit.unclassified_when_answered_below",
+        "value": 3
       }
     },
     {
