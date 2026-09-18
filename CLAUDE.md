@@ -39,6 +39,9 @@ ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes
             webhook_signatures.ts · written_record.ts (any written record's claims → facts or a
             review queue; source-agnostic) · record_sources.ts (Fathom / Gmail / Pipedrive →
             WrittenRecord, and the domain attribution that decides WHICH account) ·
+            verify_support.ts (the second question, asked of claims the book already has: does the
+            stored quote STATE this value? states / implies / unsupported, model then a
+            downward-only lexicon — DECISIONS §52) ·
             notes_sweep.ts (which records are worth a model call, and what a model is allowed
             to have said — the quote and judgement checks live here) (+ *_test.ts)
 supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron · 120200 merge ·
