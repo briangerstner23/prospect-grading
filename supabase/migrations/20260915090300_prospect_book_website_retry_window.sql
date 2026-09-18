@@ -2,7 +2,7 @@
 --
 -- TRANSCRIBED 17 Sep 2026 from supabase_migrations.schema_migrations.statements — the SQL below
 -- is byte-for-byte what was applied to the database as version 20260915234417 (applied without a file;
--- DECISIONS §23, §26). Filed as 20260915090300 so it replays after 20260915090200_prospect_book_website_team_pages.sql. Do not edit the body: if
+-- DECISIONS §35, §38). Filed as 20260915090300 so it replays after 20260915090200_prospect_book_website_team_pages.sql. Do not edit the body: if
 -- it needs to change, that is a new migration.
 
 create or replace function public.pb_website_fetch_begin(

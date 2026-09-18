@@ -10,7 +10,7 @@
 #   deploy     Are the deployed edge functions built from this commit?  Deploys from SOURCE with
 #              the Supabase CLI — never an 81KB bundle carried by hand — on pushes to the default
 #              branch, and only when SUPABASE_ACCESS_TOKEN is set as a repository secret. Until it
-#              is, the step says so and skips. DECISIONS §28.
+#              is, the step says so and skips. DECISIONS §40.
 #
 # The page publish stays in deploy-pages.yml (manual). Nothing here touches web/.
 

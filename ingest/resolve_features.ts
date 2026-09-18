@@ -450,7 +450,7 @@ function sourceRank(source: unknown): number {
  *
  * The source tier was added to the view on 15 Sep 2026 (migration
  * prospect_book_fact_source_precedence, applied without a file and transcribed on 17 Sep —
- * DECISIONS §26, §27). This function lagged it for two days: 50 of 6,983 keys resolved
+ * DECISIONS §38, §39). This function lagged it for two days: 50 of 6,983 keys resolved
  * differently, 24 to a different value. Rule 9 says the two must not drift; the order below is
  * the view's, verbatim, and resolve_features_test.ts pins it.
  *

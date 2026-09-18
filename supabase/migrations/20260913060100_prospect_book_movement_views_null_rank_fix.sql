@@ -2,7 +2,7 @@
 --
 -- TRANSCRIBED 17 Sep 2026 from supabase_migrations.schema_migrations.statements — the SQL below
 -- is byte-for-byte what was applied to the database as version 20260913002739 (applied without a file;
--- DECISIONS §23, §26). Filed as 20260913060100 so it replays after 20260913060000_prospect_book_movement_views.sql. Do not edit the body: if
+-- DECISIONS §35, §38). Filed as 20260913060100 so it replays after 20260913060000_prospect_book_movement_views.sql. Do not edit the body: if
 -- it needs to change, that is a new migration.
 
 create or replace view pb_movement with (security_invoker = true) as

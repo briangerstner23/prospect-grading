@@ -59,7 +59,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260914210000 pipedrive field map ·
             20260915090000 website reads · 090100 fact source precedence · 090200 website team pages ·
             090300 website retry window (the last three transcribed 17 Sep from the database, where
-            they had run without a file — DECISIONS §26) ·
+            they had run without a file — DECISIONS §38) ·
             20260917100000 reconcile state (§40) · 110000 potential snapshot key (§42). All applied.
             20260915090000 website reads ·
             20260915120000 fact source precedence ·
@@ -260,7 +260,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift
   against each function's real import closure (RUNBOOK §3). All five carry the
   `helpers.ts` / `db.ts` paging fixes; pb-score also carries the 17 Sep rule-9 source precedence
-  and the potential-snapshot write (DECISIONS §27, §30). `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
+  and the potential-snapshot write (DECISIONS §39, §42). `pb_secret()` is the first call pb-sync, pb-score and pb-notes each make, and it
   runs *before* anything is written — so a transient gateway failure there costs the whole run
   and leaves no `pb_runs` row at all. That is not hypothetical: it took both nightly jobs out on
   12 Sep (RUNBOOK §15).
