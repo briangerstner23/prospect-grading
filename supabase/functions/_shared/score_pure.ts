@@ -143,6 +143,8 @@ export interface CurrentRead {
   status: string | null;
   /** Null on every row written before rubric 0.1.1, and on any read from a rubric without the block. */
   confidence_grade?: string | null;
+  /** The current read's chase key (scorecard->chase_rank_key), so the preview can report ORDER changes. */
+  chase_rank_key?: unknown;
 }
 
 export interface DiffEntry {
@@ -155,6 +157,66 @@ export interface DiffEntry {
   from_confidence_grade: string | null;
   to_confidence_grade: string | null;
   changed: boolean;
+  /** Position among the previewed accounts under the CURRENT reads' keys (1 = first); null when the account has no current read. */
+  from_rank: number | null;
+  /** Position among the previewed accounts under the draft's keys. */
+  to_rank: number | null;
+  /** True when the account's position moved. A rubric that reorders the whole book without moving a tier previewed as "0 changed" until 18 Sep (DECISIONS §10, §52). */
+  order_changed: boolean;
+}
+
+export type KeyElement = number | string;
+
+/**
+ * Chase-key comparison, best first. Element by element: numbers ascending, strings by locale;
+ * a shorter key is exhausted first and sorts after a longer one that agrees on every shared
+ * element; a missing or malformed key sorts last. Keys of different shapes only meet across
+ * rubric versions (the five-term key before 0.1.7, the rubric-ordered key after), and the
+ * shared prefix still decides most of the order.
+ */
+export function compareKey(a: unknown, b: unknown): number {
+  const ka = Array.isArray(a) ? (a as KeyElement[]) : null;
+  const kb = Array.isArray(b) ? (b as KeyElement[]) : null;
+  if (ka === null && kb === null) return 0;
+  if (ka === null) return 1;
+  if (kb === null) return -1;
+  const n = Math.max(ka.length, kb.length);
+  for (let i = 0; i < n; i++) {
+    if (i >= ka.length) return 1;
+    if (i >= kb.length) return -1;
+    const x = ka[i], y = kb[i];
+    if (typeof x === "number" && typeof y === "number") {
+      if (x !== y) return x - y;
+      continue;
+    }
+    const sx = String(x), sy = String(y);
+    if (sx !== sy) return sx < sy ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Ranks for the preview: where each account sits under the current reads' keys and under the
+ * draft's keys, counted over the accounts in this run only. Ties keep account_id order so the
+ * result is deterministic.
+ */
+export function rankDiff(
+  cards: readonly ProspectScorecard[],
+  currentBy: Map<string, CurrentRead>,
+): Map<string, { from_rank: number | null; to_rank: number | null }> {
+  const byId = (p: string, q: string) => (p < q ? -1 : p > q ? 1 : 0);
+  const to = [...cards].sort((x, y) => compareKey(x.chase_rank_key, y.chase_rank_key) || byId(x.account_id, y.account_id));
+  const from = cards
+    .map((c) => currentBy.get(c.account_id))
+    .filter((c): c is CurrentRead => c !== undefined && Array.isArray(c.chase_rank_key))
+    .sort((x, y) => compareKey(x.chase_rank_key, y.chase_rank_key) || byId(x.account_id, y.account_id));
+  const out = new Map<string, { from_rank: number | null; to_rank: number | null }>();
+  to.forEach((c, i) => out.set(c.account_id, { from_rank: null, to_rank: i + 1 }));
+  from.forEach((c, i) => {
+    const e = out.get(c.account_id);
+    if (e) e.from_rank = i + 1;
+  });
+  return out;
 }
 
 /** One preview line: the current read (or nothing) against the draft scorecard. */
@@ -164,11 +226,17 @@ export interface DiffEntry {
  * rule 4's look-before-you-activate step would report that nothing happens when every account
  * gets a grade.
  */
-export function diffEntry(sc: ProspectScorecard, current: CurrentRead | null): DiffEntry {
+export function diffEntry(
+  sc: ProspectScorecard,
+  current: CurrentRead | null,
+  ranks: { from_rank: number | null; to_rank: number | null } | null = null,
+): DiffEntry {
   const from_tier = current?.effective_tier ?? null;
   const from_status = current?.status ?? null;
   const from_confidence_grade = current?.confidence_grade ?? null;
   const to_confidence_grade = sc.confidence_grade ?? null;
+  const from_rank = ranks?.from_rank ?? null;
+  const to_rank = ranks?.to_rank ?? null;
   return {
     account_id: sc.account_id,
     name: sc.name,
@@ -181,6 +249,9 @@ export function diffEntry(sc: ProspectScorecard, current: CurrentRead | null): D
     changed: from_tier !== sc.effective_tier
       || from_status !== sc.status
       || from_confidence_grade !== to_confidence_grade,
+    from_rank,
+    to_rank,
+    order_changed: from_rank !== null && to_rank !== null && from_rank !== to_rank,
   };
 }
 

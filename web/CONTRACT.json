@@ -20,7 +20,7 @@
     "only when their data exists are still required HERE: the page must contain the code and the",
     "heading, even if a given account has nothing to put in it."
   ],
-  "version": 1,
+  "version": 2,
   "approved_by": "owner (Brian)",
   "approved_on": "2026-09-16",
   "source_of_truth": "The 16 September 2026 artifact, ruled the layout to maintain — DECISIONS §37, §43, §46.",
@@ -109,7 +109,7 @@
         {
           "name": "Masthead",
           "required": true,
-          "shows": "count, the lede, and the source line: rubric version, order, row count, live read",
+          "shows": "count, the lede, and the source line: rubric version, order (cell first, tier second), row count",
           "source": "pb_board()"
         },
         {
@@ -119,15 +119,21 @@
           "source": "pb_board()"
         },
         {
+          "name": "By chase cell",
+          "required": true,
+          "shows": "the four chase cells and the unranked cell (rubric 0.1.7, owner decision D1 of 18 Sep 2026): count, ABM tier, the play, owner role and SLA for each, and the lift report beside them — share of accounts against share of quotes and replies in the last 90 days, counts only",
+          "source": "pb_board() rows grouped by cell_id; pb_lift() for the lift numbers"
+        },
+        {
           "name": "Three axes that never touch",
           "required": true,
-          "shows": "tier / confidence / engagement, and that only the first sets the rank",
+          "shows": "tier / confidence / engagement; the tier sets the potential band (second key of the chase order), readiness sets the cell (first key), confidence and engagement are columns",
           "source": "pb_board()"
         },
         {
           "name": "The ranked list",
           "required": true,
-          "shows": "grouped headers Potential | Contact; columns rank, company, tier, cell, year one, facts, engagement, they replied",
+          "shows": "rows grouped under a header per chase cell (name, count, play, SLA), then grouped headers Potential | Contact; columns rank, company, tier, cell, year one, facts, engagement, they replied",
           "source": "pb_board()"
         },
         {
@@ -408,5 +414,8 @@
         }
       ]
     }
+  ],
+  "_changes": [
+    "18 Sep 2026: 'By chase cell' added to the board (owner decision D1, DECISIONS §52); the ranked list is grouped under a header per cell; the masthead and axes text say the cell comes first."
   ]
 }

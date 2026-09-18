@@ -82,7 +82,53 @@ export const EXTRACTABLE: Readonly<Record<string, Shape>> = {
     values: ["2nd person engaged", "Champion identified", "Structural break", "Future-state language", "Strategy question asked"],
   },
   timing: { kind: "enum", values: ["within_1_week", "within_1_month", "within_3_months", "no_timeline"] },
+
+  /* Readable from an agency's own pages as well as from prose, added 17 Sep 2026 with the
+     website channel. Both sat at 0% coverage across the whole book while being real engine
+     inputs, and both are QUOTABLE off a site: a team page names the people who build, and a
+     positioning line says whether the work is concentrated in one industry.
+
+     `revenue_band` and `avg_project_size` are deliberately NOT here even though they are the
+     same kind of gap. No agency states either on its website, so a model asked for them would
+     have nothing to quote and would reach for the nearest proxy — a client logo wall, a "$50M
+     in revenue driven" marketing figure — and that is exactly the inference this whitelist
+     exists to refuse. They come from a call or from a person. */
+  delivery_headcount: { kind: "integer", min: 0, max: 5000 },
+  vertical_depth: { kind: "enum", values: ["deep_single_vertical", "generalist"] },
 };
+
+/**
+ * WHAT A WEBSITE MAY BE ASKED. A narrower set than a note's, and narrower on purpose.
+ *
+ * A website is the agency describing itself to buyers. It can say what it does, how big it is
+ * and who it serves — those are checkable claims about the world, and if the page overstates
+ * them the page is still the source a person would check.
+ *
+ * What a website can never say is anything about a DEAL. `money`, `authority`, `specification`
+ * and `timing` are Dimension A: whether this particular opportunity has a budget, a
+ * decision-maker and a scope. No homepage knows that, so a model asked the question would be
+ * answering from marketing copy — "we work with enterprise clients" is not a budget. The climb
+ * signals are worse: every one of them is an event in OUR relationship with them (a second
+ * person joined the call, they named a deadline), and a site read cannot witness one.
+ *
+ * So the deal keys are withheld rather than trusted to the model's restraint. A key that is
+ * never offered is a key that can never be wrongly claimed.
+ */
+const SITE_WITHHELD: readonly string[] = [
+  "money", "authority", "specification", "timing", "climb_signals", "relationship_type",
+];
+
+export const EXTRACTABLE_SITE: Readonly<Record<string, Shape>> = Object.fromEntries(
+  Object.entries(EXTRACTABLE).filter(([k]) => !SITE_WITHHELD.includes(k)),
+);
+
+/** The record kinds that are read as a website rather than as somebody's note. */
+export const SITE_SOURCES: readonly string[] = ["website"];
+
+/** Which keys this kind of record may be asked about. One answer, used by prompt AND verifier. */
+export function keysFor(source: string | undefined): Readonly<Record<string, Shape>> {
+  return SITE_SOURCES.includes(String(source ?? "")) ? EXTRACTABLE_SITE : EXTRACTABLE;
+}
 
 const CONFIDENCES: readonly string[] = ["high", "medium", "low"];
 
@@ -340,6 +386,10 @@ export function verifyClaims(planned: PlannedNote, raw: unknown): VerifyResult {
   const counters: Record<string, number> = {};
   const claims: ExtractedClaim[] = [];
   const id = String(planned.note.id);
+  /* From the record's OWN source, never from a caller argument. The prompt is built from the
+     same function, so the keys a model is offered and the keys the verifier will accept cannot
+     drift apart — which they would the first time somebody added a channel and updated one. */
+  const allowed = keysFor(planned.note.source);
 
   const list = Array.isArray(raw)
     ? raw
@@ -365,7 +415,7 @@ export function verifyClaims(planned: PlannedNote, raw: unknown): VerifyResult {
     if (!item || typeof item !== "object") { bump(counters, "malformed_claim"); continue; }
     const c = item as Record<string, unknown>;
     const key = typeof c.key === "string" ? c.key : "";
-    const shape = EXTRACTABLE[key];
+    const shape = allowed[key];
     if (!shape) {
       notes.push(`Note ${id}: '${key || "(no key)"}' is not an extractable key; dropped.`);
       bump(counters, "key_not_extractable");
@@ -472,6 +522,20 @@ function describe(v: unknown): string {
 export const PROMPT_VERSION = "notes@v4";
 
 /**
+ * A website is read by a different prompt against a different key set, so it carries its own
+ * version. Keeping them separate is not tidiness: every fingerprint is built from this string,
+ * so folding the site read into `notes@v...` would bump the notes version too and re-read every
+ * Pipedrive note and Fathom call in the book under a new extractor id — a second copy of a
+ * review queue that is already the thing the owner does not want more of.
+ */
+export const SITE_PROMPT_VERSION = "site@v1";
+
+/** The prompt version that reads this kind of record. */
+export function promptVersionFor(source: string | undefined): string {
+  return SITE_SOURCES.includes(String(source ?? "")) ? SITE_PROMPT_VERSION : PROMPT_VERSION;
+}
+
+/**
  * Who read this record — the prompt AND the model together.
  *
  * Every fingerprint carries this string, so it is what makes a re-read happen. Leaving the
@@ -491,8 +555,9 @@ export function extractorId(model: string, promptVersion: string = PROMPT_VERSIO
 /** Kept so a caller that has not been updated still compiles; prefer extractorId(model). */
 export const EXTRACTOR_VERSION = PROMPT_VERSION;
 
-export function extractionPrompt(): string {
-  const keys = Object.entries(EXTRACTABLE).map(([k, s]) => {
+export function extractionPrompt(source?: string): string {
+  const site = SITE_SOURCES.includes(String(source ?? ""));
+  const keys = Object.entries(keysFor(source)).map(([k, s]) => {
     const shape = s.kind === "boolean"
       ? "true or false"
       : s.kind === "enum"
@@ -504,9 +569,13 @@ export function extractionPrompt(): string {
   }).join("\n");
 
   return [
-    "You are reading one CRM note about an agency and recording only what the note actually says.",
+    site
+      ? "You are reading one page from an agency's own website and recording only what the page actually says."
+      : "You are reading one CRM note about an agency and recording only what the note actually says.",
     "",
-    "Return JSON: {\"claims\": [{\"key\", \"value\", \"quote\", \"confidence\", \"kind\"}]}. Return an empty list when the note says nothing about these.",
+    site
+      ? "Return JSON: {\"claims\": [{\"key\", \"value\", \"quote\", \"confidence\", \"kind\"}]}. Return an empty list when the page says nothing about these."
+      : "Return JSON: {\"claims\": [{\"key\", \"value\", \"quote\", \"confidence\", \"kind\"}]}. Return an empty list when the note says nothing about these.",
     "",
     "Keys and the values they may take:",
     keys,
@@ -530,5 +599,15 @@ export function extractionPrompt(): string {
     "    \"Strategy question asked\"  they ask how to approach the problem rather than what it costs.",
     "  Omit the key entirely when none of these happened. An empty or padded list is worse than silence.",
     "- One claim per key at most.",
+    ...(site
+      ? [
+        "",
+        "This page is the agency SELLING ITSELF. Two things follow, and they are the whole difference between reading a site and reading a note:",
+        "- The page is written to impress. \"World-class team of experts\", \"trusted by industry leaders\", \"decades of combined experience\" are claims about nothing a reader could check — they are judgements, whatever they sound like. A COUNT you can arrive at by counting (people named on a team page, clients named on a client page) is an observation. An adjective is not.",
+        "- Navigation menus, cookie banners, newsletter sign-ups and footers are on the page but say nothing about the agency. Do not quote them.",
+        "- headcount is people on THEIR staff. delivery_headcount is the subset who build — developers, engineers, designers, QA. Count only people the page actually names or a number it actually states; if it says \"our team\" with no number, leave the key out.",
+        "- vertical_depth is \"deep_single_vertical\" only when the page says the work is confined to one industry (\"we work exclusively with healthcare brands\"). A list of industries served is \"generalist\". A page that says neither gets neither.",
+      ]
+      : []),
   ].join("\n");
 }
