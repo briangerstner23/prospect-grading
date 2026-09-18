@@ -100,7 +100,14 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260917200000 board public read (SUPERSEDED — a view grant cannot work here) ·
             210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
             `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
-            260000 board carries account_id · 270000 call attendees by name only.
+            260000 board carries account_id · 270000 call attendees by name only ·
+            280000 dossier no addresses · 290000 confirm fact candidates (§45) ·
+            300000 dossier deals and candidates · 310000 dashboard · 320000 dashboard queue fix ·
+            330000 board computed tier · 20260917233631 candidate kind · 233850 confirm
+            corroborated (§51). NOTE the two 23:36/23:38 files carry REAL applied timestamps while
+            the 2000-3300 set above carries invented ones, so a replay from scratch would run them
+            in a different order than they ran. Harmless today (every one is idempotent) and worth
+            fixing the next time the list is touched.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
@@ -260,8 +267,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
 - Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
-  commit; RUNBOOK §3), **pb-notes v13** (commit `30e6b11`, also a pinned-commit
-  entrypoint — the `website` channel, DECISIONS §50), **pb-sync v2**, **pb-pipedrive-webhook v2**,
+  commit; RUNBOOK §3), **pb-notes v14** (commit `53596a3`, also a pinned-commit
+  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-sync v2**, **pb-pipedrive-webhook v2**,
   **pb-fathom-webhook v2** (those three from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
   `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
