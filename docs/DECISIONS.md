@@ -2217,6 +2217,10 @@ is thin everywhere. That is not a scoring problem; it is 548 recorded calls nobo
 >
 > Older citations shift twice: a reference written before the 17 September merge to that session's
 > §22–§27 means §28–§33 in the numbering it was corrected to, and §34–§39 here.
+> Nine citations outside this file had never been corrected at all and still carried the pre-merge
+> numbers; they were pointed at the right sections on 18 September, so they move by twelve rather
+> than six. `.github/workflows/ci.yml`, two lines of `CLAUDE.md`, `ingest/resolve_features.ts` with
+> its `_shared` copy, and the four migrations transcribed on 17 September.
 >
 > **One place still carries the old numbers on purpose.** The `ruling_note`, `note` and
 > `scarcity_note` strings inside `core/rubric.prospect.v*.json` were left untouched, because a
