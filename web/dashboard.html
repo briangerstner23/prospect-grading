@@ -293,27 +293,69 @@ footer{border-top:1px solid var(--rule);padding-block:22px 34px;
       "with nothing on file reads <em>unknown</em>, never <em>cold</em> — nobody has tried.</p></section>");
 
     /* ---------- Waiting on a person ---------- */
-    var q = (dash && dash.queue) || { total: 0, by_reason: {}, confirmable_together: 0 };
+    var q = (dash && dash.queue) || { total: 0, by_reason: {}, automatic: 0, needs_a_person: 0, lane_off: 0, audited: {} };
+    var aud = q.audited || {};
+    var ac = (dash && dash.autoconfirm) || { facts_live: 0, closed: 0, batches: 0, lanes: {} };
+    var lanesOn = Object.keys(ac.lanes || {}).filter(function (k) { return ac.lanes[k]; });
     var reasons = Object.keys(q.by_reason || {}).sort(function (a, b) {
       return (q.by_reason[b] || 0) - (q.by_reason[a] || 0); });
     h.push('<section data-section="Waiting on a person"><div class="sechead">' +
       "<h2>Waiting on a person</h2><p>Claims read out of calls, notes and websites that were " +
-      "<strong>not written</strong> into the book. Nothing reaches a fact on a machine's say-so " +
-      "(rule 8) — these are what the machine declined to decide.</p></div>" +
+      "<strong>not written</strong> into the book. Most still need somebody to read the sentence; " +
+      "a few sit in rules the book is allowed to answer on its own, and every one of those can be " +
+      "taken back (§50).</p></div>" +
       '<div class="nums">' +
-      num("Waiting", n(q.total), "claims proposed, none written", q.total ? "alert" : "go") +
-      num("Can be confirmed together", n(q.confirmable_together),
-          "rated high, quoted, nothing on file for that key", q.confirmable_together ? "go" : "") +
+      num("Waiting", n(q.needs_a_person), "need a person to read the sentence", q.needs_a_person ? "alert" : "go") +
+      num("The book will take", n(q.automatic), "on rules that are switched on", q.automatic ? "go" : "") +
+      num("In a rule that is off", n(q.lane_off), "waiting on a decision, not on reading", q.lane_off ? "alert" : "") +
       "</div>" +
       (reasons.length
         ? '<div class="hist" style="margin-top:14px">' + reasons.map(function (k) {
             return hrow(k, q.by_reason[k], q.total, k.indexOf("clear") !== 0);
           }).join("") + "</div>"
         : "") +
-      '<p class="note">The ones that are not clear are not backlog — each needs a person because ' +
-      "something has to be weighed: the extractor was unsure, the sentence is an assessment rather " +
-      "than something you could check, or the book already holds a different answer. " +
+      '<p class="note">Not backlog. Each of these needs a person because something has to be ' +
+      "weighed: the extractor was unsure, the sentence is an assessment rather than something you " +
+      "could check, or the book already holds a different answer. " +
       '<a href="index.html#queue">Review them in the back office</a>.</p></section>');
+
+    /* ---------- Does the sentence say it? (§52) ----------
+       A quote proves where a sentence came from, not that it says what was read out of it. This
+       is the only place the difference is visible, and it is the largest single finding in the
+       queue: a third of every machine-read claim had a sentence that did not bear on it. */
+    var audTotal = (aud.states || 0) + (aud.implies || 0) + (aud.unsupported || 0);
+    if (audTotal) {
+      h.push('<section data-section="Does the sentence say it"><div class="sechead">' +
+        "<h2>Does the sentence say it?</h2><p>Every claim above carries a verbatim quote. That " +
+        "proves <em>where the sentence came from</em>, not that the sentence says what was read " +
+        "out of it — so each one was audited against its own quote.</p></div>" +
+        '<div class="nums">' +
+        num("Says it outright", n(aud.states || 0), "admissible to a rule on this alone", "go") +
+        num("A fair reading, no more", n(aud.implies || 0), "never automatic; a person decides") +
+        num("Does not bear on it", n(aud.unsupported || 0),
+            "refused from every rule, corroboration included", (aud.unsupported || 0) ? "alert" : "") +
+        "</div>" +
+        ((aud.unaudited || 0)
+          ? '<p class="note">' + n(aud.unaudited) + " not audited — these carry no quote to audit, " +
+            "which is itself a refusal (rule 8).</p>"
+          : "") +
+        '<p class="note alert">An audited <strong>says it outright</strong> is what lets a claim ' +
+        "into a rule, in place of trusting whoever read it. The gate is a demand for evidence " +
+        "about the evidence, not a ban on a source.</p></section>");
+    }
+
+    /* ---------- What the book took on its own ---------- */
+    h.push('<section data-section="Taken without a person"><div class="sechead">' +
+      "<h2>Taken without a person</h2><p>Facts the book wrote on rules the owner switched on. " +
+      "Each carries <code>auto:&lt;rule&gt;</code> in place of a name, so nothing a machine read " +
+      "ever looks like something somebody entered (rule 9), and every batch can be undone.</p></div>" +
+      '<div class="nums">' +
+      num("Facts written", n(ac.facts_live || 0), "across " + n(ac.batches || 0) + " batch(es), all reversible") +
+      num("Closed, nothing written", n(ac.closed || 0), "the book already held that value", "go") +
+      num("Rules switched on", n(lanesOn.length), lanesOn.join(", ") || "none") +
+      "</div>" +
+      (ac.last_run_at ? '<p class="note">Last run ' + esc(day(ac.last_run_at)) + ".</p>" : "") +
+      "</section>");
 
     /* ---------- Is the machinery running ---------- */
     var runs = (dash && dash.runs) || {};
