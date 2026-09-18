@@ -3342,3 +3342,77 @@ the same drift independently — which is the check working exactly as §35 inte
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository (RECON-register-
 unread: no session has read them directly). This entry records the owner's ruling as made; the
 Grading Register should be updated to match, and if it ever disagrees, **the register wins**.
+
+## §50 — Sourcing the LinkedIn company page (18 Sep 2026)
+
+Owner, of the 830 live accounts: *"can i source linkedin urls for all of these prospects?"*
+
+Not all. **602 of 830 — 72.5%.** What follows is how that number was reached, what it cost, and
+what the remaining 228 would take. This is a record of a sourcing run, not a ruling; rule 1 stands.
+
+**The primary source was already in hand, and had never been read.** Pipedrive carries `linkedin`
+natively on the organisation record, and `ingest/pipedrive_seed.ts` has declared that field on
+`PipedriveOrg` since the certified roster pull — line 176, typed, never referenced. 310 raw values
+were sitting there; 306 survived the normaliser. **That is 51% of the book at zero cost**, found by
+reading the seed rather than by buying anything. A paid enrichment run was the obvious first move
+and would have been the wrong one. Check what the CRM already holds before spending a credit on it.
+
+**It is an attribute of the account, not a fact.** A fact's key must be a `ProspectFeatures` key
+(CLAUDE.md, conventions) and nothing about a LinkedIn URL is graded: it fires no gate, no adjustment
+and no band. So it rides on `pb_accounts` beside `domain`, which is the same class of thing. In
+`pb_facts` it would have made every scorecard carry an input the rubric cannot read, and rule 5 —
+unknown is never evidence — would have had nothing to say about it. Three columns, all nullable and
+additive, so DECISIONS §8 holds: `linkedin_url`, `linkedin_uid` (LinkedIn's own numeric id, which
+survives a slug rename when the URL does not) and `linkedin_source`.
+
+**A person is not an organisation, and that is enforced three times.** Three of the roster's own
+Pipedrive values were personal `/in/` profiles. The board is public and signed out (§43), so without
+a guard the first sync would have published an owner's private profile on a public page. The refusal
+lives in `normalizeLinkedinCompany()` for the pure path, in a CHECK constraint on `pb_accounts`
+because the page reads the table and not the TypeScript, and in a regex on the page itself before an
+`href` is written. The constraint was proved by attempting a write, not by reading it.
+
+**The free path was ruled out with evidence rather than assumed away.** `pb_website_reads` holds 395
+readable pages and **zero** company slugs, which is implausible on its face — 311 of those pages
+contain the word "LinkedIn". The cause is migration `20260915090000`, which strips tags before
+storing: the text survives and every `href` is gone. Not recoverable without re-fetching. Worth
+knowing before anyone plans another read on top of that table.
+
+**The ampersand, and rule 9.** Six of the roster's values are agencies with `&` in the slug, typed in
+by a person. The first normaliser dropped them as malformed. `&` is legal in a path segment, and a
+person outranks a machine, so the slug is kept **verbatim** rather than dropped or re-encoded into a
+guess — TypeScript regex and database constraint both widened to `[a-z0-9%._&-]+`.
+
+**A migration that had already run was edited in place, and that was the mistake of the day.** The
+widening went into `20260918100000_…` — a file whose text was already `schema_migrations.statements`
+— which breaks the byte-identity the DECLARED-vs-RUNNING discipline depends on (§26, §33). Reverted
+to the as-applied text; the widening is its own file, `20260918100100_…`. An applied migration is a
+record of what ran. It is not a draft.
+
+**Apollo was probed before it was spent.** 10 domains first, to confirm `organizations/bulk_enrich`
+returns `linkedin_url` at all, then the full run on the owner's approval. **296 accounts written
+across 291 distinct domains**, at 1 credit per match and nothing for a miss. Apollo sometimes
+resolves a domain to an organisation whose own primary domain is a different one — a `.co` answered
+by a `.com`, a US domain answered by a `.com.br`. **22 of those went to `pb_identity_candidates` at
+`medium`, not to the account.** Rule 8: below `high` is a proposal, and a proposal is not a write.
+
+**The URL turned out to be a better duplicate-detector than the name.** 602 pages resolve to 595
+distinct ones: **seven pairs, each exactly two accounts**, six of them genuinely the same company
+entered twice and missed by name matching. Written as `linkedin_url_collision` candidates at `high`
+for a person to merge — `pb_accounts` is not deduplicated by a sweep.
+
+**What is missing, and why each one is missing.** 114 accounts have no domain, and Apollo's enrich is
+keyed on domain, so they cannot be reached that way at all; the free name→domain lookup is the route
+and it is **blocked — the Apollo session's OAuth expired and cannot be re-authorised from a
+non-interactive session.** Pipedrive has nothing left to give there: 86 of the 114 carry an org id
+and the ones inspected hold `website: null` and `linkedin: null`, so the earlier harvest was already
+complete. The other 116 have a domain and no page because Apollo returned no match — for some of
+them that is simply true, one CRM note on a domainless record reading *"limited online presence"*.
+When the name→domain path does run, the owner's instruction is that it **queues rather than writes**:
+a name match is a guess about which company, and a guess must never land on a graded account.
+
+**The sweep surfaced something the book should look at, which was not the question asked.** WLIQ's
+own domain is an account in the prospect book. A three-person home health care provider is Ranked.
+Several plainly-not-agencies are on the roster, including a school and a disposable-email domain.
+None of that is this change's to fix — `pb_roster_drift` proposes and a person decides (rule 11's
+posture, applied to the roster) — but it should not sit unremarked either.
