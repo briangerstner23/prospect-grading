@@ -10,8 +10,12 @@
 
 import {
   EXTRACTABLE,
+  EXTRACTABLE_SITE,
   extractorId,
+  keysFor,
+  promptVersionFor,
   PROMPT_VERSION,
+  SITE_PROMPT_VERSION,
   JUDGEMENT_MARKERS,
   judgementMarker,
   extractionPrompt,
@@ -461,6 +465,73 @@ const DEAL = plannedOf({
   eq("oneRecordingPerMeeting: input order is preserved", oneRecordingPerMeeting([call("5", null), call("3", null), call("4", null)]).kept.map((x) => x.fathom_recording_id), ["5", "3", "4"]);
   eq("oneRecordingPerMeeting: an empty list is empty", oneRecordingPerMeeting([]).kept.length, 0);
   eq("oneRecordingPerMeeting: a single recording is kept", oneRecordingPerMeeting([call("1", MK)]).kept.length, 1);
+}
+
+/* ------------------------------------------------------------------ *
+ * a website is asked a narrower set of questions
+ * ------------------------------------------------------------------ */
+
+/* The guarantee here is not "the site prompt is shorter". It is that the KEYS A MODEL IS
+   OFFERED and the KEYS THE VERIFIER WILL ACCEPT come from the same function, so a channel added
+   later cannot widen one without widening the other. That is why keysFor exists at all. */
+{
+  const dealKeys = ["money", "authority", "specification", "timing", "climb_signals"];
+  for (const k of dealKeys) {
+    check(`a note may be asked about ${k}`, EXTRACTABLE[k] !== undefined);
+    check(`a website may NOT be asked about ${k}`, EXTRACTABLE_SITE[k] === undefined,
+      "a homepage cannot witness whether this deal has a budget, a decision-maker or a date");
+  }
+  check("a website may be asked what the agency does", EXTRACTABLE_SITE.sells_build_work !== undefined);
+  check("a website may be asked how many people build", EXTRACTABLE_SITE.delivery_headcount !== undefined);
+  check("a website may be asked whether the work is one vertical", EXTRACTABLE_SITE.vertical_depth !== undefined);
+
+  /* The two gaps that look the same as delivery_headcount and are deliberately not filled the
+     same way: no agency states either on its site, so a model asked would infer. */
+  check("nothing may claim revenue_band from prose", EXTRACTABLE.revenue_band === undefined && EXTRACTABLE_SITE.revenue_band === undefined);
+  check("nothing may claim avg_project_size from prose", EXTRACTABLE.avg_project_size === undefined && EXTRACTABLE_SITE.avg_project_size === undefined);
+
+  eq("keysFor routes a website to the narrow set", Object.keys(keysFor("website")), Object.keys(EXTRACTABLE_SITE));
+  eq("keysFor routes a call to the full set", Object.keys(keysFor("fathom_call")), Object.keys(EXTRACTABLE));
+  eq("keysFor routes an unknown source to the full set", Object.keys(keysFor(undefined)), Object.keys(EXTRACTABLE));
+
+  const sitePrompt = extractionPrompt("website");
+  const notePrompt = extractionPrompt("fathom_call");
+  check("the site prompt says it is reading a website", /agency's own website/.test(sitePrompt));
+  check("the note prompt is unchanged in its framing", /one CRM note/.test(notePrompt));
+  for (const k of dealKeys) {
+    check(`the site prompt never mentions ${k}`, !sitePrompt.includes(`  ${k}:`), "a key never offered cannot be wrongly claimed");
+  }
+  check("the site prompt warns that the page is selling", /SELLING ITSELF/.test(sitePrompt));
+  check("the site prompt tells it not to quote the nav menu", /Navigation menus/.test(sitePrompt));
+
+  /* Version identity. Every fingerprint is built from this, so folding the two together would
+     re-read every note and call in the book under a new id — a second copy of the review queue. */
+  check("a website carries its own prompt version", promptVersionFor("website") === SITE_PROMPT_VERSION);
+  check("a call still carries the notes version", promptVersionFor("fathom_call") === PROMPT_VERSION);
+  check("the two versions are different strings", SITE_PROMPT_VERSION !== PROMPT_VERSION);
+  check(
+    "the extractor id says which prompt read it",
+    extractorId("m", promptVersionFor("website")) !== extractorId("m", promptVersionFor("fathom_call")),
+  );
+
+  /* And the verifier holds the same line, from the record's own source rather than a caller
+     argument — a model that answers a question it was not asked is still refused. */
+  const sitePage: PlannedNote = {
+    note: {
+      id: "w1", org_id: null, source: "website", account_id: "a",
+      content: "", add_time: "2026-09-15T00:00:00Z",
+    },
+    account_id: "a",
+    text: "We are a team of eleven, six of them engineers, and we work only with hospitals.",
+  };
+  const v = verifyClaims(sitePage, {
+    claims: [
+      { key: "authority", value: "present", quote: "We are a team of eleven", confidence: "high", kind: "observation" },
+      { key: "delivery_headcount", value: 6, quote: "six of them engineers", confidence: "high", kind: "observation" },
+    ],
+  });
+  eq("a deal key claimed off a website is dropped", v.extraction.claims.map((c) => c.key), ["delivery_headcount"]);
+  check("and the drop is counted, not silent", (v.counters.key_not_extractable ?? 0) === 1);
 }
 
 /* ------------------------------------------------------------------ *

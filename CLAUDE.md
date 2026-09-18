@@ -40,7 +40,9 @@ ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes
             review queue; source-agnostic) · record_sources.ts (Fathom / Gmail / Pipedrive →
             WrittenRecord, and the domain attribution that decides WHICH account) ·
             notes_sweep.ts (which records are worth a model call, and what a model is allowed
-            to have said — the quote and judgement checks live here) (+ *_test.ts)
+            to have said — the quote and judgement checks live here; `keysFor(source)` is the ONE
+            place a channel's key set is decided, read by both the prompt and the verifier so they
+            cannot drift) (+ *_test.ts)
 supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron · 120200 merge ·
             120300 fixes · 120400 candidate review · 20260910141528 touch search_path ·
             20260910190000 public read · 20260911001048 apollo staging ·
@@ -98,7 +100,14 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260917200000 board public read (SUPERSEDED — a view grant cannot work here) ·
             210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
             `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
-            260000 board carries account_id · 270000 call attendees by name only.
+            260000 board carries account_id · 270000 call attendees by name only ·
+            280000 dossier no addresses · 290000 confirm fact candidates (§45) ·
+            300000 dossier deals and candidates · 310000 dashboard · 320000 dashboard queue fix ·
+            330000 board computed tier · 20260917233631 candidate kind · 233850 confirm
+            corroborated (§51). NOTE the two 23:36/23:38 files carry REAL applied timestamps while
+            the 2000-3300 set above carries invented ones, so a replay from scratch would run them
+            in a different order than they ran. Harmless today (every one is idempotent) and worth
+            fixing the next time the list is touched.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
@@ -241,11 +250,20 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   | `PB_PIPEDRIVE_WEBHOOK_BASIC` | pb-pipedrive-webhook | **set** (14 Sep 2026) — `pbhook:<24 random bytes, hex>`, generated in-database. The four Pipedrive webhooks carry the same pair as HTTP Basic; RUNBOOK §5 |
   | `PB_PIPEDRIVE_FIELD_MAP` | pb-pipedrive-webhook | **set** (14 Sep 2026) — 69 custom fields (28 deal, 13 organization, 28 person, 0 activity), collected from Pipedrive's own `/v1/*Fields` by `pb_pipedrive_field_map_begin()` / `_finish()`. A **snapshot**: a field renamed in Pipedrive keeps its old label here until the pair is re-run. RUNBOOK §5 |
 
-  pb-notes sweeps three channels, each behind its own credential and its own watermark row. The
-  `fathom_call` channel needs **no credential of its own** — it reads `pb_calls`, which the
-  webhook fills with the summary and the resolved account — so `PB_ANTHROPIC_API_KEY` alone is
-  enough to make the sweep do real work. A channel with no credential is skipped and said so in
-  the run's notes.
+  pb-notes sweeps **four** channels, each behind its own credential and its own watermark row. Two
+  need **no credential of their own**: `fathom_call` reads `pb_calls`, which the webhook fills with
+  the summary and the resolved account, and `website` reads `pb_website_reads`, which the fetcher
+  filled with page text and the account it belongs to. So `PB_ANTHROPIC_API_KEY` alone is enough to
+  make the sweep do real work. A channel with no credential is skipped and said so in the run's
+  notes.
+
+  **The `website` channel is narrower than the others on purpose** (DECISIONS §50). It reads a site
+  the book has NEVER read — an account with a live `pb_account_reads` row is skipped, so superseding
+  that row is what brings a site back into scope — and `notes_sweep.keysFor()` withholds `money`,
+  `authority`, `specification`, `timing`, the climb signals and `relationship_type` from its prompt
+  entirely, because no homepage can witness a deal. It carries its own prompt version (`site@v1`),
+  computed per RECORD: every fingerprint is built from the extractor id, so one shared version
+  would re-read every note and call in the book under a new id.
 - **A ruling is applied when the deployed artefact contains it** — not when it is written down
   and not when the code is merged. `deploy_edge_function` reports success for any syntactically
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
@@ -253,8 +271,9 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
 - Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
   one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
-  commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
-  **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
+  commit; RUNBOOK §3), **pb-notes v14** (commit `53596a3`, also a pinned-commit
+  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-sync v2**, **pb-pipedrive-webhook v2**,
+  **pb-fathom-webhook v2** (those three from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
   `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
   the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have

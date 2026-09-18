@@ -330,3 +330,121 @@ export function attributeAll(
   }
   return { attributed, notes, counters };
 }
+
+/* ------------------------------------------------------------------ *
+ * a website page
+ * ------------------------------------------------------------------ */
+
+/**
+ * The page text the fetcher stored, made quotable.
+ *
+ * `pb_website_reads.text` is already tag-stripped, but stripping tags is not the same as being
+ * readable. Three things survive it and each one breaks the quote rule in its own way:
+ *
+ *   · HTML entities. `stripHtml` decodes the six common ones; a marketing page is full of the
+ *     rest — &mdash;, &ldquo;, &rsquo;, &hellip;, &#8217;. They are not just ugly. The quote
+ *     check compares the model's sentence against this text, and a sentence copied out with
+ *     `&rsquo;` in it lands in the dossier with `&rsquo;` in it, quoted to the owner as what
+ *     the agency said.
+ *
+ *   · Letter-spaced headings. A site that sets `letter-spacing` per character comes out of the
+ *     extractor one character at a time, spaces and all. A model reading that will either skip
+ *     it or quote it, and a quote of it is unreadable evidence. Runs of six or more single
+ *     letters are put back together — six, because a run that long is never prose, while "B 2
+ *     B" and "a b" are an initialism and a list.
+ *
+ *   · Length. One stored page is 40,000 characters, most of it a blog index. The cap is on
+ *     what the model reads AND on what quotes are checked against, so the two cannot disagree:
+ *     a quote from character 30,000 of a page we truncated at 20,000 must fail the check, and
+ *     it does, because both sides see the same truncated string.
+ */
+export function siteText(raw: unknown, maxChars = SITE_MAX_CHARS): string {
+  const decoded = decodeEntities(String(raw ?? ""))
+    // Put letter-spaced runs back together: six or more single characters in a row.
+    .replace(/(?:\b[A-Za-z]\s+){5,}\b[A-Za-z]\b/g, (m) =>
+      /* The word gaps survive. A site that spaces its letters still spaces its WORDS wider,
+         so a run of 2+ spaces is where one word ended — join inside each group, keep one space
+         between them, so a spaced-out two-word agency name comes back as two words rather
+         than as one welded token nobody can search for. */
+      m.split(/\s{2,}/).map((word) => word.replace(/\s+/g, "")).join(" "))
+    /* Typography, folded the same way whether it arrived as &rsquo; or as &#8217;. The two
+       decode to different characters otherwise, and a page would read differently depending on
+       which spelling its CMS happened to emit. */
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return decoded.length > maxChars ? decoded.slice(0, maxChars) : decoded;
+}
+
+/** How much of one page is read. Past this it is a blog index, not a description of a business. */
+export const SITE_MAX_CHARS = 20000;
+
+/**
+ * Named and numeric HTML entities, decoded. The named list is the ones that actually appear in
+ * agency marketing copy; anything else is left alone rather than guessed at, because a wrong
+ * decode is worse than an undecoded entity — it changes the text a quote is checked against.
+ */
+export function decodeEntities(s: string): string {
+  const named: Record<string, string> = {
+    amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+    mdash: "-", ndash: "-", hellip: "...", middot: "-", bull: "-",
+    lsquo: "'", rsquo: "'", sbquo: "'", ldquo: '"', rdquo: '"', bdquo: '"',
+    trade: "(TM)", reg: "(R)", copy: "(C)", deg: " degrees", times: "x",
+  };
+  return s
+    .replace(/&([a-zA-Z]+);/g, (whole, name: string) => {
+      const hit = named[name.toLowerCase()];
+      return hit === undefined ? whole : hit;
+    })
+    .replace(/&#(\d{1,6});/g, (whole, dec: string) => {
+      const n = Number(dec);
+      return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : whole;
+    })
+    .replace(/&#[xX]([0-9a-fA-F]{1,6});/g, (whole, hex: string) => {
+      const n = Number.parseInt(hex, 16);
+      return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : whole;
+    });
+}
+
+/** One row of pb_website_reads, as the sweep needs it. */
+export interface WebsiteRead {
+  id: string;
+  account_id: string;
+  url: string;
+  path?: string | null;
+  text?: string | null;
+  completed_at?: string | null;
+  requested_at?: string | null;
+}
+
+/**
+ * A page of an agency's own site, as a written record.
+ *
+ * It needs no attribution step and that is the point: the fetcher went to a domain that was
+ * already on an account, so the account is not inferred from anything. This is the one channel
+ * where question 2 of this module's header — WHICH account — was answered before the text
+ * existed. Everything that can go wrong here is about the text, not the target.
+ */
+export function websiteReadToRecord(r: WebsiteRead): WrittenRecord {
+  const when = String(r.completed_at ?? r.requested_at ?? "");
+  const date = when.slice(0, 10);
+  const path = String(r.path ?? "").trim() || "/";
+  return {
+    id: String(r.id),
+    org_id: null,
+    content: siteText(r.text),
+    add_time: when,
+    /* The watermark walks completed_at, so a page fetched again later is read again — which is
+       what should happen: the site changed, and the book's reading of it is dated. */
+    update_time: when,
+    user_name: null,
+    source: "website",
+    url: r.url,
+    label: `Their website, ${path}${date ? `, read ${date}` : ""}`,
+    account_id: r.account_id,
+  };
+}

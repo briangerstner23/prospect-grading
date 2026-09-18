@@ -1567,12 +1567,38 @@ function fmtFactValue(v) {
 /**
  * Does this claim qualify for a bulk confirm? The database decides for real — this only keeps the
  * button honest about what it is about to do, so the count in the dialog is the count that lands.
- * `conflicts` is the candidate's own snapshot and can be stale; the function re-derives it, which
- * is why the dialog promises "at most" and the result says what actually happened.
+ * `conflicts` and `current_value` are the candidate's own snapshot and can be stale; the function
+ * re-derives both, which is why the dialog promises "at most" and the result says what happened.
+ *
+ * Three classes, mirroring pb_confirm_fact_candidates (DECISIONS §45, §51). A quote is the floor
+ * for all three, and the two corroboration classes need kind === "observation" EXPLICITLY — a null
+ * kind means the producer never recorded whether the sentence was checkable, and rule 5 makes
+ * unknown never evidence.
  */
-const bulkConfirmable = (c) =>
-  c.status === "proposed" && c.confidence === "high" &&
-  typeof c.quote === "string" && c.quote.trim().length > 0 && !c.conflicts;
+const sameJson = (a, b) => {
+  try { return JSON.stringify(a ?? null) === JSON.stringify(b ?? null); } catch { return false; }
+};
+
+/** The book held this exact value for this key when the candidate was written. */
+const heldSameValue = (c) =>
+  !c.conflicts && c.current_value !== null && c.current_value !== undefined &&
+  sameJson(c.current_value, c.value);
+
+/** Another proposal, from a DIFFERENT record, says the same thing with its own sentence. */
+const corroboratedByAnotherSource = (c, rows) => rows.some((o) =>
+  o.id !== c.id && o.account_id === c.account_id && o.key === c.key &&
+  o.source !== c.source && o.kind === "observation" &&
+  typeof o.quote === "string" && o.quote.trim().length > 0 &&
+  sameJson(o.value, c.value));
+
+const bulkConfirmable = (c, rows) => {
+  if (c.status !== "proposed") return false;
+  if (typeof c.quote !== "string" || c.quote.trim().length === 0) return false;
+  if (heldSameValue(c)) return c.kind === "observation";          // corroborates, or nothing to add
+  if (c.conflicts) return false;                                   // never settled by a click
+  if (c.confidence === "high") return true;                        // §45, unchanged
+  return c.kind === "observation" && corroboratedByAnotherSource(c, rows);
+};
 
 const queueSelection = new Set();   // candidate ids, so a reader can take 15 of 17
 const queueOpen = new Set();        // which value groups are expanded, kept across redraws
@@ -1624,7 +1650,7 @@ function drawQueue() {
   // byId is built above, from the rows actually on screen.
   const selectedClear = () => [...queueSelection].filter((id) => {
     const c = byId.get(id);
-    return c ? bulkConfirmable(c) : false;
+    return c ? bulkConfirmable(c, state.queueRows ?? []) : false;
   });
 
   const retally = () => {
@@ -1652,9 +1678,14 @@ function drawQueue() {
     const skipping = queueSelection.size - ids.length;
     if (!window.confirm(
       `Confirm ${ids.length} claim${ids.length === 1 ? "" : "s"} together?\n\n` +
-      `Each becomes a fact under your name, dated by the note rather than by today, and reaches the ` +
-      `grade at the next nightly run. They qualify because the extractor rated them high, each carries ` +
-      `a quote, and the book holds nothing for that key — so none of them overrules anyone.\n\n` +
+      `Each carries a quote, and each qualifies on one of three grounds: the extractor rated it high ` +
+      `and the book holds nothing for that key; or the book already holds this exact value and this ` +
+      `is the same answer with a sentence behind it; or a second record, from a different source, ` +
+      `says the same. None of them overrules anyone — a value that disagrees with what is on file is ` +
+      `refused by the database, not by this page.\n\nWhat is written becomes a fact under your name, ` +
+      `dated by the record rather than by today, and reaches the grade at the next nightly run. Some ` +
+      `may be closed instead of written, where the book already evidences the same value and there is ` +
+      `nothing to add.\n\n` +
       (skipping ? `${skipping} of your selection will be left alone and still need reading.\n\n` : "") +
       `The register will record this as a bulk review, not as ${ids.length} separate readings.`
     )) return;
@@ -1668,8 +1699,15 @@ function drawQueue() {
       ? " Left alone: " + Object.entries(data.skipped_why).map(([k, v]) => `${v} × ${k}`).join("; ") + "."
       : "";
     const sup = data?.superseded ? ` ${data.superseded} competing proposal(s) for the same keys were closed.` : "";
-    flash("ok", `Confirmed ${data?.confirmed ?? 0} claim${data?.confirmed === 1 ? "" : "s"} across ` +
-      `${data?.accounts ?? 0} account(s) under ${state.email}.${why}${sup} They reach the grades at the next ` +
+    const nothing = data?.closed_nothing_to_add
+      ? ` ${data.closed_nothing_to_add} were closed without writing: the book already evidences that value.`
+      : "";
+    const rules = data?.by_rule && Object.keys(data.by_rule).length
+      ? " By rule: " + Object.entries(data.by_rule).map(([k, v]) => `${v} × ${k}`).join("; ") + "."
+      : "";
+    flash("ok", `Settled ${(data?.confirmed ?? 0) + (data?.closed_nothing_to_add ?? 0)} claim(s) across ` +
+      `${data?.accounts ?? 0} account(s) under ${state.email} — ${data?.confirmed ?? 0} written as facts.` +
+      `${nothing}${rules}${why}${sup} They reach the grades at the next ` +
       `nightly run, and each account's register carries one line saying this was a bulk review.`);
     await loadBook();
     await openQueue();
@@ -1782,7 +1820,7 @@ function drawQueue() {
       h("b", null, "What the two answers mean. "),
       "Confirm writes the fact under your name, dated by the note rather than by today, and it reaches the grade at the next nightly run. ",
       "Most claims are therefore offered one at a time, with the sentence in front of you — because deciding them means weighing something: the extractor was unsure, the sentence is somebody's assessment rather than something you could check, or the book already holds a different answer. ",
-      "One class has nothing to weigh: rated high, a quote attached, and nothing on file for that key. Those can be confirmed together, and the database — not this page — is what holds the line (DECISIONS §45). The register records it as a bulk review rather than as separate readings. ",
+      "Three classes have nothing to weigh, and the database — not this page — is what holds the line (DECISIONS §45, §51). Rated high with a quote on a key the book holds nothing for. Or the book already holds that exact value, so confirming cannot change the answer, only put a sentence behind it. Or a second record, from a different source, says the same thing with its own quote — two records that never saw each other agreeing is a better test than one model's confidence. Everything else is read one at a time, and a value that disagrees with what is on file always is. The register records a bulk review as a bulk review, never as separate readings. ",
       "Reject writes nothing at all: the claim is closed, the decision is recorded in the register, and the sweep may propose it again tomorrow. Because it writes nothing, rejection can be given in bulk far more freely.",
     ),
   );
