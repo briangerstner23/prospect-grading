@@ -171,6 +171,17 @@ export interface FactCandidate {
   /** What the book holds today, when it holds something different. */
   current_value: unknown;
   conflicts: boolean;
+  /**
+   * Whether the supporting sentence states something a reader could check (`observation`) or is
+   * somebody's assessment of it (`judgement`). Decided by notes_sweep.verifyClaims — the model
+   * says which, and the judgement lexicon overrules it.
+   *
+   * It used to be read, used to route the claim here, and then dropped. That was survivable while
+   * every candidate was answered one at a time by a person reading the sentence; it stopped being
+   * survivable when a rule started deciding in bulk (DECISIONS §51). "Two independent sources
+   * agree" is a strong test between two observations and worth nothing between two opinions.
+   */
+  kind: "observation" | "judgement";
   /** Why this is waiting for a person rather than written. */
   note: string;
 }
@@ -420,6 +431,7 @@ function candidate(
     fingerprint,
     current_value: currentValue,
     conflicts,
+    kind: claim.kind,
     note: why,
   };
 }

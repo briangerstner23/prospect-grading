@@ -11,6 +11,7 @@ supabase/functions/
   pb-sync/index.ts               bearer-token bulk ingest of packs (+ rubric version upsert)
   pb-score/index.ts              score every account → pb_reads; preview a draft rubric
   pb-notes/index.ts              nightly sweep of notes, calls and email → pb_facts / pb_fact_candidates
+  pb-verify/index.ts             re-audits stored quotes: does the sentence state the value? → pb_fact_candidates.support
   pb-fathom-webhook/index.ts     Standard-Webhooks check → pb_webhook_inbox → pb_calls
   pb-pipedrive-webhook/index.ts  HTTP Basic check → pb_webhook_inbox → pb_deals / pb_accounts / pb_contacts
   _shared/

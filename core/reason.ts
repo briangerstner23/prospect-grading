@@ -42,6 +42,8 @@ export interface ReasonParts {
   /** The label of the gate that parked the row, when Parked. */
   parked_on: string | null;
   override_reason_code: string | null;
+  /** Why the row is Unclassified when it is not the ICP class (criteria mode: too few answered). */
+  unclassified_reason?: string | null;
 }
 
 const AGENCY_WORDS: Record<string, string> = {
@@ -96,7 +98,7 @@ export function buildReason(p: ReasonParts, rubric: Rubric): string {
   }
 
   if (p.status === "Parked") sentence = `Parked on ${p.parked_on ?? "a gate"}; grade still computed. ` + sentence;
-  else if (p.status === "Unclassified") sentence = `Unclassified: no ICP class stated or derivable. ` + sentence;
+  else if (p.status === "Unclassified") sentence = `Unclassified: ${p.unclassified_reason ?? "no ICP class stated or derivable"}. ` + sentence;
   else if (p.status === "Overridden") sentence = `Overridden by the owner (${p.override_reason_code ?? "no code"}). ` + sentence;
 
   return sentence;

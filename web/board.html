@@ -135,6 +135,14 @@ td.cell,td.band,td.facts,td.eng{font-family:"Roboto Mono",monospace;font-size:12
 td.facts{font-variant-numeric:tabular-nums} td.facts .of{color:var(--ink-3)}
 td.eng{white-space:normal;min-width:120px}
 td.eng .never{color:var(--alert)}
+tbody tr.cellhead td{background:var(--surface-2,rgba(127,127,127,.08));font-family:"Roboto Mono",monospace;font-size:11.5px;
+  padding:9px 10px;border-top:2px solid var(--rule)}
+tbody tr.cellhead td strong{font-size:13px;letter-spacing:.2px}
+tbody tr.cellhead td .play{display:block;font-family:inherit;font-size:11px;color:var(--ink-3);margin-top:2px;white-space:normal}
+td.eng .ready{color:var(--ink);font-weight:600} td.eng .stirring{color:var(--ink-2)} td.eng .cold{color:var(--ink-3)}
+td.cell .asm{display:inline-block;font-size:10px;color:var(--alert);border:1px solid var(--alert);border-radius:3px;padding:0 4px;margin-left:5px;vertical-align:middle}
+table.cells td{vertical-align:top;font-size:12.5px} table.cells td.play{white-space:normal;max-width:420px;color:var(--ink-2)}
+table.cells td.n{font-family:"Roboto Mono",monospace;white-space:nowrap}
 td.divide{border-left:2px solid var(--rule)}
 td.flags{min-width:150px}
 .fl{display:inline-block;font-family:"Roboto Mono",monospace;font-size:10px;padding:1px 6px;margin:1px 2px 1px 0;
@@ -327,8 +335,9 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
 <header class="top" data-section="Masthead"><div class="wrap"><div class="mast">
   <p class="eyebrow" id="asof">WLIQ Prospect Book · loading…</p>
   <h1>The Prospect Book</h1>
-  <p class="lede">Agencies we are <em>not</em> delivering for, ranked by what they could be worth.
-    Tier sets the order. Whether anyone has called them is a column, not a position.</p>
+  <p class="lede">Agencies we are <em>not</em> delivering for, in chase order: the <strong>chase cell</strong>
+    first — potential × readiness, each with a play — and the anticipated tier second. Whether anyone
+    has called them decides the cell, never the tier.</p>
   <div class="srcline" id="srcline"><span>source: pb_board()</span><span>live read</span></div>
 </div></div></header>
 
@@ -341,15 +350,33 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     <div class="legend" id="legend"></div>
   </div>
 
+  <section data-section="By chase cell">
+    <div class="sechead"><h2>By chase cell</h2>
+      <p>The owner's ruling, 18 September: the board is a <strong>grid</strong>, not a sort. Potential
+      (the tier) is one axis, <strong>readiness</strong> — is there a reason to work this account this
+      week — is the other, and each cell names a play. The cell is the first key of the chase order;
+      the tier is the second. <em>Lift</em> is the cell's quote rate over the book's: 1.0 is chance,
+      the research wants the top cell at twice the bottom. Thin numbers are the honest state.</p></div>
+    <div class="tablewrap"><table class="cells">
+      <thead><tr class="cols">
+        <th scope="col">Cell</th><th scope="col">ABM</th><th scope="col">Accounts</th>
+        <th scope="col">Replied ≤90d</th><th scope="col">Quoted ≤90d</th><th scope="col">Quote lift</th>
+        <th scope="col">The play</th><th scope="col">Owner · SLA</th>
+      </tr></thead>
+      <tbody id="cellsbody"><tr><td colspan="8" class="loading">Reading the cells…</td></tr></tbody>
+    </table></div>
+    <p class="note" id="cellnote"></p>
+  </section>
+
   <section>
     <div class="sechead"><h2>Three axes that never touch</h2>
       <p>The owner's ruling, 15 September: <em>"platinum does not mean the deal is real, it means
       that they have the potential to reach this level."</em></p></div>
     <div class="axes">
-      <div class="axis is-rank"><em>sets the rank</em><h3>Tier</h3>
+      <div class="axis is-rank"><em>the potential band · second key</em><h3>Tier</h3>
         <p>What could they be worth? Changes when their business changes — never when someone answers an email.</p></div>
       <div class="axis"><em>a column</em><h3>Confidence</h3><p id="ax-conf">How well do we know them?</p></div>
-      <div class="axis"><em>a column</em><h3>Engagement</h3><p id="ax-eng">Are they live right now?</p></div>
+      <div class="axis"><em>a column · feeds readiness, the first key</em><h3>Engagement</h3><p id="ax-eng">Are they live right now?</p></div>
     </div>
     <p class="note" id="scarcity"></p>
   </section>
@@ -362,6 +389,8 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     <div class="controls" id="controls" data-section="Filters">
       <span class="eyebrow" style="margin-right:2px">tier</span>
       <span id="tierbtns"></span>
+      <span class="eyebrow" style="margin:0 2px 0 10px">cell</span>
+      <span id="cellbtns"></span>
       <label class="toggle" for="untouchedOnly"><input type="checkbox" id="untouchedOnly"> never contacted only</label>
       <label class="toggle" for="flaggedOnly"><input type="checkbox" id="flaggedOnly"> flagged only</label>
       <input type="search" id="filter" placeholder="Filter by name…" aria-label="Filter by name">
@@ -409,7 +438,9 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   var SUPABASE_KEY = "sb_publishable_Rwx3FbwsjnVFx9MUVQX0EA_wm2F52sC";
 
   var TIERS = ["Platinum", "Gold", "Silver", "Bronze", "Ungraded"];
-  var rows = [], off = {}, meta = {};
+  var rows = [], off = {}, offCell = {}, meta = {}, lift = null;
+  function cellIdOf(r) { return r.cell_id || "no-cell"; }
+  function cellNameOf(r) { return r.cell_name || "No cell (rubric before 0.1.7)"; }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
@@ -658,11 +689,13 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     var head = rows.filter(function (r) {
       return r.effective_tier === "Platinum" && (r.facts_present || 0) >= 3;
     }).length;
+    var chaseNow = rows.filter(function (r) { return cellIdOf(r) === "chase-now"; }).length;
     el("scarcity").innerHTML =
       "<strong>" + plat + "</strong> Platinum and <strong>" + gold + "</strong> Gold. Platinum is a " +
       "<strong>size</strong> label — what an agency could be worth — so it is not meant to be scarce " +
-      "(owner ruling, 17 September). The scarce thing to plan against is the head of this list: " +
-      "<strong>" + head + "</strong> " + (head === 1 ? "prospect is" : "prospects are") +
+      "(owner ruling, 17 September). The scarce thing to plan against is the head of this list: the " +
+      "<strong>Chase now</strong> cell holds <strong>" + chaseNow + "</strong> (big and ready), of which " +
+      "<strong>" + head + "</strong> " + (head === 1 ? "is" : "are") +
       " Platinum <em>and</em> qualified on three or more of the four facts.";
 
     var conf = {}, eng = {};
@@ -678,12 +711,56 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       " of " + total + " have no recorded contact at all, which says nothing about their size.";
   }
 
+  /* ---------- the cells ---------- */
+  function renderCells() {
+    var order = [], byCell = {};
+    rows.forEach(function (r) {           // rows arrive in the engine's order, so cells appear in rank order
+      var id = cellIdOf(r);
+      if (!byCell[id]) { byCell[id] = { id: id, name: cellNameOf(r), play: r.cell_play || "", abm: r.cell_abm || "—",
+        owner: r.cell_owner_role || "—", sla: r.cell_sla_days, n: 0, ready: 0 }; order.push(id); }
+      byCell[id].n++;
+    });
+    var liftBy = {};
+    ((lift && lift.cells) || []).forEach(function (c) { liftBy[c.cell_id] = c; });
+    el("cellsbody").innerHTML = order.map(function (id) {
+      var c = byCell[id], l = liftBy[id] || {};
+      var fmtLift = function (v) { return v == null ? "—" : Number(v).toFixed(2) + "×"; };
+      return "<tr>" +
+        '<td><strong>' + esc(c.name) + "</strong></td>" +
+        '<td class="n">' + esc(c.abm) + "</td>" +
+        '<td class="n">' + c.n + (l.pct_of_accounts != null ? ' <span class="of">' + esc(l.pct_of_accounts) + "%</span>" : "") + "</td>" +
+        '<td class="n">' + esc(l.replied_90d == null ? "—" : l.replied_90d) + "</td>" +
+        '<td class="n">' + esc(l.quoted_90d == null ? "—" : l.quoted_90d) +
+          (l.pct_of_quotes != null ? ' <span class="of">' + esc(l.pct_of_quotes) + "% of quotes</span>" : "") + "</td>" +
+        '<td class="n">' + esc(fmtLift(l.quote_lift)) + "</td>" +
+        '<td class="play">' + esc(c.play) + "</td>" +
+        '<td class="n">' + esc(c.owner) + (c.sla != null ? " · " + esc(c.sla) + " days" : "") + "</td>" +
+      "</tr>";
+    }).join("") || '<tr><td colspan="8" class="loading">No cells yet: the board is on a rubric before 0.1.7.</td></tr>';
+    el("cellnote").textContent = lift && lift.taken_at
+      ? "Lift is measured live from the contact log and the quotes on record (pb_lift), and snapshotted on the first of every month. Counts only; no account is named here."
+      : "The lift report could not be read; the cells above are still the engine's own.";
+    el("cellbtns").innerHTML = order.map(function (id) {
+      return '<button type="button" class="tier cf" data-cell="' + esc(id) + '" aria-pressed="true">' +
+        esc(byCell[id].name) + '<span class="n">' + byCell[id].n + "</span></button>";
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".cf"), function (b) {
+      b.addEventListener("click", function () {
+        var id = b.dataset.cell, on = b.getAttribute("aria-pressed") === "true";
+        b.setAttribute("aria-pressed", on ? "false" : "true");
+        offCell[id] = on;
+        render();
+      });
+    });
+  }
+
   /* ---------- table ---------- */
   function render() {
     var q = el("filter").value.trim().toLowerCase();
     var onlyU = el("untouchedOnly").checked, onlyF = el("flaggedOnly").checked;
     var list = rows.filter(function (r) {
       if (off[tierOf(r)]) return false;
+      if (offCell[cellIdOf(r)]) return false;
       if (onlyU && !r.untouched_high_potential) return false;
       if (onlyF && !(r.flags && r.flags.length)) return false;
       if (q && String(r.name || "").toLowerCase().indexOf(q) === -1) return false;
@@ -691,7 +768,25 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     });
     el("count").textContent = list.length + " of " + rows.length;
     el("empty").hidden = list.length > 0;
+    var lastCell = null, counts = {};
+    list.forEach(function (r) { counts[cellIdOf(r)] = (counts[cellIdOf(r)] || 0) + 1; });
     el("tb").innerHTML = list.map(function (r) {
+      // A header the first time a cell appears. The rows are already in the engine's order — the
+      // cell is its first key — so each cell's rows are contiguous and nothing here sorts.
+      var head = "";
+      if (cellIdOf(r) !== lastCell) {
+        lastCell = cellIdOf(r);
+        head = '<tr class="cellhead"><td colspan="9"><strong>' + esc(cellNameOf(r)) + "</strong> · " +
+          counts[lastCell] + (r.cell_abm ? " · " + esc(r.cell_abm) : "") +
+          (r.cell_sla_days != null ? " · " + esc(r.cell_owner_role || "") + " · " + esc(r.cell_sla_days) + "-day SLA" : "") +
+          (r.cell_play ? '<span class="play">' + esc(r.cell_play) + "</span>" : "") + "</td></tr>";
+      }
+      return head + rowHtml(r);
+    }).join("");
+  }
+
+  function rowHtml(r) {
+    {
       var flags = (r.flags || []).map(function (f) {
         var urgent = /UNVALIDATED/.test(f) ? "" : " u";
         return '<span class="fl' + (/UNVALIDATED|Anticipated/.test(f) ? "" : urgent) + '">' + esc(f) + "</span>";
@@ -713,17 +808,22 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
           ' aria-label="Change the anticipated tier for ' + esc(r.name) + ', currently ' + esc(tierOf(r)) + '">' +
           esc(tierOf(r)) + (r.overridden ? '<span class="ovmark" title="a person set this">\u00b7</span>' : "") +
           "</button></td>" +
-        '<td class="cell">' + esc(r.cell || "—") + "</td>" +
+        '<td class="cell">' + esc(r.cell || "—") +
+          (r.ceiling_assumed ? '<span class="asm" title="The ceiling is an assumption: no vendor rank on file, so the winnable share is the default. The two discovery questions replace it.">assumed</span>' : "") +
+        "</td>" +
         '<td class="band">' + esc(r.year1_band || "unknown") + "</td>" +
         '<td class="facts">' + esc(r.facts_present == null ? "—" : r.facts_present) +
           '<span class="of"> of 4</span></td>' +
-        '<td class="eng divide">' + esc(r.engagement || "unknown") +
-          (r.signal_urgency ? '<br><span class="mono" style="font-size:10.5px">' + esc(r.signal_urgency) + "</span>" : "") +
+        '<td class="eng divide">' +
+          (r.readiness ? '<span class="' + esc(r.readiness) + '">' + esc(r.readiness) + "</span> · " : "") +
+          esc(r.engagement || "unknown") +
+          (r.signal_urgency ? '<br><span class="mono" style="font-size:10.5px">' + esc(r.signal_urgency) +
+            (r.timing_aged_out ? " (stamp aged out)" : "") + "</span>" : "") +
         "</td>" +
         '<td class="eng">' + replied + "</td>" +
         '<td class="flags">' + flags + "</td>" +
       "</tr>";
-    }).join("");
+    }
   }
 
   /* ---------- load ---------- */
@@ -737,11 +837,14 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   Promise.all([
     rpc("pb_board"),
     get("pb_rubric_versions?select=version,activated_at,spec&status=eq.active"),
-    get("pb_runs?select=finished_at,counts&source=eq.pb-score&status=eq.success&order=finished_at.desc&limit=1")
+    get("pb_runs?select=finished_at,counts&source=eq.pb-score&status=eq.success&order=finished_at.desc&limit=1"),
+    // The lift report is counts only; a failure to read it must not take the board down with it.
+    rpc("pb_lift").catch(function () { return null; })
   ]).then(function (out) {
     rows = out[0] || [];
     meta.rubric = (out[1] || [])[0] || {};
     meta.run = (out[2] || [])[0] || {};
+    lift = out[3] || null;
     if (!rows.length) { fail("The view returned no rows."); return; }
 
     var when = meta.run.finished_at ? new Date(meta.run.finished_at) : null;
@@ -750,13 +853,14 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     el("srcline").innerHTML =
       "<span>source: pb_board()</span>" +
       "<span>rubric " + esc(meta.rubric.version || "?") + "</span>" +
-      "<span>order: the engine's chase_rank_key</span>" +
+      "<span>order: the engine's chase_rank_key — cell first, tier second</span>" +
       "<span>" + rows.length + " companies</span>" +
       "<span>live read — not a snapshot</span>";
     el("footnote").textContent =
       "pb_prospect_board is a view over the nightly scoring run; this page reads it live, so it is " +
       "never older than the last run. The nightly runs at 06:15 UTC.";
     renderDist();
+    renderCells();
     render();
   }).catch(function (e) { fail(e.message || String(e)); });
 
@@ -1130,10 +1234,11 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       "Nobody has written this account up yet. Everything below is what the book itself holds — the " +
       "engine's read, the CRM and the contact log. Nothing here is inferred.") + "</p>");
     var chips = [];
+    if (r.cell_name) chips.push(r.cell_name + (r.readiness ? " · " + r.readiness : ""));
     if (has(br.location)) chips.push(br.location);
     else if (has(rf.country)) chips.push(rf.country);
     if (has(read.qualification_label)) chips.push(read.qualification_label);
-    chips.push("anticipated ceiling " + (r.ceiling || "unknown"));
+    chips.push("anticipated ceiling " + (r.ceiling || "unknown") + (r.ceiling_assumed ? " (assumed)" : ""));
     if (r.records > 1) chips.push(r.records + " records, not yet merged");
     h.push('<div class="chips">' + chips.map(function (c) {
       return '<span class="chip">' + esc(c) + "</span>"; }).join("") + "</div>");
@@ -1180,6 +1285,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       h.push(blk("Make this call", "the one action", para(br.next_step), "act"));
     } else {
       h.push(blk("Make this call", "the one action",
+        (r.cell_play ? "<p><strong>" + esc(r.cell_name || "The cell") + ":</strong> " + esc(r.cell_play) + "</p>" : "") +
         "<p>" + (r.engagement === "unknown"
           ? (who ? "Nobody has ever contacted them. Open the first conversation with " + who + "."
                  : "Nobody has ever contacted them, and there is no named contact on file. Find one first.")

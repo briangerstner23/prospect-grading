@@ -21,7 +21,10 @@ import {
   gmailToRecord,
   isChatter,
   PUBLIC_MAILBOXES,
+  siteText,
+  SITE_MAX_CHARS,
   stripQuotedReply,
+  websiteReadToRecord,
 } from "./record_sources.ts";
 import type { FathomMeeting, GmailMessage } from "./record_sources.ts";
 
@@ -296,6 +299,73 @@ function b64url(text: string): string {
   check(
     "a quoted figure from March cannot be read out of a September reply",
     !stripQuotedReply(dated).includes("40,000"),
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * a website page
+ * ------------------------------------------------------------------ */
+
+/* These are about the TEXT, not about the target — a stored page already knows its account, so
+   there is no attribution to get wrong here. What there is instead is a quote rule that checks
+   the model's sentence against this exact string, which makes every transformation below a
+   correctness question rather than a cosmetic one. */
+{
+  check(
+    "an entity stripHtml does not know is decoded",
+    siteText("We build &mdash; and we ship &hellip; always") === "We build - and we ship ... always",
+  );
+  check(
+    "a numeric entity and its named twin decode the same way",
+    siteText("it&rsquo;s") === siteText("it&#8217;s") && siteText("it&rsquo;s") === "it's",
+    `named ${JSON.stringify(siteText("it&rsquo;s"))} vs numeric ${JSON.stringify(siteText("it&#8217;s"))}`,
+  );
+  check(
+    "an entity nobody listed is left alone rather than guessed at",
+    siteText("&fnord; stays") === "&fnord; stays",
+  );
+
+  /* A CSS letter-spacing trick reaches the extractor as spaced characters. Quoting that is
+     quoting nothing a person could search for. */
+  check(
+    "a letter-spaced heading is put back together, word gaps and all",
+    siteText("W e   b u i l d   s o f t w a r e") === "We build software",
+    siteText("W e   b u i l d   s o f t w a r e"),
+  );
+  check(
+    "an initialism is NOT welded shut",
+    siteText("Our B 2 B work") === "Our B 2 B work",
+    siteText("Our B 2 B work"),
+  );
+
+  /* The cap is on what the model reads AND on what a quote is checked against. If those two
+     ever differed, a quote from past the cut would verify against text the model never saw. */
+  const long = "word ".repeat(SITE_MAX_CHARS);
+  check("a very long page is cut to the cap", siteText(long).length <= SITE_MAX_CHARS);
+  check("a short page is not cut", siteText("plain text") === "plain text");
+  check("nothing at all is the empty string, never a crash", siteText(null) === "" && siteText(undefined) === "");
+
+  const rec = websiteReadToRecord({
+    id: "r1",
+    account_id: "acct-1",
+    url: "https://example.test/about",
+    path: "/about",
+    text: "We are a team of eleven &mdash; six of them engineers.",
+    completed_at: "2026-09-15T09:30:00Z",
+  });
+  check("a page record carries its account without inferring one", rec.account_id === "acct-1");
+  check("a page record is sourced website", rec.source === "website");
+  check("a page record is labelled by path and date", rec.label === "Their website, /about, read 2026-09-15", String(rec.label));
+  check("a page record links to the page itself", rec.url === "https://example.test/about");
+  check("a page record's content is the cleaned text", rec.content === "We are a team of eleven - six of them engineers.", rec.content);
+  check(
+    "update_time is when the page was fetched, so a re-fetch is read again",
+    rec.update_time === "2026-09-15T09:30:00Z",
+  );
+  check(
+    "a page with no path is still labelled",
+    websiteReadToRecord({ id: "r2", account_id: "a", url: "https://example.test/", text: "x", completed_at: "2026-09-15T00:00:00Z" }).label
+      === "Their website, /, read 2026-09-15",
   );
 }
 
