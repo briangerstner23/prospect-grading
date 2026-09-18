@@ -3428,3 +3428,50 @@ question about that reader's calibration, which nobody has measured.
 
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository. This entry records
 the owner's ruling as made; if the register ever disagrees, **the register wins**.
+
+### §50a — What §50 broke on its way in, and the repair (18 Sep 2026)
+
+**§50's own migration destroyed §51.** At 23:38 on 17 Sep, another session had rewritten
+`pb_confirm_fact_candidates` around five named rules (DECISIONS §51): `already_evidenced` closes a
+claim the book already holds as evidence instead of writing a second row, `corroborates_what_is_held`
+upgrades an inferred value that now has a sentence behind it, `high_and_unheld` is §45's original
+class, and `second_independent_source` admits a medium claim when another record **from a different
+source** says the same thing with its own quote.
+
+At 11:16 on 18 Sep, §50's judgement fix replaced that function wholesale. It had been built by
+copying the 17 Sep `290000` file and adding one `elsif`, three hours after §51 landed, without
+anyone checking whether the file being copied was still what was running. It parsed, it applied, it
+reported success, and it silently deleted four of the five rules. Nothing on the queue screen would
+have looked wrong — the button still worked, it had just quietly stopped settling anything by
+corroboration.
+
+This is the 16 Sep placeholder-deploy failure in a different costume. **A `create or replace` is a
+whole-object write, and writing one from a file is only safe if the file is the current definition.**
+The database was the record; the file was three hours stale. The check that would have caught it is
+the one the repo already prescribes for edge functions — fetch the thing back and diff it — and it
+was never applied to a function definition.
+
+Restored in `20260918120000`, §51's function exactly, plus one addition stated rather than smuggled:
+`high_and_unheld` now refuses an explicit `kind = 'judgement'`, because eleven such claims were
+inside that branch and rule 3 exists to stop precisely them. A NULL kind still passes there — absent
+is not stated, and refusing it would empty the rule rather than sharpen it. §50's **source gate is
+deliberately not copied across**: it bounds what the book does unattended at 06:00, and this button
+is a person clicking. Narrowing a human decision with a rule written for a robot takes the owner's
+judgement away in the name of protecting it.
+
+**The undo had never been run, and could not have been run the way its own runbook said.** It shipped
+requiring a signed-in owner while `pb_autoconfirm_facts` — the function that *creates* the batches —
+already accepted an in-database caller so pg_cron could drive it. RUNBOOK §28 told an operator to
+call it from SQL, where it would have raised "not a WLIQ member" for anybody without a JWT. So the
+book could make a batch unattended and then refuse to let anyone take it back except through the web
+page. Fixed in `20260918120100`: same two callers as the runner.
+
+**Then it was actually round-tripped, which is the only reason any of this can be believed.**
+Batch `ed22112a` undone → queue 1,196 → **1,463** (its exact original count), 23 facts removed, 267
+log rows closed, 114 register rows written. Re-run → **263 eligible, 23 confirmed, 218 closed, 26
+superseded, 114 accounts** — identical to the first run, from a clean queue. The lanes are
+deterministic and the undo is exact.
+
+**A numbering collision to resolve at merge.** This branch wrote §50; the other branch wrote §51 and
+presumably a §50 of its own. Whoever merges must renumber rather than assume, and this entry's
+references to §51 are to *that* branch's ruling, not to anything in this file.

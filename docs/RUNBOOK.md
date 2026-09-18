@@ -2122,8 +2122,10 @@ select public.pb_autoconfirm_facts(false, 500);
 Keep the `batch_id` it returns. `pb-autoconfirm` does the same thing at 06:00 UTC nightly, between
 the notes sweep and the score.
 
-**Take a batch back.** Owner lane, and it is complete: the facts are deleted, the claims go back to
-`proposed`, and each account's register says so.
+**Take a batch back.** Owner lane through the page, or an operator in-database — the same two
+callers as the runner, because a batch the book made unattended has to be undoable the same way.
+It is complete: the facts are deleted, the claims go back to `proposed`, and each account's register
+says so.
 
 ```sql
 select public.pb_undo_autoconfirm('<batch_id>'::uuid, 'why');
@@ -2131,6 +2133,11 @@ select public.pb_undo_autoconfirm('<batch_id>'::uuid, 'why');
 
 It will not reopen a claim a person has decided since the batch ran. Undoing the machine must never
 undo the person.
+
+This path has been round-tripped on the real book (DECISIONS §50a): undoing the first batch put the
+queue back to its exact original count and removed every fact, and re-running reproduced the same
+263/23/218/26 to the row. If you undo and re-run and the numbers move, something else changed the
+book in between — find out what before trusting the second run.
 
 **What was approved automatically, and where it came from:**
 
