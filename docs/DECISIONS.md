@@ -3976,3 +3976,202 @@ disagreement) and drops the part that is actually costing accuracy (the rule win
 Until that is ruled, the lexicon still overrules, and it is wrong roughly once in two hundred
 claims. The cost of each is one true claim held in a queue somebody was going to read — the cheap
 direction, by design. Nothing it has ever done has put a fact in the book.
+## §55 — Sourcing the LinkedIn company page (18 Sep 2026)
+
+Owner, of the 830 live accounts: *"can i source linkedin urls for all of these prospects?"*
+
+Not all. **602 of 830 — 72.5%.** What follows is how that number was reached, what it cost, and
+what the remaining 228 would take. This is a record of a sourcing run, not a ruling; rule 1 stands.
+
+**The primary source was already in hand, and had never been read.** Pipedrive carries `linkedin`
+natively on the organisation record, and `ingest/pipedrive_seed.ts` has declared that field on
+`PipedriveOrg` since the certified roster pull — line 176, typed, never referenced. 310 raw values
+were sitting there; 306 survived the normaliser. **That is 51% of the book at zero cost**, found by
+reading the seed rather than by buying anything. A paid enrichment run was the obvious first move
+and would have been the wrong one. Check what the CRM already holds before spending a credit on it.
+
+**It is an attribute of the account, not a fact.** A fact's key must be a `ProspectFeatures` key
+(CLAUDE.md, conventions) and nothing about a LinkedIn URL is graded: it fires no gate, no adjustment
+and no band. So it rides on `pb_accounts` beside `domain`, which is the same class of thing. In
+`pb_facts` it would have made every scorecard carry an input the rubric cannot read, and rule 5 —
+unknown is never evidence — would have had nothing to say about it. Three columns, all nullable and
+additive, so DECISIONS §8 holds: `linkedin_url`, `linkedin_uid` (LinkedIn's own numeric id, which
+survives a slug rename when the URL does not) and `linkedin_source`.
+
+**A person is not an organisation, and that is enforced three times.** Three of the roster's own
+Pipedrive values were personal `/in/` profiles. The board is public and signed out (§43), so without
+a guard the first sync would have published an owner's private profile on a public page. The refusal
+lives in `normalizeLinkedinCompany()` for the pure path, in a CHECK constraint on `pb_accounts`
+because the page reads the table and not the TypeScript, and in a regex on the page itself before an
+`href` is written. The constraint was proved by attempting a write, not by reading it.
+
+**The free path was ruled out with evidence rather than assumed away.** `pb_website_reads` holds 395
+readable pages and **zero** company slugs, which is implausible on its face — 311 of those pages
+contain the word "LinkedIn". The cause is migration `20260915090000`, which strips tags before
+storing: the text survives and every `href` is gone. Not recoverable without re-fetching. Worth
+knowing before anyone plans another read on top of that table.
+
+**The ampersand, and rule 9.** Six of the roster's values are agencies with `&` in the slug, typed in
+by a person. The first normaliser dropped them as malformed. `&` is legal in a path segment, and a
+person outranks a machine, so the slug is kept **verbatim** rather than dropped or re-encoded into a
+guess — TypeScript regex and database constraint both widened to `[a-z0-9%._&-]+`.
+
+**A migration that had already run was edited in place, and that was the mistake of the day.** The
+widening went into `20260918100000_…` — a file whose text was already `schema_migrations.statements`
+— which breaks the byte-identity the DECLARED-vs-RUNNING discipline depends on (§26, §33). Reverted
+to the as-applied text; the widening is its own file, `20260918100100_…`. An applied migration is a
+record of what ran. It is not a draft.
+
+**Apollo was probed before it was spent.** 10 domains first, to confirm `organizations/bulk_enrich`
+returns `linkedin_url` at all, then the full run on the owner's approval. **296 accounts written
+across 291 distinct domains**, at 1 credit per match and nothing for a miss. Apollo sometimes
+resolves a domain to an organisation whose own primary domain is a different one — a `.co` answered
+by a `.com`, a US domain answered by a `.com.br`. **22 of those went to `pb_identity_candidates` at
+`medium`, not to the account.** Rule 8: below `high` is a proposal, and a proposal is not a write.
+
+**The URL turned out to be a better duplicate-detector than the name.** 602 pages resolve to 595
+distinct ones: **seven pairs, each exactly two accounts**, six of them genuinely the same company
+entered twice and missed by name matching. Written as `linkedin_url_collision` candidates at `high`
+for a person to merge — `pb_accounts` is not deduplicated by a sweep.
+
+**What is missing, and why each one is missing.** 114 accounts have no domain, and Apollo's enrich is
+keyed on domain, so they cannot be reached that way at all; the free name→domain lookup is the route
+and it is **blocked — the Apollo session's OAuth expired and cannot be re-authorised from a
+non-interactive session.** Pipedrive has nothing left to give there: 86 of the 114 carry an org id
+and the ones inspected hold `website: null` and `linkedin: null`, so the earlier harvest was already
+complete. The other 116 have a domain and no page because Apollo returned no match — for some of
+them that is simply true, one CRM note on a domainless record reading *"limited online presence"*.
+When the name→domain path does run, the owner's instruction is that it **queues rather than writes**:
+a name match is a guess about which company, and a guess must never land on a graded account.
+
+**The sweep surfaced something the book should look at, which was not the question asked.** WLIQ's
+own domain is an account in the prospect book. A three-person home health care provider is Ranked.
+Several plainly-not-agencies are on the roster, including a school and a disposable-email domain.
+None of that is this change's to fix — `pb_roster_drift` proposes and a person decides (rule 11's
+posture, applied to the roster) — but it should not sit unremarked either.
+
+## §56 — Every field a source offers is read or refused in writing (18 Sep 2026)
+
+Owner, after §55 reported that Pipedrive had been carrying `linkedin` unread since the certified
+roster pull: *"So why am I finding all these data sources have never been pulled?"*
+
+The premise turned out to be wrong, and establishing that is most of what this section is for.
+
+**Pipedrive was never unpulled.** It is the single largest source in the book — 5,741 facts over
+641 accounts and 20 keys, more than every other source combined. §55's phrase "the primary source
+had never been read" meant the primary source *of LinkedIn URLs* and reads as something far larger.
+One field was unread. Not a source.
+
+**Three claims made while answering the question did not survive checking, and all three were
+made with full access to this repository and the database.** They are recorded because the pattern
+matters more than any one of them.
+
+1. *"Eight organisation custom fields are declared and never read."* All eight are read. The grep
+   behind the claim searched `org.<key>`; the code dereferences them as `OK.<key>`.
+2. *"72 ranked accounts are direct-to-client companies being graded with agency rules."* They are
+   not. The count came from `pb_facts`, where `relationship_type` sits on 58 accounts — but
+   `resolve_features.ts` reads `pb_accounts.relationship_type` **first** and only falls back to a
+   fact when that column is null. The column holds 421 agency and 158 direct. Measured against
+   Pipedrive directly: **556 agree, 1 disagrees, 5 are missing.** Client Type was already wired,
+   correctly, through a path the search had not looked at.
+3. *"`annual_revenue` can fill `revenue_band`."* It cannot. The values are 1 through 6, carry no
+   option labels, and 374 of 439 are literally `2`. Mapping it would have pushed fiction into the
+   key that gates ICP-1. Caught by pulling the distribution before recommending it, which is the
+   only reason it is in this list rather than in the rubric.
+
+**So the check is the deliverable, and the three errors above are the argument for it.** "Which
+field feeds which key, through which of two paths" is not a thing a person holds in their head, and
+the evidence is that a careful reader with every tool available got it wrong three times running.
+It should be a command, not a recollection.
+
+**What `scripts/source_coverage_test.ts` enforces.** Every field declared on `PipedriveOrg`,
+`PipedriveDeal` and `PipedrivePerson`, and every key in `PipedriveKeys`, is either dereferenced in
+the ingest module or carries a written reason in a ledger. Symmetric, like the conformance ledger
+(§35): a skip that has since been wired **fails** until its row is removed, so the ledger cannot
+become a place where things go to be forgotten. 131 checks.
+
+**It was proved against the bug that motivated it**, not just asserted: with the `org.linkedin`
+read removed the check fails and names the field, and with a ledger row falsely claiming `linkedin`
+is unread it fails the other way. Both directions were run, not reasoned about.
+
+**What it cannot do**, stated so nobody trusts it further than it deserves: it answers *is this
+field looked at*, never *is it read well*, and it does not reach the network to measure fill rates.
+A field whose name collides with an unrelated property access passes when it should not. That is
+the safe direction — it never invents a failure — and a person still writes every skip.
+
+**Three fields were unread when it first ran.** Two are refused in writing: `PipedrivePerson.phones`
+(no graded key wants it, `pb_contacts` has no column for it, and personal contact details are the
+class of thing §43 keeps off a signed-out board) and `PipedriveKeys.deal.orbit_project_url` (a
+pointer into Orbit, which is read and never written — rule 11 — and the overlap the book cares
+about comes from `pb_orbit_clients`, not from a link typed into a CRM field).
+
+**The third is a real gap and is left open on purpose.** Pipedrive's **native** `industry` field is
+filled on **411** of the 661 book organisations. The seed reads the **custom** "Industry Vertical"
+field instead, filled on **159**. The better-populated source is the one being ignored, and it was
+found by accident while chasing claim 1 above. It stays unwired here because `agency_type` is
+derived from industry, services and specialties together, so a second industry input moves grades
+and belongs behind a preview run rather than inside the change that added the check. The ledger row
+says so, and the test fails the day someone wires it without removing the row.
+
+**Not a ruling.** The register governs. This records a check and three corrections.
+
+## §57 — The ceiling shows its arithmetic (18 Sep 2026)
+
+Owner, on the rubric's $175,000 revenue-per-head: *"that's really aspirational. The numbers it
+generates are pure fiction. If anything, it portrays potential in a perfect world that doesn't
+exist."* And, on the word itself: *"I think that's correct to call it a ceiling, for what it's
+worth."*
+
+Both are right, and together they say what to do. A ceiling SHOULD be optimistic — that is what
+makes it an upper bound rather than a forecast. The problem was never the number. It was that the
+page printed the number and hid everything behind it.
+
+**What the strip said.** `Ceiling · Partner · headroom ≥ $100K`, and nothing else. That reads as
+something the book found out about this agency. It is five numbers multiplied:
+`headcount × revenue_per_head × outsourceable_share × serviceable_share × winnable_share`.
+
+**Measured, because the proportion is the argument.** Of the **457** accounts that get a ceiling,
+**413 have all three share factors sitting at their rubric default.** The win-odds factor is a
+default on **all 457** without exception; so is serviceable share. `archetype` has zero facts in
+the entire book, so every account resolves to the same blended $175K. For ninety percent of the
+book, "headroom ≥ $100K" is headcount wearing a dollar sign.
+
+**What does NOT change, and this matters more than what does.** `revenue_per_head` is one constant
+across all 830 accounts and `trailing_12m_revenue` is 0 for every one of them, which makes headroom
+a pure monotone rescale of headcount × shares. **The chase order is therefore identical at any
+per-head figure.** The board the owner works from does not move. Only the band label does — and
+only at the two dollar cut-points. Rescaling the whole book from $175K to $80K moves Partner from
+145 accounts to 84; the ranking underneath is untouched.
+
+**The live wire.** That invariance holds ONLY while `archetype` is unset everywhere. The moment
+anything populates it, accounts split between `strategy` $200K and `production` $150K, the constant
+becomes a per-account variable, and it genuinely reorders the board. Worth knowing before someone
+wires an archetype fact thinking it is an improvement.
+
+**So the fix is disclosure, not sourcing.** No new data, no grading change, no migration, nothing
+re-scored. Every factor was already stored in the scorecard and already returned by `pb_dossier()`
+as `read.trace` — the page simply never printed it. The strip now carries the multiplication under
+the cell that claims it, each factor labelled with where it came from.
+
+**Provenance is read, never inferred from the value.** A page that decided "0.5 means default"
+would be hard-coding a rubric constant (rule 4) and would keep saying so, wrongly and silently,
+the day the rubric moved. So whose a number is comes from what the engine itself recorded: a
+white-label signal behind the outsourceable share, `winnable_basis` behind the win odds, and a
+fact on file behind the archetype and the serviceable share. When a person has actually answered
+those questions the line renders all five factors as the agency's own, with their real basis —
+which makes the unanswered ones visible as the cheapest work in the book.
+
+**A rubric default is marked by a dot, not by dimming.** A colour-only distinction is no
+distinction at all for a reader who cannot see it.
+
+**It renders nothing when there is nothing to explain.** 373 accounts have no headcount, so the
+engine computes no wallet for them. Five "unknown"s in a row is noise pretending to be disclosure.
+
+**Not a new section.** `web/CONTRACT.json` owns the dossier's twenty-five sections (§46); this is
+part of the eight-cell strip and stays there. `scripts/board_page_test.ts` pins that position
+explicitly — between the Ceiling cell and the section grid — along with the two ways this could rot:
+the page recomputing the wallet instead of reading the engine's, and provenance by value
+comparison. 91 checks, up from 82; the contract's 60 are untouched.
+
+**Not a ruling.** Whether $175K is the right figure is the owner's, and PRO-16's sizing pass mark
+is still open. This changes what the page discloses, not what the engine computes.

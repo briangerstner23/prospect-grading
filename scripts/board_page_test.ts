@@ -198,6 +198,61 @@ check("no session token is baked into the page", !/access_token"\s*:\s*"[A-Za-z0
 check("every session-storage touch is guarded, like the theme",
   (page.match(/try \{ return localStorage|try \{ localStorage|try \{ return JSON\.parse/g) ?? []).length >= 3);
 
+
+/* ---- the LinkedIn link (migration 20260918110000) ----
+   The dossier hero renders the account's public identifiers. The risk was never the company
+   page; it is a PERSON's profile reaching a public page behind a company row. Three of the
+   roster's own Pipedrive values are personal /in/ profiles. The shape is therefore guarded in
+   three independent places — normalizeLinkedinCompany() in the pure path, a check constraint on
+   pb_accounts, and the page itself. These pin the page's guard, which is the last one standing
+   if a row ever reaches the column another way. */
+check("the dossier reads linkedin_url off the account object the function returns",
+  page.includes("acct.linkedin_url") && page.includes("d.account"));
+check("the href is guarded by an explicit company-page test, not rendered blind",
+  page.includes("linkedin\\.com") && page.includes("[A-Za-z0-9%._&-]+$/"),
+  "an unguarded href renders whatever the column holds");
+check("the guard is anchored at the start, so a host cannot be prefixed",
+  page.includes("/^https:"));
+check("the guard names /company/, which is what excludes /in/, /pub/ and /school/",
+  page.includes("\\/company\\/") && page.includes("acct.linkedin_url"));
+check("every new-tab link carries the opener guard",
+  (page.match(/target="_blank"/g) ?? []).length ===
+  (page.match(/rel="noopener noreferrer"/g) ?? []).length);
+
+
+/* ---- the ceiling's arithmetic (DECISIONS §52) ----
+   "Ceiling · Partner · headroom >= $100K" read as a finding about the agency. It is five numbers
+   multiplied, and on 413 of the 457 accounts that get a ceiling, four of them are rubric defaults
+   identical across the whole book — only headcount is the agency's own. These pin the two ways
+   showing that could go wrong: the page inventing the arithmetic instead of reading the engine's,
+   and the page deciding what counts as a default by comparing against a constant of its own. */
+check("the factors are read from the scorecard the engine stored, not recomputed here",
+  page.includes("read.trace") && page.includes("pot.inputs"),
+  "a page that recomputes the wallet can disagree with the read it sits under");
+check("the headroom shown is the engine's own, not multiplied out again",
+  page.includes("m.headroom") && !/headcount\s*\*\s*.*revenue_per_head/.test(page));
+// Rule 4: a threshold belongs to the rubric. If this page decided "0.5 means default" it would
+// keep saying so after the rubric moved, and be wrong without ever failing.
+check("whose a number is comes from the engine's own basis, never from comparing to a constant",
+  page.includes('pot.winnable_basis !== "default"') && page.includes("pin.wl_signal"),
+  "provenance inferred by value comparison bakes a rubric constant into the page");
+check("a fact on file is what makes a factor the agency's own",
+  page.includes('onFile("serviceable_share")') && page.includes('onFile("archetype")'));
+check("the rubric's own rate is never presented as measured",
+  page.includes("the rubric's blended rate") && page.includes("the rubric's default"));
+check("it renders nothing when there is no headroom to explain",
+  page.includes("if (m === null) return \"\"") || page.includes("if (m === null) return ''"),
+  "373 accounts have no headcount; five 'unknown's is noise, not disclosure");
+check("a rubric default is marked by a dot, not by colour alone",
+  page.includes("cm-dot") && page.includes('f[1] ? "" :'),
+  "a colour-only distinction is no distinction for a reader who cannot see it");
+check("the line says plainly that a ceiling is not a forecast",
+  page.includes("upper bound, not a forecast"));
+check("the arithmetic sits under the strip that claims it, not in a new section",
+  page.indexOf("ceilingMathHtml(read, d.facts)") > page.indexOf('cellf("Ceiling"') &&
+  page.indexOf("ceilingMathHtml(read, d.facts)") < page.indexOf("THE TWENTY-FIVE SECTIONS"),
+  "the contract owns the sections; this is part of the strip, and must stay there");
+
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);
 process.exit(failures.length ? 1 : 0);

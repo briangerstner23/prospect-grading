@@ -171,6 +171,10 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
 .rk{font-family:"Roboto Mono",monospace;font-size:12px;color:var(--ink-3);letter-spacing:.06em}
 .dhero h1{font-size:clamp(24px,4.4vw,36px)}
 .dhero .sub{font-size:16px;color:var(--ink-2);max-width:66ch;line-height:1.5}
+.dlinks{font-size:14px;color:var(--ink-2);display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.dlink{color:var(--ink-2);text-decoration:underline;text-underline-offset:2px}
+.dlink:hover,.dlink:focus-visible{color:var(--ink)}
+.lsep{color:var(--rule)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font-family:"Roboto Mono",monospace;font-size:11px;letter-spacing:.05em;padding:3px 8px;
   border:1px solid var(--rule);background:var(--surface-2);color:var(--ink-2)}
@@ -186,6 +190,25 @@ footer{border-top:1px solid var(--rule);padding-block:20px 32px;font-family:"Rob
 .cellf .v.sm{font-size:12.5px;font-weight:400;line-height:1.35}
 .cellf .b{font-size:11.5px;color:var(--ink-3);line-height:1.4}
 .cellf.alert .v{color:var(--alert)}
+/* The ceiling's arithmetic. Sits directly under the strip, borderless at the top so it reads as
+   a continuation of the Ceiling cell rather than a new section. Wraps to one factor per row on a
+   phone; the multiplication signs go with them. */
+.ceilmath{border:1px solid var(--rule);border-top:0;background:var(--surface);padding:14px 13px 12px}
+.ceilmath .cm-lede{margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.ceilmath .cm-sum{margin:6px 0 2px;font-family:"Roboto Mono",monospace;font-size:22px;
+  font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
+.ceilmath .cm-f{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 8px;margin-top:8px}
+.ceilmath .cm-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 118px}
+.ceilmath .cm-t b{font-family:"Roboto Mono",monospace;font-size:13px;font-weight:500;
+  color:var(--ink-3);font-variant-numeric:tabular-nums;line-height:1.25}
+.ceilmath .cm-t.own b{color:var(--ink)}
+.ceilmath .cm-b{font-size:10.5px;color:var(--ink-3);line-height:1.35}
+.ceilmath .cm-x{font-family:"Roboto Mono",monospace;font-size:13px;color:var(--ink-3);
+  padding-top:1px;flex:0 0 auto}
+.ceilmath .cm-foot{margin:11px 0 0;font-size:11px;color:var(--ink-3);line-height:1.45}
+.ceilmath .cm-dot{display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--ink-3);opacity:.55;vertical-align:baseline}
+@media (max-width:700px){ .ceilmath .cm-t{flex:1 1 100%} .ceilmath .cm-x{display:none} }
 .dgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:26px;padding-block:26px 10px}
 @media (min-width:920px){ .dgrid{grid-template-columns:minmax(0,1fr) 320px;gap:32px} }
 .col{display:flex;flex-direction:column;gap:20px;min-width:0}
@@ -892,6 +915,79 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       (has(b) ? '<span class="b">' + esc(b) + "</span>" : "") + "</div>";
   }
 
+  /* The ceiling's arithmetic, shown instead of implied (DECISIONS §52).
+     "Ceiling · Partner · headroom >= $100K" reads like something the book found out about this
+     agency. It is five numbers multiplied together, and on most accounts only the first of them
+     is theirs — the rest come from the rubric because nobody has yet asked the questions that
+     would replace them. Printing the factors turns a false precision into an estimate a person
+     can argue with, and makes the unanswered questions visible as work worth doing.
+
+     Every number is read out of the scorecard the engine already stored and returns as
+     `read.trace`; the page computes none of them and hard-codes no threshold (rule 4). WHOSE a
+     number is comes from what the engine itself recorded — a white-label signal behind the
+     outsourceable share, `winnable_basis` behind the win odds, a fact on file behind the rest —
+     never from comparing a value against a default, which would bake a rubric constant into
+     this page and go quietly wrong the day the rubric changed. */
+  function ceilingMath(read, facts) {
+    var pot = ((read || {}).trace || {}).potential || {}, pin = pot.inputs || {};
+    if (pot.headroom == null || pin.headcount == null) return null;
+    var byKey = {};
+    (facts || []).forEach(function (f) { if (f && f.key) byKey[f.key] = f; });
+    var onFile = function (k) { return Object.prototype.hasOwnProperty.call(byKey, k); };
+    var pct = function (x) { return x == null ? "?" : Math.round(x * 100) + "%"; };
+    var usd = function (x) { return x == null ? "?" : "$" + Math.round(x).toLocaleString(); };
+    var wl = has(pin.wl_signal), sv = onFile("serviceable_share"), ar = onFile("archetype");
+    var win = pot.winnable_basis !== "default";
+    return {
+      headroom: pot.headroom,
+      factors: [
+        [Math.round(pin.headcount) + (Math.round(pin.headcount) === 1 ? " person" : " people"),
+         true, "counted for this agency"],
+        [usd(pin.revenue_per_head) + "/head", ar,
+         ar ? "their archetype: " + pin.archetype
+            : "the rubric's blended rate, the same on every account"],
+        [pct(pin.outsourceable_share) + " outsourced", wl,
+         wl ? "from their white-label signal: " + pin.wl_signal
+            : "the rubric's default — no white-label signal on file"],
+        [pct(pin.serviceable_share) + " we could do", sv,
+         sv ? "from the service mapping"
+            : "the rubric's default — their menu has never been mapped to ours"],
+        [pct(pot.winnable_share) + " we win it", win,
+         win ? "from " + pot.winnable_basis
+             : "the rubric's default — nobody has asked who else they use or where we rank"]
+      ]
+    };
+  }
+
+  /* The line itself. Renders nothing when there is no headroom to explain: 373 of the 830
+     accounts have no headcount, so the engine computes no wallet for them and there is no
+     arithmetic to show. An empty box saying "unknown" five times would be noise. */
+  function ceilingMathHtml(read, facts) {
+    var m = ceilingMath(read, facts);
+    if (m === null) return "";
+    var theirs = m.factors.filter(function (f) { return f[1]; }).length;
+    var h = ['<div class="wrap"><div class="ceilmath">'];
+    h.push('<p class="cm-lede"><b>A ceiling is an upper bound, not a forecast.</b> ' +
+      "It is this much arithmetic, and " + (theirs === 1 ? "only one factor is" : theirs + " factors are") +
+      " this agency's own:</p>");
+    h.push('<p class="cm-sum">$' + Math.round(m.headroom).toLocaleString() + "</p>");
+    h.push('<div class="cm-f">');
+    m.factors.forEach(function (f, i) {
+      if (i) h.push('<span class="cm-x">&times;</span>');
+      /* The dot, not the dimming, is what marks a rubric default: a colour-only distinction is
+         no distinction at all for a reader who cannot see the difference. */
+      h.push('<span class="cm-t' + (f[1] ? " own" : "") + '"><b>' +
+        (f[1] ? "" : '<span class="cm-dot"></span> ') + esc(f[0]) + "</b>" +
+        '<span class="cm-b">' + esc(f[2]) + "</span></span>");
+    });
+    h.push("</div>");
+    h.push('<p class="cm-foot">Every factor marked <span class="cm-dot"></span> comes from the ' +
+      "rubric and is identical on every account in the book until somebody learns otherwise. " +
+      "That is what makes this a ceiling rather than a number.</p>");
+    h.push("</div></div>");
+    return h.join("");
+  }
+
   function openDossier(row, keepScroll) {
     current = row;
     boardview.hidden = true; dossierview.hidden = false;
@@ -1229,6 +1325,25 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       '<span class="chip warn">UNVALIDATED (PRO-8)</span>' +
       (r.untouched_high_potential ? '<span class="chip warn">never contacted</span>' : "") + "</div>");
     h.push("<h1>" + esc(r.name) + "</h1>");
+
+    /* Where to find them. Both are PUBLIC identifiers of a COMPANY — the same class as the
+       name above — so neither widens what this page exposes (§5, §43). No email address
+       appears here or anywhere else on the page.
+       The LinkedIn URL is re-checked against the company-page shape before it is allowed to
+       become an href: the database constrains the column, but a page that trusts its input
+       because something upstream promised to is how a bad link gets rendered. */
+    var acct = d.account || {};
+    var links = [];
+    if (has(acct.domain)) {
+      links.push('<a class="dlink" href="https://' + esc(acct.domain) +
+        '" target="_blank" rel="noopener noreferrer">' + esc(acct.domain) + "</a>");
+    }
+    if (/^https:\/\/www\.linkedin\.com\/company\/[A-Za-z0-9%._&-]+$/.test(String(acct.linkedin_url || ""))) {
+      links.push('<a class="dlink" href="' + esc(acct.linkedin_url) +
+        '" target="_blank" rel="noopener noreferrer">LinkedIn</a>');
+    }
+    if (links.length) h.push('<p class="dlinks">' + links.join('<span class="lsep">\u00b7</span>') + "</p>");
+
     var lede = has(br.what_they_do) ? br.what_they_do : (has(rd.summary) ? rd.summary : null);
     h.push('<p class="sub">' + (lede ? esc(lede) :
       "Nobody has written this account up yet. Everything below is what the book itself holds — the " +
@@ -1267,6 +1382,10 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       r.they_last_replied ? "most recent inbound" : "no inbound on record",
       r.they_last_replied ? "" : "alert", true));
     h.push("</div>");
+
+    /* Directly under the Ceiling cell that claims it, so the claim and its arithmetic are read
+       together rather than a screen apart. */
+    h.push(ceilingMathHtml(read, d.facts));
 
     h.push('<div class="wrap">' + overrideHtml(r, d) + "</div>");
 
