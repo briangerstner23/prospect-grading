@@ -71,14 +71,14 @@
           "required": true,
           "shows": "every queued claim audited against its own quote: says it outright / a fair reading, no more / does not bear on it, plus how many carry no quote to audit",
           "source": "pb_dashboard() → pb_fact_candidates.support",
-          "why": "A quote proves where a sentence came from, not that it says what was read out of it. A third of every machine-read claim in the book had a sentence that did not bear on it, and this is the only screen where that is visible. DECISIONS §52."
+          "why": "A quote proves where a sentence came from, not that it says what was read out of it. A third of every machine-read claim in the book had a sentence that did not bear on it, and this is the only screen where that is visible. DECISIONS §54."
         },
         {
           "name": "Taken without a person",
           "required": true,
           "shows": "facts the book wrote on its own rules, how many rows it closed without writing anything, which rules are switched on, and when it last ran",
           "source": "pb_dashboard() → pb_autoconfirm_log · pb_fact_autoconfirm_policy",
-          "why": "The book now writes some facts unattended (DECISIONS §50). What it has taken, and that every batch is reversible, must be visible without signing in — otherwise automatic approval is invisible approval."
+          "why": "The book now writes some facts unattended (DECISIONS §53). What it has taken, and that every batch is reversible, must be visible without signing in — otherwise automatic approval is invisible approval."
         },
         {
           "name": "Is the machinery running",

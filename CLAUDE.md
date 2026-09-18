@@ -41,7 +41,7 @@ ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes
             WrittenRecord, and the domain attribution that decides WHICH account) ·
             verify_support.ts (the second question, asked of claims the book already has: does the
             stored quote STATE this value? states / implies / unsupported, model then a
-            downward-only lexicon — DECISIONS §52) ·
+            downward-only lexicon — DECISIONS §54) ·
             notes_sweep.ts (which records are worth a model call, and what a model is allowed
             to have said — the quote and judgement checks live here) (+ *_test.ts)
 supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron · 120200 merge ·
@@ -67,7 +67,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260918 claim support — pb_fact_candidates.support (states/implies/unsupported)
             and the lanes view rebuilt around it: `unsupported` refuses a claim from EVERY
             lane, and `states` stands in for its source being on a lane's allow-list
-            (DECISIONS §52).
+            (DECISIONS §54).
             20260915090000 website reads ·
             20260915120000 fact source precedence ·
             20260915130000 website team pages ·
@@ -106,7 +106,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
             `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
             260000 board carries account_id · 270000 call attendees by name only.
-            20260918100000/100100/100250/100260/100300 AUTOCONFIRM (DECISIONS §50):
+            20260918100000/100100/100250/100260/100300 AUTOCONFIRM (DECISIONS §53):
             pb_fact_autoconfirm_policy (lanes + thresholds as data) · pb_fact_candidate_lanes
             (every proposed candidate in exactly one lane, with the reason in plain words) ·
             pb_autoconfirm_facts() (dry run by default) · pb_autoconfirm_log +
@@ -130,7 +130,7 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             section, or dropping one, means updating scripts/board_page_test.ts, which pins all 13
             section names and 54 checks in total.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
-            The fact queue now carries the AUTOMATIC half above the manual one (DECISIONS §50):
+            The fact queue now carries the AUTOMATIC half above the manual one (DECISIONS §53):
             which lane each waiting claim is in, which lanes are switched on, a dry run before every
             real run so the number in the dialog is the number that lands, and the undo beside it.
             Every count comes from pb_fact_candidate_lanes, which IS the rule — the page never
@@ -215,7 +215,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    a confidence score — an extractor's own "high" counts only once somebody has checked that
    reader's ratings against its own quotes, which the website reader has not passed (four of ten
    sampled claims were inferences wearing a verbatim sentence). An automatic fact carries
-   `entered_by = 'auto:<lane>'`, never an email. DECISIONS §50. **Facts read out of prose follow the same
+   `entered_by = 'auto:<lane>'`, never an email. DECISIONS §53. **Facts read out of prose follow the same
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
    `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
    `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
@@ -272,10 +272,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
   took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
-- Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
-  one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
-  commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
-  **pb-fathom-webhook v2**, **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in the deploy response; v1 `5378733`, v2 `9c253b5` — both superseded by lexicon corrections, DECISIONS §52a/§52b) (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
+- Deployed versions, read from `list_edge_functions` on **18 Sep 2026** (this line said pb-score
+  v13 and pb-notes v11 until then — both were two and three versions stale, which is exactly what
+  the warning below is about): **pb-score v14**, **pb-notes v14**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
+  **pb-fathom-webhook v2**, **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in the deploy response; v1 `5378733`, v2 `9c253b5` — both superseded by lexicon corrections, DECISIONS §54a/§54b) (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
   `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
   the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have
@@ -296,7 +296,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   pipeline, `pb-roster-step` every minute 05:01-05:10 walks the cursor (a stepper because pg_net
   dispatches only after the calling transaction commits; ~950 cards is two pages and the step
   no-ops once done), and `pb-roster-report` 05:12 recomputes `pb_roster_drift`. Then
-  `pb-nightly-notes` 05:45, `pb-autoconfirm` 06:00 (the lanes of §50, in-database) and
+  `pb-nightly-notes` 05:45, `pb-autoconfirm` 06:00 (the lanes of §53, in-database) and
   `pb-nightly-score` 06:15 — the sweep runs before the score so a
   note read in the morning changes that morning's tier, and the roster runs before both so a card
   that moved overnight is in the same morning's queue. Last, `pb-nightly-watchdog` 07:00 writes a

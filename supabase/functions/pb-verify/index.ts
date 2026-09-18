@@ -5,7 +5,7 @@
  *   Authorization: Bearer <PB_SYNC_TOKEN>        (Vault, read through pb_secret())
  *   { limit?: number, source?: string, dry_run?: boolean, model?: string }
  *
- * DECISIONS §52. §50 found that four of ten claims the website reader had rated `high` were
+ * DECISIONS §54. §53 found that four of ten claims the website reader had rated `high` were
  * inferences wearing a verbatim quote, and gated that reader out of the automatic lanes wholesale
  * — the only move available, because nobody had checked the claims one by one. This is the check.
  *

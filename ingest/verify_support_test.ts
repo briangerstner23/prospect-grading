@@ -4,7 +4,7 @@
  * Run:  node --experimental-strip-types ingest/verify_support_test.ts
  *
  * Every sentence here is INVENTED (rule 2), but each one is SHAPED like a real failure that
- * DECISIONS §50 found in the queue: a count read off prospects, an illustrative number read as a
+ * DECISIONS §53 found in the queue: a count read off prospects, an illustrative number read as a
  * total, a partial list read as a count, an absence read out of a missing field.
  *
  * The property these tests exist to pin is the asymmetry. This pass re-audits claims that already

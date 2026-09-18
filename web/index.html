@@ -1609,7 +1609,7 @@ async function openQueue() {
   drawQueue();
 }
 
-/* ---- what the book approves on its own (DECISIONS §50) ----
+/* ---- what the book approves on its own (DECISIONS §53) ----
  *
  * The queue below is what a person still has to read. This panel is the other half: which claims
  * the book will answer without one, on which rule, and what it already answered that way.
@@ -1916,7 +1916,7 @@ function drawQueue() {
     ),
   );
   // The automatic half, above the queue rather than below it: what is left to read only makes
-  // sense once you know what is no longer going to be read (DECISIONS §50).
+  // sense once you know what is no longer going to be read (DECISIONS §53).
   const auto = autoconfirmPanel();
   if (auto) parts.push(auto);
   for (const g of groups) {

@@ -3343,7 +3343,23 @@ the same drift independently — which is the check working exactly as §35 inte
 unread: no session has read them directly). This entry records the owner's ruling as made; the
 Grading Register should be updated to match, and if it ever disagrees, **the register wins**.
 
-## §50 — The book approves what it has nothing to weigh (18 Sep 2026)
+## §53 — The book approves what it has nothing to weigh (18 Sep 2026)
+
+> **Renumbered 18 Sep.** This ruling and §54 were written as §50 and §52 on branch
+> `claude/wizardly-faraday-ncd1za`, while `claude/keen-dirac-q146ng` was independently writing its
+> own §50 (the website as a sweep channel), §51 (bulk confirm widened to what is corroborated) and
+> §52 (the board becomes a grid). Two collisions, found by reading the other branch rather than by
+> anything failing. Renumbered here to §53 and §54.
+>
+> **The applied migrations keep the old numbers and must.** `20260918100000`–`100300`,
+> `120000` and `120100` are byte-identical to `schema_migrations.statements`; editing a file to fix
+> a citation would break the one check that proves the record matches what ran. Their SQL comments
+> say §50/§52 and mean §53/§54. The live `comment on` strings in the database were corrected
+> separately, since those are not part of that byte-identity.
+>
+> Note that this branch's §53a repairs what `keen-dirac` calls **§51** — the corroboration rules in
+> `pb_confirm_fact_candidates`. That reference was correct when written and still is.
+
 
 **Owner ruling.** *"If there's enough confidence and the statement is clear enough, I think the
 system could approve it. There is always the ability for us to see that statement and undo it later.
@@ -3429,16 +3445,16 @@ question about that reader's calibration, which nobody has measured.
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository. This entry records
 the owner's ruling as made; if the register ever disagrees, **the register wins**.
 
-### §50a — What §50 broke on its way in, and the repair (18 Sep 2026)
+### §53a — What §53 broke on its way in, and the repair (18 Sep 2026)
 
-**§50's own migration destroyed §51.** At 23:38 on 17 Sep, another session had rewritten
+**§53's own migration destroyed §51.** At 23:38 on 17 Sep, another session had rewritten
 `pb_confirm_fact_candidates` around five named rules (DECISIONS §51): `already_evidenced` closes a
 claim the book already holds as evidence instead of writing a second row, `corroborates_what_is_held`
 upgrades an inferred value that now has a sentence behind it, `high_and_unheld` is §45's original
 class, and `second_independent_source` admits a medium claim when another record **from a different
 source** says the same thing with its own quote.
 
-At 11:16 on 18 Sep, §50's judgement fix replaced that function wholesale. It had been built by
+At 11:16 on 18 Sep, §53's judgement fix replaced that function wholesale. It had been built by
 copying the 17 Sep `290000` file and adding one `elsif`, three hours after §51 landed, without
 anyone checking whether the file being copied was still what was running. It parsed, it applied, it
 reported success, and it silently deleted four of the five rules. Nothing on the queue screen would
@@ -3454,7 +3470,7 @@ was never applied to a function definition.
 Restored in `20260918120000`, §51's function exactly, plus one addition stated rather than smuggled:
 `high_and_unheld` now refuses an explicit `kind = 'judgement'`, because eleven such claims were
 inside that branch and rule 3 exists to stop precisely them. A NULL kind still passes there — absent
-is not stated, and refusing it would empty the rule rather than sharpen it. §50's **source gate is
+is not stated, and refusing it would empty the rule rather than sharpen it. §53's **source gate is
 deliberately not copied across**: it bounds what the book does unattended at 06:00, and this button
 is a person clicking. Narrowing a human decision with a rule written for a robot takes the owner's
 judgement away in the name of protecting it.
@@ -3472,15 +3488,15 @@ log rows closed, 114 register rows written. Re-run → **263 eligible, 23 confir
 superseded, 114 accounts** — identical to the first run, from a clean queue. The lanes are
 deterministic and the undo is exact.
 
-**A numbering collision to resolve at merge.** This branch wrote §50; the other branch wrote §51 and
-presumably a §50 of its own. Whoever merges must renumber rather than assume, and this entry's
+**A numbering collision to resolve at merge.** This branch wrote §53; the other branch wrote §51 and
+presumably a §53 of its own. Whoever merges must renumber rather than assume, and this entry's
 references to §51 are to *that* branch's ruling, not to anything in this file.
 
-## §52 — Does the sentence actually say it? (18 Sep 2026)
+## §54 — Does the sentence actually say it? (18 Sep 2026)
 
 **Owner instruction, 18 Sep:** build the verification pass, run it on a sample first.
 
-§50 gated the website reader out of the automatic lanes wholesale, because four of ten of its
+§53 gated the website reader out of the automatic lanes wholesale, because four of ten of its
 `high` claims were inferences wearing a verbatim quote. That gate is per READER, which was the only
 move available: nobody had asked, claim by claim, whether the quoted sentence states the value it
 was attached to.
@@ -3506,19 +3522,19 @@ no fact; it touches five columns on rows that have no verdict yet and cannot rev
 | `unsupported` | 39 | the sentence is about something else |
 
 **39% of website claims have a sentence that does not bear on the claim at all.** That is the
-§50 spot-check reproduced at scale, and it settles the question of whether that gate was an
+§53 spot-check reproduced at scale, and it settles the question of whether that gate was an
 overreaction: it was not.
 
 Spot-checking the auditor's own work — because trusting a reader without checking it is the exact
 mistake this whole entry exists to correct — all eight sampled `unsupported` verdicts were right,
-including the two §50 had found by hand: a delivery headcount of zero read off *"Meet Our Fearless
+including the two §53 had found by hand: a delivery headcount of zero read off *"Meet Our Fearless
 Leader Dave Martin, Director of Growth"*, and a headcount of eight read off *"Tal Hayek, Co-Founder,
 Chief Executive Officer"*. Seven of eight `states` were clearly right; the eighth, `sells_build_work`
 from a portfolio caption, is generous rather than wrong. **The lexicon overruled the reader zero
 times** — the model caught everything the three hand-written rules would have. The rules stay: they
 cost nothing and they are the floor if a future model is worse.
 
-**What it unlocks, and it is the point.** §50's gate says a lane trusts a reader whose ratings
+**What it unlocks, and it is the point.** §53's gate says a lane trusts a reader whose ratings
 somebody has checked against its own quotes. A per-claim verdict IS that check, one claim at a time
 instead of one reader at a time — so `support = 'states'` now stands in for being on a lane's
 allow-list. The gate stops being a blanket ban on a source and becomes a demand for evidence about
@@ -3540,7 +3556,7 @@ decision, and it should be made after the full run, not before.
 disagrees, **the register wins**.
 
 
-### §52a — The full run, and what the backstop got wrong (18 Sep 2026)
+### §54a — The full run, and what the backstop got wrong (18 Sep 2026)
 
 **Owner instruction:** run the whole remaining queue. Done — **1,150 claims audited**, driven by a
 temporary `pb-verify-step` cron every three minutes (the roster stepper's idiom; removed when the
@@ -3558,7 +3574,7 @@ are now refused from every lane, corroboration included.
 **66 claims became newly eligible**, across 46 accounts, every one of them via `support = 'states'`
 — that is, admitted because the sentence was audited and holds up, not because of who read it.
 Fourteen sampled from that set were **all correct**: founding years and agency types stated outright,
-service lists naming build work explicitly, a budget band stated in the sentence. That is the §50
+service lists naming build work explicitly, a budget band stated in the sentence. That is the §53
 gate finally doing what it was for, rather than what it could manage with only a per-reader signal.
 
 **The lexicon was the worst-performing part of this, and it is worth being plain about that.** Across
@@ -3588,7 +3604,7 @@ lanes already switched on. Watching the system do it is worth more than seeing i
 given a place in the nightly chain, and that is the owner's call.
 
 
-### §52b — Four strikes: the lexicon should stop overruling the reader (18 Sep 2026)
+### §54b — Four strikes: the lexicon should stop overruling the reader (18 Sep 2026)
 
 The six lexicon rows were reset and re-audited under v3. The negation fix worked — *"Unknown for
 Dave's org (absent)."* now reaches the reader, which calls it `states`, correctly. So do the two

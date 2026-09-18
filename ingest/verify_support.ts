@@ -4,7 +4,7 @@
  * Rule 8's receipt proves that a sentence is really in the source. It does not prove that the
  * sentence says what the extractor decided it says, and on 18 Sep that gap turned out to be the
  * expensive one: four of ten claims the website reader had rated `high` were inferences wearing a
- * verbatim quote (DECISIONS §50). A delivery headcount of zero from a team page that listed one
+ * verbatim quote (DECISIONS §53). A delivery headcount of zero from a team page that listed one
  * person. A client-budget band from a case-study headline quoting the CLIENT's pipeline. Both
  * quotes were real. Neither said the thing.
  *

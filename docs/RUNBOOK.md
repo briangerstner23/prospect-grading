@@ -2070,7 +2070,7 @@ both are the owner's call (DECISIONS §23).
 
 The fact queue has two halves. The manual half is §27's screen — read the sentence, confirm or
 reject. The automatic half is `pb_fact_autoconfirm_policy` and it answers the claims where a reader
-would have nothing to weigh. Both live on the same back-office screen (`#queue`). DECISIONS §50.
+would have nothing to weigh. Both live on the same back-office screen (`#queue`). DECISIONS §53.
 
 **See what would happen, without doing it.** The dry run is the default, so this is safe to run at
 any time and from anywhere:
@@ -2097,7 +2097,7 @@ select key, value, source, agreeing_systems, left(quote, 140)
 ```
 
 Read them against the key. A quote that is really in the source and still does not *say* the value
-is the failure mode that matters, and it is the one that put the source gate into §50 — four of ten
+is the failure mode that matters, and it is the one that put the source gate into §53 — four of ten
 sampled website claims were inferences wearing a verbatim sentence. If more than one of twelve is
 wrong, the lane is not ready.
 
@@ -2134,7 +2134,7 @@ select public.pb_undo_autoconfirm('<batch_id>'::uuid, 'why');
 It will not reopen a claim a person has decided since the batch ran. Undoing the machine must never
 undo the person.
 
-This path has been round-tripped on the real book (DECISIONS §50a): undoing the first batch put the
+This path has been round-tripped on the real book (DECISIONS §53a): undoing the first batch put the
 queue back to its exact original count and removed every fact, and re-running reproduced the same
 263/23/218/26 to the row. If you undo and re-run and the numbers move, something else changed the
 book in between — find out what before trusting the second run.
@@ -2160,7 +2160,7 @@ person's address, something has gone wrong with rule 9 and it is worth stopping 
 
 `pb-verify` asks one question of claims the book already has: does the stored quote STATE this
 value for this key? It reads no source record, extracts nothing and writes no fact — it fills
-`pb_fact_candidates.support` and nothing else. DECISIONS §52.
+`pb_fact_candidates.support` and nothing else. DECISIONS §54.
 
 Only rows with `support is null` are selected, so a verdict is never revised by a re-run. Deployed
 as a pinned-commit entrypoint (§3), `verify_jwt = false`, called with the Book's own bearer. This
@@ -2197,7 +2197,7 @@ select count(*) filter (where support is not null) audited,
   from pb_fact_candidates;
 ```
 
-**Read the auditor before you trust it.** This is the same mistake §50 made about the website
+**Read the auditor before you trust it.** This is the same mistake §53 made about the website
 reader, and it is available here too — a reader that rates its own work is not evidence. After any
 sizeable run, read a dozen of each verdict against the sentence:
 
