@@ -659,8 +659,8 @@ that network, and it fires on real accounts — while the network it names is tr
 the book. (Named here originally; shaped on 16 Sep when those organisations entered the roster
 and rule 2 began to bite — see the note at the end of §28.)
 
-That stage also mixes cohorts: peer bodies sit beside vendors (WP Engine) and ordinary agencies
-(Spindustry, SJ Innovation, B Squared Media). "Friends of WLIQ" is a journey stage, not a cohort,
+That stage also mixes cohorts: peer bodies sit beside a hosting vendor and ordinary agencies
+(three of them on the roster). "Friends of WLIQ" is a journey stage, not a cohort,
 and cannot be lifted wholesale.
 
 ### What was done
@@ -705,8 +705,8 @@ carry. Both were read:
 
 46 book accounts matched a typed Orbit client on domain or exact name. **10 were corrected or
 filled**, each recorded in `pb_register` with the Orbit client id, its `client_type` and how it
-matched — four that Orbit calls an Agency were sitting outside the agency focus, and *Call to
-Freedom*, currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
+matched — four that Orbit calls an Agency were sitting outside the agency focus, and one account,
+currently rung 5 and graded Gold as an agency prospect, is a Direct Client in Orbit.
 
 | cohort | accounts | ranked | confirmed by Orbit |
 |---|---|---|---|
@@ -1130,8 +1130,8 @@ The rubric predicted this in its own words. The criterion's `failure_mode` read:
 > The strongest single predictor in the July research and the easiest to get wrong: a two-person
 > dev team can mean overflow need, not no need.
 
-Miranda is that sentence, live. The criterion asked *"is there a developer in the building"* when
-the thing that predicts a sale is *"do they have more build work than they can absorb"*. Miranda
+That agency is that sentence, live. The criterion asked *"is there a developer in the building"* when
+the thing that predicts a sale is *"do they have more build work than they can absorb"*. That agency
 answers no to the first and yes to the second.
 
 ### Ruled
@@ -1176,7 +1176,7 @@ as it did before the re-wording, and improves only as the new fact is gathered. 
 is the portfolio read discussed the same day: an agency that lists build services while
 outsourcing them, or advertises for developers it cannot keep, is telling you about its capacity.
 
-Miranda's own three facts were recorded during the session that produced this ruling:
+The agency's own three facts were recorded during the session that produced this ruling:
 `client_budget_size = buys_real_projects`, `sells_build_work = true`, `no_inhouse_dev_team = false`
 — the last with the reasoning above in its note, so the record shows why a false there is not the
 mark against them it looks like.
@@ -3327,7 +3327,7 @@ would have refused every nightly run before the function was reached. Caught by 
 response; v13 is the same commit at `verify_jwt: false`. **Check that field on every deploy.**
 
 **Previewed on the real book before activation**, as the runbook requires: 830 scored, 0 errors,
-**2 changed**, both explained. One is the owner's own Conduit Digital override — written at 22:08,
+**2 changed**, both explained. One is the owner's own override on a single agency — written at 22:08,
 refused by the cap under 0.1.5, applied under 0.1.6: **Platinum → Bronze, rank 3 → 231**, with the
 new flag on the row. The other is a Pipedrive account added the same day and has nothing to do with
 the rubric. Nothing else in the book moved. The real run then wrote 830 reads at fingerprint

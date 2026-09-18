@@ -21,7 +21,7 @@ core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only —
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
             rubric.prospect.v0.1.6.json is ACTIVE (17 Sep 22:27 UTC, fp 9a911e2c: the override
             distance cap removed — max_tiers_moved null, DECISIONS §49; previewed 830 scored,
-            2 changed, both explained: the owner's own Conduit Digital override, which the cap had
+            2 changed, both explained: the owner's own override on one agency, which the cap had
             been refusing, and one Pipedrive row added the same day).
             v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §40 — added
             dimension_b.flag_rules; previewed 829/0 changed).
@@ -133,6 +133,10 @@ docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · R
             requirements; ADVISORY (the register governs). Its fenced JSON block is run by
             scripts/conformance_test.ts on every npm test, so closing a gap OR reopening one
             fails the build until the ledger says so. Read it before adding a read or a rule.
+            GRADING-REVIEW-2026-09-18.md — the rubric, the weights and the rank reviewed against
+            the field from the live database (18 Sep): what actually decides a tier today, the four
+            point systems, the sort-versus-grid divergence, the six-move plan and the seven owner
+            decisions. ADVISORY; the register governs.
 scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an admission, the way a
             pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
