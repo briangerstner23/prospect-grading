@@ -3866,9 +3866,11 @@ overreaction: it was not.
 
 Spot-checking the auditor's own work — because trusting a reader without checking it is the exact
 mistake this whole entry exists to correct — all eight sampled `unsupported` verdicts were right,
-including the two §53 had found by hand: a delivery headcount of zero read off *"Meet Our Fearless
-Leader Dave Martin, Director of Growth"*, and a headcount of eight read off *"Tal Hayek, Co-Founder,
-Chief Executive Officer"*. Seven of eight `states` were clearly right; the eighth, `sells_build_work`
+including the two §53 had found by hand: a delivery headcount of zero read off a page headed
+*"Meet Our Fearless Leader"* above one person's name and the title Director of Growth, and a
+headcount of eight read off a single *"Co-Founder, Chief Executive Officer"* title line — both of
+them a leadership byline mistaken for a team size. Seven of eight `states` were clearly right; the
+eighth, `sells_build_work`
 from a portfolio caption, is generous rather than wrong. **The lexicon overruled the reader zero
 times** — the model caught everything the three hand-written rules would have. The rules stay: they
 cost nothing and they are the floor if a future model is worse.
