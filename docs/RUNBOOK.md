@@ -1051,7 +1051,7 @@ systems sharing this project — not ours to change.
 
 ---
 
-## 9 · Previewing and activating rubric 0.2.0
+## 32 · Previewing and activating rubric 0.2.0
 
 `0.2.0` is registered in `pb_rubric_versions` as **draft**, spec sha256
 `09d4e8cb36baa1d041968df3165b6e95aefe5a7a0e5ca3ba2538e08095c4f3d1`. **0.1.0 is still active and
