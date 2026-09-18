@@ -87,6 +87,24 @@ comment on view public.pb_lift_by_cell is
 
 revoke all on public.pb_lift_by_cell from anon, authenticated;
 
+-- The snapshot table comes BEFORE pb_lift(): a `language sql` function body is parsed at
+-- creation, so the table it reads has to exist first (the first apply failed on exactly that).
+create table if not exists public.pb_lift_snapshots (
+  taken_at   date        not null,
+  cell_id    text        not null,
+  row        jsonb       not null,
+  created_at timestamptz not null default now(),
+  primary key (taken_at, cell_id)
+);
+
+-- Every new pb_ table arrives with anon and authenticated holding everything (CLAUDE.md).
+revoke all on public.pb_lift_snapshots from anon, authenticated;
+alter table public.pb_lift_snapshots enable row level security;
+
+comment on table public.pb_lift_snapshots is
+  'The lift report, one row per cell per month (pb_snapshot_lift, cron pb-monthly-lift on the '
+  '1st at 07:30 UTC), so the grid can be judged against its own history. Counts only.';
+
 create or replace function public.pb_lift()
 returns jsonb
 language sql
@@ -110,22 +128,6 @@ comment on function public.pb_lift() is
   'The lift-by-cell report for the page: today''s rows and up to sixty monthly snapshot rows. '
   'SECURITY DEFINER so the page reads counts without pb_contact_events, pb_deals or '
   'pb_promotions becoming readable. Aggregates only, no names. DECISIONS §50.';
-
-create table if not exists public.pb_lift_snapshots (
-  taken_at   date        not null,
-  cell_id    text        not null,
-  row        jsonb       not null,
-  created_at timestamptz not null default now(),
-  primary key (taken_at, cell_id)
-);
-
--- Every new pb_ table arrives with anon and authenticated holding everything (CLAUDE.md).
-revoke all on public.pb_lift_snapshots from anon, authenticated;
-alter table public.pb_lift_snapshots enable row level security;
-
-comment on table public.pb_lift_snapshots is
-  'The lift report, one row per cell per month (pb_snapshot_lift, cron pb-monthly-lift on the '
-  '1st at 07:30 UTC), so the grid can be judged against its own history. Counts only.';
 
 create or replace function public.pb_snapshot_lift()
 returns integer

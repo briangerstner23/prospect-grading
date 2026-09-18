@@ -19,17 +19,26 @@ its data, never share its tables.** The two systems meet at one event only: prom
 ```
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
-            rubric.prospect.v0.1.6.json is ACTIVE (17 Sep 22:27 UTC, fp 9a911e2c: the override
-            distance cap removed — max_tiers_moved null, DECISIONS §49; previewed 830 scored,
-            2 changed, both explained: the owner's own override on one agency, which the cap had
-            been refusing, and one Pipedrive row added the same day).
+            rubric.prospect.v0.1.7.json is ACTIVE (18 Sep 03:37 UTC, fp dec7d291: the GRID —
+            readiness × potential band first in the chase key, the tier second; stamps that age;
+            assumed ceilings printed Low; twelve never-fired adjustment rules parked — DECISIONS
+            §52. Previewed 830 scored / 0 errors / 3 changed, all three owner overrides the 0.1.6
+            safety preview showed identically / 810 reordered; then activated and run: 830 live
+            reads on dec7d291, computed tier identical to 0.1.6 on every one).
+            v0.2.1 (fp 101ee7c1) is a REGISTERED DRAFT, previewed and HELD: seven equal-weight fit
+            criteria at a threshold of three answered — 587 of 830 would be Unclassified today
+            because only 239 accounts answer three (§52). Activation follows the collection sprint.
+            v0.1.6 (retired 18 Sep 03:37; fp 9a911e2c: the override distance cap removed —
+            max_tiers_moved null, DECISIONS §49; previewed 830 scored, 2 changed, both explained:
+            the owner's own override on one agency, which the cap had been refusing, and one
+            Pipedrive row added the same day).
             v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §40 — added
             dimension_b.flag_rules; previewed 829/0 changed).
             v0.1.4 (retired 17 Sep; it was 0.1.3 + DECISIONS §17 restored, §31).
             v0.1.3 (retired; recovered from the database 17 Sep — it had had no file; see
             docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
             v0.1.1 and v0.3 (files with NO pb_rubric_versions row), v0.1.2 and v0.2 (registered
-            drafts, 0 reads). SEVEN files, five registered — run `ls core/rubric*` rather than
+            drafts, 0 reads). ELEVEN files, nine registered — run `ls core/rubric*` rather than
             trusting this line, and check pb_rubric_versions for which is active.
             engine.ts (pure grade()) · classify.ts · decay.ts · reason.ts · engine_test.ts
 fixtures/   golden.json — synthetic accounts with expected scorecards per rubric version
@@ -110,6 +119,14 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             fixing the next time the list is touched.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
+            The 18 Sep set (DECISIONS §52; files 20260918100000–140000, database versions
+            032803 / 032853 / 032858 / 033410 / 034006 — the MCP stamps apply time; each statement
+            byte-identical to its file by md5, RUNBOOK §28.6): 100000 board by cell (pb_key_num,
+            pb_key_last_text, pb_prospect_board v3, pb_board() v4 with the cell columns) ·
+            110000 outcomes and lift (pb_outcomes, pb_lift_by_cell, pb_lift() definer,
+            pb_lift_snapshots, pb_snapshot_lift(), cron pb-monthly-lift) · 120000 scoring pass
+            (pb_actuals, pb_score_snapshots(), pb_calibration) · 130000 retire composite (drops
+            pb_chase_scores) · 140000 revoke view writes (the seven 16 Sep views). All applied.
             functions/pb-sync, pb-score, pb-notes, pb-fathom-webhook, pb-pipedrive-webhook,
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -122,9 +139,10 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             engine's own chase_rank_key order and the 16 Sep artifact's own dossier sections, in its
             order. Public, no sign-in (owner ruling §43), no data baked in. Light by default with a
             remembered dark toggle; every localStorage touch wrapped. NO EMAIL ADDRESSES reach the
-            page — not from pb_contacts, not from call attendees (names and side only). Adding a
-            section, or dropping one, means updating scripts/board_page_test.ts, which pins all 13
-            section names and 54 checks in total.
+            page — not from pb_contacts, not from call attendees (names and side only). Since 18 Sep the
+            ranked list is grouped under a header per CHASE CELL with the cell's play (§52). Adding a
+            section, or dropping one, means updating web/CONTRACT.json (v2 owns the section names)
+            and scripts/board_page_test.ts (77 checks).
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
             Both are one file each, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
@@ -145,7 +163,8 @@ docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · R
             GRADING-REVIEW-2026-09-18.md — the rubric, the weights and the rank reviewed against
             the field from the live database (18 Sep): what actually decides a tier today, the four
             point systems, the sort-versus-grid divergence, the six-move plan and the seven owner
-            decisions. ADVISORY; the register governs.
+            decisions. ADVISORY; the register governs. Ruled and shipped 18 Sep — DECISIONS §52;
+            the status line at the top of the file says what is live and what is held.
 scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an admission, the way a
             pb_roster_drift row enters the book — see scripts/seed_README.md, RUNBOOK §23) ·
             seed_scope_test.ts · sync_shared.sh · test_all.sh · build_functions.sh (esbuild → dist/functions/<fn>/
@@ -269,17 +288,20 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
   took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
-- Deployed versions as of **17 Sep 2026**: **pb-score v13** (commit `dce1f5d`, deployed as a
-  one-line entrypoint pinned to that commit's raw GitHub URL — the deployed function IS the
-  commit; RUNBOOK §3), **pb-notes v14** (commit `53596a3`, also a pinned-commit
+- Deployed versions as of **18 Sep 2026**: **pb-score v14** (commit `d14223c`, the grid engine —
+  deployed as a one-line entrypoint pinned to that commit's raw GitHub URL, so the deployed
+  function IS the commit; RUNBOOK §3; §52), **pb-notes v14** (commit `53596a3`, also a pinned-commit
   entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-sync v2**, **pb-pipedrive-webhook v2**,
   **pb-fathom-webhook v2** (those three from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
   `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
   the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have
-  thrown for every account (§49). **Check `verify_jwt` in the deploy response every time**: the
+  thrown for every account (§49), and the pre-v14 engine has no `chase` block and reads no
+  `chase_rank_key.order`, so a 0.1.7 preview on it would print the five-term key and prove nothing
+  about the grid (§52). **Check `verify_jwt` in the deploy response every time**: the
   call defaults it to TRUE, and v12 went out that way — the gateway would have refused pg_cron's
-  bearer before the function was reached. v13 is the same commit, correctly at false. This line has
+  bearer before the function was reached. v13 is the same commit, correctly at false, and v14 went
+  out at false (read back 18 Sep 03:38 UTC). This line has
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift
   against each function's real import closure (RUNBOOK §3). All five carry the
   `helpers.ts` / `db.ts` paging fixes; pb-score also carries the 17 Sep rule-9 source precedence
@@ -289,7 +311,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   12 Sep (RUNBOOK §15).
 - All five edge functions deploy with `verify_jwt = false`: pb-sync / pb-score / pb-notes carry
   the Book's own bearer (which pg_cron sends), the webhooks their own signature / Basic check.
-  Six cron jobs. Three re-read the roster, entirely inside the database:
+  Seven cron jobs. Three re-read the roster, entirely inside the database:
   `pb-roster-begin` 05:00 UTC clears the staging table and starts a crawl of the Client Journey
   pipeline, `pb-roster-step` every minute 05:01-05:10 walks the cursor (a stepper because pg_net
   dispatches only after the calling transaction commits; ~950 cards is two pages and the step
@@ -299,7 +321,9 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   that moved overnight is in the same morning's queue. Last, `pb-nightly-watchdog` 07:00 writes a
   `failed` `pb_runs` row for either nightly job if it left no finished run. The watchdog lives in
   the database on purpose: the thing that took both jobs out on 12 Sep was the API gateway, and a
-  remedy that goes through the gateway is no remedy (migration 20260912150000).
+  remedy that goes through the gateway is no remedy (migration 20260912150000). The seventh,
+  `pb-monthly-lift`, runs at 07:30 UTC on the 1st and snapshots the lift-by-cell report
+  (`pb_snapshot_lift()`; RUNBOOK §28.2, DECISIONS §52).
 - **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
   prospect-stage card with no account (`missing`), an account whose card has moved to a partner
   stage or Friends of WLIQ (`departed`) — and writes nothing else. It may not: PRO-18's
@@ -319,7 +343,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   (`20260911170000_prospect_book_revoke_anon_writes`); **all twenty objects held it for
   `authenticated`** until `20260912140000_prospect_book_revoke_authenticated_writes`, because
   the check below originally asked about `anon` only. The defaults are not ours to change (the
-  project is shared), so **every new table needs its own `revoke`, for both roles**.
+  project is shared), so **every new table needs its own `revoke`, for both roles** — and every
+  new VIEW: seven security_invoker views from the 16 Sep set held every privilege for both roles
+  until 18 Sep (migration 20260918140000, DECISIONS §52); harmless in effect, because the base
+  tables refuse, and still wrong.
 
   RLS default-deny refuses these over PostgREST, with one exception worth remembering:
   **TRUNCATE is not subject to RLS at all** — a row policy cannot refuse it, and only
@@ -379,6 +406,11 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   definitions stay verbatim under PRO-15. `docs/DECISIONS.md` §8. Still a toggle, not a ruling.
 - Tier-1 capacity sizing (decision 1) and SPICED vs Dimension A (decision 5) — not ruled;
   the engine outputs a chase key and Dimension A is the qualification read.
+- The rank of a READY row with no tier: the unranked cell sits last (0.1.7). On 18 Sep 68 of the
+  223 no-tier rows were ready and that cell held 28 of the 44 quotes of the last 90 days (§52).
+- Activation of 0.2.1, the criteria fit read — held until the collection sprint; numbers in §52.
+- The readiness thresholds and the cell plays are a first setting (basis reasoned), to be re-cut
+  from the lift-by-cell report once outcomes exist (§52).
 
 ## Tests
 

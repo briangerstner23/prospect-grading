@@ -2098,3 +2098,144 @@ check is one nobody runs.
 **What the script cannot do:** it reads the working tree, not history. A name already pushed stays
 in the commits that carried it until someone rewrites history or the repository goes private, and
 both are the owner's call (DECISIONS §23).
+
+## 28 · The grid, the lift report, the scoring pass, and activating 0.2.1
+
+DECISIONS §52 records the seven decisions of 18 Sep 2026 and what shipped. This is the operator's
+side of them.
+
+### 28.1 · Reading the board by cell
+
+Rubric 0.1.7 puts the CHASE CELL first in the chase key and the tier second. A row's cell is its
+potential band (big = Platinum or Gold, small = Silver or Bronze; the tier stays a size label)
+crossed with its readiness. Both are the rubric's own text (`chase.readiness.ladder`,
+`chase.cells`); this table is a copy for the reader, not the rule.
+
+| Readiness | Rule, tried top to bottom |
+|---|---|
+| ready | two or more qualification facts present, OR a Hot / Super Hot stamp, OR an engaged or responsive contact |
+| stirring | one qualification fact, OR a fading or pursued contact, OR a live signal |
+| cold | nothing recorded — the absence of a reason to work the account this week, never evidence against it |
+
+| Cell | Owner | SLA | Play |
+|---|---|---|---|
+| Chase now (big × ready) | salesperson, 1:1 | 7 days | a named next step on the calendar, the decision-maker in the room, price on the table by the second call |
+| Work the deal (small × ready) | salesperson, 1:few | 14 days | quote it, book the next meeting, keep the reply cadence |
+| Open the door (big × stirring or cold) | salesperson, 1:few | 30 days | earn a first conversation — an introduction, a peer-group touch, a piece of work they would recognise |
+| Nurture (small × stirring or cold) | marketing, 1:many | 90 days | programmatic; promote the row when a stir arrives |
+| No tier yet (no fit read) | rater | 30 days | answer the fit questions: is it an agency, do they sell build work, is there a capacity gap, who are their clients |
+
+Inside a cell the order is the tier, then facts present, then urgency, then the most recent reply,
+then the year-one band, then the name. What moves a row up: a recorded Dimension A fact, a reply, a
+fresh timing stamp, a vendor rank. Until a vendor rank is on file the ceiling is an assumption:
+potential confidence prints Low and the card says `Ceiling assumed` — the two discovery questions
+(who else do you use, where do we rank) are what lift it. A timing stamp ages: a week-stamp stops
+deciding after 14 days, a month-stamp after 45, a quarter-stamp after 120; the row is flagged
+`Timing stamp aged out` and the computed ladder decides. A stamp with no recorded date is never
+aged.
+
+The cell and its play are columns of `pb_board()` — `cell_id`, `cell_name`, `cell_play`,
+`cell_rank`, `cell_owner_role`, `cell_sla_days`, `cell_abm`, `readiness`, `ceiling_assumed`,
+`timing_aged_out` — read out of the scorecard. Nothing in SQL restates a threshold (rule 4).
+
+### 28.2 · The lift report
+
+```sql
+select public.pb_lift();               -- any role: today's rows and up to sixty monthly snapshot rows, counts only
+select * from public.pb_lift_by_cell;  -- service role: the same rows as a table
+select public.pb_snapshot_lift();      -- service role: write (or rewrite) today's snapshot rows
+```
+
+Per cell: accounts and their share of the book, how many replied and how many were quoted in the
+last 90 days, how many won and how many were promoted, the cell's share of the quotes, and LIFT —
+the cell's quote (or reply) rate over the book's. 1.0 is chance; the 9 Sep research wants the top
+band to convert at twice the bottom. A reply is one of the things that makes a row *ready*, so
+the ready cells' reply lift is partly circular; the quote lift and the won column are not. The
+cron job `pb-monthly-lift` runs `pb_snapshot_lift()` at 07:30 UTC on the 1st of each month; the
+history comes back inside `pb_lift()` under `history`. The first reading (18 Sep) is in DECISIONS
+§52.
+
+### 28.3 · The scoring pass
+
+At 6, 12 and 24 months after a promoted account's first invoice, read what it actually billed
+(QuickBooks, or Orbit — read only, rule 11) and record it. Nothing here reaches either system.
+
+```sql
+insert into public.pb_actuals (account_id, months, revenue_usd, source, period_start, period_end, recorded_by, note)
+values ('<account uuid>', 12, <dollars billed>, 'quickbooks', '<period start>', '<period end>', '<who>', '<invoices counted>');
+
+select public.pb_score_snapshots();    -- fills the frozen snapshot's actual_6m / 12m / 24m, stamps scored_at; idempotent
+select * from public.pb_calibration;   -- per estimator: scored, with_12m, hits_12m, hit_rate_12m
+```
+
+The freeze is a selection (DECISIONS §36): the last snapshot on or before
+`pb_promotions.first_invoice_at`, per account and estimator. `pb_actuals` is service role only and
+unique on (account, months, source): a second reading of the same horizon needs a different
+`source` or a delete of the first, and the pass takes the most recently recorded row per horizon. `pb_actuals` is empty on 18 Sep; nothing scores
+until a promotion has a first invoice and an actual on file.
+
+### 28.4 · Activating 0.2.1 when the facts are in
+
+0.2.1 is registered (fingerprint `101ee7c1`) and held: previewed 18 Sep 03:41 UTC, 587 of 830
+would be Unclassified because only 239 accounts answer three of the seven criteria, the threshold
+(DECISIONS §52). The sprint: the four fit questions on the ready cells first — Chase now, Work the
+deal, and the 68 ready rows in No tier yet. Facts land through the page (rater lane), through the
+sweep's candidates confirmed on the back office page (the bulk confirm is the owner lane, §45,
+§51 — it needs the owner signed in; it cannot run from a database session and must not be
+impersonated), or through a call the sweep reads.
+
+Preview again (writes nothing):
+
+```sql
+select net.http_post(
+  url     := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-score?rubric=0.2.1&preview=1',
+  headers := jsonb_build_object(
+    'Content-Type',  'application/json',
+    'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'PB_SYNC_TOKEN' limit 1)),
+  body    := jsonb_build_object('triggered_by', 'owner-session', 'kind', 'score'),
+  timeout_milliseconds := 150000
+) as request_id;
+
+-- a minute later, with the request id it returned:
+select status_code, (content::jsonb) -> 'counts', (content::jsonb) ->> 'changed', (content::jsonb) ->> 'reordered'
+  from net._http_response where id = <request_id>;
+```
+
+The tier transitions are in the response's `diff` (`from_tier`, `to_tier`, `from_rank`, `to_rank`).
+Activate when the Unclassified count is one you can defend:
+
+```sql
+update public.pb_rubric_versions set status = 'retired' where version = '0.1.7' and status = 'active';
+update public.pb_rubric_versions
+   set status = 'active', activated_at = now(),
+       activated_by = 'owner:<email> — <what the preview showed, and on which pb-score version>',
+       preview_diff = '<the preview counts, as jsonb>'
+ where version = '0.2.1' and status = 'draft';
+```
+
+Then run the score — the nightly does it at 06:15 UTC, or run the `pb-nightly-score` command from
+`cron.job` with `triggered_by` changed — and check that `pb_current_reads` carries fingerprint
+`101ee7c1` on 830 rows.
+
+### 28.5 · Publishing the page
+
+`deploy-pages.yml` is dispatched by hand, and the `github-pages` environment allows only the
+repository's default branch (`claude/new-session-8qkstx` on 18 Sep). A dispatch from any other
+branch fails in seconds with no step run, no log, and one annotation on the run: *Branch "…" is
+not allowed to deploy to github-pages due to environment protection rules.* To publish from a
+working branch: Settings → Environments → github-pages → Deployment branches and tags → add the
+branch (or choose "No restriction"), then dispatch again (Actions → Deploy Prospect Book page →
+Run workflow → the branch); or make the branch the default; or merge it to the default branch and
+dispatch from there. The 18 Sep board waits on that setting; the 17 Sep page keeps working against
+the new order meanwhile, without the cell headers.
+
+### 28.6 · The 18 Sep migrations: database version against file name
+
+The MCP stamps its own version at apply time; the files carry 18 Sep 10:00–14:00 names. Each
+recorded statement is byte-identical to its file (`md5(statements[1])` against `md5sum` of the
+file): `prospect_book_board_by_cell` 20260918032803 = `7c874798…`, `prospect_book_scoring_pass`
+032853 = `f483ce60…`, `prospect_book_retire_composite` 032858 = `b5aa0671…`,
+`prospect_book_outcomes_and_lift` 033410 = `87bf642c…` (the first apply failed — `pb_lift()` read
+the snapshot table before it existed; `apply_migration` is one transaction, so nothing partial
+survived; the file was reordered and re-applied), `prospect_book_revoke_view_writes` 034006 =
+`7d090400…`.

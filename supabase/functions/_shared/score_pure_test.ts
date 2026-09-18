@@ -86,7 +86,7 @@ check("same card, same row", JSON.stringify(buildSnapshotRow(ranked[0], rubric, 
 
 
 /* ------------------------------------------------------------------ *
- * the order-aware preview (DECISIONS §10, §50): a rubric that reorders the whole book without
+ * the order-aware preview (DECISIONS §10, §52): a rubric that reorders the whole book without
  * moving a tier previewed as "0 changed" until 18 Sep. compareKey orders keys best first across
  * the two shapes the book has produced; rankDiff says where each account sits before and after.
  * ------------------------------------------------------------------ */

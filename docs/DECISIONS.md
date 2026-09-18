@@ -3438,6 +3438,8 @@ need the link-following fetcher above before this channel has anything of theirs
 
 ---
 
+*Numbering note (18 Sep 2026): rubric 0.1.7, draft 0.2.1, the five 18 Sep migrations and the generated `docs/METHOD.md` cite "DECISIONS §50" for the grading decisions of 18 Sep. They were written on branch `claude/keen-dirac-q146ng` before `main` took this number; those citations mean §52.*
+
 ## §51 — Bulk confirm widened to what is corroborated, not to what a model felt sure about (17 Sep 2026)
 
 **Owner ruling: "confirm bulk confirm."** Asked whether the review queue really needed reading item
@@ -3506,3 +3508,160 @@ those are disagreements, which is exactly the work a person should be doing.
 
 `web/index.html` mirrors the three classes so the button's count is the count that lands, and says
 so in the dialog. The page is a preview; the function is the rule.
+
+## §52 — The board becomes a grid: the seven decisions of 18 Sep 2026, and what shipped (18 Sep 2026)
+
+**Numbering.** Rubric 0.1.7, draft 0.2.1 and the five 18 Sep migrations cite these decisions as
+"DECISIONS §50" — and `docs/METHOD.md`, which quotes the rubric, prints the same. They were written
+on branch `claude/keen-dirac-q146ng` before `main` took §50 for the website channel and §51 for the
+widened bulk confirm. The rubric files are frozen by their fingerprints (0.1.7 has 830 reads on it)
+and the migrations by the byte-identical record in `schema_migrations`, so those citations stay as
+written: read "§50" in any 18 Sep artefact as this section. Everything else on the branch was
+renumbered.
+
+**Where it started.** `docs/GRADING-REVIEW-2026-09-18.md` read the rubric, the weights and the rank
+against the field from the live database and found one departure from the field's shape that
+explained why the board disappointed: the chase order put size first, so cold, unqualified Platinums
+sat above every qualified deal, and the grade added almost nothing to what the CRM already said. It
+proposed six moves and put seven decisions to the owner. The owner's ruling, 18 Sep 2026: *"Make all
+the changes and update the live version."* The seven, and where each landed:
+
+| | Decision | Landed in |
+|---|---|---|
+| D1 | The grid before size: readiness × potential band, the cell first in the chase key and the tier second | rubric 0.1.7 (`chase`, `chase_rank_key.order`); `pb_prospect_board` v3 / `pb_board()` v4; the page |
+| D2 | The seven-criteria fit read at a threshold of three answered criteria, a fallback "no" read as unknown, and the twelve adjustment rules that had never fired parked | the parking in 0.1.7; the criteria in draft 0.2.1 — **held**, below |
+| D3 | A stated timing stamp ages: 14 days for a week-stamp, 45 for a month, 120 for a quarter; `no_timeline` never | rubric 0.1.7 (`signals.urgency.stated_timing_max_age_days`) |
+| D4 | The composite score retired; one rank on the page and no score anywhere | migration `prospect_book_retire_composite` drops `pb_chase_scores`; the page |
+| D5 | The white-label signal as the seventh fit criterion | draft 0.2.1 — held with D2 |
+| D6 | A ceiling computed on the default winnable share is an assumption: potential confidence Low, and the card says so | rubric 0.1.7 (`potential.confidence`, flag `Ceiling assumed: vendor share defaulted`) |
+| D7 | A play, an owner role and an SLA per cell; Tier-1 is the Chase-now cell | rubric 0.1.7 (`chase.cells`) |
+
+**What the engine does under 0.1.7.** Readiness is a ladder tried top to bottom: *ready* when two or
+more qualification facts are present, or the stamp is Hot or Super Hot, or the contact is engaged or
+responsive; *stirring* when one fact, a fading or pursued contact, or a live signal; *cold*
+otherwise — the absence of a reason to work the account this week, never evidence against it (rule
+5). The potential band is the tier's band (Platinum and Gold are *big*, Silver and Bronze *small*;
+the tier stays a size label, §20, §40). The cell is the first whose rule holds over the pair:
+Chase now (big × ready, 1:1, salesperson, 7 days), Work the deal (small × ready, 1:few, 14 days),
+Open the door (big × stirring or cold, 1:few, 30 days), Nurture (otherwise, 1:many, marketing, 90
+days); a row with no tier lands in No tier yet (rater, 30 days), whose play is the four fit
+questions. The chase key is read from the rubric's own `order` — cell, tier, facts present,
+urgency, engagement recency, year-one band, name — and a rubric without an `order` gets the fixed
+five-term key every version before 0.1.7 produced. A stamp with a recorded date past its horizon no
+longer decides; the computed ladder does, and the row carries `Timing stamp aged out`. A stamp with
+no date is never aged. Whenever the headroom was computed on the default winnable share the read
+says `assumed`, potential confidence is Low and the card carries `Ceiling assumed: vendor share
+defaulted`; a recorded vendor rank (the two discovery questions) lifts it. None of this is an input
+to the tier.
+
+**The activation, with the numbers.** pb-score **v14** (commit `d14223c`, a pinned-commit
+entrypoint, `verify_jwt` false — read back from `list_edge_functions`) went out first, because the
+pre-v14 engine has no `chase` block and reads no `order`. Then, in order:
+
+1. A safety preview of the live 0.1.6 on the new engine (pg_net request 4221): 830 scored, 593
+   ranked, 223 unclassified, 7 overridden, 7 parked, 0 errors; **3 changed**, 417 reordered. The
+   three are Silver → Bronze, Ranked → Overridden — three owner overrides in the register that the
+   00:32 run had not seen, with no new fact or signal behind them. The 417 is positional cascade
+   under the five-term key.
+2. The 0.1.7 preview (request 4224, 03:27 UTC): the **same counts, the same three changes, 810
+   reordered**. 0.1.7 changes no tier of its own; it changes the order. The top 50 before: 50
+   Platinum. After: 22 Platinum, 11 Gold, 17 Silver. Rank deltas: 20 unchanged, 18 by 1–2, 177 by
+   3–10, 165 by 11–50, 433 by 51–200, 17 by more than 200.
+3. 0.1.6 retired and 0.1.7 active at 03:37:57 UTC, the preview recorded on the row.
+4. The real run (`pb_runs` a281b419, 03:38:45–03:39:03 UTC): 830 scored, 600 potential snapshots,
+   0 errors. 830 live reads now carry fingerprint `dec7d291`; the 21 reads on merged records stay
+   on 0.1.0 and never reach the board.
+
+**The per-account check, every account's last 0.1.6 read against its new one.** Computed tier
+identical on 830 of 830; effective tier identical on 827 plus the three overrides; qualification
+label and facts count identical; ceiling, headroom band and year-one band identical; fit
+confidence identical. What changed is exactly the ruled set. Urgency: 24 stamps aged out (14 Super
+Hot → Cold, 1 Super Hot → Warm, 8 Hot → Cold, 1 Warm → Cold), 806 unchanged. Potential confidence:
+3 High → Low and 454 Medium → Low, all on assumed ceilings; 366 Low → Low; 7 Medium → Medium (a
+stated ceiling standing in with no wallet to compute). Flags added: `Ceiling assumed: vendor share
+defaulted` on 457, `Timing stamp aged out` on 24; none removed. **Potential confidence is now Low
+on 823 of 830** — the honest state D6 asked for, and the reason the two discovery questions are
+the first thing to ask on every call. Readiness over the 830: ready 255, stirring 350, cold 225;
+every label re-derived from the inputs the scorecard records matches its ladder rule (489 accounts
+have no engagement on record; null is in no list, as rule 5 wants). Cells over the 830: Chase now
+33 (big × ready), Work the deal 154, Open the door 65 (51 stirring, 14 cold), Nurture 355 (254
+stirring, 101 cold), No tier yet 223. On the board — 600 companies with no delivery work — 24 /
+116 / 63 / 326 / 71.
+
+**The lift report's first rows** (`pb_lift()`, 03:38 UTC; in the last 90 days 115 accounts
+replied and 44 were quoted):
+
+| Cell | Accounts | Share | Replied | Quoted | Reply lift | Quote lift |
+|---|---|---|---|---|---|---|
+| Chase now | 33 | 4.0% | 13 | 3 | 2.84 | 1.71 |
+| Work the deal | 154 | 18.6% | 36 | 11 | 1.69 | 1.35 |
+| Open the door | 65 | 7.8% | 0 | 0 | 0.00 | 0.00 |
+| Nurture | 355 | 42.8% | 0 | 2 | 0.00 | 0.11 |
+| No tier yet | 223 | 26.9% | 66 | 28 | 2.14 | 2.37 |
+
+Lift is the cell's rate over the book's; 1.0 is chance, and the 9 Sep research wants the top band
+at twice the bottom. The two ready cells clear that against Nurture on the first reading; that is
+partly circular (a reply is one of the things that makes a row ready) and the monthly snapshots
+exist to watch whether it holds. The row that is not circular is the last one.
+
+**The no-tier finding.** The 223 accounts with no fit read hold **28 of the 44 quotes** of the
+last 90 days — 63.6% — and 68 of them are *ready* by the same ladder. They sit last because they
+have no tier, exactly as they did under the size-first sort; the grid did not move them, it made
+them visible. Their play is the four fit questions (is it an agency, do they sell build work, is
+there a capacity gap, who are their clients), and each answered set moves a row into a band. Whether
+a ready row with no tier should rank above Nurture is an owner call, not a default: the engine gives
+the unranked cell the last rank, and making that a rubric setting is one line.
+
+**0.2.1: held, with the numbers.** Registered as a draft (sha256 `ef9c8246…`, fingerprint
+`101ee7c1`) and previewed on the live book (request 4226, 03:41 UTC): 830 scored, 233 ranked,
+**587 unclassified**, 3 overridden, 7 parked, 0 errors; 523 changed. 364 ranked rows would lose
+their tier (227 Bronze, 102 Silver, 23 Gold, 12 Platinum) and 4 unclassified rows would gain one;
+among rows keeping a tier the ICP-derived tier and the criteria tier agree on 88 and disagree on
+147. Coverage is the reason: 239 of the 830 answer three or more of the seven criteria today (0:
+232, 1: 115, 2: 244, 3: 124, 4: 90, 5: 18, 6: 5, 7: 2). Per criterion, live accounts with a fact
+on file: is_agency 575, headcount 457, sells_build_work 239, the capacity gap 187 (all through
+the fallback; the re-worded question has no fact yet), wl_signal 54, recurring_work_shape 29,
+client_budget_size 17. The 145 proposed candidates that are high-confidence, quoted and
+non-conflicting (on 60 accounts) would lift 239 to 251. So the criteria read follows the
+collection sprint on the ready cells rather than preceding it, as the rubric's `still_open` says.
+The bulk confirm (§45, §51) is the owner's lane on the back office page: it resolves the caller from
+the sign-in token, which a database session does not carry, and this session did not pretend to be
+the owner to run it.
+
+**The page.** Built (commits `067712b`, `d14223c`; contract v2 adds *By chase cell*; the ranked
+list is grouped under a header per cell, each row carries its play, an assumed ceiling is marked,
+an aged stamp says so, the dossier hero names the cell and the play; still one rank, no score, no
+email address). Publishing it is blocked on one repository setting: the dispatch of
+`deploy-pages.yml` on the branch was rejected before any step ran — *Branch
+"claude/keen-dirac-q146ng" is not allowed to deploy to github-pages due to environment protection
+rules* — because the `github-pages` environment allows only the default branch,
+`claude/new-session-8qkstx`. Three dispatches earlier the same night, from another working branch
+and from `main`, failed the same way. The fix is the owner's: Settings → Environments →
+github-pages → Deployment branches and tags → add the branch (or "No restriction"), then dispatch
+again; or make the branch the default; or merge it there and dispatch from there (RUNBOOK §28.5).
+Meanwhile the published 17 Sep page reads the new order through the same `pb_board()` — it works,
+without the cell headers and plays.
+
+**A grants finding on the way.** The CLAUDE.md grants check, run after the migrations, reported
+seven views from the 16 Sep set — `pb_current_research`, `pb_engagement`, `pb_engagement_shape`,
+`pb_mdm_junk_hits`, `pb_mdm_resolution`, `pb_orbit_admission_queue`, `pb_orbit_overlap` — holding
+every privilege for `anon` and `authenticated`. All seven are `security_invoker`, so nothing was
+reachable: the base tables refuse, and `pb_current_research`'s sources hold no `anon` grant at all.
+Still wrong, and a check that reports known noise stops being read. Migration
+`prospect_book_revoke_view_writes` revokes the lot, narrows `pb_current_research` to
+`authenticated` select (its sources are `anon` nothing on purpose), and the check returns nothing
+again. Views count as new objects for the revoke rule.
+
+**Migrations, database version against file name.** The MCP stamps its own version at apply time;
+the files carry 18 Sep 10:00–14:00 names. Each recorded statement is byte-identical to its file:
+`prospect_book_board_by_cell` 20260918032803 (file 100000); `prospect_book_scoring_pass` 032853
+(120000); `prospect_book_retire_composite` 032858 (130000); `prospect_book_outcomes_and_lift`
+033410 (110000 — the first apply failed because `pb_lift()` read the snapshot table before it
+existed; the whole migration rolled back, the file was reordered and re-applied);
+`prospect_book_revoke_view_writes` 034006 (140000).
+
+**Open after this section.** The rank of a ready row with no tier. The readiness thresholds and
+the plays, a first setting to be re-cut from the lift report once outcomes exist. The Pages
+environment rule. The collection sprint and, after it, 0.2.1. The scoring pass has its table
+(`pb_actuals`, empty) and its function; nothing scores until a promotion has a first invoice and an
+actual on file. The first monthly lift snapshot fires on 1 Oct.

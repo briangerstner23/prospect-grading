@@ -79,7 +79,7 @@ export type Archetype = "production" | "blended" | "strategy";
  *   fading      some contact within 180 days
  *   dormant     nothing for 180 days
  *   unknown     nothing recorded at all — which is NOT the same as cold (rule 5)
- * Added 18 Sep 2026 (owner decision D1, DECISIONS §50) so readiness can read recorded contact.
+ * Added 18 Sep 2026 (owner decision D1, DECISIONS §52) so readiness can read recorded contact.
  */
 export type EngagementState = "engaged" | "responsive" | "pursued" | "fading" | "dormant" | "unknown";
 
@@ -292,7 +292,7 @@ export interface ProspectFeatures {
   stated_ceiling: Ceiling | null; // sales' hand-set ceiling, treated as inferred
   climb_signals: string[]; // from the climb-evidence list in the rubric
 
-  /* ---- Engagement and stamp age (18 Sep 2026, DECISIONS §50) — optional, additive ----
+  /* ---- Engagement and stamp age (18 Sep 2026, DECISIONS §52) — optional, additive ----
    *
    * `engagement_state` and `days_since_engaged` are pb_engagement's read of the dated contact
    * events, handed in by the resolver. They feed READINESS and the within-cell order only; they
@@ -426,7 +426,7 @@ export interface PotentialRead {
   confidence: Confidence;
   /**
    * True when the headroom was computed on the DEFAULT winnable share (no vendor rank on file):
-   * the ceiling is an assumption, printed as one (owner decision D6, DECISIONS §50). Absent on
+   * the ceiling is an assumption, printed as one (owner decision D6, DECISIONS §52). Absent on
    * reads from rubrics without `potential.flag_when_winnable_defaulted`.
    */
   assumed?: boolean;
@@ -465,7 +465,7 @@ export interface SignalsRead {
  * (`chase.readiness.ladder`), read over qualification, urgency, recorded engagement and live
  * signals. It is the second axis of the board — potential is the first — and it never touches
  * the tier (§20). "cold" means nothing recorded, which is the absence of a reason to chase, not
- * evidence against the agency (rule 5). Owner decision D1, 18 Sep 2026 (DECISIONS §50).
+ * evidence against the agency (rule 5). Owner decision D1, 18 Sep 2026 (DECISIONS §52).
  */
 export interface ReadinessRead {
   label: string;

@@ -160,7 +160,7 @@ export interface ResolveAccount {
 /**
  * A pb_engagement row: recorded contact, derived by the view from dated contact events
  * (DECISIONS §24). Optional input; absent means the caller had no row, which resolves to a null
- * engagement state — not "unknown", and never "cold" (rule 5). Added 18 Sep 2026 (§50).
+ * engagement state — not "unknown", and never "cold" (rule 5). Added 18 Sep 2026 (§52).
  */
 export interface EngagementRow {
   engagement: string | null;
@@ -691,7 +691,7 @@ export function resolveFeatures(input: ResolveInput): ResolveResult {
   const timing = fact<Timing>("timing", (v) => toEnum<Timing>(v, V.timings, V.timingAliases));
   const explicitTimingState = fact<FactState>("timing_state", (v) => toEnum<FactState>(v, FACT_STATES, TIMING_STATE_ALIASES));
   const timing_state: FactState = explicitTimingState ?? (timing === null ? "unknown" : timing === "no_timeline" ? "absent" : "present");
-  // The date the winning timing stamp was observed, so the rubric can age it (DECISIONS §50, D3).
+  // The date the winning timing stamp was observed, so the rubric can age it (DECISIONS §52, D3).
   // A stamp with no date resolves to null and is never aged — unknown is never evidence.
   const timing_observed_at: string | null = timing === null ? null : optStr(facts.get("timing")?.observed_at ?? null);
 

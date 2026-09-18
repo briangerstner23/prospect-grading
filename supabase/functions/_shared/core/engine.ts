@@ -270,7 +270,7 @@ function runFitCriteria(
     throw new RubricError(rubric, "dimension_b.base_tier_from_fit.criteria", "at least one criterion", defs);
   }
   /* Is a "no" that only the FALLBACK question answered evidence, or unknown? DECISIONS §38.4 asked;
-   * the owner ruled unknown (D2, 18 Sep 2026, §50): the fallback exists to let old facts answer a
+   * the owner ruled unknown (D2, 18 Sep 2026, §52): the fallback exists to let old facts answer a
    * re-worded question in the direction the ruling meant, not to score against an agency on the
    * question it replaced. Default false, so 0.2.0 scores as it always did. */
   const fallbackNoIsUnknown = optBoolIn(rubric, reqObj(rubric, "dimension_b.base_tier_from_fit"), "fallback_no_is_unknown", "dimension_b.base_tier_from_fit", false);
@@ -647,7 +647,7 @@ function potentialOf(
     year1Basis = "icp_prior";
   }
 
-  /* An ASSUMED ceiling (owner decision D6, 18 Sep 2026, DECISIONS §50): the headroom was computed
+  /* An ASSUMED ceiling (owner decision D6, 18 Sep 2026, DECISIONS §52): the headroom was computed
    * on the default winnable share because no vendor rank is on file. The number is an assumption
    * and the card says so — a flag the rubric names, and a `winnable_basis` the confidence ladder
    * can read. A rubric without `potential.flag_when_winnable_defaulted` raises no flag (0.1.0–0.1.6). */
@@ -854,7 +854,7 @@ export function dealHealth(deals: DealHealthInput[], asOf: string, rubric: Rubri
 /* ------------------------------------------------------------------ *
  * readiness, the chase cell and the chase key (rubric.chase; 0.1.7 onward)
  * ------------------------------------------------------------------ *
- * Owner decision D1, 18 Sep 2026 (DECISIONS §50): the board is a GRID, not a sort. Potential
+ * Owner decision D1, 18 Sep 2026 (DECISIONS §52): the board is a GRID, not a sort. Potential
  * (the tier, a size label — §20, §40) is one axis; READINESS (is there a reason to work this
  * account this week) is the other; each cell names a play. The cell is the first element of
  * the chase order and the tier the second, which is the fit-by-readiness grid the field uses.
@@ -1292,7 +1292,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
    * Unclassified whatever its ICP label says (the label is descriptive there, not the grade).
    * Under the ICP path a null base tier and a null ICP class are the same event, so nothing
    * changes for 0.1.0–0.1.6. Found by the 0.2.0 preview of 18 Sep: 29 rows read "Ranked" with
-   * no tier (DECISIONS §50). */
+   * no tier (DECISIONS §52). */
   const noBaseTier = usesCriteria && baseTier === null;
   // Under the criteria path the base tier decides (the ICP label is descriptive); under the ICP
   // path the label decides, exactly as before.

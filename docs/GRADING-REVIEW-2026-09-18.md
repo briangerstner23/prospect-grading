@@ -7,6 +7,8 @@ the book was changed to produce this, with one exception: a write-nothing previe
 0.2.0 was run at 02:18 UTC (pg_net request 4220) so §5 could report what the six-criteria fit
 read would produce today.*
 
+*Status, 18 Sep 2026, 03:45 UTC (DECISIONS §52): D1, D3, D4, D6 and D7 are live in rubric 0.1.7 (fingerprint `dec7d291`, activated 03:37 UTC, 830 reads), and the twelve never-fired rules of D2 are parked in it. The criteria fit read (D2, D5) is draft 0.2.1, registered and previewed — 587 of 830 would be Unclassified today because only 239 accounts answer three of the seven criteria — and held until the collection sprint. The page is built and blocked on one repository setting. The numbers below describe the book as it stood on 0.1.6 the same morning; §8 reproduces them.*
+
 The owner asked three questions. Is anything actually being graded, or is a lot of information
 just sitting there? Is the method a proven science, or a wheel being reinvented? And what is this
 kind of selling called, so that the right things get looked at. The answers, in order: yes, but

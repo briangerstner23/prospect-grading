@@ -161,7 +161,7 @@ export interface DiffEntry {
   from_rank: number | null;
   /** Position among the previewed accounts under the draft's keys. */
   to_rank: number | null;
-  /** True when the account's position moved. A rubric that reorders the whole book without moving a tier previewed as "0 changed" until 18 Sep (DECISIONS §10, §50). */
+  /** True when the account's position moved. A rubric that reorders the whole book without moving a tier previewed as "0 changed" until 18 Sep (DECISIONS §10, §52). */
   order_changed: boolean;
 }
 

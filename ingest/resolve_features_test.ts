@@ -710,7 +710,7 @@ function run(partial: Partial<ResolveInput> = {}) {
 }
 
 
-/* ---- engagement and the stamp date (DECISIONS §50) ---- */
+/* ---- engagement and the stamp date (DECISIONS §52) ---- */
 {
   const r = run({ engagement: { engagement: "responsive", days_since_engaged: 40, last_engaged: "2026-07-31T00:00:00Z" } });
   eq("engagement: the pb_engagement row resolves to a state and a day count", [r.features.engagement_state, r.features.days_since_engaged], ["responsive", 40]);

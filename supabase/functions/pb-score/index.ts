@@ -20,7 +20,7 @@
  * to_rank, order_changed}], counts, changed, reordered} against the current reads: the
  * preview-before-activate pattern. Since 18 Sep the diff reports ORDER as well as tier — a rubric
  * that reorders the whole book without moving a tier previewed as "0 changed" before (DECISIONS
- * §10, §50). A non-active rubric can only be scored with preview=1; reads are the record and
+ * §10, §52). A non-active rubric can only be scored with preview=1; reads are the record and
  * carry the active version only.
  *
  * Also loads pb_engagement (recorded contact, DECISIONS §24) per account and hands it to the

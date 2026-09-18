@@ -120,7 +120,7 @@ export interface UrgencyResult {
  * Urgency: a stated timing fact wins; else the decayed-total ladder when any live signal
  * exists; else Cold with basis `none`.
  *
- * A stated stamp AGES (owner decision D3, 18 Sep 2026, DECISIONS §50): when the rubric carries
+ * A stated stamp AGES (owner decision D3, 18 Sep 2026, DECISIONS §52): when the rubric carries
  * `signals.urgency.stated_timing_max_age_days` and the stamp's age is known and past the horizon
  * for its value, the stamp no longer decides and the computed ladder takes over. A stamp with no
  * date cannot be aged and still wins (unknown is never evidence — not even against a stamp).

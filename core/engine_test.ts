@@ -907,7 +907,7 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
 }
 
 
-/* rubric 0.1.7 · the grid, the aged stamp, the assumed ceiling, the parked rules (DECISIONS §50)
+/* rubric 0.1.7 · the grid, the aged stamp, the assumed ceiling, the parked rules (DECISIONS §52)
  *
  * Owner decisions of 18 Sep 2026. D1: readiness before size in the chase order — the cell is the
  * first key term and the tier never moves for it (§20). D3: a stated timing stamp ages against a
@@ -995,7 +995,7 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("validation: 0.1.7 names the date PRO-8 is re-run", R17.validation.rerun_on, "2026-12-15");
 }
 
-/* rubric 0.2.1 · the criteria read with the owner's decisions of 18 Sep (D2, D5; DECISIONS §50) */
+/* rubric 0.2.1 · the criteria read with the owner's decisions of 18 Sep (D2, D5; DECISIONS §52) */
 {
   const R21 = RUBRICS["0.2.1"];
   const V20 = load("rubric.prospect.v0.2.json");
@@ -1371,7 +1371,7 @@ check("determinism: input is not mutated", (() => {
   // names the question rather than quietly deciding it.
   // Until 18 Sep this read "Ranked with no tier": status keyed on the ICP label while the grade
   // came from the criteria. The 0.2.0 preview of that day showed 29 such rows, and the fix is
-  // that a row with no base tier is Unclassified whatever its label says (DECISIONS §50).
+  // that a row with no base tier is Unclassified whatever its label says (DECISIONS §52).
   eq("0.2.0: too few answered criteria → Unclassified, whatever the ICP label says", scN.status, "Unclassified");
   eq("0.2.0: …and it carries no tier", scN.effective_tier, null);
   check("0.2.0: …and the reason says why", scN.reason.startsWith("Unclassified: only 0 of 6 fit criteria answered"), scN.reason);
