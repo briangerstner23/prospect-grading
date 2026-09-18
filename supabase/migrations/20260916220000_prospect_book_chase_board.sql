@@ -2,7 +2,7 @@
 -- claude/new-session-glwxzh and never applied under this name; the database ran
 --   20260916142134_prospect_book_chase_board_v2.sql (then _dedupe_registry_join, then _new_logo_rank_v2)
 -- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- the filed version above is the one that is live. DECISIONS §45.
 
 -- The chase board, rebuilt on evidence (DECISIONS §30).
 --

@@ -20,12 +20,12 @@ its data, never share its tables.** The two systems meet at one event only: prom
 core/       prospect_types.ts (the contract: ADDITIVE, NULLABLE changes only — never rename,
             retype or repurpose an existing key; see docs/DECISIONS.md §8)
             rubric.prospect.v0.1.6.json is ACTIVE (17 Sep 22:27 UTC, fp 9a911e2c: the override
-            distance cap removed — max_tiers_moved null, DECISIONS §49; previewed 830 scored,
+            distance cap removed — max_tiers_moved null, DECISIONS §55; previewed 830 scored,
             2 changed, both explained: the owner's own Conduit Digital override, which the cap had
             been refusing, and one Pipedrive row added the same day).
-            v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §40 — added
+            v0.1.5 (retired 17 Sep 22:27; fp 517f4476, four owner rulings, DECISIONS §46 — added
             dimension_b.flag_rules; previewed 829/0 changed).
-            v0.1.4 (retired 17 Sep; it was 0.1.3 + DECISIONS §17 restored, §31).
+            v0.1.4 (retired 17 Sep; it was 0.1.3 + DECISIONS §17 restored, §37).
             v0.1.3 (retired; recovered from the database 17 Sep — it had had no file; see
             docs/STATE-SNAPSHOT-2026-09-17.md). Also on disk: v0.1(.0, retired),
             v0.1.1 and v0.3 (files with NO pb_rubric_versions row), v0.1.2 and v0.2 (registered
@@ -60,7 +60,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             20260915090000 website reads · 090100 fact source precedence · 090200 website team pages ·
             090300 website retry window (the last three transcribed 17 Sep from the database, where
             they had run without a file — DECISIONS §26) ·
-            20260917100000 reconcile state (§34) · 110000 potential snapshot key (§36). All applied.
+            20260917100000 reconcile state (§40) · 110000 potential snapshot key (§42). All applied.
             20260915090000 website reads ·
             20260915120000 fact source precedence ·
             20260915130000 website team pages ·
@@ -94,10 +94,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             "who do I call today" board — a different question (all applied)
             (the 16 Sep set above was written on branch claude/new-session-glwxzh and merged
             17 Sep; a few of its inline §-references point at sections that branch never wrote
-            and have been dropped — DECISIONS §38) ·
+            and have been dropped — DECISIONS §44) ·
             20260917200000 board public read (SUPERSEDED — a view grant cannot work here) ·
             210000 pb_board() definer · 220000/230000 prospect_board fast (8.1s → 0.80s; the
-            `as materialized` fence, §42) · 240000 pb_dossier() · 250000 dossier public (§43) ·
+            `as materialized` fence, §48) · 240000 pb_dossier() · 250000 dossier public (§49) ·
             260000 board carries account_id · 270000 call attendees by name only.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
@@ -105,13 +105,13 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)
-web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the prospect board, live,
+web/        board.html — THE WORKING SURFACE (DECISIONS §43, §47, §49): the prospect board, live,
             AND the dossier behind every row. Reads pb_board() for the list and pb_dossier(uuid)
             for one agency — both SECURITY DEFINER functions, because the view and its sources stay
             closed to anon (seventeen objects under the board, nine more under the dossier) and
             granting them all is a far larger decision than exposing two read functions. Renders the
             engine's own chase_rank_key order and the 16 Sep artifact's own dossier sections, in its
-            order. Public, no sign-in (owner ruling §43), no data baked in. Light by default with a
+            order. Public, no sign-in (owner ruling §49), no data baked in. Light by default with a
             remembered dark toggle; every localStorage touch wrapped. NO EMAIL ADDRESSES reach the
             page — not from pb_contacts, not from call attendees (names and side only). Adding a
             section, or dropping one, means updating scripts/board_page_test.ts, which pins all 13
@@ -184,7 +184,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
 7. **Overrides go through the register.** `pb_register` kind `override`, owner lane only,
    reason code, written reason and expiry — all still required, all still enforced by the engine.
    The **distance cap is gone**: `override.max_tiers_moved` is `null` in rubric 0.1.6 (owner,
-   17 Sep 2026 — DECISIONS §49 retires July's "one grade max"), so an override may move a tier to
+   17 Sep 2026 — DECISIONS §55 retires July's "one grade max"), so an override may move a tier to
    any value in `vocabulary.tiers`. A move of more than one tier raises
    `Override moved more than one tier` and the trace says how far it went. A **number** in that
    key restores the cap; an **absent** key is still an error, because "no cap" has to be stated on
@@ -200,7 +200,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    pipedrive > anything else`, added 15 Sep 2026), then newest written, then newest observed. The
    view is what pb-score reads and the function is what the pure path reads; they must not drift —
    and they did, for two days, because the view changed in a migration that had no file
-   (DECISIONS §33). Without the middle step the tiebreak is which seed ran last — 38 accounts flip
+   (DECISIONS §39). Without the middle step the tiebreak is which seed ran last — 38 accounts flip
    across the Partner threshold on that alone (§22). `resolve_features_test.ts` pins the order
    against the migration.
 10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
@@ -252,9 +252,9 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   commit; RUNBOOK §3), **pb-notes v11**, **pb-sync v2**, **pb-pipedrive-webhook v2**,
   **pb-fathom-webhook v2** (those four from 14 Sep bundles, `561f289`/`53fb656`). **Deploy pb-score
   BEFORE activating a rubric that uses a feature its engine lacks** — the pre-0.1.5 engine ignores
-  `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§40), and
+  `dimension_b.flag_rules` entirely, so a preview on it proves nothing about the new rule (§46), and
   the pre-v13 engine reads `override.max_tiers_moved` with `reqNum`, so 0.1.6's `null` would have
-  thrown for every account (§49). **Check `verify_jwt` in the deploy response every time**: the
+  thrown for every account (§55). **Check `verify_jwt` in the deploy response every time**: the
   call defaults it to TRUE, and v12 went out that way — the gateway would have refused pg_cron's
   bearer before the function was reached. v13 is the same commit, correctly at false. This line has
   been wrong more than once — read it from `list_edge_functions`, not from here, and check drift

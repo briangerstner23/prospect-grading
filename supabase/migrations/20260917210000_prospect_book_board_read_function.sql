@@ -11,11 +11,11 @@
 -- delivery snapshot, raw contact events.
 --
 -- So: one SECURITY DEFINER function returning exactly the board's own columns, granted to anon.
--- Same pattern as pb_reconcile_state (§34), same reasoning. The page can read the board; nothing
+-- Same pattern as pb_reconcile_state (§40), same reasoning. The page can read the board; nothing
 -- underneath it becomes readable. If the board should ever show a column it does not return, that
 -- is an edit here and a person's decision — which is the point.
 --
--- It returns no composite score. pb_chase_board carries one (pb_chase_scores, unruled — §37) and
+-- It returns no composite score. pb_chase_board carries one (pb_chase_scores, unruled — §43) and
 -- this function does not select it.
 --
 -- `duplicate_records` is text in the view (a joined list of the duplicate names), not a boolean;
@@ -58,7 +58,7 @@ revoke all on function public.pb_board() from public;
 grant execute on function public.pb_board() to anon, authenticated, service_role;
 
 comment on function public.pb_board() is
-  'The working surface (DECISIONS §37): prospects ranked by potential, one row per company, in '
+  'The working surface (DECISIONS §43): prospects ranked by potential, one row per company, in '
   'the engine''s own chase_rank_key order. SECURITY DEFINER so the page can read the board '
   'without any of the seventeen objects beneath it becoming readable — the chase weights, the '
   'identity registry and the Orbit snapshot stay closed. Returns no composite score (PRO-0).';

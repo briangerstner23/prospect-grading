@@ -2,13 +2,13 @@
 -- whether the machinery actually ran, what the active rubric is, and what MOVED on the last run.
 --
 -- The last one is the point. The owner's standing complaint is that the screens change under him
--- (DECISIONS §46). pb_movement has counted tier moves per run since 13 Sep and nothing has ever
+-- (DECISIONS §52). pb_movement has counted tier moves per run since 13 Sep and nothing has ever
 -- shown them, so a tier could change overnight and the only way to notice was to have remembered
 -- where it was. A number on the front page is not the whole answer — naming WHICH accounts moved
 -- is the rest of it, and that is still open — but it is the difference between a silent change
 -- and a visible one.
 --
--- SECURITY DEFINER for the same reason as pb_board() and pb_dossier() (§41): pb_fact_candidates
+-- SECURITY DEFINER for the same reason as pb_board() and pb_dossier() (§47): pb_fact_candidates
 -- is closed to anon and stays closed. This returns COUNTS of it, grouped by the reason each claim
 -- is waiting, and never a claim.
 create or replace function public.pb_dashboard()

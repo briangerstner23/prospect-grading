@@ -2,7 +2,7 @@
 -- claude/new-session-glwxzh and never applied under this name; the database ran
 --   20260916142220_prospect_book_chase_board_dedupe_registry_join.sql (which creates pb_duplicate_accounts)
 -- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- the filed version above is the one that is live. DECISIONS §45.
 
 -- The duplicate account records that keep surfacing — in call attribution (§29), in the quote
 -- name join, and in the chase board's fan-out. They are one company entered twice, and every pass

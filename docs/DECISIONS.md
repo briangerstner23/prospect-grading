@@ -6,6 +6,10 @@ some in the opposite direction from the brief's recommendation. The brief says t
 wins. This file records how each landed, what in the brief it changed, and the assumptions the
 build proceeds on. Nothing here is a new ruling.
 
+Sections run 1–55 and every number is used once. They did not always: two parallel branches
+collided at §28 and the file carried both sets until 18 September 2026. The numbering note
+immediately above §34 translates any citation of §28 or above written before then.
+
 ## 1 · The seven decisions
 
 | # | Brief asked | Register says | Build does |
@@ -1710,7 +1714,7 @@ as `pb_roster_drift` does for the Pipedrive roster.
 `roster_source` gains `orbit`. Additive, and `core/prospect_types.ts` gains the same member in the
 same commit so the type and the check constraint cannot drift (DECISIONS §8).
 
-## §28 — The email sweep: every prospect domain, read once
+## 28 · The email sweep: every prospect domain, read once
 
 **16 Sep 2026.** Owner instruction, twice: *"YES SWEEP EMAL ALSO"*, then *"yes"* to running it
 to completion. Email was the largest hole in the book. `pb_facts` was 78% a Pipedrive mirror and
@@ -1785,7 +1789,7 @@ ASCII on the way to disk. One byte in 826 names. A hand count would never have f
 checksum found it in two queries. This is the §23 lesson holding: the script is the count, and the
 checksum is the count of the thing the script counts.
 
-## §29 — The orphan calls were never orphans, and the quote history
+## 29 · The orphan calls were never orphans, and the quote history
 
 **16 Sep 2026.** Two sweeps finishing the work §27 and §28 started.
 
@@ -1876,7 +1880,7 @@ Across §27, §28 and §29, on 849 accounts:
 ever contacted. The difference is that it is now a statement about them rather than a statement
 about what the book had bothered to read.
 
-## §30 — The chase board, rebuilt on evidence
+## 30 · The chase board, rebuilt on evidence
 
 **16 Sep 2026.** The owner asked for the top 100 rebuilt on what is recorded rather than on stage
 labels, and for "a substantive increase in the confidence and quality of these choices." This is
@@ -1990,7 +1994,7 @@ entered twice from the delivery system under one domain — which is what made 1
 unattributable in §29, and what the chase board's fan-out was a second symptom of. Merging is an
 identity decision, so rule 8 governs: the view proposes, a person decides.
 
-## §31 — The board ranks companies, not account records
+## 31 · The board ranks companies, not account records
 
 **16 Sep 2026.** Owner instruction, on being shown that the top 100 listed four companies twice:
 *"collapse duplicates."*
@@ -2047,7 +2051,7 @@ parenthetical naming the agency behind a sub-brand. Both are probably right; nei
 A regex loose enough to catch a typo is loose enough to merge two companies that differ by a
 letter, and the book would have no way to tell which it had done.
 
-## §32 — §20 was ruled on 15 September and never reached the engine
+## 32 · §20 was ruled on 15 September and never reached the engine
 
 **16 Sep 2026.** The owner asked why the book showed zero Platinum when he remembered
 sixty-odd. The answer is that §20 — his own ruling, recorded in this file on 15 September —
@@ -2125,7 +2129,7 @@ deploy, and it is the only thing that distinguishes "the API accepted it" from "
 is running." The restored v8 differs from the built bundle by one trailing newline and nothing
 else.
 
-## §33 — The prospect board ranks potential; engagement is a column
+## 33 · The prospect board ranks potential; engagement is a column
 
 **16 Sep 2026.** Owner: *"If you have platinum potential, then it doesn't matter about the
 engagement… the engagement is different than their potential. Is that correct?"* It is, it was
@@ -2183,15 +2187,46 @@ companies and Low on 147 — and **High on none of them**, because High needs th
 qualification facts and the average is 1.01. The ranking is sound and the confidence behind it
 is thin everywhere. That is not a scoring problem; it is 548 recorded calls nobody has read.
 
-> **Numbering note (17 September 2026).** §22–§27 below were written by the 16 September session on
-> branch `claude/new-session-glwxzh`; §28–§37 by the 17 September session on
-> `claude/amazing-mayer-umftf0`. The two branches ran in parallel and both numbered from §22, so on
-> merge the later set was shifted by six. Any reference to §22–§31 written before 17 September
-> means the 16 September set; every reference in this file and in the 17 September documents has
-> been corrected to the numbers used here. §38 was recovered from a third branch. Why eleven
-> branches existed at all, and the wrong claim it caused, is §39.
+> **Numbering note (18 September 2026).** This file has collided with itself twice, and the
+> numbers below are the second repair. Read this before trusting any citation of §28 or above
+> written before 18 September.
+>
+> **What happened.** §22–§27 were written by the 16 September session on branch
+> `claude/new-session-glwxzh`; the 17 September session on `claude/amazing-mayer-umftf0` ran in
+> parallel and also numbered from §22. On merge the later set was shifted by six — but only the
+> later set's own headings moved, so on 17 September the two sessions collided again at 28, and
+> the merge kept both: the 16 September boards entries above (written `## §28 —` through
+> `## §33 —`) and the 17 September audit entries below (written `## 28 ·` through `## 33 ·`).
+> Every citation of §28–§33 in the repository was ambiguous until this repair. §44 was recovered
+> from a third branch. Why eleven branches existed at all, and the wrong claim it caused, is §45.
+>
+> **What was decided (18 September 2026).** Chronological order, which is the order the file
+> already reads in: the 16 September boards set keeps 28–33, the 17 September audit set becomes
+> 34–39, and everything after it shifts by six. Nothing was reordered, reworded or re-ruled — only
+> renumbered. Headings now use one style, `## N · Title`, so a future collision is visible on
+> sight rather than hidden behind two punctuation marks.
+>
+> **Translating an old citation.**
+>
+> | Written before 18 Sep | Now | Which set |
+> |---|---|---|
+> | §28–§33 about the email and quote sweeps, the chase board, the company-level and potential boards | §28–§33, unchanged | 16 September boards |
+> | §28–§33 about the research check, the 17 September audit, Fathom, §17 restored, the four filed migrations, rule 9 | §34–§39 | 17 September audit |
+> | §34–§42 | §40–§48 | |
+> | §43–§49 (and §43a) | §49–§55 (and §49a) | |
+>
+> Older citations shift twice: a reference written before the 17 September merge to that session's
+> §22–§27 means §28–§33 in the numbering it was corrected to, and §34–§39 here.
+>
+> **One place still carries the old numbers on purpose.** The `ruling_note`, `note` and
+> `scarcity_note` strings inside `core/rubric.prospect.v*.json` were left untouched, because a
+> rubric's bytes *are* its engine fingerprint — pinned in `docs/RESEARCH-CONFORMANCE.md`, in
+> `core/engine_test.ts` and in the `pb_rubric_versions` row that graded the book, and editing one
+> would break the proof that the file on disk is the spec the database ran. `docs/METHOD.md` is
+> generated from the active rubric, so it carries them too. Read `DECISIONS §40` in a rubric or in
+> METHOD.md as §46 here, and `DECISIONS §49` as §55.
 
-## 28 · The research was never checked against the build (16 September 2026)
+## 34 · The research was never checked against the build (16 September 2026)
 
 **Not a ruling.** This section records a measurement and creates a standing check. Every gap it
 names is a candidate for a ruling and none of them is one. Where this section and the register
@@ -2264,7 +2299,7 @@ No threshold moves. No gate mode changes. No rubric is activated. Geography stay
 white-label signal stays out of the fit read, and decision 4 stays unanswered — all three are now
 written down where the next session will trip over them instead of rediscovering them.
 
-## 29 · What the 17 September audit found: the rubric grading the book had no file (17 September 2026)
+## 35 · What the 17 September audit found: the rubric grading the book had no file (17 September 2026)
 
 **Not a ruling.** A measurement, a version point, and a rule adopted for how work lands from now
 on. Every figure is from the database on 17 Sep and reproducible from `docs/STATE-SNAPSHOT-2026-09-17.md`.
@@ -2272,7 +2307,7 @@ on. Every figure is from the database on 17 Sep and reproducible from `docs/STAT
 ### What prompted it
 
 The owner asked whether iteration had damaged the foundation and where in the build he actually
-was. §28 had compared the repo to the research's ten requirements and found the gaps were all in
+was. §34 had compared the repo to the research's ten requirements and found the gaps were all in
 the measuring half of the design. That comparison was made against a file — and the file was not
 the rubric grading the book.
 
@@ -2319,7 +2354,7 @@ overrides, zero promotions, zero manual signals, ever. Two owners, zero raters.
 
 **Documents described a system that was not running.** PHASE0.md (two false Pass entries),
 METHOD.md (generated from a file, not from the active rubric), and CLAUDE.md's own layout line
-(named two rubric files when there were six — which is why §28's gate checks were run against
+(named two rubric files when there were six — which is why §34's gate checks were run against
 the retired 0.1.0 and reported as if active). PHASE0 and CLAUDE.md are corrected in the version
 point; METHOD.md waits on repair item 5.
 
@@ -2357,7 +2392,7 @@ working surface; whether there is ever a second rater; whether the gate should b
 the owner's, listed in `docs/REPAIR-PLAN.md`. No threshold moves and nothing is activated.
 
 
-## 30 · Fathom, reconnected from the database, and what the 12 September entry got wrong (17 September 2026)
+## 36 · Fathom, reconnected from the database, and what the 12 September entry got wrong (17 September 2026)
 
 **Not a ruling.** Repair item 1 of `docs/REPAIR-PLAN.md`, executed; the record of what was found
 on the way.
@@ -2408,7 +2443,7 @@ Nothing about the rubric, the reads, or any threshold. One connector, one gap, o
 the record.
 
 
-## 31 · §17 restored to the rubric that grades the book (17 September 2026)
+## 37 · §17 restored to the rubric that grades the book (17 September 2026)
 
 **Not a ruling.** Repair item 2, executed. The record of a ruling that had been lost between the
 file that carried it and the row that graded.
@@ -2458,7 +2493,7 @@ Whether climb evidence should cap again; whether the gate bites; anything in Tra
 put back where it belonged.
 
 
-## 32 · Four migrations that ran without a file, filed verbatim (17 September 2026)
+## 38 · Four migrations that ran without a file, filed verbatim (17 September 2026)
 
 **Not a ruling.** Repair item 3, first half.
 
@@ -2487,7 +2522,7 @@ whether that system stays (decision 2). Their SQL is saved outside the repositor
 can be taken without losing anything either way.
 
 
-## 33 · Rule 9 drifted for two days, and the check that said it had not was reading a stale file (17 September 2026)
+## 39 · Rule 9 drifted for two days, and the check that said it had not was reading a stale file (17 September 2026)
 
 **Not a ruling.** A defect, its cause, and the fix — recorded because the cause is the pattern this
 whole repair is about.
@@ -2520,7 +2555,7 @@ of silent corruption. Repair item 4's CI deploy owns it; the ledger row
 `RECON-pb-score-bundle-behind-source` carries the probe (`SOURCE_RANK` in the deployed source).
 
 
-## 34 · The other half of the check: declared versus running, from CI, with no secrets (17 September 2026)
+## 40 · The other half of the check: declared versus running, from CI, with no secrets (17 September 2026)
 
 **Not a ruling.** Repair item 4, executed.
 
@@ -2552,7 +2587,7 @@ detect anything.
 hours — the database can drift without a push, which is how it drifted the first time — and, on
 the default branch, deploys the five edge functions **from source** with the Supabase CLI. That
 last job does nothing until `SUPABASE_ACCESS_TOKEN` exists as a repository secret; it says so and
-skips. When it runs, the deployed pb-score stops being behind source (§33) without anyone
+skips. When it runs, the deployed pb-score stops being behind source (§39) without anyone
 carrying a bundle by hand.
 
 What this does not do: read the Grading Register, decide anything about the boards, or make a
@@ -2566,7 +2601,7 @@ workflow file on the repository's default branch, and the default is still
 branch is the default or merged into it — REPAIR-PLAN decision 5. Until then drift between pushes
 goes unchecked, which is exactly the window the schedule exists to close.
 
-## 35 · METHOD.md described a rubric nothing ran; now it is generated from the active file and held there (17 September 2026)
+## 41 · METHOD.md described a rubric nothing ran; now it is generated from the active file and held there (17 September 2026)
 
 `docs/METHOD.md` is the page a salesperson quotes. Until today it was generated from
 `core/rubric.prospect.v0.1.json` — version 0.1.0, retired — while 0.1.3 and then 0.1.4 graded the
@@ -2583,16 +2618,16 @@ What changed:
   visible on the page as well as in the engine.
 - `scripts/conformance_test.ts` gained `ACTIVE-method-source`: the generator's default file must
   be the ledger's `active_rubric.file`. Activating a new version without repointing the
-  generator now fails `npm test`, alongside the fingerprint pin from §29.
+  generator now fails `npm test`, alongside the fingerprint pin from §35.
 - Deal-health `params` are printed sorted by name. 0.1.4 was written back from the database,
   whose `jsonb` reorders keys; a document must not change because a file was round-tripped.
   The other tables that reordered (aliases, ICP maps) follow the file's order and are unchanged
   in content.
 
 The 0.1.0 fixtures and `docs/BASELINE.md` are untouched; the fixture half of item 5 landed in
-§31 (PB04 and PB20 pinned on 0.1.4).
+§37 (PB04 and PB20 pinned on 0.1.4).
 
-## 36 · Potential snapshots accumulate nightly; the freeze at promotion is a selection, not a write (17 September 2026)
+## 42 · Potential snapshots accumulate nightly; the freeze at promotion is a selection, not a write (17 September 2026)
 
 REPAIR-PLAN item 6. `pb_potential_snapshots` had the research's full schema and zero rows since
 9 Sep. Requirement R4 — freeze what the book claimed, score it against what happened — is the
@@ -2640,7 +2675,7 @@ carries p50. All 598 fall in two bands — the ICP prior bands `$6K–16K` (536)
 in practice the ICP prior map, which is a fact Track B should weigh when it proposes a naive
 baseline. The ledger row `R4-snapshots-empty` keeps its id so the flip is visible in history.
 
-## 37 · The working surface is the Prospect Board; the boards stay; raters join at release (17 September 2026)
+## 43 · The working surface is the Prospect Board; the boards stay; raters join at release (17 September 2026)
 
 Three of the five owner decisions in `docs/REPAIR-PLAN.md`, answered by the owner on 17 Sep.
 Recorded in the owner's terms first, then what follows from them.
@@ -2674,7 +2709,7 @@ What follows:
    back office (sign-in, candidate review, merges, the register). Decision 3 below needs exactly
    that: a page where people enter answers. Two pages, one record.
 3. **Decision 2 follows from decision 1: the 16 Sep boards system stays.** Its 29 migrations are
-   filed verbatim from `schema_migrations.statements` (the same way §32 filed four), tested, and
+   filed verbatim from `schema_migrations.statements` (the same way §38 filed four), tested, and
    the ledger's `known_unfiled_migrations` list goes to zero. `pb_prospect_board` is currently
    revoked from `anon` and `authenticated`; a live page needs a read grant, and under §5 (reads are
    public) that is `select` to `anon` on the view — with the dossier's contact and people data
@@ -2703,7 +2738,7 @@ an example.
 contact names and staff names in its dossiers. The database keeps `pb_contacts` closed to the
 public on purpose. The live page should follow the database, not the artifact.
 
-## 38 · What the redeploy changes, measured, and four things to settle before the collector lands (16 September 2026)
+## 44 · What the redeploy changes, measured, and four things to settle before the collector lands (16 September 2026)
 
 pb-score v6 (built from `53fb656`) predates the four commits of 15 Sep that touch its import
 closure (§19 fit fallback, §20 `caps_ceiling`, §21 delivery capacity, §22 source precedence in
@@ -2761,7 +2796,7 @@ Redeploying v7 changes no read tonight. The stored 0.2.0 draft is also older tha
 (`flags.vocabulary` 18 vs 21 entries) and 0.3.0 has no row yet; both are refreshed as drafts at
 deploy time, previewed, and activated by nobody but the owner.
 
-## 39 · Eleven branches, one database, and a claim that was wrong because of it (17 September 2026)
+## 45 · Eleven branches, one database, and a claim that was wrong because of it (17 September 2026)
 
 **Not a ruling — a correction and a standing rule.** The owner asked why so many branches exist,
 who is managing them, and how we got here. The answer, measured:
@@ -2776,14 +2811,14 @@ accumulated all of the work while the git history fragmented.
 **What that cost.** The 17 September session reported, repeatedly and in the ledger, that **29
 applied migrations had no file**. That was true of the branch it was standing on and false of the
 repository: 24 of those files were committed on `claude/new-session-glwxzh` the day before. The
-reconcile check built that same day (§34) compares the database to *the working tree*, which is
+reconcile check built that same day (§40) compares the database to *the working tree*, which is
 exactly the blind spot that produced the wrong claim. A check that reads one branch cannot see
 work on another.
 
 **Measured on 17 Sep, after fetching every branch.** Eleven branches. Eight were fully contained
 in `claude/amazing-mayer-umftf0` (nothing to recover). Two were not: `claude/new-session-glwxzh`
 (19 commits — the whole 16 Sep boards system) and `claude/gracious-albattani-grgu0k` (one commit,
-§38). One is an intentional orphan snapshot, `baseline-v0.1.0`, which is not a line of work and
+§44). One is an intentional orphan snapshot, `baseline-v0.1.0`, which is not a line of work and
 stays where it is. Both divergent branches are merged into this one by the commits above; nothing
 was discarded in the conflict resolutions, and the merge is recorded commit by commit there.
 
@@ -2799,12 +2834,12 @@ was discarded in the conflict resolutions, and the merge is recorded commit by c
 4. **The default branch must be the line of work** (owner decision 5). Until it is, GitHub runs
    no scheduled reconcile at all, which is the same blindness on a timer.
 
-## 40 · Four owner rulings: the floor is visible, character never parks, Platinum is a size (17 September 2026)
+## 46 · Four owner rulings: the floor is visible, character never parks, Platinum is a size (17 September 2026)
 
 The four questions `docs/REPAIR-PLAN.md` and `docs/STANDARDS.md` §9 had left open, answered by the
 owner. Rubric **0.1.5** carries them; it changes exactly one behaviour and the preview proved it.
 
-**1 · The trunk is `main`.** Eleven session branches existed (§39). The owner chose a normal trunk
+**1 · The trunk is `main`.** Eleven session branches existed (§45). The owner chose a normal trunk
 name over adopting a session branch: `main` is pushed from the consolidated line of work, and the
 owner sets it as the repository default in GitHub. Until that setting changes, GitHub runs no
 scheduled reconcile — it reads scheduled workflows only from the default branch.
@@ -2829,7 +2864,7 @@ stays, ranks where it ranks, and carries a visible warning before anyone spends 
 has ever collected it. So `ADJ-ICP3-FLOOR` has never once fired, and the new flag starts inert —
 which is why the fixture diff is 0 of 25 and the preview 0 of 829. The rule is correct and asleep;
 it wakes the day a rater records an average project size. That fact is now the first candidate for
-the rater questions of §37.
+the rater questions of §43.
 
 **4 · Platinum is a SIZE label; scarcity lives in the chase order (STANDARDS A2).** Platinum (67)
 outnumbers Gold (39) because §20 stopped the ceiling depending on engagement, so 143 accounts reach
@@ -2868,7 +2903,7 @@ rule, as predicted.
 `(account_id, taken_at, estimator)` behaving as designed: the estimator name embeds the rubric
 version, so two rubrics active on one day produce two parallel claims rather than one overwriting
 the other. That is the honest shape — a different rubric is a different estimator and could produce
-different edges — but §36's sentence "a re-run the same day replaces the day's row, never doubles
+different edges — but §42's sentence "a re-run the same day replaces the day's row, never doubles
 it" is only true *within one estimator*, and a naive count of rows per day now double-counts.
 
 **The selection rule, stated now so the scoring pass cannot get it wrong:** one row per account per
@@ -2877,9 +2912,9 @@ made that day. The frozen snapshot at promotion is still the newest row with
 `taken_at <= pb_promotions.first_invoice_at` under that same selection. Nothing is deleted; both
 claims stay, because which rubric produced an estimate is exactly what calibration needs to know.
 
-## 41 · The board goes live, and a grant that would have published the plumbing (17 September 2026)
+## 47 · The board goes live, and a grant that would have published the plumbing (17 September 2026)
 
-§37 ruled the 16 September board to be *the page*. This builds it: `web/board.html`, a live read
+§43 ruled the 16 September board to be *the page*. This builds it: `web/board.html`, a live read
 of the database rather than a snapshot. The owner's requirement, in his words — *"I always want
 the best, most accurate, most confident data to be displayed on these screens"* — is met
 structurally, not by discipline: the page holds no data of its own, so what it shows is whatever
@@ -2908,7 +2943,7 @@ it would have taken eleven more grants, each publishing something nobody ruled p
 
 **The fix, and the general rule.** `pb_board()`, a `SECURITY DEFINER` function returning exactly
 the board's columns, granted to `anon`; the view's grant is revoked. Same pattern as
-`pb_reconcile_state` (§34). The page reads the board; nothing underneath becomes readable; and
+`pb_reconcile_state` (§40). The page reads the board; nothing underneath becomes readable; and
 adding a column to the page is now an edit to a function a person reviews, which is the point.
 
 **The rule this makes standing: a grant on a view is not a decision about the view.** It is a
@@ -2937,7 +2972,7 @@ verified is the deploy job's success and the file it published (commit `d75f261`
 not a byte-for-byte read of the live page. A person opening it is the remaining check.
 
 
-## 42 · The board was live and unusable: eight seconds, and the page said so (17 September 2026)
+## 48 · The board was live and unusable: eight seconds, and the page said so (17 September 2026)
 
 The board deployed, the owner opened it, and it showed the failure panel rather than a list:
 `500 {"code":"57014", "message":"canceling statement due to statement timeout"}`. That is the
@@ -2988,22 +3023,22 @@ back office was unreachable from it. Both pages now carry a link to the other, a
 which screen you are on. Pinned by `scripts/board_page_test.ts`, which now also fails if a
 `prefers-color-scheme` rule ever decides the theme again.
 
-## §43 — The dossier was dropped, and that was not mine to decide (17 Sep 2026)
+## 49 · The dossier was dropped, and that was not mine to decide (17 Sep 2026)
 
 The owner's words, on opening the board: *"all of the dossiers are missing, i gave instructions
 that a previous artifact was the layout to maintain, i do like elements of this, but what
 happened."*
 
-**What happened.** The 16 September artifact was ruled the layout to keep (§37). It is a board
+**What happened.** The 16 September artifact was ruled the layout to keep (§43). It is a board
 where every row opens into a dossier — twenty sections that answer, for one agency, what we know
 and how we know it. I built the table and shipped it without the dossier, then wrote a line in
-§41 saying the dossier "stays behind sign-in" as though that settled a question. It did not settle
+§47 saying the dossier "stays behind sign-in" as though that settled a question. It did not settle
 anything: the owner had already decided, and I replaced his decision with mine and recorded mine
 as the record. The privacy reasoning was sound — the dossier's sources carry candid judgements
 about named companies, which CLAUDE.md keeps closed to `anon` — but a sound reason to *ask* is not
 a reason to *drop*, and writing my answer into DECISIONS made it look asked and answered.
 
-**The standing rule this adds to §39's four.** When a ruling and a default disagree, the ruling
+**The standing rule this adds to §45's four.** When a ruling and a default disagree, the ruling
 wins and the disagreement is a question for the owner, never a line in DECISIONS. A decision
 recorded here that the owner never made is worse than no record: the next session reads it as
 settled and the original instruction is gone for good.
@@ -3014,7 +3049,7 @@ last forty contact events, every resolved fact with its evidence label and sourc
 register rows and the Apollo check. The page renders the artifact's own sections in its own order:
 Make this call · Where we win · What kills it · How they got here · How we got here · How they see
 us · Why it ranks here · What we actually know · Who they buy for · The site read · Independent
-check · Decisions on the record · Sources. `SECURITY DEFINER`, for the reason §41 gives: the
+check · Decisions on the record · Sources. `SECURITY DEFINER`, for the reason §47 gives: the
 alternative is granting select on nine more tables to every reader, which is a far larger decision
 than this one.
 
@@ -3039,7 +3074,7 @@ widening: the id is an opaque uuid, it is the key `pb_dossier()` already takes, 
 `scripts/board_page_test.ts` now runs 54 checks and pins every section name, so a future edit that
 quietly drops a section fails the build rather than the owner's next look at the page.
 
-### §43a — The privacy fix that did not fix it
+### 49a · The privacy fix that did not fix it
 
 Within the hour, the "names only" change above turned out not to do what I had just written down
 that it did. Worth its own entry, because the failure is a habit rather than a typo.
@@ -3070,7 +3105,7 @@ not evidence of a result. The same applies to the per-key habit itself: where th
 kind of data* rather than *a column*, apply the guard once at the boundary, because the per-key
 version is the version that misses one.
 
-## §44 — The override moves to the working surface (17 Sep 2026)
+## 50 · The override moves to the working surface (17 Sep 2026)
 
 Owner: *"i want to make the overrides on the main screen."*
 
@@ -3078,7 +3113,7 @@ The override form existed only in the back office, which meant judging a tier wr
 and correcting it in another — with the dossier that justified the correction on the screen you
 just left. The correction belongs where the reading happens.
 
-**The board now signs in.** Reading still needs no account and never will (§43); signing in adds a
+**The board now signs in.** Reading still needs no account and never will (§49); signing in adds a
 **lane**. Written against GoTrue's REST endpoints with plain `fetch`, deliberately: the page is one
 inline script with no imports and no CDN, and pulling in a client library to send one email and
 hold one token would cost that for nothing. The magic-link fragment is captured and stripped from
@@ -3114,7 +3149,7 @@ each run, but nothing names *which*. Movement is a number in a table nobody open
 list on this page, a tier can change overnight and the only way to notice is to have remembered
 where it was.
 
-## §45 — Bulk confirm, narrowed rather than refused (17 Sep 2026)
+## 51 · Bulk confirm, narrowed rather than refused (17 Sep 2026)
 
 Owner: *"are there facts that are clear and can be committed without human approval? i don't want
 to approve everything, many of the comments from Fathom and email are clear."*
@@ -3159,7 +3194,7 @@ limits, each for a reason:
   what someone reads when deciding whether to trust a fact. It must never present one click as
   eleven considered decisions.
 
-**Tested by output, per §43a**, not by reading the diff: the real write path was run end to end
+**Tested by output, per §49a**, not by reading the diff: the real write path was run end to end
 against the live queue inside a transaction that was then rolled back — 5 named, 3 confirmed, 2
 refused (one medium-confidence, one disagreeing with a Fathom call), 3 facts written, and a
 follow-up query confirming 915 still proposed and nothing left behind. The lane guards were
@@ -3171,7 +3206,7 @@ every night, because that reader queues even its high-confidence reads. Letting 
 on the same four tests the note sweep already uses is the change that stops the queue growing —
 and it is a change to rule 8's automated path, so it is a ruling, not a fix.
 
-## §46 — The screens stop changing: a contract, written from the artifact (17 Sep 2026)
+## 52 · The screens stop changing: a contract, written from the artifact (17 Sep 2026)
 
 Owner, after opening the rebuilt board: *"there is a lot of info missing, and the info is not
 designed well as it keeps changing"* — the third time in one session that the churn itself was the
@@ -3224,12 +3259,12 @@ how many accounts changed tier on each run; nothing names *which*. The dashboard
 count and says plainly that naming them is the missing half. Until that exists, a tier can change
 overnight and the only way to notice is to have remembered where it was.
 
-## §47 — Override from the list, by clicking the tier (17 Sep 2026)
+## 53 · Override from the list, by clicking the tier (17 Sep 2026)
 
 Owner, pointing at the TIER column: *"I want to be able to click this icon here on this page, and
 I want to be able to manually override the classification."*
 
-The override existed on the dossier (§44), which meant seeing a wrong tier in the list and having
+The override existed on the dossier (§50), which meant seeing a wrong tier in the list and having
 to open a whole dossier to correct it. The chip is where the judgement happens, so the chip is the
 control. It is now a `<button>`: keyboard reachable, labelled with the company and its current
 tier, and the row's own click handler ignores it — otherwise changing a grade would also navigate
@@ -3255,7 +3290,7 @@ and submit another, with no visible symptom. Every lookup is now scoped to its o
 a check pins it. Renaming the ids in one copy would have "fixed" it by creating two forms that can
 drift, which is the worse repair.
 
-**And the contract caught its own gap.** "Change this grade" had been on the dossier since §44 and
+**And the contract caught its own gap.** "Change this grade" had been on the dossier since §50 and
 was never named in `web/CONTRACT.json` — the undeclared-section check only scanned `blk()` titles,
 and the panel is hand-written markup. Widening it to every `<h3>` was the obvious fix and the
 wrong one: it swept up *Tier*, *Confidence* and *Engagement*, which are sub-headings inside a
@@ -3263,7 +3298,7 @@ section the contract already names. A heading is not a section because it is lar
 section because it **declares itself one**. The check now reads `blk("Name")` and
 `data-section="Name"`, which is the convention the board's own regions already used.
 
-## §48 — Sign in where the form is, and one session for both pages (17 Sep 2026)
+## 54 · Sign in where the form is, and one session for both pages (17 Sep 2026)
 
 Owner, with the dialog open on screen: *"when i click the button i get this screen and can not
 change the designation."* The dialog worked. It just said **"Sign in at the top of the page and
@@ -3277,7 +3312,7 @@ carries its own email field and a *Send me a sign-in link* button, and the link 
 he was on. One function sends it, used by both the nav and the panel, so they cannot drift.
 
 **The two pages kept SEPARATE sessions on the same origin.** `board.html` rolls its own GoTrue
-calls with its own `localStorage` key (§44, deliberately: one inline script, no CDN). `index.html`
+calls with its own `localStorage` key (§50, deliberately: one inline script, no CDN). `index.html`
 uses supabase-js, which keeps its own. Same browser, same project, same origin — and signing in on
 one did nothing whatsoever for the other. Nobody would guess that from the outside; it just looks
 like sign-in not working. The board now reads the library's key too, so one sign-in covers both.
@@ -3293,7 +3328,7 @@ some way nobody looks for. The right repair was one *read* across the boundary, 
 rule about which copy owns the token — not a second refresh loop, and not renaming keys until the
 symptom went away.
 
-## §49 — The one-tier override cap is removed (17 Sep 2026)
+## 55 · The one-tier override cap is removed (17 Sep 2026)
 
 Owner, refused by his own engine while moving a Platinum to Bronze: *"I need to remove this rule."*
 
@@ -3337,7 +3372,7 @@ committed file are provably the same rubric.
 **METHOD.md was stale and said it was current.** `explain/generate_method.ts` still pointed at
 0.1.5, so the generator happily reported "the published method matches the rubric" while documenting
 a retired one. Repointed, regenerated, and `ACTIVE-method-source` in the conformance ledger caught
-the same drift independently — which is the check working exactly as §35 intended.
+the same drift independently — which is the check working exactly as §41 intended.
 
 **The register.** PRO-0…PRO-18 are authoritative and live outside this repository (RECON-register-
 unread: no session has read them directly). This entry records the owner's ruling as made; the

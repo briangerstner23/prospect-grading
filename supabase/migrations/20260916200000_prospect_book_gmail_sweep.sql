@@ -2,7 +2,7 @@
 -- claude/new-session-glwxzh and never applied under this name; the database ran
 --   20260916134753_prospect_book_gmail_sweep_staging.sql
 -- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- the filed version above is the one that is live. DECISIONS §45.
 
 -- The email sweep (DECISIONS §24 — engagement is recorded contact, and email is the
 -- channel we had never read). The owner asked for it twice: sweep every prospect domain.

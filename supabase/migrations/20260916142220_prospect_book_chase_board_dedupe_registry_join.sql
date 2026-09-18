@@ -1,7 +1,7 @@
 -- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
 -- Applied 20260916142220 as "prospect_book_chase_board_dedupe_registry_join" by the 16 September session, which pushed its work to its own
--- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
--- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §38 for the
+-- precedent and §45 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- The chase board returned 852 rows for 849 accounts, and one company appeared twice in the top
 -- ten. pb_mdm_resolution carries one row per RECORD, not per company, so a left join on the

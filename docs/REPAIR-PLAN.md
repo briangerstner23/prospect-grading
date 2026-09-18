@@ -33,7 +33,7 @@ the book is right.
 
 ## 1 · Reconnect Fathom — do this first, it is the only ongoing loss
 
-*Executed 17 Sep — DECISIONS §30. Webhook created; proof pending first external delivery.*
+*Executed 17 Sep — DECISIONS §36. Webhook created; proof pending first external delivery.*
 
 > Fathom has never delivered to this system. Verified: all 990 rows in `pb_webhook_inbox` carry
 > `user-agent: pg_net/0.19.5` and fall inside the 13–14 Sep `prospect_book_fathom_backfill*`
@@ -67,7 +67,7 @@ the book is right.
 
 ## 2 · Reconcile the missing ruling into the active rubric
 
-*Executed 17 Sep — DECISIONS §31. 0.1.4 active; preview 829/0 changed.*
+*Executed 17 Sep — DECISIONS §37. 0.1.4 active; preview 829/0 changed.*
 
 > **Read `docs/STATE-SNAPSHOT-2026-09-17.md` §1 first — this is subtle and the snapshot has the
 > table.**
@@ -100,7 +100,7 @@ the book is right.
 
 ## 3 · Write down the 33 migrations that are running
 
-*First half executed 17 Sep — DECISIONS §32: the 4 pre-16-Sep migrations filed verbatim from `schema_migrations.statements`. The 29 boards migrations wait on decision 2; their SQL is saved externally.*
+*First half executed 17 Sep — DECISIONS §38: the 4 pre-16-Sep migrations filed verbatim from `schema_migrations.statements`. The 29 boards migrations wait on decision 2; their SQL is saved externally.*
 
 > 64 Prospect Book migrations are applied to the database; 31 `.sql` files are on disk. **33 are
 > running with no file.** They are listed by name in `docs/STATE-SNAPSHOT-2026-09-17.md` §2.
@@ -130,7 +130,7 @@ the book is right.
 
 ## 4 · Build the three reconciliation checks and turn on CI
 
-*Executed 17 Sep — DECISIONS §34. `pb_reconcile_state()` + `scripts/reconcile.ts` + `.github/workflows/ci.yml`. The deploy job waits on `SUPABASE_ACCESS_TOKEN` as a repository secret (owner).*
+*Executed 17 Sep — DECISIONS §40. `pb_reconcile_state()` + `scripts/reconcile.ts` + `.github/workflows/ci.yml`. The deploy job waits on `SUPABASE_ACCESS_TOKEN` as a repository secret (owner).*
 
 > This is the item that makes everything else permanent. `docs/RESEARCH-CONFORMANCE.md` has a
 > `RECON-checks-unbuilt` row recording that these do not exist.
@@ -187,7 +187,7 @@ the book is right.
 > Do not retire the 0.1.0 fixtures. `docs/BASELINE.md`'s frozen baseline still reproduces
 > byte-identically over 680 rows and that property is worth keeping.
 
-*Executed 17 Sep — DECISIONS §35. Fixture half in §31 (PB04, PB20 pinned on 0.1.4); METHOD.md regenerated from 0.1.4; `ACTIVE-method-source` in the conformance test fails if the generator's default and the ledger's active file ever differ again.*
+*Executed 17 Sep — DECISIONS §41. Fixture half in §37 (PB04, PB20 pinned on 0.1.4); METHOD.md regenerated from 0.1.4; `ACTIVE-method-source` in the conformance test fails if the generator's default and the ledger's active file ever differ again.*
 
 ---
 
@@ -212,7 +212,7 @@ the book is right.
 > at the promotion boundary without crossing it, and put the answer in `docs/DECISIONS.md` before
 > you build. The nightly accumulation does not depend on that answer; the freeze does.
 
-*Executed 17 Sep — DECISIONS §36 (the freeze is a selection at `pb_promotions.first_invoice_at`; actuals come from Orbit/QuickBooks, never the Client Book). pb-score upserts one row per ranked account per day per estimator; migration 20260917110000 is the key. The 6/12/24-month scoring pass is not built, and the ledger says so (`R4-scoring-pass-absent`).*
+*Executed 17 Sep — DECISIONS §42 (the freeze is a selection at `pb_promotions.first_invoice_at`; actuals come from Orbit/QuickBooks, never the Client Book). pb-score upserts one row per ranked account per day per estimator; migration 20260917110000 is the key. The 6/12/24-month scoring pass is not built, and the ledger says so (`R4-scoring-pass-absent`).*
 
 ---
 
@@ -226,7 +226,7 @@ repairs (items 1–6) are done; its findings then drive the four open rulings.*
 *Run on Fable 5.1 at effort `max`, one long session. This is the best single use of Fable in the
 project: long-horizon, many sources, judgment about what is settled versus vendor-written.*
 
-> Read `docs/HANDOFF-2026-09-17.md` §1 for the goal and `docs/DECISIONS.md` §29 for the state.
+> Read `docs/HANDOFF-2026-09-17.md` §1 for the goal and `docs/DECISIONS.md` §35 for the state.
 > This is READ-ONLY research: you change no rubric, no engine code and no data. Your output is
 > one document and one proposal.
 >
@@ -280,20 +280,20 @@ project: long-horizon, many sources, judgment about what is settled versus vendo
 
 ## Blocked on you, not on a session
 
-1. **RULED 17 Sep (DECISIONS §37): the page is the 16 Sep Prospect Board, made live.** ~~Is the page the working surface, or are the boards?~~ It is currently neither — the page has
+1. **RULED 17 Sep (DECISIONS §43): the page is the 16 Sep Prospect Board, made live.** ~~Is the page the working surface, or are the boards?~~ It is currently neither — the page has
    never been written to (0 overrides, 0 promotions, ever), and last week's work happened on
    boards the page cannot see. Blocks items in prompt 3 and the whole of Phase 3.
-2. **RULED 17 Sep (DECISIONS §37): they stay; file the 29 migrations; `pb_chase_scores` deferred.** ~~Do the 16 Sep boards, briefs and chase scores stay or go?~~ Either they are the product and
+2. **RULED 17 Sep (DECISIONS §43): they stay; file the 29 migrations; `pb_chase_scores` deferred.** ~~Do the 16 Sep boards, briefs and chase scores stay or go?~~ Either they are the product and
    need migrations, tests and a ruling, or they are an experiment and should be deleted. Leaving
    them where they are is the only genuinely bad option. Blocks prompt 3's second half.
-3. **RULED 17 Sep (DECISIONS §37): yes, at release, with plain-language questions and an entry page.** ~~Is there ever a second rater?~~ 2 owners, 0 raters. The blind test and per-rater calibration
+3. **RULED 17 Sep (DECISIONS §43): yes, at release, with plain-language questions and an entry page.** ~~Is there ever a second rater?~~ 2 owners, 0 raters. The blind test and per-rater calibration
    are blocked on someone other than you. If the answer is nobody, strike them from the plan
    rather than carrying them as debt.
-4. **RULED 17 Sep (DECISIONS §40): no — broker character stays a flag and never parks.** ~~Does the gate bite?~~ Broker character is a flag, geography is `off`, and you park 7 of 829.
+4. **RULED 17 Sep (DECISIONS §46): no — broker character stays a flag and never parks.** ~~Does the gate bite?~~ Broker character is a flag, geography is `off`, and you park 7 of 829.
    Outside practice attributes real win-rate lift to disqualification that actually disqualifies.
    Free to decide, and it changes what the book is for.
 
-5. **RULED 17 Sep (DECISIONS §40): `main`, pushed from this line of work; the owner sets it in GitHub.** ~~Which branch is the repository's default?~~ It is `claude/new-session-8qkstx` today, and all of
+5. **RULED 17 Sep (DECISIONS §46): `main`, pushed from this line of work; the owner sets it in GitHub.** ~~Which branch is the repository's default?~~ It is `claude/new-session-8qkstx` today, and all of
    17 Sep's work is on `claude/amazing-mayer-umftf0`. Two things depend on the answer and neither
    is a session's to fix: GitHub fires `schedule` triggers only from the default branch's workflow
    file, so the six-hourly reconcile has **never run** (only the on-push one has); and the deploy

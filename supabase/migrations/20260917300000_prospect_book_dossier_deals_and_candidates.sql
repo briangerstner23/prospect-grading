@@ -1,5 +1,5 @@
 -- Two sections of the owner's approved layout had no data behind them, which is why they were
--- never rebuilt: "Quotes on record" and "Waiting on a person" (DECISIONS §46, web/CONTRACT.json).
+-- never rebuilt: "Quotes on record" and "Waiting on a person" (DECISIONS §52, web/CONTRACT.json).
 --
 -- Both were in the 16 September artifact and both matter for the same reason: they are the parts
 -- of the record that say what is UNRESOLVED. A lost quote is the first thing to explain before
@@ -164,7 +164,7 @@ revoke all on function public.pb_dossier(uuid) from public;
 grant execute on function public.pb_dossier(uuid) to anon, authenticated, service_role;
 
 comment on function public.pb_dossier(uuid) is
-  'One account''s full dossier — the 16 September board''s row detail (DECISIONS §37, §43): the '
+  'One account''s full dossier — the 16 September board''s row detail (DECISIONS §43, §49): the '
   'engine''s read and full trace, the written brief, the research read, people, calls, contact '
   'events, resolved facts with their evidence labels, signals, register rows and the Apollo '
   'check. PUBLIC by owner ruling of 17 Sep 2026 ("no sign in required"). NO EMAIL ADDRESS LEAVES '
@@ -174,4 +174,4 @@ comment on function public.pb_dossier(uuid) is
   'still identifies who or what wrote a row, so rule 8''s audit trail is intact. Also returns the '
   'quotes on record (pb_deals) and COUNTS of what is waiting on a person (pb_fact_candidates: how '
   'many, how many at high confidence, how many contradict a fact on file, and which keys) — never '
-  'the claims themselves, which stay behind sign-in. web/CONTRACT.json §46 names both sections.';
+  'the claims themselves, which stay behind sign-in. web/CONTRACT.json §52 names both sections.';

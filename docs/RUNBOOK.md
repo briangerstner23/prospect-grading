@@ -209,7 +209,7 @@ select status_code, content from net._http_response where id = <id>;
 ## 4 · Register the Fathom webhook
 
 **Re-done 17 Sep 2026, from the database.** The 12 Sep entry below claimed a UI-created webhook
-existed; it never delivered once (DECISIONS §30). On 17 Sep a webhook was created through the REST
+existed; it never delivered once (DECISIONS §36). On 17 Sep a webhook was created through the REST
 API from `pg_net` — id `NYMFoCciM4MNbUi3`, `201 Created` — and the 12–17 Sep gap back-filled.
 Three corrections to what follows:
 

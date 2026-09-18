@@ -1,7 +1,7 @@
 -- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
 -- Applied 20260916132851 as "prospect_book_admit_from_orbit_fix" by the 16 September session, which pushed its work to its own
--- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
--- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §38 for the
+-- precedent and §45 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- `pb_register.fingerprint` carries no unique constraint, so an ON CONFLICT on it cannot work.
 -- Guard the register insert with a NOT EXISTS on the same fingerprint instead, which gives the

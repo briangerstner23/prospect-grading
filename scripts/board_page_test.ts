@@ -1,5 +1,5 @@
 /**
- * Structural checks for web/board.html — the working surface (DECISIONS §37).
+ * Structural checks for web/board.html — the working surface (DECISIONS §43).
  *
  *   node --experimental-strip-types scripts/board_page_test.ts
  *
@@ -86,7 +86,7 @@ check("navigates to the back office", /href="index\.html"/.test(page));
 check("marks which screen you are on", /aria-current="page"/.test(page));
 
 
-/* 10 · THE DOSSIER — the half this page shipped without (DECISIONS §43).
+/* 10 · THE DOSSIER — the half this page shipped without (DECISIONS §49).
  * The owner ruled the 16 September artifact the layout to keep, dossier included. These pin the
  * sections so a later change cannot quietly drop them again, which is exactly what happened once.
  */
@@ -97,7 +97,7 @@ check("the dossier is read through pb_dossier()", /rpc\("pb_dossier", \{ p_accou
 // loosening. This list used to hold thirteen names and pass, while thirteen OTHER sections of the
 // owner's approved layout were missing — because the list was written by reading the page I had
 // just built. A check derived from the implementation cannot notice an absence: the absence is in
-// the check too (DECISIONS §46).
+// the check too (DECISIONS §52).
 //
 // web/CONTRACT.json now owns the section names, written from the artifact the owner ruled, and
 // scripts/contract_test.ts enforces presence, order and that nothing unrecorded was added. This
@@ -118,7 +118,7 @@ check("the only address the page shows is the signer's own",
   [...page.matchAll(/\b([A-Za-z_$][\w$]*)\.email\b/g)].every((m) => ["me", "u", "m"].includes(m[1])));
 check("staff identifiers print as a name, not an address", /function localPart/.test(page));
 
-/* 8 · the override panel (DECISIONS §44)
+/* 8 · the override panel (DECISIONS §50)
  *
  * The board writes in exactly one place, and it is the one thing on this page that can change
  * what the book says. Each check below is a way that could go wrong quietly:
@@ -154,7 +154,7 @@ check("it names when the override actually applies", /06:15 UTC/.test(page));
 check("a refusal is attributed to the database, not the page", /the database decides this, not the page/.test(page));
 check("the owner lane is the only one offered a form", /me\.role !== "owner"/.test(page));
 
-/* 9 · the override from the list (DECISIONS §47)
+/* 9 · the override from the list (DECISIONS §53)
  *
  * The tier chip on a row opens the same form the dossier carries. Three ways that goes wrong:
  *  - the chip's click also opens the dossier, so changing a grade navigates you somewhere else;
@@ -174,7 +174,7 @@ check("the dossier wires its own copy against its own container", /wireOverride\
 check("one override implementation, reached two ways", (page.match(/function overrideHtml/g) ?? []).length === 1);
 check("the chip does not pretend the tier moved", /still shows the engine's tier until then/.test(page));
 
-/* 10 · signing in where the form is (DECISIONS §48)
+/* 10 · signing in where the form is (DECISIONS §54)
  *
  * The override dialog shipped saying "sign in at the top of the page", which is not an answer to
  * someone standing in front of the form — and worse, this page and the back office kept SEPARATE

@@ -245,7 +245,7 @@ for (const [label, path, value, expect] of [
   ["the minimum facts to publish", ["dimension_a", "min_facts_to_publish_tier"], 2, "published: 2."],
   ["a qualification label threshold", ["dimension_a", "labels", "1", "min_present"], 3, "at least 3 |"],
   ["the base-tier map", ["dimension_b", "base_tier_from_icp", "map", "ICP-6"], "Bronze", "| **ICP-6** | **Bronze** |"],
-  // basis is `ruled` from 0.1.5: PRO-2r-a was ruled on 17 Sep (DECISIONS §40). The check is that
+  // basis is `ruled` from 0.1.5: PRO-2r-a was ruled on 17 Sep (DECISIONS §46). The check is that
   // moving the MODE moves it in the document; the basis travels with it and must match the rubric.
   ["a gate mode", ["gates", "items", "broker_character", "mode"], "park", "| **park** | `ruled` |"],
   ["the validation status", ["validation", "status"], "VALIDATED", "stamp **VALIDATED**"],

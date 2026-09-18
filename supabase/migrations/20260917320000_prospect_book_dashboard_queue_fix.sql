@@ -4,7 +4,7 @@
 -- worth checking — a plausible breakdown beside two badly wrong totals.
 --
 -- `apply_migration` returned success for it, as it does for anything that parses. The bug was
--- found by running the function and reading the numbers (DECISIONS §43a). One CTE, classified
+-- found by running the function and reading the numbers (DECISIONS §49a). One CTE, classified
 -- once, aggregated once.
 create or replace function public.pb_dashboard()
 returns jsonb

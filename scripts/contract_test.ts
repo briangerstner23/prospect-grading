@@ -14,7 +14,7 @@
  * It cannot notice an absence, because the absence is in the check too.
  *
  * So this test derives from the CONTRACT instead, which is written from the artifact the owner
- * ruled (DECISIONS §37, §46). It fails when:
+ * ruled (DECISIONS §43, §52). It fails when:
  *
  *   1. a required section is not in the page                 — something was dropped
  *   2. the sections appear in a different order              — the screen was reshuffled
@@ -103,7 +103,7 @@ if (board) {
   //   data-section="Name"     any hand-written region
   //
   // Checking blk() alone is how "Change this grade" — a whole override form — sat on the dossier
-  // from §44 to §47 without the contract naming it: it is hand-written markup, not a blk() call.
+  // from §50 to §53 without the contract naming it: it is hand-written markup, not a blk() call.
   //
   // Scanning every <h3> instead was the obvious fix and the wrong one: it swept up Tier,
   // Confidence and Engagement, which are sub-headings INSIDE "Three axes that never touch" — a

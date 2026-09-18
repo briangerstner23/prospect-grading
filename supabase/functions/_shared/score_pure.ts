@@ -78,7 +78,7 @@ export function buildReadRow(sc: ProspectScorecard, runId: string | null, scorec
 /**
  * The pb_potential_snapshots row for one scorecard, or null when the row is not ranked.
  *
- * DECISIONS §36. The snapshot records what the engine CLAIMED on `as_of`, in the shape the
+ * DECISIONS §42. The snapshot records what the engine CLAIMED on `as_of`, in the shape the
  * research asked for (p10/p50/p90, two binaries), filled only where the active rubric actually
  * produces a value: p10_12m and p90_12m are the year-one band's edges (the lowest band's floor
  * is 0; the top band is open, so its p90 is null); p50, the 24-month interval and the two
@@ -127,7 +127,7 @@ export function buildSnapshotRow(sc: ProspectScorecard, rubric: unknown, runId: 
       potential_confidence: pot?.confidence ?? null,
       facts_present: typeof sc.qualification?.present_count === "number" ? sc.qualification.present_count : null,
       urgency: sc.signals?.urgency ?? null,
-      not_estimated: "p50_12m, the 24-month interval and the two probabilities: no estimator yet (PRO-16 dropped the point estimate; DECISIONS §36)",
+      not_estimated: "p50_12m, the 24-month interval and the two probabilities: no estimator yet (PRO-16 dropped the point estimate; DECISIONS §42)",
     },
   };
 }

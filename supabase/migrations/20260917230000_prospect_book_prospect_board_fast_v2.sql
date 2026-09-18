@@ -64,7 +64,7 @@ comment on view public.pb_prospect_board is
   'work, ordered by the engine''s own chase_rank_key — the rubric defines the order and grade() '
   'computes it, so SQL never restates it (rule 4). Engagement is carried in its own columns and '
   'never sets the rank (DECISIONS §20). No composite score (PRO-0). Read by the page through '
-  'pb_board(); the view stays closed to anon because it sits on seventeen objects (§41). '
+  'pb_board(); the view stays closed to anon because it sits on seventeen objects (§47). '
   'The `reads as materialized` fence is load-bearing: pb_current_reads is a distinct-on over all '
   'of pb_reads, which blocks predicate pushdown, so without the fence it is rebuilt once per '
   'company and the view takes eight seconds instead of loading.';

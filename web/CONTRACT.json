@@ -3,7 +3,7 @@
     "The screens, section by section, as the owner approved them. This file is the CONTRACT and",
     "the pages are the implementation — not the other way round.",
     "",
-    "Why it exists (DECISIONS §46). On 17 Sep the dossier was rebuilt from the 16 September artifact",
+    "Why it exists (DECISIONS §52). On 17 Sep the dossier was rebuilt from the 16 September artifact",
     "and shipped with 12 of its 25 sections. The test written alongside it pinned those 12 and",
     "passed, because the test was derived FROM THE PAGE I HAD BUILT rather than from the layout the",
     "owner ruled. A check written after the fact can only ever confirm what you already did. That is",
@@ -24,7 +24,7 @@
   "version": 1,
   "approved_by": "owner (Brian)",
   "approved_on": "2026-09-16",
-  "source_of_truth": "The 16 September 2026 artifact, ruled the layout to maintain — DECISIONS §37, §43, §46.",
+  "source_of_truth": "The 16 September 2026 artifact, ruled the layout to maintain — DECISIONS §43, §49, §52.",
 
   "screens": [
     {
@@ -66,7 +66,7 @@
       "purpose": "Everything the book holds about one agency, in the order the owner approved. Twenty-five blocks; the page renders what pb_dossier() returns and derives nothing.",
       "ordered": true,
       "sections": [
-        { "name": "Change this grade",             "required": true, "column": "full", "shows": "the override form, directly under the eight-cell strip: owner lane, one-tier cap, reason code and written reason required, and that a blank expiry still lapses. Built in §44 and missing from this contract until §47 — the contract test only looked at blk() titles, so a hand-written section heading slipped past it.", "source": "pb_board().computed_tier · writes pb_register" },
+        { "name": "Change this grade",             "required": true, "column": "full", "shows": "the override form, directly under the eight-cell strip: owner lane, one-tier cap, reason code and written reason required, and that a blank expiry still lapses. Built in §50 and missing from this contract until §53 — the contract test only looked at blk() titles, so a hand-written section heading slipped past it.", "source": "pb_board().computed_tier · writes pb_register" },
         { "name": "Make this call",                "required": true, "column": "left", "shows": "the one action, from the brief's next step or from the engagement state", "source": "brief.next_step" },
         { "name": "Where we win",                  "required": true, "column": "left", "shows": "the angle from the brief, else the wedge from the research read, else 'no wedge found' stated as a finding", "source": "brief.angle · research.recommended_wedge" },
         { "name": "What kills it",                 "required": true, "column": "left", "shows": "the risk in the brief's own words", "source": "brief.watch" },

@@ -163,7 +163,7 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
 }
 
 
-/* rubric-driven flag rules (0.1.5, DECISIONS §40): a named condition raises a flag and moves nothing.
+/* rubric-driven flag rules (0.1.5, DECISIONS §46): a named condition raises a flag and moves nothing.
  *
  * The small-shop floor is the case that forced the mechanism: the research wanted an exclusion,
  * the owner ruled it visible instead, and the book ranks rather than gates (PRO-0). What must hold
@@ -736,7 +736,7 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   throws("ovr: without max_tiers_moved the engine refuses to guess", () => grade(gold, without("override.max_tiers_moved"), ov("Silver")), "override.max_tiers_moved");
   eq("ovr: the shipped rubric requires a written reason", R.override.written_reason_required, true);
 
-  // ── the cap is a rubric value, and null means NO CAP (owner, 17 Sep 2026 — DECISIONS §49) ──
+  // ── the cap is a rubric value, and null means NO CAP (owner, 17 Sep 2026 — DECISIONS §55) ──
   // The July ruling's "one grade max" was retired; everything else about an override stands.
   // These run against a LOCAL clone so they test the engine's contract rather than whichever
   // version happens to be shipped, and the two shipped rubrics are checked separately below.

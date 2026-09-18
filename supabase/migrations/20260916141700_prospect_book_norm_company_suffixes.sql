@@ -1,7 +1,7 @@
 -- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
 -- Applied 20260916141700 as "prospect_book_norm_company_suffixes" by the 16 September session, which pushed its work to its own
--- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
--- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §38 for the
+-- precedent and §45 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- pb_norm_company was too literal and five quoted companies fell out of the join. Two of the five
 -- are pure spelling: an ampersand where the book writes "and", and a legal suffix the book keeps

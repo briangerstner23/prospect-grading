@@ -2,7 +2,7 @@
 -- claude/new-session-glwxzh and never applied under this name; the database ran
 --   20260916141700_prospect_book_norm_company_suffixes.sql
 -- instead. Kept because it is what that session wrote and the reasoning in it is real, but
--- the filed version above is the one that is live. DECISIONS §39.
+-- the filed version above is the one that is live. DECISIONS §45.
 
 -- Company-name normaliser for cross-system joins.
 --

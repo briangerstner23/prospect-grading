@@ -109,7 +109,7 @@ export function evaluate(
   const knownUnfiled = unfiled.filter((n) => known.has(n));
   const knownButFiled = [...known].filter((n) => disk.has(n));
   summary.push(`${state.applied_migrations.length} applied, ${unfiled.length} unfiled (${knownUnfiled.length} known, ${unknownUnfiled.length} unknown)`);
-  if (unknownUnfiled.length) failures.push(`applied with no file and not on the known list: ${unknownUnfiled.join(", ")} — transcribe from schema_migrations.statements (DECISIONS §32)`);
+  if (unknownUnfiled.length) failures.push(`applied with no file and not on the known list: ${unknownUnfiled.join(", ")} — transcribe from schema_migrations.statements (DECISIONS §38)`);
   if (knownUnfiled.length) warnings.push(`${knownUnfiled.length} applied migrations have no file, on the known list (${ledger.known_unfiled_migrations.reason})`);
   if (knownButFiled.length) warnings.push(`on the known-unfiled list but now filed — remove from the ledger: ${knownButFiled.join(", ")}`);
 
@@ -153,7 +153,7 @@ function loadLedger(): LedgerReconcile & { compiled_on: string } {
 /**
  * Which branch this ran on, and whether any other branch carries commits it does not.
  *
- * DECISIONS §39: this script compares the database to the WORKING TREE. On 17 Sep that made it
+ * DECISIONS §45: this script compares the database to the WORKING TREE. On 17 Sep that made it
  * report 29 applied migrations as unfiled while 24 of their files sat on another branch. A check
  * that reads one branch cannot see work on another, so it has to say which one it read.
  * Best-effort: no git, no remotes, or a shallow clone all return null rather than failing a run.
@@ -167,7 +167,7 @@ export function branchState(): { branch: string; unmerged: string[] } | null {
     const heads = run("git branch -r")
       .split("\n").map((b) => b.replace(/^[* ]+/, "").trim())
       .filter((b) => b.startsWith("origin/") && !b.includes("->"))
-      // An intentional frozen snapshot, not a line of work — docs/BASELINE.md, DECISIONS §39.
+      // An intentional frozen snapshot, not a line of work — docs/BASELINE.md, DECISIONS §45.
       .filter((b) => b !== "origin/baseline-v0.1.0");
     const unmerged: string[] = [];
     for (const b of heads) {
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
   if (branches) {
     console.log(`reconcile: read the working tree on branch ${branches.branch}`);
     if (branches.unmerged.length) {
-      v.warnings.push(`${branches.unmerged.length} branch(es) carry commits this tree does not: ${branches.unmerged.join(", ")}. Everything below was measured against ${branches.branch} only — merge before trusting a "no file" or "missing" finding (DECISIONS §39).`);
+      v.warnings.push(`${branches.unmerged.length} branch(es) carry commits this tree does not: ${branches.unmerged.join(", ")}. Everything below was measured against ${branches.branch} only — merge before trusting a "no file" or "missing" finding (DECISIONS §45).`);
     }
   }
   console.log(`reconcile: state generated ${state.generated_at}; ledger compiled ${ledger.compiled_on}; as of ${asOf.toISOString()}`);

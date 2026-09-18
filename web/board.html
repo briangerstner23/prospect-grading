@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>The Prospect Book</title>
 <!--
-  THE WORKING SURFACE (DECISIONS §37). This is the 16 September board, codified.
+  THE WORKING SURFACE (DECISIONS §43). This is the 16 September board, codified.
 
   The board it replaces was a snapshot: 100 rows of JSON baked into a file, rubric 0.1.3,
   frozen at the moment it was written. This page reads the database on every load, so what it
@@ -442,9 +442,9 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   function rpc(fn, args) { return req("rpc/" + fn, { method: "POST", args: args }); }
 
   /* ==================== sign-in ====================
-     READING this page needs no account and never will (owner ruling, §43). Signing in adds a
+     READING this page needs no account and never will (owner ruling, §49). Signing in adds a
      LANE — it is what lets the owner set an override from here instead of from the back office
-     (§44). Written against GoTrue's REST endpoints with plain fetch, on purpose: the page is one
+     (§50). Written against GoTrue's REST endpoints with plain fetch, on purpose: the page is one
      inline script with no imports and no CDN, and pulling in a client library to send one email
      and hold one token would cost that for nothing.
 
@@ -468,7 +468,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     if (x && !x.adopted) lsSet("pb-sess", JSON.stringify(x));
     else lsDel("pb-sess");
   }
-  /* Two pages, one origin, and until §48 two DIFFERENT session stores: this page rolled its own
+  /* Two pages, one origin, and until §54 two DIFFERENT session stores: this page rolled its own
      GoTrue calls with its own key, while the back office uses supabase-js with the library's key.
      Signing in on one therefore did nothing for the other, on the same browser and the same
      project — which is exactly the trap the owner hit. So this reads BOTH, preferring whichever
@@ -652,7 +652,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       });
     });
 
-    // Scarcity, as ruled (DECISIONS §40): the tier is a size label; the head of the chase order
+    // Scarcity, as ruled (DECISIONS §46): the tier is a size label; the head of the chase order
     // is the thing to plan against. Both numbers are shown so neither can be mistaken for the other.
     var plat = counts.Platinum || 0, gold = counts.Gold || 0;
     var head = rows.filter(function (r) {
@@ -705,7 +705,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
         '<td class="co">' + esc(r.name) +
           (r.duplicate_records ? '<span class="dup">' + esc(r.records) + " records for this company</span>" : "") +
         "</td>" +
-        // The tier chip is the override control (§47). A button, not a span: it is keyboard
+        // The tier chip is the override control (§53). A button, not a span: it is keyboard
         // reachable, it announces itself, and the row handler below ignores clicks on it so
         // changing a grade never opens the dossier by accident.
         '<td class="cell"><button type="button" class="tier t-' + tierOf(r) + ' ovrchip"' +
@@ -762,7 +762,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
 
 
   /* ==================== dossier ====================
-     The 16 September layout, section for section (DECISIONS §37, §43). The page renders what
+     The 16 September layout, section for section (DECISIONS §43, §49). The page renders what
      pb_dossier() returns and derives nothing: where the artifact showed a computed sentence,
      that sentence now comes from the brief a person wrote or from the engine's own reason. */
   var dossierview = el("dossierview"), boardview = el("boardview"),
@@ -814,7 +814,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   }
 
   /* ==================== the override, on the working surface ====================
-     DECISIONS §44. This was in the back office only, which meant deciding a tier was wrong in
+     DECISIONS §50. This was in the back office only, which meant deciding a tier was wrong in
      one place and correcting it in another. The correction belongs where the reading happens.
 
      Nothing here decides anything. It writes one pb_register row; the nightly run reads it back
@@ -830,7 +830,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   }
   function ovBlock() { var sp = ovSpec(); return (sp && sp.override) || null; }
   /* The tier the ENGINE reached, before any override moved it — which is what the one-tier cap is
-     measured from. pb_board() now carries it on every row (§47), so the dialog on the board can
+     measured from. pb_board() now carries it on every row (§53), so the dialog on the board can
      check the cap without fetching a dossier; the dossier's own copy is the fallback. */
   function computedTier(r, d) {
     if (r && r.computed_tier) return r.computed_tier;
@@ -845,7 +845,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   function capWarning(chosen, computed) {
     var ov = ovBlock(), tiers = ovTiers();
     if (!chosen || !ov) return "";
-    // null is a DECISION — no cap (owner, 17 Sep; DECISIONS §49). Defaulting to 1 here is how a
+    // null is a DECISION — no cap (owner, 17 Sep; DECISIONS §55). Defaulting to 1 here is how a
     // removed cap would come back to life in the interface while the engine allowed the move.
     if (ov.max_tiers_moved === null) {
       if (chosen === computed) return "That is the tier the engine already computed, so the override would change nothing.";
@@ -879,7 +879,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     }
     if (!me.email) {
       // Telling someone standing in front of a form to go and find a button somewhere else is not
-      // an answer. The sign-in is HERE, and the link brings them back to this page (§48).
+      // an answer. The sign-in is HERE, and the link brings them back to this page (§54).
       return head + '<p class="lead">Reading this book needs no account. <strong>Setting an override does</strong> \u2014 ' +
         'it is recorded against a person, with a reason and an expiry, and the owner lane is the only ' +
         'one that may set one (PRO-5).</p>' +
@@ -1051,7 +1051,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
   }
 
   /* ==================== the override, from the list ====================
-     DECISIONS §47. Owner: change the classification by clicking the tier chip, without opening
+     DECISIONS §53. Owner: change the classification by clicking the tier chip, without opening
      the dossier first. Same form, same terms, same database refusal — only the way in is
      different, so there is one override implementation and not two that can drift.
 
@@ -1166,7 +1166,7 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
     h.push('<div class="wrap">' + overrideHtml(r, d) + "</div>");
 
     /* ==================================================================================
-       THE TWENTY-FIVE SECTIONS, IN THE ORDER web/CONTRACT.json SETS (DECISIONS §46).
+       THE TWENTY-FIVE SECTIONS, IN THE ORDER web/CONTRACT.json SETS (DECISIONS §52).
        Do not add, remove or reorder a block here without changing the contract first —
        scripts/contract_test.ts fails the build either way round, which is the point:
        this page shipped once with twelve of these and a green test.

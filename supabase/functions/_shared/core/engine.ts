@@ -143,7 +143,7 @@ function fmt(n: number): string {
  *
  * Every other flag in this engine is hard-coded, which was fine while each one was tied to a
  * gate or an override. It stopped being fine when a research finding needed to be *visible*
- * without being a gate and without moving a tier (DECISIONS §40: the small-shop project floor).
+ * without being a gate and without moving a tier (DECISIONS §46: the small-shop project floor).
  * Rule 4 says the rubric is data, so the condition, its text and its basis live there.
  *
  * `dimension_b.flag_rules` is OPTIONAL. A rubric without it raises no rule-driven flags, so
@@ -953,7 +953,7 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
   /* 10 · override — every term of the contract is rubric.override, read strictly */
   const ov = options?.override ?? null;
   /* The cap the owner may move a tier by. A NUMBER caps it; an explicit `null` means NO CAP
-     (owner ruling, 17 Sep 2026 — DECISIONS §49, which retires the July "one grade max"). A
+     (owner ruling, 17 Sep 2026 — DECISIONS §55, which retires the July "one grade max"). A
      MISSING key is still an error, exactly as before: "no cap" has to be stated on purpose,
      because a rubric that forgot to mention the cap must not silently become an uncapped one. */
   const maxMovedRaw = rubricAt(rubric, "override.max_tiers_moved");

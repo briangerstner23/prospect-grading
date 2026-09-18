@@ -4,7 +4,7 @@
 -- is RUNNING in the database, as one jsonb, callable by anon over PostgREST rpc. On 17 Sep 2026
 -- the rubric grading 829 accounts had no file, 33 applied migrations had no file, Fathom had never
 -- delivered, and rule 9 had drifted for two days — and every check that read only the repo was
--- green. This function is the other half of that check (DECISIONS §29, §33, §34).
+-- green. This function is the other half of that check (DECISIONS §35, §39, §40).
 --
 -- Aggregates, timestamps and identifiers only: the active rubric spec (already public-readable
 -- under DECISIONS §5), migration NAMES, newest-row timestamps per source, and counts. Nothing
@@ -70,4 +70,4 @@ revoke all on function public.pb_reconcile_state() from public, anon, authentica
 grant execute on function public.pb_reconcile_state() to anon, authenticated, service_role;
 
 comment on function public.pb_reconcile_state() is
-  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count. Aggregates only; callable by anon (DECISIONS §34).';
+  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count. Aggregates only; callable by anon (DECISIONS §40).';

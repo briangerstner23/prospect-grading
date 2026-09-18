@@ -132,7 +132,7 @@ revoke all on function public.pb_dossier(uuid) from public;
 grant execute on function public.pb_dossier(uuid) to anon, authenticated, service_role;
 
 comment on function public.pb_dossier(uuid) is
-  'One account''s full dossier — the 16 September board''s row detail (DECISIONS §37, §43): the '
+  'One account''s full dossier — the 16 September board''s row detail (DECISIONS §43, §49): the '
   'engine''s read and full trace, the written brief, the research read, people, calls, contact '
   'events, resolved facts with their evidence labels, signals, register rows and the Apollo '
   'check. PUBLIC by owner ruling of 17 Sep 2026 ("no sign in required"). NO EMAIL ADDRESSES: not '

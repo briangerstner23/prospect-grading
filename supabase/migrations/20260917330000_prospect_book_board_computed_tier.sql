@@ -1,5 +1,5 @@
 -- Owner, 17 Sep 2026: override the classification by clicking the tier chip on the board itself,
--- without opening the dossier first (DECISIONS §47).
+-- without opening the dossier first (DECISIONS §53).
 --
 -- The override form needs one thing the board did not carry: the tier the ENGINE computed, which
 -- is not the same as the tier shown. The shown tier is `effective_tier` — computed, then moved by
@@ -11,8 +11,8 @@
 -- rather than presenting a hand-set tier as the engine's own answer.
 --
 -- Both come from pb_current_reads, which this function can read and anon cannot — the same reason
--- pb_board() is SECURITY DEFINER at all (§41). Neither is a new kind of data: the dossier has
--- shown both since §43.
+-- pb_board() is SECURITY DEFINER at all (§47). Neither is a new kind of data: the dossier has
+-- shown both since §49.
 drop function if exists public.pb_board();
 
 create function public.pb_board()
@@ -61,9 +61,9 @@ revoke all on function public.pb_board() from public;
 grant execute on function public.pb_board() to anon, authenticated, service_role;
 
 comment on function public.pb_board() is
-  'The working surface (DECISIONS §37): prospects ranked by potential, one row per company, in '
+  'The working surface (DECISIONS §43): prospects ranked by potential, one row per company, in '
   'the engine''s own chase_rank_key order, each row carrying the account_id that opens its '
   'dossier via pb_dossier(). Also carries the tier the ENGINE COMPUTED and whether a live '
   'override moved it — the two the override form needs to check the one-tier cap from the board '
-  'itself, without opening a dossier (§47). SECURITY DEFINER so the page reads the board without '
-  'any of the seventeen objects beneath it becoming readable (§41). No composite score (PRO-0).';
+  'itself, without opening a dossier (§53). SECURITY DEFINER so the page reads the board without '
+  'any of the seventeen objects beneath it becoming readable (§47). No composite score (PRO-0).';

@@ -1,8 +1,8 @@
 -- The dossier: everything the 16 September board showed when you opened a row.
 --
--- The board shipped without it (§41) because its sources are closed to `anon` and this session
+-- The board shipped without it (§47) because its sources are closed to `anon` and this session
 -- treated that as settling the question. It did not: the owner had already ruled the artifact's
--- LAYOUT the thing to keep (§37), dossier included. The right answer was never "drop it" — it was
+-- LAYOUT the thing to keep (§43), dossier included. The right answer was never "drop it" — it was
 -- "put it behind sign-in", which is what this does.
 --
 -- GRANTED TO `authenticated` ONLY, never `anon`. It returns people (pb_contacts), written briefs
@@ -10,7 +10,7 @@
 -- who is price-sensitive, whose owner is retiring. CLAUDE.md is explicit that opening those is
 -- the owner's call and not a default. The board itself stays public; opening a row asks you in.
 --
--- SECURITY DEFINER for the same reason as pb_board() (§41): the alternative is granting select on
+-- SECURITY DEFINER for the same reason as pb_board() (§47): the alternative is granting select on
 -- nine more tables to every signed-in reader, which is a far larger decision than this one.
 --
 -- One row of jsonb, shaped to the artifact's sections so the page renders rather than computes.
@@ -132,7 +132,7 @@ revoke all on function public.pb_dossier(uuid) from public, anon;
 grant execute on function public.pb_dossier(uuid) to authenticated, service_role;
 
 comment on function public.pb_dossier(uuid) is
-  'One account''s full dossier — the 16 September board''s row detail (DECISIONS §37, §43): the '
+  'One account''s full dossier — the 16 September board''s row detail (DECISIONS §43, §49): the '
   'engine''s read and full trace, the written brief, the research read, people, calls, contact '
   'events, resolved facts with their evidence labels, signals, register rows and the Apollo '
   'check. SECURITY DEFINER and granted to `authenticated` ONLY: it carries people and candid '

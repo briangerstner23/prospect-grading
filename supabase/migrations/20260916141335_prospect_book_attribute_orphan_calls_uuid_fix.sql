@@ -1,7 +1,7 @@
 -- WLIQ Prospect Book — filed verbatim from supabase_migrations.schema_migrations on 17 Sep 2026.
 -- Applied 20260916141335 as "prospect_book_attribute_orphan_calls_uuid_fix" by the 16 September session, which pushed its work to its own
--- branch and never filed this one. Recovered with the branch merge; see DECISIONS §32 for the
--- precedent and §39 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
+-- branch and never filed this one. Recovered with the branch merge; see DECISIONS §38 for the
+-- precedent and §45 for why eleven branches existed. Byte-for-byte what ran; do not re-edit here.
 
 -- Postgres has no min(uuid). Take the single account with array_agg instead — and it is only
 -- ever read where n = 1, so "the first" and "the only" are the same row.

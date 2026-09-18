@@ -182,4 +182,4 @@ comment on function public.pb_confirm_fact_candidates(uuid[], text) is
   'The conflict test is re-derived against pb_current_facts at confirm time, never read off the '
   'candidate''s stale conflicts column. Writes one register row per ACCOUNT saying the word bulk '
   'with the batch size, so the audit trail never presents one click as many considered decisions. '
-  'DECISIONS §45; it narrows the no-bulk-confirm rule rather than overturning it.';
+  'DECISIONS §51; it narrows the no-bulk-confirm rule rather than overturning it.';
