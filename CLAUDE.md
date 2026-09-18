@@ -135,7 +135,14 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             the lanes view rebuilt around it: `unsupported` refuses a claim from EVERY lane, and
             `states` stands in for its source being on a lane's allow-list (DECISIONS §54).
             NOTE these share a 20260918 prefix with the grid set below but are a different series;
-            the names disambiguate them, the numbers do not.
+            the names disambiguate them, the numbers do not. ·
+            20260918100000 removals — pb_removal_reasons (the vocabulary as data) + register kinds
+            `removal` / `reinstatement` + pb_removals / pb_removal_due_review + pb_board() filters
+            them out + pb_removed() / pb_removal(uuid) (authenticated only). A removal has NO
+            expiry and the guard refuses one (DECISIONS §50) · 100100 revoke on the two new views
+            (they arrived holding everything, as this file warns) · 100200 pb_register.seq, because
+            a uuid is not an order · 100300 renumber it in created_at order · 100400 pb_dossier()
+            skips removal rows — a definer function is a hole in every policy above it.
             The 17 Sep set was transcribed from the database after it ran; each file is
             byte-identical to schema_migrations.statements (verified by md5).
             The 18 Sep set (DECISIONS §52; files 20260918100000–140000, database versions
@@ -159,9 +166,12 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             order. Public, no sign-in (owner ruling §43), no data baked in. Light by default with a
             remembered dark toggle; every localStorage touch wrapped. NO EMAIL ADDRESSES reach the
             page — not from pb_contacts, not from call attendees (names and side only). Since 18 Sep the
-            ranked list is grouped under a header per CHASE CELL with the cell's play (§52). Adding a
-            section, or dropping one, means updating web/CONTRACT.json (v2 owns the section names)
-            and scripts/board_page_test.ts (77 checks).
+            ranked list is grouped under a header per CHASE CELL with the cell's play (§52). It is also the
+            ONE PLACE an agency comes off the book: "Remove from the board", under the override and
+            deliberately unlike it — no expiry, two dispositions, and an "Off the board" list that is
+            the only route back (§59). Adding a section, or dropping one, means updating
+            web/CONTRACT.json (which owns the section names, §46) and scripts/board_page_test.ts,
+            which pins the board's BEHAVIOUR — 111 checks in total.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
             The fact queue now carries the AUTOMATIC half above the manual one (DECISIONS §53):
             which lane each waiting claim is in, which lanes are switched on, a dry run before every
@@ -250,6 +260,15 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    `Override moved more than one tier` and the trace says how far it went. A **number** in that
    key restores the cap; an **absent** key is still an error, because "no cap" has to be stated on
    purpose and a rubric that forgot to mention it must not silently become an uncapped one.
+7a. **A removal is not an override, and never expires.** An override argues with the ENGINE'S
+   ANSWER, whose inputs keep moving, so it lapses — that is a forced re-look, the only mechanism that
+   makes a human judgement face new evidence. A removal (`pb_register` kind `removal`, owner lane)
+   is a standing decision about whether we pursue them at all; nothing the engine learns overnight
+   makes it stale. So it carries no `expires_at` and the database refuses one. `do_not_contact` is
+   about permission and takes no review date; `unqualified` is about fit and may take one — a review
+   date QUEUES A PERSON and never returns the row by itself. Reversal is a `reinstatement` row, never
+   a delete. Removal touches no tier, no rubric and no scorecard (DECISIONS §50).
+
 8. Identity never auto-merges below `high` confidence; medium/low become
    `pb_identity_candidates` for a person to review. **A fact candidate may be approved without a
    person**, but only on a lane the owner switched on in `pb_fact_autoconfirm_policy`, and never

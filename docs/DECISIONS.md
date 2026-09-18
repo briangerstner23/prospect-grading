@@ -4307,3 +4307,158 @@ you pass once, because the roster moves under prose that was clean when it was w
 records the other half: the *check* is not a thing you write once either. A clean run means clean
 in the shapes the matcher can see, and that sentence is worth saying out loud every time a check
 reports clean.
+## §59 — Taking an agency off the board, and why that is not an override (18 Sep 2026)
+
+Owner, looking at the "Change this grade" panel: *"I need this screen to have an option where I'm
+just removing people, either because they're unqualified or because they're do not contact. Maybe
+those mean the same thing... there's this thing where the ruling has a date that expires. When I
+make some of these changes, I don't want it to expire. I'm not sure the expiration function can be
+there, but I need to understand why, and it needs to be separate from just making a full stop
+change decision."*
+
+Three questions in that, and the answers are connected.
+
+### Why the override expires at all
+
+An override is a statement about **the engine's answer**, not about the world. The inputs under it
+keep moving every night — a new fact, a call, a Pipedrive card that changed stage — and the
+override sits on top and ignores all of it. If it never lapsed, that row would be frozen against
+every piece of evidence that arrived afterwards and nobody would ever find out. The 90-day lapse is
+a **forced re-look**: it is the only mechanism in this book that makes a human judgement face new
+evidence.
+
+That is also why the panel points at a **fact** as the permanent correction. A fact changes the
+input, so the engine re-derives from it and there is nothing to go stale. An override that you want
+to last forever is almost always a fact you have not written down.
+
+### Why a removal must not expire, and why it needed to be a different act
+
+A removal is not a claim about the tier. It is a standing instruction about **whether we pursue
+them at all**. Nothing the engine learns overnight makes that stale — and a better tier is exactly
+the *wrong* reason to put someone back in front of a caller after they asked us to stop. So a
+removal does not borrow the override's machinery at all: there is no expiry field, and
+`pb_register_removal_guard` refuses the row if one is sent rather than accepting it and quietly
+lapsing in ninety days.
+
+The owner's instinct that these are two different things is the whole design. The rule of thumb:
+
+| | argues with | goes stale when | so it |
+|---|---|---|---|
+| **Fact** | the input | never | never expires |
+| **Override** | the engine's answer | new evidence arrives | lapses in 90 days |
+| **Removal** | whether we chase them | a person changes their mind | never expires, and only a person reverses it |
+
+### The two dispositions are not the same thing
+
+Same effect on the board, different meanings, and the difference shows up the moment the facts
+change.
+
+**`do_not_contact` is about permission and relationship.** They asked; it conflicts with a client or
+a partner; legal ruled. No fact reopens it, so it carries **no review date at all** and only a
+person's reinstatement brings them back.
+
+**`unqualified` is about fit.** Not an agency, out of business, too small, buys no build work. That
+is a judgement over facts, and facts change — a three-person shop becomes a thirty-person shop. So
+it may carry an optional **review date**, which is emphatically *not* an expiry: on that day the row
+appears in `pb_removal_due_review` and asks a person to look. It never returns to the board on its
+own. **An expiry undoes a decision on a timer; a review date asks a person to look again and leaves
+the decision standing.**
+
+The practical difference is the one that matters: a do-not-contact must hold even when the same
+company re-enters the book through another Pipedrive record, so `pb_board()` matches a removal by
+the account *and* by the normalised company name. An unqualified is a filter on today's board.
+
+### What a removal does not do
+
+It does not delete anything, does not stop the nightly score, and does not touch
+`pb_accounts.book`. Removed accounts keep being read and graded, so a reinstatement shows **today's**
+tier rather than a stale one and nothing has to be re-seeded to undo a mistake. `book = 'parked'`
+keeps meaning what it already means — the Pipedrive Client Journey parked stage — because
+conflating "their CRM card moved" with "the owner removed them" would make both unreadable.
+
+It is also **not a grading concept**, so it goes nowhere near the engine, the rubric or a scorecard.
+The engine grades; the register decides what we do about the grade. Putting removal in the rubric
+would have said the opposite, and the rubric is unchanged: **0.1.6 stays active, fingerprint
+`9a911e2c`, and pb-score v13 was not redeployed.** Nothing in this entry can move a tier.
+
+### The vocabulary is data, not a list in the page
+
+`pb_removal_reasons` — thirteen rows, the same posture as `pb_chase_weights` (§30): the owner can
+change the reasons without a deploy, and the page must *read* them. A list written into
+`board.html` would keep working after the table changed and would be wrong without failing, which is
+the trap rule 4 exists for. `scripts/board_page_test.ts` pins that the page reads the table and
+offers nothing at all if it cannot.
+
+### Two things this nearly got wrong
+
+**A uuid is not an order.** `pb_removals` takes the latest of an account's removal and reinstatement
+rows, and tie-broke on `id desc` — a random uuid. The harness caught it on the first run: a removal
+and a reinstatement written in one transaction share `now()`, and the board kept the account hidden
+after it had been put back. `pb_register.seq` (additive, §8) is now the tiebreak. The backfill was
+then wrong in its own turn — `add column ... bigserial` numbers rows in *physical* order, so 222 of
+295 came out in a different order from the one they were written in — and 20260918100300 renumbers
+them so the comment claiming `created_at` order is actually true.
+
+**A definer function is a hole in every policy above it.** Removal reasons were taken off the anon
+SELECT policy on `pb_register`, because "they asked us to stop after the March call" is a candid
+judgement about a named company. That was necessary and not sufficient: `pb_dossier()` is SECURITY
+DEFINER and granted to `anon` (§43), so it reads `pb_register` with RLS bypassed and would have
+handed the same text to anyone with the link. Exactly the shape §43a fixed for addresses. The
+register block now skips both kinds; the signed-in panel asks `pb_removal()` instead, which is
+granted to `authenticated` only.
+
+### Open, and the owner's call rather than mine
+
+**Every override reason written so far is public.** Nine rows of the owner's own words about named
+agencies, readable through the same dossier block by anyone with the board's URL. Narrowing that is
+a ruling about what the public dossier shows, and this session already carries one; it is raised
+here rather than changed quietly.
+
+**`pb_chase_board` is not filtered.** A removed agency is off `pb_board()` and therefore off the
+working surface and the dashboard, but the contact-ordered chase board still lists them. No page
+reads it today, so nothing shows a removed agency anywhere — but the next thing built on it would.
+
+### The register
+
+PRO-0…PRO-18 are authoritative and live outside this repository. Removal is not among them: it is
+an operational lane the owner ruled on 18 Sep, held to the same discipline PRO-5's revision puts on
+an override — owner lane, a reason code from a fixed list, a written reason, one register row, fully
+auditable and reversible. If the Grading Register ever disagrees, **the register wins**.
+
+### §50a — Another session was in this database at the same time
+
+Written down because it changes how the next reader should read the section above.
+
+While this work was applied, a second session was applying its own migrations to
+`sgagrmapuovnjwvgsxbp` from another branch. Interleaved by timestamp:
+
+```
+104513  prospect_book_account_linkedin              (theirs)
+104633  prospect_book_account_linkedin_ampersand    (theirs)
+105526  prospect_book_removals                      (this session)
+105707  prospect_book_dossier_linkedin              (theirs — rewrites pb_dossier)
+105711  prospect_book_removal_view_grants           (this session)
+105824  prospect_book_register_sequence             (this session)
+105945  prospect_book_register_sequence_backfill    (this session)
+110348  prospect_book_dossier_hides_removals        (this session — rewrites pb_dossier)
+111050  prospect_book_autoconfirm_policy            (theirs)
+111254  prospect_book_autoconfirm_runner            (theirs)
+```
+
+**Two sessions rewrote `pb_dossier()` eleven minutes apart.** `create or replace function` is a
+whole-body replacement, so whichever ran second would have silently dropped the other's change.
+This one survived only because its body was taken from `pg_get_functiondef` *after* theirs had
+landed, so it carries their `linkedin_url` line. Verified afterwards: the live function has both
+(`linkedin_url` present, removal rows filtered) and `pb_board()` still returns 600.
+
+**That is luck, not method.** If they rewrite `pb_dossier()` again from a body they captured before
+110348, the removal filter disappears and every removal reason becomes public again, with no test
+failing — nothing in this repository reads the deployed function body back. Anyone rewriting that
+function must start from `pg_get_functiondef`, not from a migration file.
+
+`scripts/reconcile.ts` reports four failures on this branch as a result, and **none of them is this
+work**: rubric **0.1.7 (`dec7d291`) is now active**, activated by that session — the ledger and the
+files on this branch still pin 0.1.6 — and twelve applied migrations have no file here because
+their files are on the other branch. All five migrations from this session are filed and
+byte-identical to `schema_migrations.statements` (md5-verified). Nothing here touches the rubric:
+0.1.6 and 0.1.7 make no difference to a removal, which never reaches the engine.
