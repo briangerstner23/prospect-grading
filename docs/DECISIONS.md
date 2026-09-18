@@ -3481,3 +3481,64 @@ and belongs behind a preview run rather than inside the change that added the ch
 says so, and the test fails the day someone wires it without removing the row.
 
 **Not a ruling.** The register governs. This records a check and three corrections.
+
+## §52 — The ceiling shows its arithmetic (18 Sep 2026)
+
+Owner, on the rubric's $175,000 revenue-per-head: *"that's really aspirational. The numbers it
+generates are pure fiction. If anything, it portrays potential in a perfect world that doesn't
+exist."* And, on the word itself: *"I think that's correct to call it a ceiling, for what it's
+worth."*
+
+Both are right, and together they say what to do. A ceiling SHOULD be optimistic — that is what
+makes it an upper bound rather than a forecast. The problem was never the number. It was that the
+page printed the number and hid everything behind it.
+
+**What the strip said.** `Ceiling · Partner · headroom ≥ $100K`, and nothing else. That reads as
+something the book found out about this agency. It is five numbers multiplied:
+`headcount × revenue_per_head × outsourceable_share × serviceable_share × winnable_share`.
+
+**Measured, because the proportion is the argument.** Of the **457** accounts that get a ceiling,
+**413 have all three share factors sitting at their rubric default.** The win-odds factor is a
+default on **all 457** without exception; so is serviceable share. `archetype` has zero facts in
+the entire book, so every account resolves to the same blended $175K. For ninety percent of the
+book, "headroom ≥ $100K" is headcount wearing a dollar sign.
+
+**What does NOT change, and this matters more than what does.** `revenue_per_head` is one constant
+across all 830 accounts and `trailing_12m_revenue` is 0 for every one of them, which makes headroom
+a pure monotone rescale of headcount × shares. **The chase order is therefore identical at any
+per-head figure.** The board the owner works from does not move. Only the band label does — and
+only at the two dollar cut-points. Rescaling the whole book from $175K to $80K moves Partner from
+145 accounts to 84; the ranking underneath is untouched.
+
+**The live wire.** That invariance holds ONLY while `archetype` is unset everywhere. The moment
+anything populates it, accounts split between `strategy` $200K and `production` $150K, the constant
+becomes a per-account variable, and it genuinely reorders the board. Worth knowing before someone
+wires an archetype fact thinking it is an improvement.
+
+**So the fix is disclosure, not sourcing.** No new data, no grading change, no migration, nothing
+re-scored. Every factor was already stored in the scorecard and already returned by `pb_dossier()`
+as `read.trace` — the page simply never printed it. The strip now carries the multiplication under
+the cell that claims it, each factor labelled with where it came from.
+
+**Provenance is read, never inferred from the value.** A page that decided "0.5 means default"
+would be hard-coding a rubric constant (rule 4) and would keep saying so, wrongly and silently,
+the day the rubric moved. So whose a number is comes from what the engine itself recorded: a
+white-label signal behind the outsourceable share, `winnable_basis` behind the win odds, and a
+fact on file behind the archetype and the serviceable share. When a person has actually answered
+those questions the line renders all five factors as the agency's own, with their real basis —
+which makes the unanswered ones visible as the cheapest work in the book.
+
+**A rubric default is marked by a dot, not by dimming.** A colour-only distinction is no
+distinction at all for a reader who cannot see it.
+
+**It renders nothing when there is nothing to explain.** 373 accounts have no headcount, so the
+engine computes no wallet for them. Five "unknown"s in a row is noise pretending to be disclosure.
+
+**Not a new section.** `web/CONTRACT.json` owns the dossier's twenty-five sections (§46); this is
+part of the eight-cell strip and stays there. `scripts/board_page_test.ts` pins that position
+explicitly — between the Ceiling cell and the section grid — along with the two ways this could rot:
+the page recomputing the wallet instead of reading the engine's, and provenance by value
+comparison. 91 checks, up from 82; the contract's 60 are untouched.
+
+**Not a ruling.** Whether $175K is the right figure is the owner's, and PRO-16's sizing pass mark
+is still open. This changes what the page discloses, not what the engine computes.
