@@ -2229,6 +2229,26 @@ Run workflow → the branch); or make the branch the default; or merge it to the
 dispatch from there. The 18 Sep board waits on that setting; the 17 Sep page keeps working against
 the new order meanwhile, without the cell headers.
 
+**Still unset at 10:09 UTC on 18 Sep.** A fourth dispatch, on the branch head that carries the
+grid, was rejected identically after four seconds: one job, no steps, no log to download, and the
+same pair of annotations on the check run — the named branch, then *The deployment was rejected or
+didn't satisfy other protection rules.* The annotations are the only place the reason appears, and
+they are not in the job log, so read them rather than the run page:
+`/repos/<owner>/<repo>/check-runs/<job id>/annotations`. A rejection before any step is always the
+environment rule; a failure inside `configure-pages` or `deploy-pages` is the workflow or the
+token, and is a different problem. Nothing in the repository can lift this — the environments API
+is not reachable from the build container either, so it is the owner in the UI or nothing.
+
+**Publishing is the only thing left.** With the deploy blocked, the page was verified where it
+could be: served from the branch on a loopback port and driven in headless Chromium, with the three
+reads answered from the live functions' own output (fetched through the database MCP, because the
+egress policy refuses `*.supabase.co` from this container). Fifteen checks, all passing — the five
+cell headers in the ruled order, each carrying its play; the lift table's five rows; assumed
+ceilings and aged stamps marked on rows; the dossier opening from a row and naming the cell and the
+play; and no email address in the markup. The one address the page contains is the sign-in field's
+placeholder, a literal inside the inline script, never data and not rendered until the override
+panel opens. So the artifact is not in question: only the setting is.
+
 ### 28.6 · The 18 Sep migrations: database version against file name
 
 The MCP stamps its own version at apply time; the files carry 18 Sep 10:00–14:00 names. Each

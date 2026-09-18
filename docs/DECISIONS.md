@@ -3642,6 +3642,23 @@ again; or make the branch the default; or merge it there and dispatch from there
 Meanwhile the published 17 Sep page reads the new order through the same `pb_board()` — it works,
 without the cell headers and plays.
 
+*Not published as of 18 Sep 10:09 UTC.* A fourth dispatch, on the commit that carries the grid,
+was refused in four seconds with the same annotation, so the setting had not been changed. This
+line is where the deploy gets recorded when it happens: published on <date> from <branch>.
+
+What the block does **not** leave open is whether the page is right. It was served from the branch
+and driven in a real browser, with `pb_board()`, `pb_lift()` and `pb_dossier()` answered from their
+own live output — the database MCP can read them; the container's egress policy refuses
+`*.supabase.co`, so the browser could not. Fifteen checks passed: rows grouped under the five cell
+headers in the order Chase now → Work the deal → Open the door → Nurture → No tier yet, each header
+carrying its play; the *By chase cell* table showing the five lift rows, the no-tier cell at 2.37×
+against the book and the nurture cell at 0.11×; assumed ceilings and aged stamps marked on the rows
+that carry them; the dossier opening from a row and naming both the cell and the play; and no email
+address in the markup. The measurement behind the last one is the stronger claim: across all 600
+board rows and all 600 dossiers, not one address appears in the data at all. The single match in the
+page is the sign-in placeholder — a string literal in the inline script, rendered only when the
+override panel opens, which is the narrowing §44 already recorded rather than a leak.
+
 **A grants finding on the way.** The CLAUDE.md grants check, run after the migrations, reported
 seven views from the 16 Sep set — `pb_current_research`, `pb_engagement`, `pb_engagement_shape`,
 `pb_mdm_junk_hits`, `pb_mdm_resolution`, `pb_orbit_admission_queue`, `pb_orbit_overlap` — holding
