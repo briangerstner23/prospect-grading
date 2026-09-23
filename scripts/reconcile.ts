@@ -17,6 +17,12 @@
  *   3. Each source is alive by EXTERNAL evidence: a webhook row whose user agent is not pg_net, or
  *      a finished run. A row this database posted to itself is not proof of anything.
  *   4. The rule-9 mismatch count (view winner ≠ function-order winner) is zero.
+ *   5. The newest notes run DID WORK (always a FAIL, not a ledger policy). On 22 and 23 Sep 2026
+ *      the extractor's API credit ran out: pb-notes recorded 'success' with 0 facts, 0 candidates
+ *      and 8 extractor failures, and check 3 stayed green because it asks only whether a run
+ *      finished. A halted run, or one whose extractor failed and that wrote nothing, fails; no fact
+ *      or candidate for more than three days while runs keep finishing warns. An older
+ *      pb_reconcile_state() without `notes_work` warns that the check could not run.
  *
  * Runs from CI with no secrets: the URL and publishable key are the page's own
  * (web/index.html), and the rpc returns nothing that is not already readable. `--state <file>`
@@ -52,6 +58,19 @@ export interface State {
   sources: Record<string, Record<string, unknown>>;
   rule9_mismatches: number | null;
   live_accounts: number;
+  /** Added by migration 20260923130000; absent from an older pb_reconcile_state(). Numbers only. */
+  notes_work?: NotesWork;
+}
+export interface NotesWork {
+  latest: {
+    status: string; started_at: string | null; finished_at: string | null;
+    facts: number | null; candidates: number | null; wrote: number | null; errors: number | null;
+    halted: number | null; extractor_failed: number | null; extractor_halted: number | null;
+    pulled: number | null; planned: number | null;
+  } | null;
+  newest_productive_finished_at: string | null;
+  runs_since_productive: number;
+  finished_runs_7d: number;
 }
 export interface Verdict { failures: string[]; warnings: string[]; summary: string[] }
 
@@ -66,6 +85,8 @@ const SOURCE_TS_FIELD: Record<string, string> = {
   score_run: "newest_success_finished_at",
   notes_run: "newest_success_finished_at",
 };
+/** Check 5: warn when notes runs keep finishing but none has written a fact or candidate for longer. */
+export const NOTES_IDLE_WARN_DAYS = 3;
 
 export function evaluate(
   state: State,
@@ -133,6 +154,37 @@ export function evaluate(
   if (state.rule9_mismatches === null || state.rule9_mismatches === undefined) failures.push("rule-9 mismatch count is missing from the state");
   else if (state.rule9_mismatches !== 0) failures.push(`rule 9: ${state.rule9_mismatches} key(s) resolve differently between pb_current_facts and latestFactPerKey's order`);
   else summary.push("rule 9: view and function agree on every key");
+
+  // 5 · the notes sweep did work, not merely finished
+  const nw = state.notes_work;
+  if (!nw) {
+    warnings.push("notes_work is missing from the state — pb_reconcile_state() predates migration 20260923130000, so whether the notes sweep did any work could not be checked");
+  } else {
+    const n = (x: number | null | undefined): number => (typeof x === "number" ? x : 0);
+    const l = nw.latest;
+    if (!l) warnings.push("notes_work: no finished notes run to check");
+    else {
+      const written = n(l.facts) + n(l.candidates);
+      const at = `${l.status}, finished ${l.finished_at ?? "?"}`;
+      if (n(l.halted) > 0 || n(l.extractor_halted) > 0) {
+        failures.push(`notes run halted (${at}): the extractor refused the run — ${n(l.facts)} fact(s), ${n(l.candidates)} candidate(s) before it stopped. Check the extractor's API key and credit`);
+      } else if (n(l.extractor_failed) > 0 && written === 0) {
+        failures.push(`notes run did no work (${at}): ${n(l.extractor_failed)} extractor failure(s), 0 facts, 0 candidates from ${n(l.pulled)} record(s) pulled — a 'success' that read nothing (the 22–23 Sep finding). Check the extractor's API key and credit`);
+      } else {
+        summary.push(`notes run ${at}: ${n(l.facts)} fact(s), ${n(l.candidates)} candidate(s), ${n(l.extractor_failed)} extractor failure(s)`);
+      }
+    }
+    const p = nw.newest_productive_finished_at;
+    const pts = typeof p === "string" ? Date.parse(p) : NaN;
+    if (nw.runs_since_productive > 0) {
+      if (!Number.isFinite(pts)) {
+        warnings.push(`notes_work: ${nw.runs_since_productive} finished notes run(s) and none has ever written a fact or candidate`);
+      } else {
+        const idle = (asOf.getTime() - pts) / DAY_MS;
+        if (idle > NOTES_IDLE_WARN_DAYS) warnings.push(`notes_work: no fact or candidate written for ${idle.toFixed(1)} days (limit ${NOTES_IDLE_WARN_DAYS}) across ${nw.runs_since_productive} finished run(s) since`);
+      }
+    }
+  }
 
   return { failures, warnings, summary };
 }

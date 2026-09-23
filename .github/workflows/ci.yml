@@ -33,7 +33,8 @@ concurrency:
 jobs:
   test:
     name: Repo agrees with itself (npm test)
-    if: github.event_name != 'schedule'
+    # Runs on the schedule too (23 Sep 2026): it needs no secrets, and a green scheduled run that
+    # only reconciled is how two nights of a notes sweep that did no work went unseen.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
