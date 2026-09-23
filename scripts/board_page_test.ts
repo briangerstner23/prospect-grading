@@ -40,6 +40,35 @@ for (const t of fetched) check(`fetches only open tables: ${t}`, OPEN.includes(t
 for (const t of CLOSED) {
   check(`never fetches ${t} (closed to anon, or an unruled composite)`, !new RegExp(`get\\("${t}\\?`).test(page));
 }
+// Since 23 Sep (DECISIONS §61) anon reads pb_runs and pb_rubric_versions COLUMN BY COLUMN. A page
+// that asks for a column outside the grant gets a 401 and an empty line, not an error anyone sees —
+// so every column a public page selects, filters or orders on is checked against the migration's
+// own grant list, read from the file so the two cannot drift.
+{
+  const mig = readFileSync(join(here, "..", "supabase", "migrations",
+    "20260923120000_prospect_book_close_anon_reads.sql"), "utf8");
+  const granted = (t: string): string[] => {
+    const m = mig.match(new RegExp(`grant select \\(([^)]*)\\)\\s+on public\\.${t} to anon`));
+    return m ? m[1].split(",").map((s) => s.trim()) : [];
+  };
+  for (const file of ["board.html", "method.html"]) {
+    const src = readFileSync(join(here, "..", "web", file), "utf8");
+    for (const t of ["pb_runs", "pb_rubric_versions"]) {
+      const cols = granted(t);
+      check(`the migration grants anon columns on ${t}`, cols.length > 0);
+      for (const q of src.matchAll(new RegExp(`"${t}\\?([^"]*)"`, "g"))) {
+        const used = new Set<string>();
+        for (const part of q[1].split("&")) {
+          const [k, v = ""] = part.split("=");
+          if (k === "select") v.split(",").forEach((c) => used.add(c));
+          else if (k === "order") v.split(",").forEach((c) => used.add(c.split(".")[0]));
+          else if (k !== "limit" && k !== "offset") used.add(k);
+        }
+        for (const c of used) check(`${file} reads ${t}.${c}, which anon is granted`, cols.includes(c));
+      }
+    }
+  }
+}
 
 /* 2 · the page never invents an order or a number */
 check("never sorts: the rank is the engine's, through the view (rule 4)", !/\.sort\s*\(/.test(page));

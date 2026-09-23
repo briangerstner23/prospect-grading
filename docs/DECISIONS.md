@@ -4518,3 +4518,63 @@ movement; it would not say the facts underneath were admitted without a person. 
 
 **Not a widening of rule 8.** The four hard refusals above every lane are untouched and remain
 unswitchable. This adds a fifth condition to one lane; it removes none.
+
+## §61 — The publishable key reads the board, not the book (23 Sep 2026)
+
+**Owner ruling, 23 Sep 2026: close the anonymous read surface down to exactly what the public
+pages and CI use.** This supersedes §5 ("the book reads publicly") for every table and view it
+opened. PRO-7 is still not re-ruled, and the gap §5 recorded between the register and the code
+narrows rather than widens. Migration `20260923120000_prospect_book_close_anon_reads.sql`.
+
+### What was exposed, and why nobody saw it
+
+§5 opened the base tables to `anon` so the page could read them with the publishable key. The page
+stopped needing that: since §37 and §43 it reads the board and the dossier through SECURITY DEFINER
+functions that return their own columns, and the page itself shows no email address. The policies
+were never taken back. So the key that ships in `web/board.html`, asked directly of PostgREST
+rather than through the page, still returned every call's attendee list with email addresses, the
+call summaries, WLIQ staff addresses in the columns that record who entered a fact, who made a
+register entry and who reviewed a merge, the run log's error text (which names agencies), and the
+person and account-level diff on each rubric version. Nothing in the page's own tests could see
+it, because the page never asked for any of it; the leak was in what the key COULD read, not in
+what the page DID read.
+
+### What closed
+
+Every `anon` row policy except two, and every `anon` grant on every `pb_` relation except three —
+enumerated from the catalog when the migration runs, not from a hand list, so a relation nobody
+remembered closes too. That is the accounts, calls, deals, facts, fact and identity candidates,
+reads, register and signals tables, and the ten security_invoker views over them. Every view `anon`
+could read was security_invoker; the definer-owned views already held no `anon` grant.
+
+`pb_build_rubric_013()`, a function created in the database outside any migration and called by
+nothing, loses EXECUTE for everyone but its owner.
+
+### What stays open, and why each one
+
+- `pb_removal_reasons`, whole — the removal vocabulary; no person, no agency.
+- `pb_rubric_versions`, six columns (version, status, spec, spec_sha256, activated_at,
+  created_at) — the board and the method page print the active rubric. `activated_by` and
+  `preview_diff` close.
+- `pb_runs`, seven columns (id, kind, source, status, started_at, finished_at, counts), and only the
+  rows a successful `pb-score` run wrote — the board's "last scored" line. Its `counts` is a fixed
+  shape of numbers plus the rubric version and the as-of date; the error text lives in `errors`,
+  which closes.
+- EXECUTE on `pb_board()`, `pb_dossier(uuid)`, `pb_lift()`, `pb_dashboard()` and
+  `pb_reconcile_state()` — the pages' reads and CI's reconcile, all definer functions whose output is
+  their own contract. The dossier's no-addresses rule (§43) is what governs what those return.
+
+**Signed-in reads are untouched.** Every `authenticated` policy and grant stays as it was; the back
+office reads the same tables it read yesterday, under `pb_is_wliq()`.
+
+### The rule this leaves
+
+A public page that needs a new read gets a definer function that returns the columns it prints —
+never a new `anon` grant on a table. The grants check in CLAUDE.md now treats any `anon` grant
+outside the list above as a finding, column by column.
+
+### What this does not undo
+
+Closing the door un-publishes nothing. What the key could read between 10 and 23 Sep could have been
+read, copied or indexed in that time, and there is no record here of whether it was — PostgREST's
+access logs are the only place that could say, and they were not examined for this ruling.

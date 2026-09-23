@@ -157,6 +157,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             pb_lift_snapshots, pb_snapshot_lift(), cron pb-monthly-lift) · 120000 scoring pass
             (pb_actuals, pb_score_snapshots(), pb_calibration) · 130000 retire composite (drops
             pb_chase_scores) · 140000 revoke view writes (the seven 16 Sep views). All applied.
+            20260923120000 close anon reads — anon keeps pb_removal_reasons, six columns of
+            pb_rubric_versions, seven of pb_runs (pb-score successes only) and the five definer
+            reads; every other anon policy and grant goes (DECISIONS §61). AUTHORED 23 Sep, not
+            yet applied — check schema_migrations before trusting this line.
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -175,7 +179,7 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             deliberately unlike it — no expiry, two dispositions, and an "Off the board" list that is
             the only route back (§59). Adding a section, or dropping one, means updating
             web/CONTRACT.json (which owns the section names, §46) and scripts/board_page_test.ts,
-            which pins the board's BEHAVIOUR — 111 checks in total.
+            which pins the board's BEHAVIOUR — 128 checks in total.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
             The fact queue now carries the AUTOMATIC half above the manual one (DECISIONS §53):
             which lane each waiting claim is in, which lanes are switched on, a dry run before every
@@ -399,12 +403,19 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   keys, which this repository may never import. It is to the roster what
   `pb_identity_candidates` is to identity — it proposes, a person decides (migration
   20260913220000, `docs/RUNBOOK.md` §22).
-- RLS is default-deny **except for reads, which are public** (10 Sep 2026, owner decision —
-  `docs/DECISIONS.md` §5; it supersedes how PRO-7 was implemented and PRO-7 itself is not
-  re-ruled). `anon` holds `select` on the tables the page reads and nothing else: `pb_contacts`,
-  `pb_members`, `pb_promotions`, `pb_potential_snapshots` and `pb_webhook_inbox` stay closed.
+- RLS is default-deny, and **`anon` reads only what the public pages and CI use** (owner ruling,
+  23 Sep 2026 — `docs/DECISIONS.md` §61, migration 20260923120000; it supersedes §5's "reads are
+  public", which had left the publishable key able to read call attendees' email addresses, call
+  summaries and staff addresses straight off the tables). `anon` holds: `select` on
+  `pb_removal_reasons`; `select` on SIX COLUMNS of `pb_rubric_versions` (version, status, spec,
+  spec_sha256, activated_at, created_at — not `activated_by`, not `preview_diff`); `select` on
+  SEVEN COLUMNS of `pb_runs` (id, kind, source, status, started_at, finished_at, counts — not
+  `errors`, `triggered_by`, `credits_spent`), rows `source = 'pb-score' and status = 'success'`
+  only; and `execute` on the five SECURITY DEFINER reads `pb_board()`, `pb_dossier(uuid)`,
+  `pb_lift()`, `pb_dashboard()`, `pb_reconcile_state()`. Nothing else. A page that needs more
+  goes through a definer function that returns its own columns, never a new anon grant.
   Writes are unchanged — by lane via `pb_members.role` (owner / rater / viewer), signed in.
-  Never grant `anon` an insert, update or delete; never open `pb_contacts` without asking.
+  Never grant `anon` an insert, update or delete; never open a table to `anon` without asking.
 - **A new `pb_` table arrives with `anon` AND `authenticated` holding everything.** Supabase's
   default privileges on `public` grant insert/update/delete/truncate on any table created after
   they were set. Three tables made on 11 Sep inherited that for `anon`
@@ -444,6 +455,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
               and table_name in ('pb_fact_candidates','pb_identity_candidates',
                                  'pb_fact_autoconfirm_policy')
              then 'SELECT,UPDATE'
+             when grantee = 'anon' and table_name = 'pb_removal_reasons'
+             then 'SELECT'
+             when grantee = 'anon'
+             then '(none)'
              else 'SELECT'
            end as expected
     from information_schema.role_table_grants
@@ -452,13 +467,26 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
     group by 1, 2
   ) g
   where privs <> expected;
+
+  -- anon, column by column (a table-level grant lists every column here too)
+  select table_name, column_name, privilege_type
+  from information_schema.column_privileges
+  where table_schema='public' and grantee='anon' and table_name like 'pb\_%'
+    and not (privilege_type = 'SELECT' and (
+          table_name = 'pb_removal_reasons'
+       or (table_name = 'pb_runs' and column_name in
+            ('id','kind','source','status','started_at','finished_at','counts'))
+       or (table_name = 'pb_rubric_versions' and column_name in
+            ('version','status','spec','spec_sha256','activated_at','created_at'))));
   ```
 
   Compare against a computed `expected` rather than writing the exception list into a
   `having … not in (…, case … end)`: when that `case` falls through to NULL the comparison is
   NULL, not true, and the row is dropped — a check that hides exactly the findings it exists
   to surface. The three service-role-only tables appear in no row at all, which is correct;
-  they now hold no grant for either role.
+  they now hold no grant for either role. Since 23 Sep `anon` holds a TABLE grant on
+  `pb_removal_reasons` alone — its reads of `pb_runs` and `pb_rubric_versions` are column grants,
+  which the second query checks — so any other `anon` row in the first is a finding, not a default.
 - Operator steps: `docs/RUNBOOK.md`. Access status: `docs/PHASE0.md`.
 
 ## Open rulings (do not resolve them in code; each is a toggle in the rubric)
