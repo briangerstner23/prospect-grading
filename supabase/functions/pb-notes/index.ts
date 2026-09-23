@@ -849,8 +849,9 @@ Deno.serve(async (req: Request) => {
         slowestBatchMs = Math.max(slowestBatchMs, Date.now() - batchStarted);
 
         if (budget <= 0) {
-          notes.push(`The run cap of ${max_notes} record(s) was reached; the rest waits for the next run.`);
-          stopped = true;
+          /* This CHANNEL's cap, not the run's: the next channel still gets its turn. Ending the
+             whole run here is what let one busy channel starve the others. */
+          notes.push(`${channel.source}: the cap of ${max_notes} record(s) was reached; the rest waits for the next run.`);
           break;
         }
       }
