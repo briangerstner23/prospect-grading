@@ -47,8 +47,12 @@ import { closeAbandonedRuns, finishRun, runStatus, startRun } from "../_shared/l
 import { errorMessage, isRec, json, safeJsonParse } from "../_shared/helpers.ts";
 import type { DbLike, Rec } from "../_shared/helpers.ts";
 import {
+  classifyExtractorFailure,
+  compareCursor,
   extractorId,
   extractionPrompt,
+  isPastCursor,
+  timeKey,
   promptVersionFor,
   MIN_NOTE_CHARS,
   oneRecordingPerMeeting,
@@ -115,15 +119,34 @@ interface Pulled {
 
 const EMPTY: Pulled = { records: [], notes: [], counters: {} };
 
+/** Where a channel got to: an instant and the id of the last record read at it (see notes_sweep). */
+interface Cursor {
+  at: string | null;
+  id: string | null;
+}
+
+/**
+ * The API refused the call (no credit, bad key, rate limit, overload, server error). Unlike an
+ * unusable reply, this says nothing about the record — so the record must not be marked read.
+ */
+class ExtractorApiError extends Error {
+  status: number;
+  constructor(status: number, body: string) {
+    super(`extractor returned ${status}: ${body.slice(0, 200)}`);
+    this.status = status;
+  }
+}
+
 /**
  * Pipedrive notes, newest-touched first, stopping once past the watermark. Pipedrive has no
  * "updated since" filter on notes, so the sort order is the filter.
  */
 async function pullPipedriveNotes(
   token: string,
-  since: string | null,
+  cursor: Cursor,
   accountByOrg: Record<string, string>,
 ): Promise<Pulled> {
+  const since = cursor.at;
   const records: WrittenRecord[] = [];
   const notes: string[] = [];
   const counters: Record<string, number> = {};
@@ -140,7 +163,14 @@ async function pullPipedriveNotes(
     for (const row of data) {
       if (!isRec(row)) continue;
       const touched = String(row.update_time ?? row.add_time ?? "");
-      if (since !== null && touched !== "" && touched <= since) { past = true; continue; }
+      /* Newest first, so the first note strictly older than the watermark ends the walk. A note
+         at exactly the watermark's instant may still be unread (a capped run stops mid-instant),
+         so it is kept or dropped by the cursor's id, never by comparing the two strings — the
+         text comparison is what dropped a day's notes on 18 Sep 2026. */
+      if (since !== null && touched !== "") {
+        if (timeKey(touched) !== "" && timeKey(touched) < timeKey(since)) { past = true; continue; }
+        if (!isPastCursor(touched, String(row.id ?? ""), since, cursor.id)) continue;
+      }
       const org = row.org_id == null ? "" : String(row.org_id);
       records.push({
         id: row.id as number,
@@ -175,7 +205,7 @@ async function pullPipedriveNotes(
  * evidence. A summary is already a considered written statement, which is what the quote rule
  * assumes it is checking.
  */
-async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled> {
+async function pullFathomCalls(db: DbLike, cursor: Cursor): Promise<Pulled> {
   /* Every usable row, NOT just those past the watermark. A meeting's representative has to be
      chosen from all of its recordings: filter by the watermark first and a second recorder's
      row, touched later than the one already swept, arrives here alone and is read as though it
@@ -200,11 +230,14 @@ async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled
      revised duplicate does not drag the whole channel backwards. */
   const fresh = kept
     .map((k) => k.row)
-    .filter((r) => since === null || String(r.updated_at ?? "") > since)
-    .sort((a, b) => {
-      const ta = String(a.updated_at ?? ""), tb = String(b.updated_at ?? "");
-      return ta < tb ? -1 : ta > tb ? 1 : 0;
-    });
+    /* By cursor, not "strictly newer": a bulk update stamps hundreds of rows with one
+       updated_at, and "strictly newer" put every one of them behind the watermark the moment
+       the first was read (about 431 meetings, 22 Sep 2026). */
+    .filter((r) => isPastCursor(String(r.updated_at ?? ""), String(r.fathom_recording_id ?? ""), cursor.at, cursor.id))
+    .sort((a, b) => compareCursor(
+      String(a.updated_at ?? ""), String(a.fathom_recording_id ?? ""),
+      String(b.updated_at ?? ""), String(b.fathom_recording_id ?? ""),
+    ));
 
   const records: WrittenRecord[] = [];
   for (const r of fresh) {
@@ -250,7 +283,7 @@ async function pullFathomCalls(db: DbLike, since: string | null): Promise<Pulled
  * withholds money, authority, specification, timing and the climb signals from the prompt
  * entirely. See EXTRACTABLE_SITE for why withholding beats trusting the model to decline.
  */
-async function pullWebsiteReads(db: DbLike, since: string | null): Promise<Pulled> {
+async function pullWebsiteReads(db: DbLike, cursor: Cursor): Promise<Pulled> {
   /* Which accounts are already read. Fetched as ids only; the read itself is not needed. */
   const reads = await selectAll(db, "pb_account_reads", "account_id", (q) => q.is("superseded_at", null));
   const alreadyRead = new Set(reads.map((r) => String(r.account_id)));
@@ -284,7 +317,7 @@ async function pullWebsiteReads(db: DbLike, since: string | null): Promise<Pulle
        not worth a model call, and planSweep would drop it anyway — counted here so the run
        says how much of the table is chaff rather than silently reporting a small sweep. */
     if (rec.content.length < MIN_NOTE_CHARS) { skippedEmpty++; continue; }
-    if (since !== null && String(rec.update_time ?? "") <= since) continue;
+    if (!isPastCursor(String(rec.update_time ?? ""), String(rec.id), cursor.at, cursor.id)) continue;
     records.push(rec);
     accounts.add(account_id);
   }
@@ -432,7 +465,7 @@ async function readRecord(apiKey: string, model: string, planned: PlannedNote): 
       messages: [{ role: "user", content: `<record>\n${planned.text}\n</record>` }],
     }),
   });
-  if (!res.ok) throw new Error(`extractor returned ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new ExtractorApiError(res.status, await res.text());
   const body = await res.json();
   const text = Array.isArray(body?.content)
     ? body.content.map((b: Rec) => (b?.type === "text" ? String(b.text ?? "") : "")).join("")
@@ -529,13 +562,19 @@ Deno.serve(async (req: Request) => {
     counters["book.accounts"] = accounts.length;
     counters["book.domains"] = bookDomains.length;
 
-    const marks = await selectAll(db, "pb_source_watermarks", "source,last_seen_at");
-    const watermark = (source: string): string | null => {
-      if (body.since === null) return null;
-      if (typeof body.since === "string") return body.since;
+    const marks = await selectAll(db, "pb_source_watermarks", "source,last_seen_at,last_seen_id");
+    /* An explicit `since` in the body is an operator re-read: it names an instant and no id, so
+       every record at or after it (strictly after, for records at exactly that instant) is read
+       again. The fingerprint and the already-on-record rule keep a re-read from writing twice. */
+    const cursorFor = (source: string): Cursor => {
+      if (body.since === null) return { at: null, id: null };
+      if (typeof body.since === "string") return { at: body.since, id: null };
       const row = marks.find((m) => String(m.source) === source);
-      return row ? ((row.last_seen_at as string | null) ?? null) : null;
+      return row
+        ? { at: (row.last_seen_at as string | null) ?? null, id: (row.last_seen_id as string | null) ?? null }
+        : { at: null, id: null };
     };
+    const watermark = (source: string): string | null => cursorFor(source).at;
 
     /* Each channel, behind its own credential. A missing key is said out loud, never guessed. */
     const pipedriveToken = await getSecret(db, "PB_PIPEDRIVE_API_TOKEN");
@@ -558,11 +597,11 @@ Deno.serve(async (req: Request) => {
     };
 
     consider(PIPEDRIVE_NOTES, pipedriveToken, "PB_PIPEDRIVE_API_TOKEN", () =>
-      pullPipedriveNotes(pipedriveToken as string, watermark(PIPEDRIVE_NOTES), accountByOrg));
+      pullPipedriveNotes(pipedriveToken as string, cursorFor(PIPEDRIVE_NOTES), accountByOrg));
     // No credential: the webhook already put these in pb_calls, with their account resolved.
-    consider(FATHOM_CALLS, "ready", "", () => pullFathomCalls(db, watermark(FATHOM_CALLS)));
+    consider(FATHOM_CALLS, "ready", "", () => pullFathomCalls(db, cursorFor(FATHOM_CALLS)));
     // No credential either: the pages are already in pb_website_reads, each with its account.
-    consider(WEBSITE, "ready", "", () => pullWebsiteReads(db, watermark(WEBSITE)));
+    consider(WEBSITE, "ready", "", () => pullWebsiteReads(db, cursorFor(WEBSITE)));
     consider(EMAIL, gmailReady, "PB_GMAIL_REFRESH_TOKEN / PB_GMAIL_CLIENT_ID / PB_GMAIL_CLIENT_SECRET", async () => {
       const token = await gmailAccessToken(gmailRefresh as string, gmailClientId as string, gmailClientSecret as string);
       return pullEmail(token, watermark(EMAIL), accountByDomain, bookDomains);
@@ -606,10 +645,17 @@ Deno.serve(async (req: Request) => {
     let errors = 0;
     let factsWritten = 0;
     let queued = 0;
-    const newWatermarks: Record<string, string> = {};
+    const newWatermarks: Record<string, Cursor> = {};
     const swept: string[] = [];
     let budget = max_notes;
     let stopped = false;
+    /* Set when the API itself refused a call. The run stops where it is, nothing past that record
+       is marked read, and the run is recorded as failed so the watchdog and the reconcile see it. */
+    let halted: string | null = null;
+    const passed = (p: PlannedNote): Cursor => ({
+      at: String(p.note.update_time ?? p.note.add_time ?? ""),
+      id: String(p.note.id),
+    });
 
     /* Written per record, never accumulated to the end. A timeout then costs at most the
        record in flight, and everything already read stays in the book. */
@@ -632,6 +678,9 @@ Deno.serve(async (req: Request) => {
 
     for (const channel of channels) {
       if (stopped) break;
+      /* The cap is per CHANNEL. Shared, it let the first channel spend every record of a run and
+         starve the rest — on 19 Sep 2026 Pipedrive took all 8 and Fathom never ran. */
+      budget = max_notes;
       let pulled: Pulled;
       try {
         pulled = await channel.pull();
@@ -648,6 +697,7 @@ Deno.serve(async (req: Request) => {
         notes: pulled.records,
         accountByOrg,
         since: watermark(channel.source),
+        since_id: cursorFor(channel.source).id,
         as_of,
         max_notes: budget,
       });
@@ -665,11 +715,10 @@ Deno.serve(async (req: Request) => {
          nothing to see. Time order survives either way, because a batch is always a
          contiguous run of the ordered list — the batch closes at the first repeat rather than
          reaching past it. */
-      const ordered = [...plan.read].sort((a, b) => {
-        const ta = String(a.note.update_time ?? a.note.add_time ?? "");
-        const tb = String(b.note.update_time ?? b.note.add_time ?? "");
-        return ta < tb ? -1 : ta > tb ? 1 : 0;
-      });
+      const ordered = [...plan.read].sort((a, b) => compareCursor(
+        String(a.note.update_time ?? a.note.add_time ?? ""), String(a.note.id),
+        String(b.note.update_time ?? b.note.add_time ?? ""), String(b.note.id),
+      ));
 
       let cursor = 0;
       while (cursor < ordered.length && budget > 0) {
@@ -699,23 +748,34 @@ Deno.serve(async (req: Request) => {
         const batchStarted = Date.now();
         const replies = await Promise.all(batch.map(async (p) => {
           try {
-            return { p, response: await readRecord(apiKey, model, p), failure: null as string | null };
+            return { p, response: await readRecord(apiKey, model, p), failure: null as string | null, status: null as number | null };
           } catch (e) {
-            return { p, response: null as unknown, failure: errorMessage(e) };
+            return { p, response: null as unknown, failure: errorMessage(e), status: e instanceof ExtractorApiError ? e.status : null };
           }
         }));
 
         for (const r of replies) {
           const p = r.p;
           if (r.failure !== null) {
-            /* Move past it. A parse failure is deterministic — retrying gives the same reply —
+            if (classifyExtractorFailure(r.status, r.failure) === "halt") {
+              /* The API refused, not the record. Stop here: this record and everything after it
+                 stays unread, the watermark stays on the last record genuinely finished, and
+                 the run is marked failed. On 22–23 Sep 2026 this case was treated as a bad
+                 record, so two nights of records were marked read without being read. */
+              halted = `${p.note.label ?? p.note.id}: ${r.failure}`;
+              notes.push(`HALTED — the extractor API refused a call (${r.failure.slice(0, 160)}). Nothing from here on was marked read; the next run starts at this record.`);
+              counters[`${channel.source}.extractor_halted`] = 1;
+              stopped = true;
+              break;
+            }
+            /* Move past it. An unusable reply is deterministic — retrying gives the same one —
                so holding the watermark here would wedge the whole channel on one bad record,
                forever, and nothing after it would ever be read. It is not lost quietly: the
                counter is non-zero and the run names the record, which is what an operator
-               watches. Re-read it deliberately with `since: null`. */
-            notes.push(`${p.note.label ?? p.note.id}: ${r.failure}; SKIPPED — re-read it with since:null once the cause is fixed.`);
+               watches. Re-read it deliberately with `since` once the cause is fixed. */
+            notes.push(`${p.note.label ?? p.note.id}: ${r.failure}; SKIPPED — re-read it with since once the cause is fixed.`);
             counters[`${channel.source}.extractor_failed`] = (counters[`${channel.source}.extractor_failed`] ?? 0) + 1;
-            newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
+            newWatermarks[channel.source] = passed(p);
             continue;
           }
 
@@ -780,7 +840,7 @@ Deno.serve(async (req: Request) => {
           }
 
           // Only now is this record genuinely done, so only now may the watermark pass it.
-          newWatermarks[channel.source] = String(p.note.update_time ?? p.note.add_time ?? "");
+          newWatermarks[channel.source] = passed(p);
         }
 
         /* Headroom is measured in batches because that is the unit the next iteration costs.
@@ -810,11 +870,13 @@ Deno.serve(async (req: Request) => {
        either step stopped the loop before its watermark was recorded, so the next run retries
        exactly it and nothing before it is read twice. */
     if (errors === 0) {
-      for (const [source, last_seen_at] of Object.entries(newWatermarks)) {
-        if (!last_seen_at) continue;
+      for (const [source, cursor] of Object.entries(newWatermarks)) {
+        if (!cursor.at) continue;
         const { error } = await db.from("pb_source_watermarks").upsert({
           source,
-          last_seen_at,
+          // One spelling for every channel, so the next run never compares two formats.
+          last_seen_at: timeKey(cursor.at) || cursor.at,
+          last_seen_id: cursor.id,
           last_run_at: new Date().toISOString(),
           note: `${extractors[source] ?? extractor}: swept ${source}.`,
         }, { onConflict: "source" });
@@ -824,9 +886,12 @@ Deno.serve(async (req: Request) => {
       notes.push("No watermark was advanced because this run had errors; the same records are read again next time.");
     }
 
-    await finishRun(db, runId, runStatus(wrote, errors), { ...counters, facts: factsWritten, candidates: queued, wrote, errors }, notes);
+    /* A halted run is a failed run, even when it wrote something first: the watchdog, the
+       reconcile and CI all read status, and "success" is what hid 22–23 Sep 2026. */
+    const status = halted !== null ? (wrote > 0 ? "partial" : "failed") : runStatus(wrote, errors);
+    await finishRun(db, runId, status, { ...counters, facts: factsWritten, candidates: queued, wrote, errors, halted: halted !== null ? 1 : 0 }, notes);
     return json({
-      ok: errors === 0, run_id: runId, swept, extractor, extractors, stopped_early: stopped,
+      ok: errors === 0 && halted === null, run_id: runId, swept, extractor, extractors, stopped_early: stopped, halted,
       wrote: { facts: factsWritten, candidates: queued },
       next_watermarks: newWatermarks, counters, notes,
     });
