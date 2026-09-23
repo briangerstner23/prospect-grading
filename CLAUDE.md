@@ -157,10 +157,16 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             pb_lift_snapshots, pb_snapshot_lift(), cron pb-monthly-lift) · 120000 scoring pass
             (pb_actuals, pb_score_snapshots(), pb_calibration) · 130000 retire composite (drops
             pb_chase_scores) · 140000 revoke view writes (the seven 16 Sep views). All applied.
-            20260923120000 close anon reads — anon keeps pb_removal_reasons, six columns of
+            The 23 Sep set (audit record 3; TB-41, TB-42), each file stamped with its REAL applied
+            version: 20260923210628 watermark cursor (pb_source_watermarks.last_seen_id; the
+            pipedrive_note and fathom_call watermarks wound back to where reading truly stopped) ·
+            211125 close anon reads — anon keeps pb_removal_reasons, six columns of
             pb_rubric_versions, seven of pb_runs (pb-score successes only) and the five definer
-            reads; every other anon policy and grant goes (DECISIONS §61). AUTHORED 23 Sep, not
-            yet applied — check schema_migrations before trusting this line.
+            reads; every other anon policy and grant goes (DECISIONS §61) · 211200 reconcile
+            notes work (pb_reconcile_state() gains `notes_work`) · 211234 notes catch-up (cron
+            pb-notes-catchup every 4 min, posts only before 2026-09-25 05:00 UTC; unschedule it
+            once quiet). All applied 23 Sep; the applied statements of 211125/211200/211234 carry
+            a shortened header comment, the SQL is identical.
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -357,7 +363,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
 - Deployed versions as of **18 Sep 2026**: **pb-score v14** (commit `d14223c`, the grid engine —
   deployed as a one-line entrypoint pinned to that commit's raw GitHub URL, so the deployed
-  function IS the commit; RUNBOOK §3; §52), **pb-notes v14** (commit `53596a3`, also a pinned-commit
+  function IS the commit; RUNBOOK §3; §52), **pb-notes v16** (commit `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
   entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-sync v2**, **pb-pipedrive-webhook v2**,
   **pb-fathom-webhook v2** (those three from 14 Sep bundles, `561f289`/`53fb656`), and
   **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in
@@ -393,7 +399,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   that moved overnight is in the same morning's queue. Last, `pb-nightly-watchdog` 07:00 writes a
   `failed` `pb_runs` row for either nightly job if it left no finished run. The watchdog lives in
   the database on purpose: the thing that took both jobs out on 12 Sep was the API gateway, and a
-  remedy that goes through the gateway is no remedy (migration 20260912150000). The seventh,
+  remedy that goes through the gateway is no remedy (migration 20260912150000). The eighth,
   `pb-monthly-lift`, runs at 07:30 UTC on the 1st and snapshots the lift-by-cell report
   (`pb_snapshot_lift()`; RUNBOOK §28.2, DECISIONS §52).
 - **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
@@ -404,7 +410,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   `pb_identity_candidates` is to identity — it proposes, a person decides (migration
   20260913220000, `docs/RUNBOOK.md` §22).
 - RLS is default-deny, and **`anon` reads only what the public pages and CI use** (owner ruling,
-  23 Sep 2026 — `docs/DECISIONS.md` §61, migration 20260923120000; it supersedes §5's "reads are
+  23 Sep 2026 — `docs/DECISIONS.md` §61, migration 20260923211125; it supersedes §5's "reads are
   public", which had left the publishable key able to read call attendees' email addresses, call
   summaries and staff addresses straight off the tables). `anon` holds: `select` on
   `pb_removal_reasons`; `select` on SIX COLUMNS of `pb_rubric_versions` (version, status, spec,

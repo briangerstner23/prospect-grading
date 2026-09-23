@@ -46,7 +46,7 @@ for (const t of CLOSED) {
 // own grant list, read from the file so the two cannot drift.
 {
   const mig = readFileSync(join(here, "..", "supabase", "migrations",
-    "20260923120000_prospect_book_close_anon_reads.sql"), "utf8");
+    "20260923211125_prospect_book_close_anon_reads.sql"), "utf8");
   const granted = (t: string): string[] => {
     const m = mig.match(new RegExp(`grant select \\(([^)]*)\\)\\s+on public\\.${t} to anon`));
     return m ? m[1].split(",").map((s) => s.trim()) : [];

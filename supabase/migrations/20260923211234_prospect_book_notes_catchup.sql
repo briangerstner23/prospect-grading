@@ -1,7 +1,7 @@
 -- Prospect Book — a time-boxed catch-up of the notes backlog. Owner ruling 23 Sep 2026 (audit
 -- record 3, finding A: "I want this all fixed"; credit restored the same day).
 --
--- The wound-back watermarks (20260923110000) put several hundred Fathom calls and a few dozen
+-- The wound-back watermarks (20260923210628) put several hundred Fathom calls and a few dozen
 -- Pipedrive notes back in front of the sweep. The nightly job reads about eight records per
 -- channel, so on its own the backlog would take weeks. This job runs the same function on the
 -- same terms every four minutes for a bounded window and then does nothing.

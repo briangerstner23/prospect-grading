@@ -4524,7 +4524,7 @@ unswitchable. This adds a fifth condition to one lane; it removes none.
 **Owner ruling, 23 Sep 2026: close the anonymous read surface down to exactly what the public
 pages and CI use.** This supersedes §5 ("the book reads publicly") for every table and view it
 opened. PRO-7 is still not re-ruled, and the gap §5 recorded between the register and the code
-narrows rather than widens. Migration `20260923120000_prospect_book_close_anon_reads.sql`.
+narrows rather than widens. Migration `20260923211125_prospect_book_close_anon_reads.sql`.
 
 ### What was exposed, and why nobody saw it
 

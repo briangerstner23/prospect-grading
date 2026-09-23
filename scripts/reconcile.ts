@@ -58,7 +58,7 @@ export interface State {
   sources: Record<string, Record<string, unknown>>;
   rule9_mismatches: number | null;
   live_accounts: number;
-  /** Added by migration 20260923130000; absent from an older pb_reconcile_state(). Numbers only. */
+  /** Added by migration 20260923211200; absent from an older pb_reconcile_state(). Numbers only. */
   notes_work?: NotesWork;
 }
 export interface NotesWork {
@@ -158,7 +158,7 @@ export function evaluate(
   // 5 · the notes sweep did work, not merely finished
   const nw = state.notes_work;
   if (!nw) {
-    warnings.push("notes_work is missing from the state — pb_reconcile_state() predates migration 20260923130000, so whether the notes sweep did any work could not be checked");
+    warnings.push("notes_work is missing from the state — pb_reconcile_state() predates migration 20260923211200, so whether the notes sweep did any work could not be checked");
   } else {
     const n = (x: number | null | undefined): number => (typeof x === "number" ? x : 0);
     const l = nw.latest;
