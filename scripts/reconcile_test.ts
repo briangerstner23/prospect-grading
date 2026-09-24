@@ -49,6 +49,16 @@ const green = (): State => ({
   },
   rule9_mismatches: 0,
   live_accounts: 829,
+  notes_work: {
+    latest: {
+      status: "success", started_at: day(0.41), finished_at: day(0.4),
+      facts: 10, candidates: 14, wrote: 24, errors: 0, halted: 0,
+      extractor_failed: 0, extractor_halted: null, pulled: 460, planned: null,
+    },
+    newest_productive_finished_at: day(0.4),
+    runs_since_productive: 0,
+    finished_runs_7d: 7,
+  },
 });
 
 {
@@ -122,6 +132,63 @@ const green = (): State => ({
   const s = green(); s.live_accounts = 900;
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("live accounts ≠ reads warns", v.warnings.some((w) => w.includes("900 live accounts")));
+}
+
+{
+  const v = evaluate(green(), ledger, disk, FP, NOW);
+  check("healthy notes run: no notes failure or warning", !v.failures.some((f) => f.startsWith("notes")) && !v.warnings.some((w) => w.startsWith("notes")) && v.summary.some((s) => s.startsWith("notes run success")));
+}
+{
+  // 22 Sep: credit ran out; 'success', 8 extractor failures, nothing written; two runs since the last write.
+  const s = green();
+  s.notes_work!.latest = { status: "success", started_at: day(0.26), finished_at: day(0.25), facts: 0, candidates: 0, wrote: 0, errors: 0, halted: null, extractor_failed: 8, extractor_halted: null, pulled: 29, planned: null };
+  s.notes_work!.newest_productive_finished_at = day(2.25);
+  s.notes_work!.runs_since_productive = 2;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("22-Sep run (success, 8 extractor failures, 0 written) fails", v.failures.some((f) => f.startsWith("notes run did no work") && f.includes("8 extractor failure")), v.failures.join(" | "));
+  check("22-Sep run: notes_run liveness alone still passes (why check 5 exists)", !v.failures.some((f) => f.startsWith("notes_run:")));
+  check("22-Sep run: 2.25 days idle does not yet warn (limit 3)", !v.warnings.some((w) => w.includes("no fact or candidate written")));
+}
+{
+  const s = green();
+  s.notes_work!.latest = { status: "success", started_at: day(1), finished_at: day(1), facts: 3, candidates: 0, wrote: 3, errors: 0, halted: 0, extractor_failed: 2, extractor_halted: null, pulled: 40, planned: null };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("extractor failures but something written: no failure", !v.failures.some((f) => f.startsWith("notes")));
+}
+{
+  // After the 23 Sep pb-notes change: a refused API halts the run; 'partial' because it wrote first.
+  const s = green();
+  s.notes_work!.latest = { status: "partial", started_at: day(0.3), finished_at: day(0.3), facts: 1, candidates: 2, wrote: 3, errors: 0, halted: 1, extractor_failed: 0, extractor_halted: 1, pulled: 30, planned: null };
+  s.sources.notes_run = { newest_success_finished_at: day(0.3) };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("halted 'partial' run fails even though it wrote something", v.failures.some((f) => f.startsWith("notes run halted")), v.failures.join(" | "));
+}
+{
+  const s = green();
+  s.notes_work!.latest = { status: "failed", started_at: day(0.3), finished_at: day(0.3), facts: 0, candidates: 0, wrote: 0, errors: 0, halted: null, extractor_failed: null, extractor_halted: 1, pulled: 30, planned: null };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a channel's extractor_halted alone fails", v.failures.some((f) => f.startsWith("notes run halted")));
+}
+{
+  const s = green();
+  s.notes_work!.latest = { status: "success", started_at: day(0.3), finished_at: day(0.3), facts: 0, candidates: 0, wrote: 0, errors: 0, halted: 0, extractor_failed: 0, extractor_halted: null, pulled: 0, planned: null };
+  s.notes_work!.newest_productive_finished_at = day(4);
+  s.notes_work!.runs_since_productive = 4;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("4 days with no write while runs keep finishing warns", v.warnings.some((w) => w.includes("no fact or candidate written for 4.0 days")));
+  check("…and a quiet run with no extractor failure is not itself a failure", !v.failures.some((f) => f.startsWith("notes")));
+}
+{
+  const s = green();
+  s.notes_work!.newest_productive_finished_at = null;
+  s.notes_work!.runs_since_productive = 5;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("runs but never a write warns", v.warnings.some((w) => w.includes("none has ever written")));
+}
+{
+  const s = green(); delete s.notes_work;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("notes_work missing (old function) warns that the check could not run", v.warnings.some((w) => w.includes("could not be checked")) && !v.failures.some((f) => f.startsWith("notes")));
 }
 
 console.log(`reconcile_test: ${passed} passed, ${failures.length} failed`);

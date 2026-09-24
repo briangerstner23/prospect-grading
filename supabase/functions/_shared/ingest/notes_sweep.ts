@@ -148,6 +148,12 @@ export interface SweepPlanInput {
   accountByOrg: Record<string, string>;
   /** pb_source_watermarks.last_seen_at. Notes not touched since are already read. */
   since: string | null;
+  /**
+   * pb_source_watermarks.last_seen_id — the id of the last record read AT `since`. Records that
+   * share `since` exactly and sort after this id are still unread. Null (every watermark written
+   * before 23 Sep 2026) means "everything at `since` was read", which is what the old rule assumed.
+   */
+  since_id?: string | null;
   /** ISO date. A note dated after this is not read. */
   as_of: string;
   /** Fingerprints already in pb_fact_candidates / pb_facts, so a re-run costs no model calls. */
@@ -170,6 +176,8 @@ export interface SweepPlan {
   counters: Record<string, number>;
   /** The watermark to store if this run completes: the newest update_time considered. */
   next_watermark: string | null;
+  /** The id of the record at `next_watermark` — stored beside it so a tie is never skipped. */
+  next_watermark_id: string | null;
 }
 
 function bump(c: Record<string, number>, k: string): void {
@@ -179,6 +187,89 @@ function bump(c: Record<string, number>, k: string): void {
 /** When the note last changed — what the watermark compares against. */
 export function touchedAt(note: PipedriveNote): string {
   return String(note.update_time ?? note.add_time ?? "");
+}
+
+/* ------------------------------------------------------------------ *
+ * The watermark cursor
+ *
+ * Two defects lost records here until 23 Sep 2026, and both were string comparisons.
+ *
+ *   1. Pipedrive writes "2026-09-18 14:02:11" (a space, no zone); the watermark comes back from
+ *      Postgres as "2026-09-18T14:02:11+00:00". As text, " " sorts before "T", so every note
+ *      touched later on the SAME DAY as the watermark compared as already read. A capped run
+ *      that stopped partway through a day silently dropped the rest of that day.
+ *   2. A bulk update stamps hundreds of pb_calls rows with one updated_at. The rule was "newer
+ *      than the watermark", strictly, so once the watermark reached that instant every row still
+ *      sharing it was behind it — read or not.
+ *
+ * So a time is compared as an instant, never as text, and the watermark is a (time, id) pair:
+ * a record at exactly the watermark's time is unread when its id sorts after the stored id.
+ * ------------------------------------------------------------------ */
+
+/**
+ * One instant, one spelling: ISO-8601 UTC with milliseconds, or "" when unparseable. A time with
+ * no zone is UTC — Pipedrive's API reports UTC and says so nowhere in the string.
+ */
+export function timeKey(s: string | null | undefined): string {
+  const raw = String(s ?? "").trim();
+  if (raw === "") return "";
+  let t = raw.replace(" ", "T");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) t += "T00:00:00";
+  if (!/(Z|[+-]\d{2}(:?\d{2})?)$/.test(t)) t += "Z";
+  // Postgres may print a bare "+00" offset, which Date.parse rejects; spell it out.
+  t = t.replace(/([+-]\d{2})$/, "$1:00");
+  const ms = Date.parse(t);
+  return Number.isNaN(ms) ? "" : new Date(ms).toISOString();
+}
+
+/** Ids compare as numbers when both are numbers (Pipedrive), otherwise as text (Fathom, pages). */
+export function compareIds(a: string, b: string): number {
+  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+    const d = BigInt(a) - BigInt(b);
+    return d < 0n ? -1 : d > 0n ? 1 : 0;
+  }
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Order two records by the cursor: instant first, id second. */
+export function compareCursor(aTime: string, aId: string, bTime: string, bId: string): number {
+  const ta = timeKey(aTime), tb = timeKey(bTime);
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return compareIds(aId, bId);
+}
+
+/**
+ * True when a record touched at `touched` with this id has NOT been read yet. With no watermark
+ * everything is unread. With a watermark but no stored id, a record at exactly the watermark's
+ * instant counts as read (the rule every watermark before 23 Sep 2026 was written under).
+ */
+export function isPastCursor(touched: string, id: string, since: string | null, sinceId: string | null = null): boolean {
+  if (since === null) return true;
+  const t = timeKey(touched), s = timeKey(since);
+  if (t === "" || s === "") return t > s; // an unparseable side can only be judged as text
+  if (t !== s) return t > s;
+  if (sinceId === null) return false;
+  return compareIds(id, sinceId) > 0;
+}
+
+/**
+ * Why the extractor failed decides what the run does next.
+ *
+ *   "halt" — the API itself refused: no credit, bad key, rate limit, overload, a server error.
+ *            Every later record would fail the same way, and moving the watermark past this one
+ *            would lose it. Stop the run, keep the watermark, mark the run failed.
+ *   "skip" — this record's reply could not be used (no JSON, cut off, a 400 about THIS request).
+ *            Retrying gives the same answer, so holding the watermark would wedge the channel on
+ *            one bad record forever. Move past it and name it.
+ *
+ * 22–23 Sep 2026 is why this exists: a 400 "credit balance is too low" was treated as "skip",
+ * so each night's records were marked read without being read, and the run said "success".
+ */
+export function classifyExtractorFailure(status: number | null, body: string): "halt" | "skip" {
+  if (status === null) return "skip"; // the reply arrived and was unusable
+  if (status === 401 || status === 403 || status === 429 || status === 529 || status >= 500) return "halt";
+  if (/credit balance|billing|quota|rate.?limit|overloaded/i.test(body)) return "halt";
+  return "skip";
 }
 
 /* ------------------------------------------------------------------ *
@@ -254,12 +345,10 @@ export function planSweep(input: SweepPlanInput): SweepPlan {
   const counters: Record<string, number> = {};
   const cap = input.max_notes ?? 250;
   let watermark: string | null = null;
+  let watermarkId: string | null = null;
 
-  const ordered = [...input.notes].sort((a, b) => {
-    const ta = touchedAt(a);
-    const tb = touchedAt(b);
-    return ta < tb ? -1 : ta > tb ? 1 : String(a.id) < String(b.id) ? -1 : 1;
-  });
+  const ordered = [...input.notes].sort((a, b) =>
+    compareCursor(touchedAt(a), String(a.id), touchedAt(b), String(b.id)));
 
   for (const note of ordered) {
     const touched = touchedAt(note);
@@ -268,11 +357,11 @@ export function planSweep(input: SweepPlanInput): SweepPlan {
       bump(counters, "undated");
       continue;
     }
-    if (input.since !== null && touched <= input.since) {
+    if (!isPastCursor(touched, String(note.id), input.since, input.since_id ?? null)) {
       bump(counters, "already_read");
       continue;
     }
-    if (touched.slice(0, 10) > input.as_of) {
+    if ((timeKey(touched) || touched).slice(0, 10) > input.as_of) {
       notes.push(`Note ${note.id} is touched ${touched.slice(0, 10)}, after as_of ${input.as_of}; skipped.`);
       bump(counters, "after_as_of");
       continue;
@@ -300,15 +389,17 @@ export function planSweep(input: SweepPlanInput): SweepPlan {
     }
 
     out.push({ note, account_id, text });
-    // Only advance over notes this run actually read, so a capped run resumes cleanly.
-    if (watermark === null || touched > watermark) watermark = touched;
+    // Only advance over notes this run actually read, so a capped run resumes cleanly. The list
+    // is in cursor order, so the last one read is the new cursor.
+    watermark = touched;
+    watermarkId = String(note.id);
   }
 
   if (counters.over_run_cap) {
     notes.push(`${counters.over_run_cap} note(s) left for the next run — this one is capped at ${cap}.`);
   }
 
-  return { read: out, notes, counters, next_watermark: watermark };
+  return { read: out, notes, counters, next_watermark: watermark, next_watermark_id: watermarkId };
 }
 
 /* ------------------------------------------------------------------ *

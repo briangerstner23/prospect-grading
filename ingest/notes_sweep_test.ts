@@ -11,8 +11,12 @@
 import {
   EXTRACTABLE,
   EXTRACTABLE_SITE,
+  classifyExtractorFailure,
+  compareIds,
   extractorId,
+  isPastCursor,
   keysFor,
+  timeKey,
   promptVersionFor,
   PROMPT_VERSION,
   SITE_PROMPT_VERSION,
@@ -146,6 +150,51 @@ const plannedOf = (input: SweepPlanInput = BASE): PlannedNote => planSweep(input
   eq("no notes, nothing read", p.read.length, 0);
   eq("and no watermark to store", p.next_watermark, null);
 }
+
+/* 1b · the watermark cursor — the two defects of 18–22 Sep 2026, reproduced and pinned. */
+
+{
+  // Defect 1: Pipedrive's "YYYY-MM-DD HH:MM:SS" against Postgres's "YYYY-MM-DDTHH:MM:SS+00:00".
+  // As text, a note written LATER the same day sorted before the watermark and was dropped.
+  const later = note({ id: 7002, update_time: "2026-09-18 16:00:00" });
+  const p = planSweep({ ...BASE, as_of: "2026-09-30", notes: [later], since: "2026-09-18T14:00:00+00:00" });
+  eq("a note later the same day as the watermark is read, whatever the spelling", p.read.length, 1);
+  const earlier = note({ id: 7003, update_time: "2026-09-18 13:00:00" });
+  const q = planSweep({ ...BASE, as_of: "2026-09-30", notes: [earlier], since: "2026-09-18T14:00:00+00:00" });
+  eq("and one earlier that day is still behind it", q.read.length, 0);
+  eq("timeKey reads Pipedrive's spelling as UTC", timeKey("2026-09-18 14:00:00"), "2026-09-18T14:00:00.000Z");
+  eq("timeKey reads Postgres's bare +00 offset", timeKey("2026-09-18 14:00:00+00"), "2026-09-18T14:00:00.000Z");
+  eq("and both spellings are one instant", timeKey("2026-09-18T14:00:00+00:00"), timeKey("2026-09-18 14:00:00"));
+}
+
+{
+  // Defect 2: many records sharing one timestamp. A capped run reads some; the cursor's id
+  // must let the next run read the rest instead of treating the whole instant as done.
+  const T = "2026-09-17 01:52:56";
+  const bulk = [5, 1, 4, 2, 3].map((id) => note({ id, update_time: T }));
+  const p = planSweep({ ...BASE, as_of: "2026-09-30", notes: bulk, max_notes: 2 });
+  eq("a bulk instant is read in id order", p.read.map((r) => r.note.id), [1, 2]);
+  eq("and the cursor names the last id read", p.next_watermark_id, "2");
+  const q = planSweep({ ...BASE, as_of: "2026-09-30", notes: bulk, max_notes: 2, since: p.next_watermark, since_id: p.next_watermark_id });
+  eq("the next run resumes inside the same instant", q.read.map((r) => r.note.id), [3, 4]);
+  const r = planSweep({ ...BASE, as_of: "2026-09-30", notes: bulk, since: q.next_watermark, since_id: q.next_watermark_id });
+  eq("and the one after that finishes it", r.read.map((x) => x.note.id), [5]);
+  const legacy = planSweep({ ...BASE, as_of: "2026-09-30", notes: bulk, since: T });
+  eq("a watermark with no id keeps the old meaning: that instant is done", legacy.read.length, 0);
+}
+
+eq("ids compare as numbers when both are numbers", compareIds("9", "10"), -1);
+eq("and as text otherwise", compareIds("rec_b", "rec_a"), 1);
+check("no watermark means everything is unread", isPastCursor("2020-01-01", "1", null));
+
+/* 1c · why the extractor failed decides whether the run stops. */
+eq("no API credit halts the run", classifyExtractorFailure(400, '{"error":{"message":"Your credit balance is too low to access the Anthropic API"}}'), "halt");
+eq("a bad key halts the run", classifyExtractorFailure(401, "invalid x-api-key"), "halt");
+eq("a rate limit halts the run", classifyExtractorFailure(429, "rate_limit_error"), "halt");
+eq("an overload halts the run", classifyExtractorFailure(529, "overloaded_error"), "halt");
+eq("a server error halts the run", classifyExtractorFailure(500, "api_error"), "halt");
+eq("a 400 about this request skips the record", classifyExtractorFailure(400, "prompt is too long"), "skip");
+eq("an unusable reply skips the record", classifyExtractorFailure(null, "no JSON in the reply"), "skip");
 
 eq("touchedAt prefers update_time", touchedAt(note({ update_time: "2026-05-05 00:00:00" })), "2026-05-05 00:00:00");
 eq("touchedAt falls back to add_time", touchedAt(note({ update_time: null })), "2026-03-02 09:00:00");
