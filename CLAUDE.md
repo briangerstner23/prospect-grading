@@ -165,7 +165,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             reads; every other anon policy and grant goes (DECISIONS §61) · 211200 reconcile
             notes work (pb_reconcile_state() gains `notes_work`) · 211234 notes catch-up (cron
             pb-notes-catchup every 4 min, posts only before 2026-09-25 05:00 UTC; unschedule it
-            once quiet) · 213647 catch-up faster (every 3 min, 6 at once, 30 per channel). All applied 23 Sep; the applied statements of 211125/211200/211234 carry
+            once quiet) · 213647 catch-up faster (every 3 min, 6 at once, 30 per channel) · 20260924010622 catch-up done (job removed; backlog read, 383 facts and 889 candidates written). All applied 23 Sep; the applied statements of 211125/211200/211234 carry
             a shortened header comment, the SQL is identical.
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/
