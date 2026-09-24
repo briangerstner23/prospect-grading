@@ -394,12 +394,15 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
       <p>The owner's ruling, 18 September: the board is a <strong>grid</strong>, not a sort. Potential
       (the tier) is one axis, <strong>readiness</strong> — is there a reason to work this account this
       week — is the other, and each cell names a play. The cell is the first key of the chase order;
-      the tier is the second. <em>Lift</em> is the cell's quote rate over the book's: 1.0 is chance,
-      the research wants the top cell at twice the bottom. Thin numbers are the honest state.</p></div>
+      the tier is the second. <em>Lift</em> compares each cell with the book: 1.0 is chance, and the
+      research wants the top cell at twice the bottom. It is read <strong>forward</strong>: the cell each
+      account was in on 18 September, against what happened after, so a reply cannot make its own row
+      "ready". The range beside it is where the true figure plausibly sits; a range that spans 1.0 has
+      not shown anything yet. Thin numbers are the honest state.</p></div>
     <div class="tablewrap"><table class="cells">
       <thead><tr class="cols">
         <th scope="col">Cell</th><th scope="col">ABM</th><th scope="col">Accounts</th>
-        <th scope="col">Replied ≤90d</th><th scope="col">Quoted ≤90d</th><th scope="col">Quote lift</th>
+        <th scope="col">Replied since 18 Sep</th><th scope="col">Quoted since 18 Sep</th><th scope="col">Reply lift (range)</th>
         <th scope="col">The play</th><th scope="col">Owner · SLA</th>
       </tr></thead>
       <tbody id="cellsbody"><tr><td colspan="8" class="loading">Reading the cells…</td></tr></tbody>
@@ -783,25 +786,35 @@ button.tier.ovrchip:focus-visible{outline:2px solid var(--steel);outline-offset:
         owner: r.cell_owner_role || "—", sla: r.cell_sla_days, n: 0, ready: 0 }; order.push(id); }
       byCell[id].n++;
     });
-    var liftBy = {};
-    ((lift && lift.cells) || []).forEach(function (c) { liftBy[c.cell_id] = c; });
+    // The FORWARD read (DECISIONS §62): each account's cell on 18 Sep against what happened after.
+    // The old "cells" block is circular and is no longer printed.
+    var liftBy = {}, fwd = (lift && lift.forward) || [];
+    fwd.forEach(function (c) { liftBy[c.cell_id] = c; });
     el("cellsbody").innerHTML = order.map(function (id) {
       var c = byCell[id], l = liftBy[id] || {};
-      var fmtLift = function (v) { return v == null ? "—" : Number(v).toFixed(2) + "×"; };
+      var fmtLift = function (v, lo, hi) {
+        if (v == null) return "—";
+        return Number(v).toFixed(2) + "×" +
+          (lo != null && hi != null ? ' <span class="of">' + Number(lo).toFixed(2) + "–" + Number(hi).toFixed(2) + "</span>" : "");
+      };
+      var ofN = function (k) { return k == null ? "—" : esc(k) + (l.accounts != null ? ' <span class="of">of ' + esc(l.accounts) + "</span>" : ""); };
       return "<tr>" +
         '<td><strong>' + esc(c.name) + "</strong></td>" +
         '<td class="n">' + esc(c.abm) + "</td>" +
-        '<td class="n">' + c.n + (l.pct_of_accounts != null ? ' <span class="of">' + esc(l.pct_of_accounts) + "%</span>" : "") + "</td>" +
-        '<td class="n">' + esc(l.replied_90d == null ? "—" : l.replied_90d) + "</td>" +
-        '<td class="n">' + esc(l.quoted_90d == null ? "—" : l.quoted_90d) +
-          (l.pct_of_quotes != null ? ' <span class="of">' + esc(l.pct_of_quotes) + "% of quotes</span>" : "") + "</td>" +
-        '<td class="n">' + esc(fmtLift(l.quote_lift)) + "</td>" +
+        '<td class="n">' + c.n + "</td>" +
+        '<td class="n">' + ofN(l.replied) + "</td>" +
+        '<td class="n">' + ofN(l.quoted) + "</td>" +
+        '<td class="n">' + fmtLift(l.reply_lift, l.reply_lift_lo, l.reply_lift_hi) + "</td>" +
         '<td class="play">' + esc(c.play) + "</td>" +
         '<td class="n">' + esc(c.owner) + (c.sla != null ? " · " + esc(c.sla) + " days" : "") + "</td>" +
       "</tr>";
     }).join("") || '<tr><td colspan="8" class="loading">No cells yet: the board is on a rubric before 0.1.7.</td></tr>';
+    var f0 = fwd[0] || {};
     el("cellnote").textContent = lift && lift.taken_at
-      ? "Lift is measured live from the contact log and the quotes on record (pb_lift), and snapshotted on the first of every month. Counts only; no account is named here."
+      ? "Read forward from the end of 18 Sep (pb_lift): " + (f0.book_accounts != null ? f0.book_accounts + " accounts, " +
+          f0.book_replied + " replied and " + f0.book_quoted + " quoted since. " : "") +
+        (f0.left_out_delivering != null ? f0.left_out_delivering + " clients Orbit shows as delivering now are left out, because their calls are delivery, not sales. " : "") +
+        "A monitoring read until the 90-day window closes on 17 Dec, not a verdict. Snapshotted on the first of every month. Counts only; no account is named here."
       : "The lift report could not be read; the cells above are still the engine's own.";
     el("cellbtns").innerHTML = order.map(function (id) {
       return '<button type="button" class="tier cf" data-cell="' + esc(id) + '" aria-pressed="true">' +
