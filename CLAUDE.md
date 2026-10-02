@@ -232,7 +232,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
             reconcile.ts (DECLARED vs RUNNING: calls pb_reconcile_state() — no secrets — and fails
             when the active rubric, the applied migrations, source liveness or rule 9 disagree with
             the record; CI runs it on push and every 6h; `--state f.json` runs offline) · reconcile_test.ts
-.github/    workflows/ci.yml — test · reconcile · deploy-from-source (needs SUPABASE_ACCESS_TOKEN)
+.github/    workflows/ci.yml — test · reconcile · deploy (MANUAL only since 2 Oct: the functions a person
+            names, each as an entrypoint pinned to the commit; needs SUPABASE_ACCESS_TOKEN; DECISIONS §63)
             workflows/deploy-pages.yml — the page, manual
 ```
 

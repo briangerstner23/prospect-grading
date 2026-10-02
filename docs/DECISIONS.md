@@ -4619,3 +4619,22 @@ A monitoring read. The window from 18 Sep closes at the end of 17 Dec, so the 15
 window that is still open and says so; it is not PRO-8's verdict, and nothing re-cuts a threshold on
 it (the owner's 24 Sep ruling on proof: verdicts on pooled outcome counts or annually). Nothing here
 touches a rubric, a read, a tier or a rank (rule 6).
+
+## §63 — CI deploys only what a person names, pinned to the commit (2 Oct 2026)
+
+**Owner ruling, 24 Sep 2026 (Three Books log: "Merge the 23 Sep branch to main; fix the deploy job
+before its credential is set").** It replaces §28's push-to-deploy.
+
+Until today CI's `deploy` job ran on every push to the default branch and deployed five functions
+from source the moment `SUPABASE_ACCESS_TOKEN` existed. Two things were wrong with that. On 23–24 Sep
+main was behind production, so setting the token would have redeployed an older notes sweep over the
+running one. And deploying from source is not the method this book trusts: RUNBOOK §3 pins each
+function to a commit's raw URL, so the deployed function IS the commit, and pb-score, pb-notes and
+pb-verify are all deployed that way.
+
+The job now runs only on manual dispatch with a `functions` input. It refuses to run without the
+token, refuses a commit that is not on the default branch, checks each function's name against the
+six it knows (pb-verify included, which no deploy list carried before), pre-flights that the raw URL
+serves exactly the committed file, and deploys a one-line entrypoint pinned to the full sha with
+`verify_jwt` false. A push deploys nothing. Setting the token is now safe; it only enables the
+manual button.

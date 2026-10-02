@@ -51,9 +51,10 @@ Not required: Pipedrive, Fathom, Orbit and Gmail connectors. Those feed the book
 and Vault credentials inside Supabase, independently of any Claude account. A connector only helps a
 *session* look something up.
 
-**Known gap:** the GitHub Actions secret `SUPABASE_ACCESS_TOKEN` is **not set**, so CI's
-"deploy-from-source" job skips every run. Edge functions are deployed by hand through the Supabase
-MCP instead. Nothing is broken; it is simply not automatic, and the workflow says so when it skips.
+**Known gap:** the GitHub Actions secret `SUPABASE_ACCESS_TOKEN` is **not set**. CI's deploy job is
+manual since 2 Oct 2026 (DECISIONS §63): started from the Actions tab with the functions to deploy,
+each pinned to the commit, and it refuses to run without the token. Until the token is set, edge
+functions are deployed by hand through the Supabase MCP, as a pinned-commit entrypoint (RUNBOOK §3).
 
 ## 4 · The one habit that matters
 

@@ -7,10 +7,13 @@
 #              pb_reconcile_state() — aggregates only, callable with the page's own publishable
 #              key, so this job needs NO secrets and also runs every six hours, because the
 #              database can drift without anyone pushing (that is how it drifted the first time).
-#   deploy     Are the deployed edge functions built from this commit?  Deploys from SOURCE with
-#              the Supabase CLI — never an 81KB bundle carried by hand — on pushes to the default
-#              branch, and only when SUPABASE_ACCESS_TOKEN is set as a repository secret. Until it
-#              is, the step says so and skips. DECISIONS §28.
+#   deploy     Deploy the functions a PERSON names, each as a one-line entrypoint pinned to this
+#              commit (RUNBOOK §3), so the deployed function IS the commit. Manual only: started from
+#              the Actions tab with the `functions` input, never on a push. It refuses a commit that
+#              is not on the default branch and refuses to run without SUPABASE_ACCESS_TOKEN.
+#              Until 2 Oct 2026 this job deployed five functions from source on every push to the
+#              default branch, which would have redeployed whatever main held over production the
+#              day the token was set (DECISIONS §63; it replaces §28's push-to-deploy).
 #
 # The page publish stays in deploy-pages.yml (manual). Nothing here touches web/.
 
@@ -20,6 +23,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      functions:
+        description: "Edge functions to deploy, space-separated, pinned to this commit (empty: deploy nothing)"
+        required: false
+        default: ""
   schedule:
     - cron: "17 */6 * * *"
 
@@ -55,22 +63,43 @@ jobs:
         run: node --experimental-strip-types scripts/reconcile.ts
 
   deploy:
-    name: Edge functions built from this commit
-    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    name: Deploy named functions, pinned to this commit (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.functions != ''
     needs: [test, reconcile]
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: sgagrmapuovnjwvgsxbp
+      FUNCTIONS: ${{ inputs.functions }}
     steps:
       - uses: actions/checkout@v4
-      - name: Explain when the token is missing
+        with:
+          fetch-depth: 0
+      - name: Refuse without the token
         if: env.SUPABASE_ACCESS_TOKEN == ''
         run: |
-          echo "::notice::SUPABASE_ACCESS_TOKEN is not set as a repository secret; functions are not deployed from CI yet."
-          echo "::notice::Add it under Settings → Secrets and variables → Actions. Until then the deployed functions can be behind source (ledger row RECON-pb-score-bundle-behind-source)."
-      - name: Deploy the five functions from source
-        if: env.SUPABASE_ACCESS_TOKEN != ''
+          echo "::error::SUPABASE_ACCESS_TOKEN is not set as a repository secret; nothing was deployed."
+          exit 1
+      - name: Refuse a commit that is not on the default branch
         run: |
-          npx --yes supabase@latest functions deploy pb-score pb-sync pb-notes pb-fathom-webhook pb-pipedrive-webhook \
-            --project-ref "$PROJECT_REF" --no-verify-jwt
+          git fetch --quiet origin "${{ github.event.repository.default_branch }}"
+          git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD || {
+            echo "::error::$GITHUB_SHA is not on the default branch; a deployed function must be a commit main carries."
+            exit 1; }
+      - name: Deploy each function as a one-line entrypoint pinned to this commit
+        run: |
+          set -euo pipefail
+          allowed=" pb-score pb-sync pb-notes pb-verify pb-fathom-webhook pb-pipedrive-webhook "
+          for fn in $FUNCTIONS; do
+            case "$allowed" in *" $fn "*) ;; *) echo "::error::unknown function: $fn"; exit 1 ;; esac
+            url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/supabase/functions/${fn}/index.ts"
+            # Pre-flight (RUNBOOK §3): the raw URL must serve exactly the committed file.
+            curl -fsS "$url" -o "/tmp/${fn}.ts"
+            cmp "/tmp/${fn}.ts" "supabase/functions/${fn}/index.ts"
+            mkdir -p "pinned/supabase/functions/${fn}"
+            printf '// Deployed by CI from commit %s: the deployed function IS this commit (RUNBOOK §3).\nimport "%s";\n' \
+              "$GITHUB_SHA" "$url" > "pinned/supabase/functions/${fn}/index.ts"
+            npx --yes supabase@latest functions deploy "$fn" --project-ref "$PROJECT_REF" \
+              --no-verify-jwt --use-api --workdir pinned
+            echo "::notice::${fn} deployed, pinned to ${GITHUB_SHA}, verify_jwt false"
+          done
