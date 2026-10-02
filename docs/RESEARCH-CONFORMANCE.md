@@ -747,7 +747,7 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "RECON-ci-workflow-present",
       "r": "RECON",
       "mode": "auto",
-      "claim": "CI runs npm test on push, reconcile on push and every six hours (no secrets), and deploys functions from source on the default branch when SUPABASE_ACCESS_TOKEN is set.",
+      "claim": "CI runs npm test on push, reconcile on push and every six hours (no secrets), and, since 2 Oct 2026, deploys only the functions a person names by manual dispatch, each as an entrypoint pinned to the commit, refusing a commit not on the default branch or a run without SUPABASE_ACCESS_TOKEN (DECISIONS §63).",
       "probe": {
         "kind": "count_matches",
         "paths": [
