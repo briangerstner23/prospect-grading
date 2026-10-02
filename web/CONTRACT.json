@@ -121,7 +121,7 @@
         {
           "name": "By chase cell",
           "required": true,
-          "shows": "the four chase cells and the unranked cell (rubric 0.1.7, owner decision D1 of 18 Sep 2026): count, ABM tier, the play, owner role and SLA for each, and the lift report beside them — share of accounts against share of quotes and replies in the last 90 days, counts only",
+          "shows": "the four chase cells and the unranked cell (rubric 0.1.7, owner decision D1 of 18 Sep 2026): count, ABM tier, the play, owner role and SLA for each, and the lift report beside them, read FORWARD (DECISIONS §62): each account's cell at the end of 18 Sep 2026 against replies and quotes after it, delivering clients left out, the reply lift with its 95% range, counts only",
           "source": "pb_board() rows grouped by cell_id; pb_lift() for the lift numbers"
         },
         {

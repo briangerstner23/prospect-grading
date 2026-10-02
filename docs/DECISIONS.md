@@ -4578,3 +4578,44 @@ outside the list above as a finding, column by column.
 Closing the door un-publishes nothing. What the key could read between 10 and 23 Sep could have been
 read, copied or indexed in that time, and there is no record here of whether it was — PostgREST's
 access logs are the only place that could say, and they were not examined for this ruling.
+
+## §62 — The lift report reads forward (24 Sep 2026)
+
+**Owner ruling, 24 Sep 2026 (Three Books log: "Fix the lift report before the 1 Oct snapshot;
+15 Dec becomes a monitoring read").** Migration `20260924232344_prospect_book_forward_lift.sql`.
+
+### What was wrong
+
+`pb_lift_by_cell` compared each account's CURRENT cell with its contact events in the last 90 days.
+Readiness fires on an inbound or mutual contact event in the last 30 or 90 days, and the report's
+"replied" is the same set of events, so it counted one fact twice and printed it as lift. It had no
+as-of date. And its input had stopped: the three contact-event builders were never scheduled, so
+calls reached `pb_contact_events` only up to 11 Sep while `pb_calls` ran to the present, and every
+90-day count fell a little each day against a frozen set.
+
+### What changed
+
+1. `pb-nightly-events`, 06:05 UTC, runs the three builders (calls, email, quotes). Calls refresh by
+   themselves through the webhook. Email and quotes refresh only when their staging tables are
+   refilled, which is still a person's session.
+2. `pb_forward_lift(as_of, horizon)`: each account's cell from its last `pb_reads` row at or before
+   `as_of` (by `run_at`), against replies, quotes and first invoices strictly after it. A reply can
+   no longer make its own row ready. Every rate carries a Wilson 95% interval, every lift an
+   approximate exact-Poisson 95% interval (Byar), with the book-wide totals beside them.
+3. **Delivering clients are left out.** A dry run on 24 Sep found that every one of the 13 accounts
+   with a call or reply since 19 Sep was a client Orbit shows as delivering now: delivery calls, not
+   sales replies. Those accounts are inside Book 1 because the book has no lifecycle state yet (the
+   plan's CL-02). The forward read leaves out every account in `pb_orbit_overlap`'s "delivering now"
+   lane (241 on 24 Sep) and reports the count. It is a proxy until Build 1 gives every account a
+   state; it goes when that lands.
+4. `pb_lift()` carries a `forward` block anchored at the end of 18 Sep 2026, the grid's first day,
+   beside the old `cells` block, which stays for continuity and is labelled circular.
+   `pb_snapshot_lift()` stores both, the forward rows as `fwd:<cell>`, the old ones marked
+   `circular`. The board's cell table prints the forward read, with the range beside each lift.
+
+### What it is, and is not
+
+A monitoring read. The window from 18 Sep closes at the end of 17 Dec, so the 15 Dec re-run reads a
+window that is still open and says so; it is not PRO-8's verdict, and nothing re-cuts a threshold on
+it (the owner's 24 Sep ruling on proof: verdicts on pooled outcome counts or annually). Nothing here
+touches a rubric, a read, a tier or a rank (rule 6).

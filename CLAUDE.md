@@ -167,6 +167,11 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             pb-notes-catchup every 4 min, posts only before 2026-09-25 05:00 UTC; unschedule it
             once quiet) · 213647 catch-up faster (every 3 min, 6 at once, 30 per channel) · 20260924010622 catch-up done (job removed; backlog read, 383 facts and 889 candidates written). All applied 23 Sep; the applied statements of 211125/211200/211234 carry
             a shortened header comment, the SQL is identical.
+            20260924232344 forward lift (DECISIONS §62): cron pb-nightly-events 06:05 (the three
+            contact-event builders) · pb_wilson / pb_poisson_ci (95% intervals) · pb_forward_lift
+            (cell as of a date from pb_reads.run_at, outcomes strictly after it, delivering clients
+            left out and counted) · pb_lift() gains `forward`, the old `cells` labelled circular ·
+            pb_snapshot_lift() stores both. Applied 24 Sep; the file carries its applied version.
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -401,7 +406,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   the database on purpose: the thing that took both jobs out on 12 Sep was the API gateway, and a
   remedy that goes through the gateway is no remedy (migration 20260912150000). The eighth,
   `pb-monthly-lift`, runs at 07:30 UTC on the 1st and snapshots the lift-by-cell report
-  (`pb_snapshot_lift()`; RUNBOOK §28.2, DECISIONS §52).
+  (`pb_snapshot_lift()`; RUNBOOK §28.2, DECISIONS §52) — since 24 Sep both the old circular rows and
+  the forward read (`fwd:<cell>`, DECISIONS §62). The ninth, `pb-nightly-events` 06:05, runs the
+  three contact-event builders (calls, email, quotes) so the morning's score and the lift see the
+  morning's calls; email and quotes refresh only when a session refills their staging tables.
 - **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
   prospect-stage card with no account (`missing`), an account whose card has moved to a partner
   stage or Friends of WLIQ (`departed`) — and writes nothing else. It may not: PRO-18's
