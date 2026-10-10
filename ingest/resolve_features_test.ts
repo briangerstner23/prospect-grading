@@ -9,7 +9,7 @@
  * the engine will see.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { resolveFeatures } from "./resolve_features.ts";
@@ -241,29 +241,86 @@ function run(partial: Partial<ResolveInput> = {}) {
   eq("evidence still outranks source precedence", r.features.headcount, 100);
 }
 {
-  // Rule 9: the view and latestFactPerKey must not drift. Read the order straight out of the
-  // migration's CASE and compare it to SOURCE_ORDER's observable behaviour, so renaming a source
-  // in one place and not the other fails here rather than in a nightly run.
-  const sql = readFileSync(join(here, "../supabase/migrations/20260915120000_prospect_book_fact_source_precedence.sql"), "utf8");
-  const block = sql.slice(sql.indexOf("case source"), sql.indexOf("else 7"));
-  const fromSql = [...block.matchAll(/when\s+'([a-z_]+)'\s+then\s+(\d+)/g)]
-    .sort((a, b) => Number(a[2]) - Number(b[2]))
-    .map((m) => m[1]);
-  // Probe the resolver: for each adjacent pair the earlier source must win on an older row.
-  const wins = fromSql.every((src, i) => {
-    if (i === 0) return true;
-    const better = fromSql[i - 1];
+  // Rule 9: the order is stated in THREE places and they must not drift (§33 — it has): the
+  // pb_current_facts view, the rule9 CTE inside pb_reconcile_state() (which CI's reconcile compares
+  // the view against), and latestFactPerKey here. Each copy is read from the NEWEST migration that
+  // defines it — never a hard-coded file, which is how a pin goes on checking a superseded copy —
+  // and the resolver is probed for the same behaviour.
+  const migDir = join(here, "../supabase/migrations");
+  const migFiles = readdirSync(migDir).filter((f) => f.endsWith(".sql")).sort();
+  const newestDefining = (re: RegExp): { file: string; sql: string; at: number } => {
+    let hit = { file: "", sql: "", at: -1 };
+    for (const f of migFiles) {
+      const sql = readFileSync(join(migDir, f), "utf8");
+      const m = re.exec(sql);
+      if (m) hit = { file: f, sql, at: m.index };
+    }
+    return hit;
+  };
+  const caseAfter = (sql: string, from: number): Array<[string, number]> => {
+    const i = sql.indexOf("case source", from);
+    const j = sql.indexOf("else 7", i);
+    if (i < 0 || j < 0) return [];
+    return [...sql.slice(i, j).matchAll(/when\s+'([a-z_]+)'\s+then\s+(\d+)/g)].map((m) => [m[1], Number(m[2])] as [string, number]);
+  };
+  const view = newestDefining(/create\s+or\s+replace\s+view\s+public\.pb_current_facts\b/i);
+  const fn = newestDefining(/create\s+or\s+replace\s+function\s+public\.pb_reconcile_state\s*\(/i);
+  const viewCase = caseAfter(view.sql, view.at);
+  const fnCase = fn.at < 0 ? [] : caseAfter(fn.sql, fn.sql.indexOf("rule9 as (", fn.at));
+  const rank = new Map(viewCase);
+
+  check("the newest pb_current_facts definition is found", view.at >= 0);
+  check("the newest pb_reconcile_state definition is found", fn.at >= 0);
+  eq(`the view (${view.file}) lists eight sources`, viewCase.length, 8);
+  eq("rater and sales_meeting both rank 0 (DECISIONS §65)", [rank.get("rater"), rank.get("sales_meeting")], [0, 0]);
+  eq(`pb_reconcile_state()'s rule9 CASE (${fn.file}) equals the view's`,
+    [...fnCase].sort((a, b) => a[0].localeCompare(b[0])), [...viewCase].sort((a, b) => a[0].localeCompare(b[0])));
+
+  // Strict order between distinct ranks: the better source wins on an OLDER row.
+  const strict: string[] = [];
+  for (const [better, rb] of viewCase) {
+    for (const [worse, rw] of viewCase) {
+      if (rb >= rw) continue;
+      const res = run({
+        facts: [
+          factRow("headcount", 2, { evidence_label: "inferred", source: worse, created_at: "2026-09-20T00:00:00Z" }),
+          factRow("headcount", 1, { evidence_label: "inferred", source: better, created_at: "2026-01-01T00:00:00Z" }),
+        ],
+      });
+      if (res.features.headcount !== 1) strict.push(`${better} > ${worse}`);
+    }
+  }
+  check("latestFactPerKey ranks every pair of distinct ranks as the view does", strict.length === 0,
+    `out of order: ${strict.join(", ")}`);
+
+  // The tied pair: newest written wins, in both orders.
+  for (const [older, newer] of [["rater", "sales_meeting"], ["sales_meeting", "rater"]]) {
     const res = run({
       facts: [
-        factRow("headcount", 2, { evidence_label: "inferred", source: src, created_at: "2026-09-20T00:00:00Z" }),
-        factRow("headcount", 1, { evidence_label: "inferred", source: better, created_at: "2026-01-01T00:00:00Z" }),
+        factRow("headcount", 10, { evidence_label: "evidence", source: older, created_at: "2026-10-01T00:00:00Z" }),
+        factRow("headcount", 20, { evidence_label: "evidence", source: newer, created_at: "2026-10-09T00:00:00Z" }),
       ],
     });
-    return res.features.headcount === 1;
-  });
-  eq("the migration lists seven sources", fromSql.length, 7);
-  check("latestFactPerKey ranks sources in the same order as the pb_current_facts view", wins,
-    `view order: ${fromSql.join(" > ")}`);
+    eq(`rater and sales_meeting tie: the newer ${newer} wins over the older ${older}`, res.features.headcount, 20);
+  }
+  {
+    const res = run({
+      facts: [
+        factRow("headcount", 40, { evidence_label: "evidence", source: "sales_meeting", created_at: "2026-10-01T00:00:00Z" }),
+        factRow("headcount", 90, { evidence_label: "evidence", source: "fathom_call", created_at: "2026-10-09T00:00:00Z" }),
+      ],
+    });
+    eq("an approved sales-meeting fact beats a newer recorded-call fact", res.features.headcount, 40);
+  }
+  {
+    const res = run({
+      facts: [
+        factRow("headcount", 40, { evidence_label: "inferred", source: "sales_meeting", created_at: "2026-10-09T00:00:00Z" }),
+        factRow("headcount", 12, { evidence_label: "evidence", source: "pipedrive", created_at: "2026-01-01T00:00:00Z" }),
+      ],
+    });
+    eq("an inferred sales_meeting row never beats evidence (the label is the first tier)", res.features.headcount, 12);
+  }
 }
 {
   const r = run({
@@ -276,8 +333,9 @@ function run(partial: Partial<ResolveInput> = {}) {
 }
 {
   // Rule 9, the tier the view gained on 15 Sep 2026: within one evidence label a person's entry
-  // outranks a machine's even when the machine's is newer. Order: rater, fathom_call,
-  // pipedrive_note, website, notion_master, apollo, pipedrive, then anything else.
+  // outranks a machine's even when the machine's is newer. Order: rater (= sales_meeting since
+  // DECISIONS §65), fathom_call, pipedrive_note, website, notion_master, apollo, pipedrive, then
+  // anything else.
   const r = run({
     facts: [
       factRow("headcount", 40, { evidence_label: "inferred", source: "apollo", created_at: "2026-09-16T00:00:00Z" }),

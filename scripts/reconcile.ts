@@ -23,6 +23,15 @@
  *      finished. A halted run, or one whose extractor failed and that wrote nothing, fails; no fact
  *      or candidate for more than three days while runs keep finishing warns. An older
  *      pb_reconcile_state() without `notes_work` warns that the check could not run.
+ *   6. No sales-meeting words on a public read (always a FAIL; DECISIONS §65). The database's own
+ *      canary, `meeting_privacy`, renders pb_dossier() for the accounts with the newest approved
+ *      meeting proposals and counts every approved quote, every origin-tagged register text and
+ *      the literal 'sales_meeting' it finds there. Any leak fails: what the team says about a named
+ *      agency is signed-in only, and anything published cannot be taken back (§61). An older
+ *      pb_reconcile_state() without the block warns that the check could not run.
+ *   7. The meeting reader keeps up (warnings only): a failed meeting this week, a lease stuck
+ *      'reading', sales meetings selected this week but none read, or an open card older than
+ *      three days — proposals never expire on a timer, so the reconcile is what notices.
  *
  * Runs from CI with no secrets: the URL and publishable key are the page's own
  * (web/index.html), and the rpc returns nothing that is not already readable. `--state <file>`
@@ -60,6 +69,15 @@ export interface State {
   live_accounts: number;
   /** Added by migration 20260923211200; absent from an older pb_reconcile_state(). Numbers only. */
   notes_work?: NotesWork;
+  /** Added by the sales-meeting reader's migration (DECISIONS §65); absent from an older function. */
+  meeting_privacy?: MeetingPrivacy;
+  /** Added with meeting_privacy. Counts and one age, never a title or a quote. */
+  meetings_work?: MeetingsWork;
+}
+export interface MeetingPrivacy { checked: number; leaks: number }
+export interface MeetingsWork {
+  selected_7d: number; read_7d: number; failed_7d: number; stale_reading: number;
+  oldest_open_days: number | null;
 }
 export interface NotesWork {
   latest: {
@@ -87,6 +105,8 @@ const SOURCE_TS_FIELD: Record<string, string> = {
 };
 /** Check 5: warn when notes runs keep finishing but none has written a fact or candidate for longer. */
 export const NOTES_IDLE_WARN_DAYS = 3;
+/** Check 7: warn when the oldest open meeting card has waited longer than this (DECISIONS §65). */
+export const MEETING_CARD_WARN_DAYS = 3;
 
 export function evaluate(
   state: State,
@@ -184,6 +204,31 @@ export function evaluate(
         if (idle > NOTES_IDLE_WARN_DAYS) warnings.push(`notes_work: no fact or candidate written for ${idle.toFixed(1)} days (limit ${NOTES_IDLE_WARN_DAYS}) across ${nw.runs_since_productive} finished run(s) since`);
       }
     }
+  }
+
+  // 6 · no sales-meeting words on a public read
+  const num = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+  const mp = state.meeting_privacy;
+  if (!mp || typeof mp !== "object") {
+    warnings.push("meeting_privacy is missing from the state — pb_reconcile_state() predates the sales-meeting reader (DECISIONS §65), so whether a meeting quote reaches pb_dossier() could not be checked");
+  } else if (num(mp.leaks) > 0) {
+    failures.push(`meeting_privacy: ${num(mp.leaks)} hit(s) of sales-meeting text in pb_dossier() across ${num(mp.checked)} account(s) checked — an approved quote, an origin-tagged register text or the literal 'sales_meeting' is on a public read (DECISIONS §65). Close the path first; what was published cannot be taken back (§61)`);
+  } else {
+    summary.push(`meeting privacy: ${num(mp.checked)} dossier(s) checked, no meeting text in them`);
+  }
+
+  // 7 · the meeting reader keeps up
+  const mw = state.meetings_work;
+  if (!mw || typeof mw !== "object") {
+    warnings.push("meetings_work is missing from the state — pb_reconcile_state() predates the sales-meeting reader (DECISIONS §65), so whether meetings are being read could not be checked");
+  } else {
+    const before = warnings.length;
+    if (num(mw.failed_7d) > 0) warnings.push(`meetings_work: ${num(mw.failed_7d)} sales meeting(s) failed to read in the last 7 days — see pb_runs with source 'sales_meeting'`);
+    if (num(mw.stale_reading) > 0) warnings.push(`meetings_work: ${num(mw.stale_reading)} meeting(s) stuck 'reading' with a lease over three hours old — is the pb-meetings schedule running?`);
+    if (num(mw.selected_7d) > 0 && num(mw.read_7d) === 0) warnings.push(`meetings_work: ${num(mw.selected_7d)} sales meeting(s) selected in the last 7 days and none read`);
+    const open = typeof mw.oldest_open_days === "number" ? mw.oldest_open_days : null;
+    if (open !== null && open > MEETING_CARD_WARN_DAYS) warnings.push(`meetings_work: the oldest open meeting card has waited ${open.toFixed(1)} days (limit ${MEETING_CARD_WARN_DAYS}) — proposals never expire on a timer; review them in index.html#meetings or dismiss the meeting`);
+    if (warnings.length === before) summary.push(`meetings: ${num(mw.selected_7d)} selected and ${num(mw.read_7d)} read in 7 days; oldest open card ${open === null ? "none" : `${open.toFixed(1)} days`}`);
   }
 
   return { failures, warnings, summary };
