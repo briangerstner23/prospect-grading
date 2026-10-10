@@ -59,6 +59,8 @@ const green = (): State => ({
     runs_since_productive: 0,
     finished_runs_7d: 7,
   },
+  meeting_privacy: { checked: 0, leaks: 0 },
+  meetings_work: { selected_7d: 0, read_7d: 0, failed_7d: 0, stale_reading: 0, oldest_open_days: null },
 });
 
 {
@@ -189,6 +191,66 @@ const green = (): State => ({
   const s = green(); delete s.notes_work;
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("notes_work missing (old function) warns that the check could not run", v.warnings.some((w) => w.includes("could not be checked")) && !v.failures.some((f) => f.startsWith("notes")));
+}
+
+/* ---- checks 6 and 7 · the sales-meeting reader (DECISIONS §65) ---- */
+{
+  const v = evaluate(green(), ledger, disk, FP, NOW);
+  check("green: no meeting failure or warning", !v.failures.some((f) => f.startsWith("meeting")) && !v.warnings.some((w) => w.startsWith("meeting")));
+  check("green: meeting privacy is reported", v.summary.some((s) => s.startsWith("meeting privacy: 0 dossier(s) checked")));
+}
+{
+  const s = green(); s.meeting_privacy = { checked: 12, leaks: 1 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meeting_privacy.leaks = 1 fails", v.failures.some((f) => f.startsWith("meeting_privacy: 1 hit")), v.failures.join(" | "));
+}
+{
+  const s = green(); s.meeting_privacy = { checked: 12, leaks: 0 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meeting_privacy.leaks = 0 with dossiers checked passes", !v.failures.some((f) => f.startsWith("meeting")) && v.summary.some((x) => x.startsWith("meeting privacy: 12 dossier(s) checked")));
+}
+{
+  const s = green(); delete s.meeting_privacy;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meeting_privacy missing (old function) warns, does not fail", v.warnings.some((w) => w.startsWith("meeting_privacy is missing")) && !v.failures.some((f) => f.startsWith("meeting")));
+}
+{
+  // Approved meeting facts exist (sales_meeting rows in pb_facts) and rule 9 still agrees: the
+  // rule9 CTE carries the new rank, so no mismatch is reported.
+  const s = green(); s.meeting_privacy = { checked: 5, leaks: 0 }; s.rule9_mismatches = 0;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("rule9_mismatches 0 with sales_meeting rows present passes", !v.failures.some((f) => f.startsWith("rule 9")) && v.summary.includes("rule 9: view and function agree on every key"));
+}
+{
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 4 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meetings_work.oldest_open_days 4 warns", v.warnings.some((w) => w.includes("oldest open meeting card has waited 4.0 days")));
+  check("…and is never a failure", !v.failures.some((f) => f.startsWith("meetings")));
+}
+{
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 3 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("an open card of exactly 3 days does not warn", !v.warnings.some((w) => w.startsWith("meetings_work")) && v.summary.some((x) => x.startsWith("meetings: 6 selected and 5 read")));
+}
+{
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 1, stale_reading: 0, oldest_open_days: 1 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meetings_work.failed_7d 1 warns", v.warnings.some((w) => w.includes("1 sales meeting(s) failed")));
+}
+{
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 2, oldest_open_days: 1 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meetings_work.stale_reading 2 warns", v.warnings.some((w) => w.includes("2 meeting(s) stuck 'reading'")));
+}
+{
+  const s = green(); s.meetings_work = { selected_7d: 4, read_7d: 0, failed_7d: 0, stale_reading: 0, oldest_open_days: null };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("selected this week and none read warns", v.warnings.some((w) => w.includes("4 sales meeting(s) selected in the last 7 days and none read")));
+}
+{
+  const s = green(); delete s.meetings_work;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meetings_work missing (old function) warns, does not fail", v.warnings.some((w) => w.startsWith("meetings_work is missing")) && !v.failures.some((f) => f.startsWith("meetings")));
 }
 
 console.log(`reconcile_test: ${passed} passed, ${failures.length} failed`);

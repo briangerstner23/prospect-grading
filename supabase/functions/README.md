@@ -10,7 +10,11 @@ container, so the handlers themselves are syntax-checked and type-checked, not e
 supabase/functions/
   pb-sync/index.ts               bearer-token bulk ingest of packs (+ rubric version upsert)
   pb-score/index.ts              score every account → pb_reads; preview a draft rubric
-  pb-notes/index.ts              nightly sweep of notes, calls and email → pb_facts / pb_fact_candidates
+  pb-notes/index.ts              nightly sweep of notes, calls and email → pb_facts / pb_fact_candidates;
+                                 {sources:["sales_meeting"]} alone → meetings.ts (the sales-meeting reader)
+  pb-notes/extractor.ts          the one model call both paths make (callExtractor, the JSON salvage)
+  pb-notes/meetings.ts           internal sales meetings → pb_meetings / pb_meeting_proposals (DECISIONS §65)
+  pb-notes/meetings_pure.ts      its decisions with no I/O; meetings_pure_test.ts beside it
   pb-verify/index.ts             re-audits stored quotes: does the sentence state the value? → pb_fact_candidates.support
   pb-fathom-webhook/index.ts     Standard-Webhooks check → pb_webhook_inbox → pb_calls
   pb-pipedrive-webhook/index.ts  HTTP Basic check → pb_webhook_inbox → pb_deals / pb_accounts / pb_contacts
@@ -92,15 +96,59 @@ supabase/functions/_shared/core/prospect_types.ts  engine.ts  classify.ts  decay
 
 **pb-notes**
 ```
-supabase/functions/pb-notes/index.ts
+supabase/functions/pb-notes/index.ts  extractor.ts  meetings.ts  meetings_pure.ts
 supabase/functions/_shared/db.ts  auth.ts  log.ts  helpers.ts
 supabase/functions/_shared/ingest/webhook_signatures.ts  notes_sweep.ts  written_record.ts  record_sources.ts
+supabase/functions/_shared/ingest/meeting_transcript.ts  meeting_mentions.ts  meeting_claims.ts  name_tokens.ts
+supabase/functions/_shared/ingest/fathom_webhook.ts  identity.ts
 supabase/functions/_shared/core/prospect_types.ts
 ```
 
 pb-notes is the one function that needs no `rubric.ts`: it writes facts and candidates and never
-grades. `webhook_signatures.ts` still ships, because `helpers.ts` imports `timingSafeEqualString`
-from it for the constant-time bearer compare.
+grades (the meeting reader reads the active rubric's tiers and override codes straight from
+`pb_rubric_versions`). `webhook_signatures.ts` still ships, because `helpers.ts` imports
+`timingSafeEqualString` from it for the constant-time bearer compare; `fathom_webhook.ts` and
+`identity.ts` ship because `meeting_transcript.ts` reuses the webhook parser's own "internal only"
+test. Deployed as a pinned-commit entrypoint (RUNBOOK §3), every file above is fetched from that
+commit, so the list is what has to be in the commit, not what has to be pasted.
+
+### pb-notes — the sales-meeting reader (`meetings.ts`, DECISIONS §65)
+
+`POST $FN/pb-notes` · same bearer · body
+`{ "sources": ["sales_meeting"], "recording_id"?, "reread"?, "register_only"?, "dry_run"?, "budget_ms"?: 110000, "concurrency"?: 6, "model"?, "as_of"? }`.
+
+`sales_meeting` must be the ONLY source named: beside any other channel the call is a **400**, and
+the nightly body names no sources, so the nightly sweep never runs it. Each call:
+
+1. **Registers** — Fathom `pb_webhook_inbox` rows past the `pb_source_watermarks('sales_meeting')`
+   `(received_at, id)` cursor, light columns only (never the transcript, the summary or
+   `share_url`). Internal recordings with a transcript become `pb_meetings` rows: `waiting`
+   (selected by the owner's include, a `pb_meeting_title_rules` row, or the title patterns),
+   `skipped`, or `duplicate` of the meeting's longest recording. No model call.
+2. **Claims** the oldest `waiting` meeting (or a `reading` one whose 150 s lease lapsed) with one
+   conditional update, then reads it: pass 1 (which companies, on which lines) → resolved in code
+   against the roster → pass 2 (four agencies per call, up to `concurrency` at once, inside
+   `budget_ms`) → `pb_meeting_proposals`, upserted on `fingerprint` → `pb_meeting_supersede`.
+3. **Closes** the meeting `read` (or `partial` when an agency's reply was unusable; `failed` when
+   pass 1's was), with `counts` and `usage`, and a `pb_runs` row (kind `ingest`, source
+   `sales_meeting`, `credits_spent`). Notes carry ids and counts only.
+
+It writes `pb_meetings`, `pb_meeting_proposals`, that watermark row and `pb_runs` — nothing else;
+a proposal reaches `pb_facts` / `pb_register` only through `pb_decide_meeting_card` under a
+signed-in person. Out of budget, the meeting stays `reading` with its progress and the next call
+resumes it (with the model it started with). An API refusal or a dropped call **halts**: the
+meeting goes back to `waiting` with what it had, the lease is released, the run is `failed`.
+
+| Body | Does |
+|---|---|
+| `{sources:["sales_meeting"], register_only:true}` | register only; needs no API key |
+| `{sources:["sales_meeting"]}` | register, then read the next meeting (the cron's call, with `budget_ms` and `concurrency`) |
+| `{…, recording_id:"<id>"}` | read that meeting (`waiting`/`reading`); 404 unregistered, 409 duplicate, skipped, already read or leased |
+| `{…, recording_id:"<id>", reread:true}` | read a `read` / `partial` / `failed` meeting again from pass 1; the fingerprint keeps rows from landing twice |
+| `{…, dry_run:true}` | read and verify, write only the run row; the proposals (quotes included) come back in the response |
+
+Statuses: `400` bad body or mixed sources · `503` token unset, or no `PB_ANTHROPIC_API_KEY` when
+reading · `401` · `404` / `409` as above · `500` an unexpected failure (the run row says what).
 
 **pb-fathom-webhook**
 ```

@@ -693,13 +693,13 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "RECON-rule9-source-tier-in-function",
       "r": "RECON",
       "mode": "auto",
-      "claim": "latestFactPerKey carries the view's source-precedence tier (rater > fathom_call > pipedrive_note > website > notion_master > apollo > pipedrive). Added 17 Sep after two days of drift.",
+      "claim": "latestFactPerKey carries the view's source-precedence tier (rater = sales_meeting > fathom_call > pipedrive_note > website > notion_master > apollo > pipedrive). Added 17 Sep after two days of drift; sales_meeting joined rater at 0 on 10 Oct (DECISIONS §65), in the view, in pb_reconcile_state()'s rule9 CTE and here in one change set — resolve_features_test.ts pins all three against the newest migrations.",
       "probe": {
         "kind": "count_matches",
         "paths": [
           "ingest/resolve_features.ts"
         ],
-        "pattern": "rater: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6",
+        "pattern": "rater: 0, sales_meeting: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6",
         "equals": 1
       }
     },
@@ -708,8 +708,8 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "r": "RECON",
       "mode": "manual",
       "verified_on": "2026-09-17",
-      "reverify": "with recency_only as (select distinct on (account_id,key) id,account_id,key from pb_facts order by account_id,key, case evidence_label when 'evidence' then 0 when 'inferred' then 1 else 2 end, case source when 'rater' then 0 when 'fathom_call' then 1 when 'pipedrive_note' then 2 when 'website' then 3 when 'notion_master' then 4 when 'apollo' then 5 when 'pipedrive' then 6 else 7 end, created_at desc, observed_at desc nulls last) select count(*) filter (where v.id<>r.id) from pb_current_facts v join recency_only r using (account_id,key); -- must be 0",
-      "claim": "The live pb_current_facts view and latestFactPerKey now resolve every key identically. Before the fix: 50 of 6,983 keys across 19 accounts differed, 24 with a different value. The 16 Sep 'closed' verdict on rule 9 had compared the function to the FILED 11 Sep view, not the LIVE 15 Sep one."
+      "reverify": "with recency_only as (select distinct on (account_id,key) id,account_id,key from pb_facts order by account_id,key, case evidence_label when 'evidence' then 0 when 'inferred' then 1 else 2 end, case source when 'rater' then 0 when 'sales_meeting' then 0 when 'fathom_call' then 1 when 'pipedrive_note' then 2 when 'website' then 3 when 'notion_master' then 4 when 'apollo' then 5 when 'pipedrive' then 6 else 7 end, created_at desc, observed_at desc nulls last) select count(*) filter (where v.id<>r.id) from pb_current_facts v join recency_only r using (account_id,key); -- must be 0. Also: pb_reconcile_state()->>'rule9_mismatches' must be 0, and pg_get_viewdef('public.pb_current_facts') must carry WHEN 'sales_meeting' THEN 0",
+      "claim": "The live pb_current_facts view and latestFactPerKey now resolve every key identically. Before the fix: 50 of 6,983 keys across 19 accounts differed, 24 with a different value. The 16 Sep 'closed' verdict on rule 9 had compared the function to the FILED 11 Sep view, not the LIVE 15 Sep one. The order gains sales_meeting at 0 beside rater with the sales-meeting reader's migration (DECISIONS §65); the reverify above already carries it (on 10 Oct, before that migration applied, it returned 0 against the live view, which has no sales_meeting row to order). Re-run it and bump verified_on once the migration is applied."
     },
     {
       "id": "RECON-pb-score-bundle-behind-source",

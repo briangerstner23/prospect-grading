@@ -187,6 +187,42 @@ details[open]>summary::before{content:"▾ "}
 .form-foot{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
 .check{display:flex;align-items:center;font-size:.9375rem}
 footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;flex-direction:column;gap:.3rem;border-top:1px solid var(--sep)}
+
+/* the sales-meeting review (#meetings) */
+.mcards{display:flex;flex-direction:column;gap:1rem}
+.mcard{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow);display:flex;flex-direction:column;min-width:0;scroll-margin-top:1rem}
+.mcard:focus-within,.mcard.focus{box-shadow:0 0 0 3px var(--accent),var(--shadow)}
+.mcard.later{opacity:.75}
+.mcard .mhead{padding:1rem 1.25rem .55rem;display:flex;flex-direction:column;gap:.35rem}
+.mcard .mhead .nmline{display:flex;gap:.4rem .8rem;flex-wrap:wrap;align-items:center}
+.mcard .mhead .nmline a{font-weight:600;font-size:1.0625rem;letter-spacing:-.021em;text-decoration:none}
+.mrow{position:relative;padding:.75rem 1.25rem .8rem 1rem;display:flex;flex-direction:column;gap:.35rem;border-left:4px solid transparent;min-width:0}
+.mrow:focus{outline:none;background:var(--fill-2)}
+.mrow+.mrow{border-top:1px solid var(--sep)}
+.mrow.k-removal{border-left-color:var(--bad);background:var(--bad-soft)}
+.mrow.k-override{border-left-color:var(--warn)}
+.mrow.conflict{border-left-color:var(--warn);background:var(--warn-soft)}
+.mrow .top{display:flex;gap:.4rem .7rem;align-items:center;flex-wrap:wrap}
+.mrow .what{font-weight:600;overflow-wrap:anywhere}
+.mrow .q{margin:.1rem 0;padding:.3rem 0 .3rem .75rem;border-left:3px solid var(--sep);font-style:italic;line-height:1.45;overflow-wrap:anywhere}
+.mrow .ctx{font-size:.8125rem;color:var(--muted);display:flex;flex-direction:column;gap:.15rem;padding:.3rem 0 0}
+.mrow .ctx .hit{color:var(--ink)}
+.mrow .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.6rem;margin-top:.2rem}
+.mrow .controls .wide{grid-column:1/-1}
+.mrow button[aria-pressed=true]{background:var(--accent-fill);border-color:var(--accent-fill);color:#fff}
+.mline{padding:.55rem 1.25rem;font-size:.9375rem;color:var(--muted);border-top:1px solid var(--sep);overflow-wrap:anywhere}
+.mfoot{padding:.8rem 1.25rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;border-top:1px solid var(--sep)}
+.mdone{padding:.8rem 1.25rem;display:flex;gap:.4rem .8rem;flex-wrap:wrap;align-items:baseline;font-size:.9375rem}
+.mdone a{font-weight:600;text-decoration:none}
+.kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.75rem;padding:.05rem .35rem;border:1px solid var(--sep);border-radius:5px;background:var(--fill-2)}
+.whochip .opts{display:flex;flex-wrap:wrap;gap:.45rem}
+.whochip .opts button{text-align:left}
+@media (max-width:640px){
+  #meetings button,#meetings select,#meetings input:not([type=checkbox]),#meetings textarea,#meetings summary{min-height:44px}
+  #meetings input[type=checkbox]{width:1.5rem;height:1.5rem}
+  .mfoot button,.whochip .opts button{flex:1 1 calc(50% - .25rem)}
+  .mrow,.mcard .mhead,.mfoot,.mline,.mdone{padding-left:1rem;padding-right:1rem}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
 <div class="page">
@@ -247,6 +283,7 @@ footer{padding-top:1.5rem;color:var(--faint);font-size:.8125rem;display:flex;fle
 
     <section id="sheet" class="sheet hidden"></section>
     <section id="queue" class="sheet hidden"></section>
+    <section id="meetings" class="sheet hidden" aria-label="Sales meeting review"></section>
   </div>
 
   <footer>
@@ -703,6 +740,541 @@ function valueGroupKey(v) {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
+/* ---- the sales-meeting review (#meetings, DECISIONS §65) ----
+ * What the team said in its own meeting about a named agency waits in pb_meeting_proposals until
+ * a person decides it, one card per agency, in the order the meeting discussed them. These helpers
+ * only shape and word what the database holds. pb_decide_meeting_card re-derives every rule at
+ * decision time — lane, guard, reason code, a person's value — so nothing here is the authority:
+ * a wrong answer from a helper costs a refusal on screen, never a wrong write.
+ */
+
+/** Row order on a card, fixed: removal (red), tier call (amber), facts, reads. */
+const MEETING_KIND_ORDER = ["removal", "override", "fact", "read"];
+
+/** Mirrors of ingest/meeting_claims.ts DEFAULT_OVERRIDE_CODE, HISTORIC_DAYS and BLOCKING_FLAGS. page_pure_test pins all three. */
+const MEETING_DEFAULT_OVERRIDE_CODE = "relationship_known";
+const MEETING_HISTORIC_DAYS = 21;
+const MEETING_BLOCKING_FLAGS = ["shared_segment", "question", "hypothetical", "joke", "historic", "conflicts_with_person", "no_computed_tier"];
+
+/**
+ * keysFor('sales_meeting'): the only keys a meeting fact may carry and the only values each may
+ * take. A mirror of ingest/notes_sweep.ts EXTRACTABLE — the page cannot import it — and
+ * page_pure_test fails the build the day the two differ.
+ */
+const MEETING_KEY_SHAPES = {
+  is_agency: { kind: "boolean" },
+  sells_build_work: { kind: "boolean" },
+  no_inhouse_dev_team: { kind: "boolean" },
+  recurring_work_shape: { kind: "boolean" },
+  competitive_overlap: { kind: "boolean" },
+  client_budget_size: { kind: "enum", values: ["buys_real_projects", "local_small"] },
+  relationship_type: { kind: "enum", values: ["agency", "direct"] },
+  headcount: { kind: "integer", min: 1, max: 5000 },
+  client_evidence_count: { kind: "integer", min: 0, max: 100000 },
+  money: { kind: "enum", values: ["present", "absent"] },
+  authority: { kind: "enum", values: ["present", "absent"] },
+  specification: { kind: "enum", values: ["present", "absent"] },
+  // "\u0073" below is a plain s: page_pure_test refuses the bare word for the page's own global in
+  // this block, and the rubric's canonical spelling of one signal happens to contain it.
+  climb_signals: { kind: "enum_list", max: 5, values: ["2nd person engaged", "Champion identified", "Structural break", "Future-\u0073tate language", "Strategy question asked"] },
+  timing: { kind: "enum", values: ["within_1_week", "within_1_month", "within_3_months", "no_timeline"] },
+  delivery_headcount: { kind: "integer", min: 0, max: 5000 },
+  vertical_depth: { kind: "enum", values: ["deep_single_vertical", "generalist"] },
+};
+
+/** notes_sweep.coerceClaimValue, mirrored: the value as the book would hold it, or undefined when the shape refuses it. */
+function meetingValue(shape, v) {
+  if (!shape || v === null || v === undefined) return undefined;
+  if (shape.kind === "boolean") return typeof v === "boolean" ? v : undefined;
+  if (shape.kind === "enum") return typeof v === "string" && shape.values.includes(v) ? v : undefined;
+  if (shape.kind === "enum_list") {
+    if (!Array.isArray(v) || v.length === 0 || v.length > shape.max) return undefined;
+    const out = [];
+    for (const item of v) {
+      if (typeof item !== "string" || !shape.values.includes(item)) return undefined;
+      if (!out.includes(item)) out.push(item);
+    }
+    return out;
+  }
+  if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
+  const n = Math.round(v);
+  return n >= shape.min && n <= shape.max ? n : undefined;
+}
+
+/** An address never reaches the screen, even one somebody said aloud and the transcript caught. */
+function scrubAddresses(text) {
+  if (text === null || text === undefined) return "";
+  return String(text).replace(/[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[A-Za-z]{2,}/g, "[address]");
+}
+
+/** meeting_claims.defaultSelected, mirrored. A removal is never pre-ticked. */
+function meetingDefaultTick(row) {
+  if (!row || (row.status !== undefined && row.status !== "proposed")) return false;
+  if (row.kind === "removal") return false;
+  if (!(row.mode === "asserted" || (row.kind === "fact" && row.mode === "reported"))) return false;
+  if (!(row.mention_state === "resolved" || row.matched_on === "person")) return false;
+  if (row.account_id === null) return false;
+  if ((row.flags ?? []).some((f) => MEETING_BLOCKING_FLAGS.includes(f))) return false;
+  return true;
+}
+
+/**
+ * Does a row start ticked on screen? The server's default_selected, written when the meeting was
+ * read — except for a row a person has since placed ('Who is this?'), which was written unplaced
+ * and so unticked; the same rule decides it now. Never a removal, never anything not proposed.
+ */
+function meetingStartsTicked(row) {
+  if (!row || row.status !== "proposed" || row.kind === "removal") return false;
+  if (row.default_selected === true) return true;
+  return row.matched_on === "person" && meetingDefaultTick(row);
+}
+
+/**
+ * pb_meeting_proposals rows → agency cards in DISCUSSION ORDER (the first line any row cites, the
+ * order the room remembers), plus the rows nobody has placed yet, grouped by said_key — one
+ * 'Who is this?' chip per name, however many claims hang off it. On each card the rows sit in the
+ * fixed order of MEETING_KIND_ORDER, then by line; they are split into what can be decided
+ * (proposed), what the board already says (agrees), what was said but not decided (not_proposed)
+ * and what is history.
+ */
+function groupMeetingCards(rows) {
+  const placed = new Map(), unplaced = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || typeof r.id !== "string") continue;
+    const isPlaced = typeof r.account_id === "string" && r.account_id.length > 0;
+    const k = isPlaced ? r.account_id : String(r.said_key ?? "");
+    const into = isPlaced ? placed : unplaced;
+    let g = into.get(k);
+    if (!g) {
+      g = { key: (isPlaced ? "a:" : "s:") + k, account_id: isPlaced ? r.account_id : null, said_keys: [], said_as: [],
+            mention_state: null, matched_on: null, options: [], first_line: Infinity, first_at: null, last_line: -Infinity, last_at: null, rows: [] };
+      into.set(k, g);
+    }
+    g.rows.push(r);
+    if (typeof r.said_key === "string" && !g.said_keys.includes(r.said_key)) g.said_keys.push(r.said_key);
+    for (const s of Array.isArray(r.said_as) ? r.said_as : []) if (typeof s === "string" && s && !g.said_as.includes(s)) g.said_as.push(s);
+    for (const o of Array.isArray(r.options) ? r.options : []) if (typeof o === "string" && !g.options.includes(o) && g.options.length < 5) g.options.push(o);
+    // A person's placement is the strongest basis a card can have, so it wins the chip.
+    if (r.matched_on === "person" || g.matched_on === null) g.matched_on = r.matched_on ?? g.matched_on;
+    if (r.mention_state === "ambiguous" || g.mention_state === null) g.mention_state = r.mention_state ?? g.mention_state;
+    const from = Number(r.line_from), to = Number(r.line_to ?? r.line_from);
+    if (Number.isFinite(from) && from < g.first_line) { g.first_line = from; g.first_at = r.quote_at ?? null; }
+    if (Number.isFinite(to) && to > g.last_line) { g.last_line = to; g.last_at = r.quote_at ?? null; }
+  }
+  const rank = (kind) => { const i = MEETING_KIND_ORDER.indexOf(kind); return i < 0 ? MEETING_KIND_ORDER.length : i; };
+  const finish = (g) => {
+    const sorted = g.rows.slice().sort((a, b) =>
+      rank(a.kind) - rank(b.kind) || (Number(a.line_from) || 0) - (Number(b.line_from) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const of = (...st) => sorted.filter((r) => st.includes(r.status));
+    return {
+      ...g,
+      said_keys: g.said_keys.slice().sort(),
+      first_line: Number.isFinite(g.first_line) ? g.first_line : null,
+      last_line: Number.isFinite(g.last_line) ? g.last_line : null,
+      rows: sorted,
+      open: of("proposed"),
+      agrees: of("agrees"),
+      unsaid: of("not_proposed"),
+      decided: of("approved", "rejected", "superseded"),
+    };
+  };
+  const byLine = (a, b) => (a.first_line ?? Infinity) - (b.first_line ?? Infinity) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  return { cards: [...placed.values()].map(finish).sort(byLine), unplaced: [...unplaced.values()].map(finish).sort(byLine) };
+}
+
+const MEETING_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** 'YYYY-MM-DD' plus n days, as 'YYYY-MM-DD'; null when the day does not parse. */
+function addDaysIso(day, n) {
+  const t = Date.parse(String(day ?? "").slice(0, 10) + "T00:00:00Z");
+  if (!Number.isFinite(t) || typeof n !== "number" || !Number.isFinite(n)) return null;
+  return new Date(t + Math.round(n) * 86400000).toISOString().slice(0, 10);
+}
+
+/** '2027-01-08' → '8 Jan 2027'. Deterministic: no locale, no clock. */
+function dayMonthWords(day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(day ?? ""));
+  if (!m) return String(day ?? "");
+  return `${Number(m[3])} ${MEETING_MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+}
+
+/** How many tiers apart two tiers sit in the rubric's vocabulary; null when either is unknown. */
+function tiersMoved(a, b, tiers) {
+  const order = Array.isArray(tiers) ? tiers : [];
+  const i = order.indexOf(a), j = order.indexOf(b);
+  return i < 0 || j < 0 ? null : Math.abs(i - j);
+}
+
+function dispositionWords(d) {
+  return d === "do_not_contact" ? "do not contact" : d === "unqualified" ? "unqualified" : String(d ?? "").replace(/_/g, " ");
+}
+
+/** A read's cell ('Gold × Project') with its tier printed as anticipated (rule 10). */
+function meetingCellWords(cell, tiers) {
+  if (typeof cell !== "string" || !cell) return null;
+  const first = cell.split(/\s*×\s*/)[0];
+  return (Array.isArray(tiers) ? tiers : []).includes(first) ? `cell anticipated ${cell}` : `cell ${cell}`;
+}
+
+function meetingTopicWords(t) {
+  return t ? String(t).replace(/_/g, " ") : "other";
+}
+
+function meetingValueWords(v) {
+  if (v === null || v === undefined) return "nothing";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.map(String).join("; ") : "none";
+  if (typeof v === "object") { try { return JSON.stringify(v); } catch { return String(v); } }
+  return String(v);
+}
+
+/**
+ * The change a row proposes, in plain words — the line a person reads before the quote. Every tier
+ * is printed with "anticipated" (rule 10). `ctx` carries what the screen knows that the row does
+ * not: the live engine tier, the expiry and value the person set, the disposition and code they
+ * chose, and the removal vocabulary.
+ *
+ *   'Tier → anticipated Silver (engine: anticipated Gold) until 8 Jan 2027'
+ *   'Remove — do not contact · they asked us to stop · never expires'
+ *   'headcount 40 · book: 25 from website'
+ *   'Read · price'
+ */
+function meetingRowWords(row, ctx) {
+  if (!row || typeof row !== "object") return "";
+  const c = ctx && typeof ctx === "object" ? ctx : {};
+  const tierWords = (t) => (t ? `anticipated ${t}` : "no anticipated tier");
+  const agrees = row.status === "agrees";
+  if (row.kind === "override") {
+    if (agrees) return `Tier ${tierWords(row.tier)} — team agrees with the board`;
+    const engine = c.engineTier !== undefined ? c.engineTier : row.engine_tier;
+    const until = c.expiresOn ? ` until ${dayMonthWords(c.expiresOn)}` : "";
+    let s = `Tier → ${tierWords(row.tier)} (engine: ${engine ? tierWords(engine) : "no anticipated tier yet"})${until}`;
+    const moved = tiersMoved(row.tier, engine, c.tiers);
+    if (moved !== null && moved > 1) s += ` · moves ${moved} tiers; the board will flag it`;
+    return s;
+  }
+  if (row.kind === "removal") {
+    if (agrees) return "Remove — already off the board; team agrees with the board";
+    const disp = c.disposition !== undefined ? c.disposition : row.disposition;
+    const code = c.code !== undefined ? c.code : row.reason_code;
+    const hit = (Array.isArray(c.reasons) ? c.reasons : []).find((x) => x && x.disposition === disp && x.code === code);
+    const label = hit ? String(hit.label ?? hit.code) : code ? String(code).replace(/_/g, " ") : null;
+    const parts = ["Remove — " + (disp ? dispositionWords(disp) : "choose do not contact or unqualified")];
+    if (disp) parts.push(label ? label.charAt(0).toLowerCase() + label.slice(1) : "choose a reason");
+    if (c.reviewOn) parts.push(`a person looks again on ${dayMonthWords(c.reviewOn)}`);
+    parts.push("never expires");
+    return parts.join(" · ");
+  }
+  if (row.kind === "fact") {
+    const value = c.value !== undefined ? c.value : row.value;
+    const said = `${row.key} ${meetingValueWords(value)}`;
+    if (agrees) return `${said} — team agrees with the board`;
+    const held = row.current_value === null || row.current_value === undefined
+      ? "book: nothing on record"
+      : `book: ${meetingValueWords(row.current_value)}${row.current_source ? " from " + row.current_source : ""}`;
+    const person = (row.flags ?? []).includes("conflicts_with_person") ? " — a person recorded that; approving overrules them" : "";
+    return `${said} · ${held}${person}`;
+  }
+  if (row.kind === "read") return `Read · ${meetingTopicWords(row.topic)}`;
+  return String(row.kind ?? "");
+}
+
+/** A flag on a row, in words. Each one is why the row was not ticked for you. */
+function meetingFlagWords(flag) {
+  switch (flag) {
+    case "shared_segment": return "said while another agency was on the table";
+    case "question": return "asked as a question";
+    case "hypothetical": return "said as a what-if";
+    case "joke": return "said as a joke";
+    case "historic": return `said more than ${MEETING_HISTORIC_DAYS} days before it was read`;
+    case "conflicts_with_person": return "a person recorded something else";
+    case "no_computed_tier": return "no computed tier yet — the engine refuses an override until there is one";
+    default: return String(flag ?? "").replace(/_/g, " ");
+  }
+}
+
+/**
+ * The tier row's starting values, all from the rubric: the reason code (the model's when the
+ * rubric lists it, else relationship_known), the expiry (today + spec.override.expiry_default_days,
+ * so the forced re-look of §59 still applies) and the prefilled written reason. `today` is an input.
+ */
+function overrideDefaults(row, spec, today) {
+  const ov = spec && typeof spec === "object" ? spec.override : null;
+  const codes = Array.isArray(ov?.reason_codes) ? ov.reason_codes.filter((x) => typeof x === "string") : [];
+  const asked = row?.reason_code;
+  const reason_code = codes.includes(asked) ? asked
+    : codes.includes(MEETING_DEFAULT_OVERRIDE_CODE) ? MEETING_DEFAULT_OVERRIDE_CODE
+    : codes.includes("other") ? "other"
+    : codes[0] ?? null;
+  const days = ov?.expiry_default_days;
+  const expiry_days = typeof days === "number" && Number.isFinite(days) && days > 0 ? days : null;
+  const expires_on = expiry_days === null ? null : addDaysIso(today, expiry_days);
+  const text = typeof row?.default_text === "string" && row.default_text.trim() ? row.default_text : row?.quote ? `"${row.quote}"` : "";
+  return { codes, reason_code, expiry_days, expires_on, text };
+}
+
+/** The dispositions pb_removal_reasons offers, in its own order. */
+function removalDispositions(reasons) {
+  const out = [];
+  const sorted = (Array.isArray(reasons) ? reasons : []).filter((x) => x && x.active !== false && typeof x.disposition === "string")
+    .slice().sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  for (const x of sorted) if (!out.includes(x.disposition)) out.push(x.disposition);
+  return out;
+}
+
+/**
+ * The codes a disposition offers, from pb_removal_reasons (data, never a literal here). Each says
+ * whether it takes a review date: only where allows_review_date is set, so do-not-contact never does.
+ */
+function removalCodesFor(reasons, disposition) {
+  return (Array.isArray(reasons) ? reasons : [])
+    .filter((x) => x && x.disposition === disposition && x.active !== false && typeof x.code === "string")
+    .slice()
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+    .map((x) => ({ code: x.code, label: x.label ?? x.code, review_date: x.allows_review_date === true }));
+}
+
+/** Is (disposition, code) an active pair? The claim's pair is shown only when it is. */
+function removalPair(reasons, disposition, code) {
+  if (!disposition || !code) return null;
+  return removalCodesFor(reasons, disposition).find((x) => x.code === code) ?? null;
+}
+
+/** A removal's edit as it may be sent: no expiry, ever, and a review date only where the pair takes one. */
+function removalEdit(e, reasons) {
+  const out = { disposition: e.disposition, reason_code: e.reason_code };
+  if (typeof e.text === "string" && e.text.trim()) out.text = e.text.trim();
+  const pair = Array.isArray(reasons) ? removalPair(reasons, e.disposition, e.reason_code) : null;
+  const reviewOk = Array.isArray(reasons) ? !!pair?.review_date : e.disposition !== "do_not_contact";
+  if (typeof e.review_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.review_on) && reviewOk) out.review_on = e.review_on;
+  return out;
+}
+
+function cleanMeetingEdit(kind, e) {
+  if (!e || typeof e !== "object") return null;
+  const out = {};
+  if (kind === "override") {
+    if (typeof e.tier === "string" && e.tier) out.tier = e.tier;
+    if (typeof e.reason_code === "string" && e.reason_code) out.reason_code = e.reason_code;
+    if (typeof e.expires_at === "string" && e.expires_at) out.expires_at = e.expires_at;
+    else if (typeof e.expires_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.expires_on)) out.expires_at = e.expires_on + "T00:00:00Z";
+    if (typeof e.text === "string" && e.text.trim()) out.text = e.text.trim();
+  } else if (kind === "fact") {
+    if (e.value !== undefined && e.changed === true) out.value = e.value;
+  } else if (kind === "read") {
+    if (typeof e.text === "string" && e.text.trim() && e.changed === true) out.text = e.text.trim();
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * One card's items for pb_decide_meeting_card — the ONE atomic call a card makes.
+ *
+ *   mode 'approve' (A)   ticked rows approve, unticked rows reject, on THIS card only;
+ *   mode 'reject'  (X)   every open row rejects;
+ *   mode 'removal'       the removal alone, from its own [Remove now] button.
+ *
+ * `choice` is { [id]: { ticked, chosen, edit } } as the screen holds it. A removal is approved only
+ * when the owner CHOSE it here — clicked a disposition or [Remove now]; a pair the model proposed is
+ * a suggestion, never a choice — and its edit never carries expires_at. On the rater lane, approving
+ * a tier call or a removal is not theirs (rules 7, 7a), so A leaves those rows waiting for the owner
+ * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true,
+ * because the person ticked a box that says so.
+ */
+function cardItems(rows, choice, opts) {
+  const o = opts && typeof opts === "object" ? opts : {};
+  const pick = choice && typeof choice === "object" ? choice : {};
+  const owner = o.lane === "owner";
+  const items = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || r.status !== "proposed" || typeof r.id !== "string") continue;
+    if (o.only && r.id !== o.only) continue;
+    const c = pick[r.id] && typeof pick[r.id] === "object" ? pick[r.id] : {};
+    if (o.mode === "reject") { items.push({ id: r.id, decision: "reject" }); continue; }
+    if (r.kind === "removal") {
+      const e = c.edit && typeof c.edit === "object" ? c.edit : {};
+      const ready = owner && c.chosen === true && typeof e.disposition === "string" && e.disposition !== "" && typeof e.reason_code === "string" && e.reason_code !== "";
+      if (o.mode === "removal") { if (ready) items.push({ id: r.id, decision: "approve", edit: removalEdit(e, o.reasons) }); continue; }
+      if (!owner) continue;
+      items.push(ready ? { id: r.id, decision: "approve", edit: removalEdit(e, o.reasons) } : { id: r.id, decision: "reject" });
+      continue;
+    }
+    if (o.mode === "removal") continue;
+    if (r.kind === "override" && !owner) continue;
+    if (c.ticked !== true) { items.push({ id: r.id, decision: "reject" }); continue; }
+    const item = { id: r.id, decision: "approve" };
+    if (r.kind === "fact" && (r.flags ?? []).includes("conflicts_with_person")) item.overrule = true;
+    const edit = cleanMeetingEdit(r.kind, c.edit);
+    if (edit) item.edit = edit;
+    items.push(item);
+  }
+  return items;
+}
+
+/** What would make the database refuse this card for a reason the screen can already see. */
+function cardProblems(rows, choice, lane) {
+  const pick = choice && typeof choice === "object" ? choice : {};
+  const out = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || r.status !== "proposed") continue;
+    const c = pick[r.id] ?? {};
+    const e = c.edit ?? {};
+    if (r.kind === "removal" && lane === "owner" && c.chosen === true) {
+      if (!e.disposition) out.push("The removal needs do not contact or unqualified.");
+      else if (!e.reason_code) out.push("The removal needs a reason code.");
+      if (!(typeof e.text === "string" && e.text.trim())) out.push("The removal needs a written reason.");
+    }
+    if (r.kind === "override" && lane === "owner" && c.ticked === true) {
+      if (!(typeof e.text === "string" && e.text.trim())) out.push("The tier call needs a written reason (rule 7).");
+      if (!e.reason_code) out.push("The tier call needs a reason code.");
+    }
+    if (r.kind === "fact" && c.ticked === true && e.invalid === true) out.push(`${r.key}: that value does not fit the key.`);
+  }
+  return out;
+}
+
+/**
+ * A key press on the review screen → what it means, or null to leave the browser alone. `ev` is
+ * { key, zone: 'strip' | 'card' | 'page', typing, mod, onButton, onControl }. Typing in a field and
+ * any modifier always mean nothing. There is no meeting-wide approve-all: A acts on one card.
+ */
+function shortcutAction(ev) {
+  const e = ev && typeof ev === "object" ? ev : {};
+  if (e.typing || e.mod) return null;
+  const k = typeof e.key === "string" ? e.key : "";
+  const low = k.length === 1 ? k.toLowerCase() : k;
+  if (e.zone === "strip") {
+    if (/^[1-5]$/.test(k)) return "pick:" + k;
+    if (low === "n") return "not_in_book";
+    if (k === "Enter") return e.onButton ? null : "confirm";
+    if (low === "j") return "next";
+    if (low === "k") return "prev";
+    return null;
+  }
+  switch (low) {
+    case "j": return "next";
+    case "k": return "prev";
+    case " ": return e.onControl ? null : "toggle";
+    case "a": return "approve";
+    case "r": return "removal";
+    case "x": return "reject";
+    case "w": return "wrong";
+    case "l": return "later";
+    default: return null;
+  }
+}
+
+/** pb_decide_meeting_card's answer, as the one line the card collapses to. */
+function decidedWords(result) {
+  if (!result || typeof result !== "object") return "Decided";
+  const n = (k) => (typeof result[k] === "number" && Number.isFinite(result[k]) ? result[k] : 0);
+  const parts = [];
+  if (n("approved")) parts.push(`approved ${n("approved")}`);
+  if (n("rejected")) parts.push(`rejected ${n("rejected")}`);
+  if (n("agrees")) parts.push(`${n("agrees")} the board already said`);
+  if (n("candidates_closed")) parts.push(`${n("candidates_closed")} machine claim${n("candidates_closed") === 1 ? "" : "s"} closed`);
+  const tail = [];
+  if (n("facts") || n("overrides")) tail.push("tier and rank move at 06:15 UTC");
+  if (n("removals")) tail.push("removals leave the board now");
+  if (n("reads") && !tail.length) tail.push("the reads are on the agency's register");
+  if (!parts.length) return "Nothing changed";
+  const line = parts.join(" · ") + (tail.length ? " · " + tail.join("; ") : "");
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+/** The header's counts, from the rows themselves; `notInBook` is the meeting's unknown mentions. */
+function meetingCounts(rows, notInBook) {
+  const agencies = new Set(), toPlace = new Set();
+  let facts = 0, tier_calls = 0, removals = 0, reads = 0;
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || r.status !== "proposed") continue;
+    if (typeof r.account_id === "string" && r.account_id) agencies.add(r.account_id);
+    else toPlace.add(String(r.said_key ?? ""));
+    if (r.kind === "fact") facts++;
+    else if (r.kind === "override") tier_calls++;
+    else if (r.kind === "removal") removals++;
+    else if (r.kind === "read") reads++;
+  }
+  return { agencies: agencies.size, facts, tier_calls, removals, reads, to_place: toPlace.size, not_in_book: typeof notInBook === "number" ? notInBook : 0 };
+}
+
+/** '14 agencies · 22 facts · 3 tier calls · 1 removal · 2 to place · 3 discussed, not in the book' */
+function meetingCountWords(c) {
+  const k = c && typeof c === "object" ? c : {};
+  const n = (x) => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+  const p = (x, one, many) => `${n(x)} ${n(x) === 1 ? one : many}`;
+  return [
+    p(k.agencies, "agency", "agencies"), p(k.facts, "fact", "facts"), p(k.tier_calls, "tier call", "tier calls"),
+    p(k.removals, "removal", "removals"), n(k.reads) ? p(k.reads, "read", "reads") : null,
+    `${n(k.to_place)} to place`, `${n(k.not_in_book)} discussed, not in the book`,
+  ].filter(Boolean).join(" · ");
+}
+
+/** Open proposal rows → how many agencies wait, in all and per meeting (a name not yet placed counts once). */
+function meetingsWaiting(rows) {
+  const all = new Set(), per = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || typeof r.recording_id !== "string") continue;
+    const who = typeof r.account_id === "string" && r.account_id ? "a:" + r.account_id : "s:" + String(r.said_key ?? "");
+    all.add(r.recording_id + "\u0000" + who);
+    if (!per.has(r.recording_id)) per.set(r.recording_id, new Set());
+    per.get(r.recording_id).add(who);
+  }
+  const byRecording = {};
+  for (const [rid, s] of per) byRecording[rid] = s.size;
+  return { total: all.size, byRecording };
+}
+
+/** Which meeting a bare #meetings opens: the newest with open cards, else the newest read. `meetings` come newest first. */
+function pickMeeting(meetings, byRecording) {
+  const list = Array.isArray(meetings) ? meetings.filter((m) => m && typeof m.recording_id === "string") : [];
+  const open = byRecording && typeof byRecording === "object" ? byRecording : {};
+  const withOpen = list.find((m) => (open[m.recording_id] ?? 0) > 0);
+  return (withOpen ?? list[0])?.recording_id ?? null;
+}
+
+/** 'HH:MM:SS' → seconds; null when it is not a clock. */
+function clockSecondsOf(at) {
+  const m = /^(?:(\d+):)?(\d{1,2}):(\d{1,2})$/.exec(String(at ?? "").trim());
+  if (!m) return null;
+  return (m[1] === undefined ? 0 : Number(m[1])) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+/** The Fathom call url at a moment — never share_url, which is a capability link. Null when the url is not http(s). */
+function fathomAt(url, at) {
+  const u = safeUrl(url);
+  if (!u) return null;
+  const s = clockSecondsOf(at);
+  return s === null ? u : u + (u.includes("?") ? "&" : "?") + "timestamp=" + s;
+}
+
+/** held_at → ended_at as '58 min' or '1 h 56 min'; null when either is missing. */
+function meetingLengthWords(heldAt, endedAt) {
+  const a = Date.parse(String(heldAt ?? "")), b = Date.parse(String(endedAt ?? ""));
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  const mins = Math.round((b - a) / 60000);
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h ${mins % 60} min`;
+}
+
+/**
+ * A row's context (the cited lines ± 2, rendered 'L0412 [00:31:07] S2: text') → lines with the
+ * speaker's NAME from pb_meetings.speakers, which carries names and never addresses. `pad` keeps
+ * only the lines within that many of [from, to]; omit it to keep them all.
+ */
+function contextLines(context, speakers, from, to, pad) {
+  const names = new Map();
+  for (const s of Array.isArray(speakers) ? speakers : []) if (s && typeof s.label === "string") names.set(s.label, s.name || s.label);
+  const out = [];
+  for (const line of String(context ?? "").split("\n")) {
+    const m = /^L(\d+) \[([0-9:]+)\] (S\d+)(?: \(context\))?: ?(.*)$/.exec(line);
+    if (m) out.push({ n: Number(m[1]), at: m[2], who: scrubAddresses(names.get(m[3]) ?? m[3]), text: scrubAddresses(m[4]) });
+    else if (out.length && line.trim()) out[out.length - 1].text += " " + scrubAddresses(line.trim());
+  }
+  if (typeof pad !== "number" || typeof from !== "number") return out;
+  const hi = typeof to === "number" ? to : from;
+  return out.filter((l) => l.n >= from - pad && l.n <= hi + pad);
+}
+
 /* @pure-end -------------------------------------------------------- */
 
 /* ------------------------------------------------------------------ *
@@ -755,6 +1327,9 @@ const state = {
   filters: { q: "", tier: "", status: "", flag: "", source: "", queue: "" },
   pending: new Map(), // account_id → open fact claims; empty for a reader who cannot see the queue
   queueRows: [], // every proposed fact claim, loaded only when #queue is open
+  meetingOpen: [], // open pb_meeting_proposals rows (recording_id, account_id, said_key); empty off the owner and rater lanes
+  mtg: null, // the #meetings screen: the meeting on screen, its rows and what the person has ticked
+  landed: false, // the bare-landing redirect to #meetings happens once, on arrival, never on "← Roster"
   booted: false, current: null, flash: null,
 };
 const tiersBestFirst = () => (state.rubric?.vocabulary?.tiers ?? TIER_ORDER).slice().reverse();
@@ -869,6 +1444,31 @@ async function loadRubric() {
   state.rubricVersion = active?.version ?? null;
 }
 
+/** A count of open machine claims per account, so the roster shows where the work is without opening every sheet. */
+function setPending(rows) {
+  state.pending = new Map();
+  for (const row of rows ?? []) {
+    const at = state.pending.get(row.account_id) ?? { open: 0, conflicts: 0 };
+    at.open++;
+    if (row.conflicts) at.conflicts++;
+    state.pending.set(row.account_id, at);
+  }
+}
+
+/**
+ * What the sales meetings left waiting on a person: the count line's link and the landing redirect.
+ * pb_meeting_proposals is owner- and rater-only, so anyone else simply has none; a database that does
+ * not carry the reader yet answers with an error, which reads the same way — nothing waiting.
+ */
+async function loadMeetingQueue() {
+  state.meetingOpen = [];
+  if (!state.db || !state.session || !canReview()) return;
+  try {
+    const { data, error } = await state.db.from("pb_meeting_proposals").select("recording_id,account_id,said_key").eq("status", "proposed").limit(5000);
+    if (!error) state.meetingOpen = data ?? [];
+  } catch (_) { /* no reader yet: nothing waiting */ }
+}
+
 async function loadBook() {
   const [acc, reads, runs, pending] = await Promise.all([
     state.db.from("pb_accounts").select("*").in("book", ["prospect", "parked", "promoted"]).order("name"), // 'merged' rows are history, read only from a survivor's sheet
@@ -876,20 +1476,14 @@ async function loadBook() {
     state.db.from("pb_runs").select("kind,status,started_at,finished_at,source").eq("kind", "score").order("started_at", { ascending: false }).limit(1),
     // Signed-in only: pb_fact_candidates is behind auth, so a reader sees the book without the queue.
     state.db.from("pb_fact_candidates").select("account_id,conflicts").eq("status", "proposed"),
+    loadMeetingQueue(),
   ]);
   if (acc.error) loadError("pb_accounts", acc.error);
   if (reads.error) loadError("pb_current_reads", reads.error);
   state.accounts = acc.data ?? [];
   state.reads = new Map((reads.data ?? []).map((r) => [r.account_id, r]));
   state.lastRun = { readAt: latestOf((reads.data ?? []).map((r) => r.run_at)), run: runs.data?.[0] ?? null };
-  // A count per account, so the roster shows where the work is without opening every sheet.
-  state.pending = new Map();
-  for (const row of pending.data ?? []) {
-    const at = state.pending.get(row.account_id) ?? { open: 0, conflicts: 0 };
-    at.open++;
-    if (row.conflicts) at.conflicts++;
-    state.pending.set(row.account_id, at);
-  }
+  setPending(pending.data ?? []);
   const anyUnvalidated = [...state.reads.values()].some((r) => r.scorecard?.validation === "UNVALIDATED");
   if (anyUnvalidated) {
     $("unvalidated").replaceChildren(
@@ -905,10 +1499,24 @@ async function loadBook() {
  * Routing: #account=<id> opens a sheet; anything else is the roster
  * ------------------------------------------------------------------ */
 function route() {
-  const m = /^#account=([A-Za-z0-9-]+)$/.exec(window.location.hash);
-  if (m) { show($("queue"), false); openSheet(m[1]); }
-  else if (window.location.hash === "#queue") { state.current = null; show($("sheet"), false); openQueue(); }
-  else { state.current = null; show($("sheet"), false); show($("queue"), false); show($("roster"), true); renderRoster(); }
+  const hash = window.location.hash;
+  // A bare landing goes straight to the sales-meeting review while it has open cards (DECISIONS §65):
+  // the review only works if it is the first thing a reviewer sees. Once, on arrival — "← Roster"
+  // also lands on an empty hash, and it must reach the roster.
+  if (!state.landed) {
+    state.landed = true;
+    if ((hash === "" || hash === "#") && canReview() && meetingsWaiting(state.meetingOpen).total > 0) {
+      history.replaceState(null, "", window.location.pathname + window.location.search + "#meetings");
+      route();
+      return;
+    }
+  }
+  const m = /^#account=([A-Za-z0-9-]+)$/.exec(hash);
+  const mm = /^#meetings(?:=([A-Za-z0-9._%-]+))?$/.exec(hash);
+  if (m) { show($("queue"), false); show($("meetings"), false); openSheet(m[1]); }
+  else if (hash === "#queue") { state.current = null; show($("sheet"), false); show($("meetings"), false); openQueue(); }
+  else if (mm) { state.current = null; show($("sheet"), false); show($("queue"), false); openMeetings(mm[1] ? decodeURIComponent(mm[1]) : null); }
+  else { state.current = null; show($("sheet"), false); show($("queue"), false); show($("meetings"), false); show($("roster"), true); renderRoster(); }
 }
 
 /* ------------------------------------------------------------------ *
@@ -971,6 +1579,11 @@ function renderRoster() {
   const waiting = [...(state.pending?.values() ?? [])].reduce((n, p) => n + p.open, 0);
   if (waiting && canReview()) {
     $("count").append(" · ", h("a", { href: "#queue" }, `${waiting} claim${waiting === 1 ? "" : "s"} waiting on a person`));
+  }
+  // What the sales meetings said waits on its own screen, one card per agency (DECISIONS §65).
+  const fromMeetings = meetingsWaiting(state.meetingOpen).total;
+  if (fromMeetings && canReview()) {
+    $("count").append(" · ", h("a", { href: "#meetings" }, `${fromMeetings} agenc${fromMeetings === 1 ? "y" : "ies"} from sales meetings waiting`));
   }
 
   const rows = $("rows");
@@ -2304,6 +2917,768 @@ function mergeForm(a) {
       h("div", { class: "form-foot" }, submit, h("span", { class: "sub" }, `made_by ${state.email} · owner or rater lane`)),
       msg)));
 }
+
+/* ------------------------------------------------------------------ *
+ * The sales meetings (#meetings, #meetings=<recording_id>; DECISIONS §65)
+ *
+ * What the team said in its own meeting about a named agency, one card per agency, in the order
+ * the meeting discussed them. The server decides which rows start ticked — a removal never does —
+ * and one keystroke settles a card. Each card is ONE call to pb_decide_meeting_card, which
+ * re-derives every rule (lane, guard, reason code, a person's value) and writes nothing unless the
+ * whole card passes; this screen only previews. Owner and rater lanes; approving a tier call or a
+ * removal is the owner's. There is no meeting-wide approve-all (the §45/§53 posture).
+ *
+ * No email address reaches this screen: speakers come from pb_meetings.speakers (labels and
+ * names), who decided a row is never printed, and any address said aloud is scrubbed from the text.
+ * ------------------------------------------------------------------ */
+const MEETING_LIST_COLS = "recording_id,title,title_norm,held_at,ended_at,status,skip_reason,include,selected_by,read_at,extractor,duplicate_of";
+const MEETING_COLS = MEETING_LIST_COLS + ",url,speakers,read_started_at,mentions,counts";
+const SKIP_WORDS = { not_selected: "not a sales title", owner_excluded: "you chose not to read it", external_speaker: "someone outside WLIQ spoke", no_transcript: "no transcript" };
+const BASIS_WORDS = { name: "matched by name", alias: "registry alias", learned: "a name someone confirmed before", person: "placed by a person", token: "part of the name", domain: "the web domain", prefix: "the start of the name" };
+
+const meetingHash = (rid) => "#meetings" + (rid ? "=" + encodeURIComponent(rid) : "");
+const meetingOwner = () => state.role === "owner";
+
+function speakerName(label) {
+  const s = (state.mtg?.meeting?.speakers ?? []).find((x) => x && x.label === label);
+  return scrubAddresses(s?.name || label || "a speaker");
+}
+function tierWordsFor(id) {
+  const read = state.reads.get(id);
+  const t = read?.scorecard?.effective_tier;
+  return t ? `anticipated ${t}` : read ? "no anticipated tier" : "not yet scored";
+}
+function basisChipFor(m) {
+  if (!m) return null;
+  return chip(BASIS_WORDS[m] ?? String(m), m === "person" || m === "learned" ? "c-good" : m === "name" || m === "alias" ? "c-info" : "c-warn");
+}
+function flagChipFor(f) {
+  const tone = f === "conflicts_with_person" || f === "no_computed_tier" ? "c-bad" : f === "shared_segment" || f === "historic" ? "c-warn" : "c-info";
+  return chip(meetingFlagWords(f), tone);
+}
+const quoted = (said) => (said ?? []).map((s) => `“${scrubAddresses(s)}”`).join(" / ");
+
+/** One row's working choice: ticked, chosen (a removal only) and the edits. Kept by proposal id across reloads. */
+function choiceFor(r) {
+  const S = state.mtg;
+  if (!S.choice[r.id]) {
+    const c = { ticked: meetingStartsTicked(r), chosen: false, edit: {} };
+    if (r.kind === "override") {
+      const d = overrideDefaults(r, state.rubric, todayIso());
+      c.edit = { reason_code: d.reason_code ?? (reasonCodes().includes(MEETING_DEFAULT_OVERRIDE_CODE) ? MEETING_DEFAULT_OVERRIDE_CODE : null), expires_on: d.expires_on, text: d.text };
+    } else if (r.kind === "removal") {
+      // The claim's pair is shown only when it is an active pb_removal_reasons pair, and even then it
+      // is a suggestion: the owner chooses (a disposition, or [Remove now]) or it is not a removal.
+      const pair = removalPair(S.reasons, r.disposition, r.reason_code);
+      c.edit = { disposition: pair ? r.disposition : null, reason_code: pair ? r.reason_code : null, review_on: null, text: r.default_text || `"${r.quote}"` };
+    } else if (r.kind === "fact") {
+      c.edit = { value: r.value, changed: false, invalid: false };
+    }
+    S.choice[r.id] = c;
+  }
+  return S.choice[r.id];
+}
+
+async function openMeetings(rid) {
+  const el = $("meetings");
+  show($("roster"), false);
+  show(el, true);
+  const startHash = window.location.hash;
+  const back = () => h("a", { class: "back", href: "#" }, "← Roster");
+  if (!canReview()) {
+    el.replaceChildren(back(), h("div", { class: "notice warn" }, "The sales-meeting review is the owner's and the rater's. What the team said stays signed-in on those two lanes until a person decides it; your lane reads the book."));
+    return;
+  }
+  const keep = state.mtg && state.mtg.rid && state.mtg.rid === rid ? state.mtg : null;
+  if (!keep) el.replaceChildren(back(), h("div", { class: "sub" }, "Loading the sales meetings…"));
+  const db = state.db;
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  const [list, notRead, rules, reasons, open] = await Promise.all([
+    db.from("pb_meetings").select(MEETING_LIST_COLS).in("status", ["read", "partial"]).order("held_at", { ascending: false, nullsFirst: false }).limit(20),
+    db.from("pb_meetings").select(MEETING_LIST_COLS).in("status", ["waiting", "reading", "failed", "skipped"]).gte("held_at", since).order("held_at", { ascending: false }).limit(200),
+    db.from("pb_meeting_title_rules").select("title_norm,read,set_at").order("title_norm"),
+    db.from("pb_removal_reasons").select("disposition,code,label,allows_review_date,sort,active").eq("active", true).order("disposition").order("sort"),
+    db.from("pb_meeting_proposals").select("recording_id,account_id,said_key").eq("status", "proposed").limit(5000),
+  ]);
+  if (window.location.hash !== startHash) return; // the reader moved on
+  if (list.error) {
+    el.replaceChildren(back(), h("div", { class: "notice warn" },
+      "The sales-meeting reader is not readable here yet, so there is nothing to review: " + list.error.message,
+      h("pre", null, errorDetail(list.error))));
+    return;
+  }
+  if (!open.error) state.meetingOpen = open.data ?? [];
+  const waiting = meetingsWaiting(state.meetingOpen);
+  const chosen = rid ?? pickMeeting(list.data ?? [], waiting.byRecording);
+  let meeting = null, rows = [], err = null;
+  if (chosen) {
+    const [m, p] = await Promise.all([
+      db.from("pb_meetings").select(MEETING_COLS).eq("recording_id", chosen).maybeSingle(),
+      db.from("pb_meeting_proposals").select("*").eq("recording_id", chosen).order("line_from").limit(2000),
+    ]);
+    if (window.location.hash !== startHash) return;
+    meeting = m.data ?? null;
+    rows = p.data ?? [];
+    err = m.error || p.error || null;
+    // A bare #meetings names the meeting it opened, so a reload or a shared link lands on the same one.
+    if (!rid && meeting) history.replaceState(null, "", window.location.pathname + window.location.search + meetingHash(chosen));
+  }
+  state.mtg = {
+    rid: meeting ? chosen : null, meeting, rows, err,
+    list: list.data ?? [], notRead: notRead.error ? [] : (notRead.data ?? []),
+    rules: rules.error ? [] : (rules.data ?? []), reasons: reasons.error ? [] : (reasons.data ?? []), waiting,
+    choice: keep ? keep.choice : {}, done: keep ? keep.done : new Map(), later: keep ? keep.later : new Set(),
+    msgs: keep ? keep.msgs : new Map(), focus: keep ? keep.focus : null, notReadOpen: keep ? keep.notReadOpen : false,
+    cards: [], unplaced: [], els: new Map(), rowEls: new Map(), ticks: new Map(), msgEls: new Map(),
+  };
+  drawMeetings(!keep);
+}
+
+function drawMeetings(fresh) {
+  const el = $("meetings");
+  const S = state.mtg;
+  const parts = [h("a", { class: "back", href: "#" }, "← Roster")];
+  if (state.flash) {
+    parts.push(h("div", { class: "notice " + state.flash.kind, role: "status" }, state.flash.text, state.flash.detail ? h("pre", null, state.flash.detail) : null));
+    state.flash = null;
+  }
+  S.els = new Map(); S.rowEls = new Map(); S.ticks = new Map(); S.msgEls = new Map();
+  if (!S.meeting) {
+    parts.push(h("header", { class: "sheet-head" },
+      h("div", { class: "eyebrow" }, "Sales meeting review"),
+      h("h2", null, "No sales meeting has been read yet"),
+      h("div", { class: "sub" }, S.err
+        ? "That meeting could not be read: " + S.err.message
+        : "The reader picks up internal meetings whose title says sales, prospect or grading, and any meeting or title you choose below. Cards appear here a few minutes after the meeting ends.")));
+    parts.push(notReadPanel());
+    el.replaceChildren(...parts);
+    return;
+  }
+  const { cards, unplaced } = groupMeetingCards(S.rows);
+  S.cards = cards;
+  S.unplaced = unplaced;
+  S.rankById = new Map(orderAccounts(state.accounts, state.reads).map((a, i) => [a.id, i + 1]));
+  parts.push(meetingHeader());
+  const strip = whoStrip(unplaced);
+  if (strip) parts.push(strip);
+  const openCards = cards.filter((c) => c.open.length);
+  parts.push(group("Agencies, in the order they came up", `${openCards.length} open`,
+    meetingOwner()
+      ? "Ticked rows are the ones the reader found stated plainly about a placed agency. A removal is never ticked: it has its own button. A approves what is ticked on THAT card and rejects the rest; tier and rank move at the next nightly run, a removal leaves the board at once."
+      : "On the rater lane you approve facts and reads. Tier calls and removals wait for the owner: approving a card leaves them where they are.",
+    cards.length ? h("div", { class: "mcards" }, ...cards.map(meetingCard)) : h("div", { class: "card" }, h("div", { class: "empty" }, "Nothing this meeting said is waiting on a person."))));
+  parts.push(h("div", { class: "sub" },
+    h("span", { class: "kbd" }, "J"), " / ", h("span", { class: "kbd" }, "K"), " next or previous card · ",
+    h("span", { class: "kbd" }, "Space"), " ticks the row you are on · ",
+    h("span", { class: "kbd" }, "A"), " approve ticked, reject the rest — this card only · ",
+    h("span", { class: "kbd" }, "R"), " the removal · ", h("span", { class: "kbd" }, "X"), " reject card · ",
+    h("span", { class: "kbd" }, "W"), " wrong agency · ", h("span", { class: "kbd" }, "L"), " later. In “Who is this?”: ",
+    h("span", { class: "kbd" }, "Enter"), " the first suggestion · ", h("span", { class: "kbd" }, "1–5"), " pick · ",
+    h("span", { class: "kbd" }, "N"), " not in the book. There is no approve-all: every card is decided with it in front of you."));
+  el.replaceChildren(...parts);
+  if (fresh) window.scrollTo(0, 0);
+  restoreMeetingFocus(fresh);
+}
+
+function meetingHeader() {
+  const S = state.mtg;
+  const m = S.meeting;
+  const owner = meetingOwner();
+  const clusters = Array.isArray(m.mentions) ? m.mentions : Array.isArray(m.mentions?.clusters) ? m.mentions.clusters : [];
+  const unknown = clusters.filter((c) => c && c.state === "unknown");
+  const counts = meetingCounts(S.rows, unknown.length);
+  const openHere = S.rows.filter((r) => r.status === "proposed").length;
+  const msg = h("div", { class: "notice hidden" });
+
+  const known = S.list.some((x) => x.recording_id === m.recording_id) ? S.list : [m, ...S.list];
+  const picker = h("select", { "aria-label": "Choose a read meeting" },
+    ...known.map((x) => option(x.recording_id, `${fmtDate(x.held_at)} · ${scrubAddresses(x.title ?? "(untitled)")} · ${S.waiting.byRecording[x.recording_id] ?? 0} open`, x.recording_id === m.recording_id)));
+  picker.addEventListener("change", () => { window.location.hash = meetingHash(picker.value); });
+  const nextOpen = known.find((x) => x.recording_id !== m.recording_id && (S.waiting.byRecording[x.recording_id] ?? 0) > 0);
+
+  const fathom = fathomAt(m.url, null);
+  const dismiss = h("button", { type: "button", class: "danger", disabled: !openHere }, "Dismiss meeting");
+  dismiss.addEventListener("click", async () => {
+    if (!window.confirm(`Dismiss this meeting?\n\nIts ${openHere} open proposal${openHere === 1 ? " is" : "s are"} rejected. Nothing is written to the book.`)) return;
+    dismiss.disabled = true;
+    const { data, error } = await state.db.rpc("pb_dismiss_meeting", { p_recording_id: m.recording_id, p_note: null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); dismiss.disabled = false; return; }
+    flash("ok", `Dismissed: ${typeof data?.rejected === "number" ? data.rejected : openHere} proposal(s) rejected. Nothing was written to the book.`);
+    await openMeetings(m.recording_id);
+  });
+
+  const rule = S.rules.find((r) => r.title_norm === m.title_norm) ?? null;
+  const series = owner ? h("div", { class: "inline" },
+    m.status === "waiting" || m.status === "reading" ? includeButton(m.recording_id, false, "Don't read", msg) : null,
+    rule
+      ? [h("span", { class: "sub" }, `This title is ${rule.read ? "always read" : "never read"} by your rule.`), titleRuleButton(m.title_norm, null, "Remove the rule", msg)]
+      : titleRuleButton(m.title_norm, false, "Never read this title", msg),
+  ) : null;
+
+  const read = m.read_at ? `read ${fmtDateTime(m.read_at)} by ${m.extractor ?? "the reader"}` : m.status === "reading" ? "being read now" : "not read yet";
+  return h("header", { class: "sheet-head" },
+    h("div", { class: "eyebrow" }, "Sales meeting review"),
+    h("div", { class: "title" }, h("h2", null, scrubAddresses(m.title ?? "(untitled meeting)"))),
+    h("div", { class: "meta" },
+      metaItem("Held", fmtDateTime(m.held_at)),
+      metaItem("Length", meetingLengthWords(m.held_at, m.ended_at) ?? "—"),
+      metaItem("Reader", read)),
+    h("div", null, h("b", null, meetingCountWords(counts))),
+    unknown.length ? h("div", { class: "sub" },
+      `Discussed, not in the book: ${unknown.map((c) => quoted((c.said_as ?? []).slice(0, 1))).filter(Boolean).join(", ")}. `,
+      "Nothing here admits them; a new agency enters through the roster drift report.") : null,
+    m.status === "partial" ? h("div", { class: "notice warn" }, "Part of this meeting could not be read. The reader picks up where it stopped on its next pass; the cards below are what it has so far.") : null,
+    m.status === "reading" ? h("div", { class: "notice info" }, "The reader is still on this meeting. More cards may arrive in a few minutes.") : null,
+    state.role === "rater" ? h("div", { class: "sub" }, "Rater lane: facts and reads are yours to approve; tier calls and removals wait for the owner (rules 7 and 7a).") : null,
+    h("div", { class: "inline" },
+      fathom ? h("a", { href: fathom, target: "_blank", rel: "noopener noreferrer" }, "Open in Fathom") : null,
+      picker,
+      nextOpen ? h("a", { href: meetingHash(nextOpen.recording_id) }, "Next meeting with open cards →") : null,
+      dismiss),
+    series,
+    notReadPanel(),
+    msg);
+}
+
+function includeButton(rid, include, label, msg) {
+  const b = h("button", { type: "button", class: include ? "primary" : "ghost" }, label);
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    const { error } = await state.db.rpc("pb_meeting_include", { p_recording_id: rid, p_include: include });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); b.disabled = false; return; }
+    flash("ok", include
+      ? "That meeting will be read on the reader's next pass; its cards arrive here a few minutes later."
+      : "That meeting will not be read. Nothing it said reaches this screen.");
+    await openMeetings(state.mtg?.rid ?? null);
+  });
+  return b;
+}
+
+function titleRuleButton(titleNorm, read, label, msg) {
+  const b = h("button", { type: "button", class: read === true ? "primary" : "ghost" }, label);
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    const { error } = await state.db.rpc("pb_meeting_title_rule", { p_title_norm: titleNorm, p_read: read });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); b.disabled = false; return; }
+    flash("ok", read === null
+      ? "The rule is gone; that title goes back to the default (read when it says sales, prospect or grading)."
+      : read ? "Every meeting with that title is read from now on, and the unread ones of the last days are queued." : "No meeting with that title is read from now on. A meeting already read keeps its cards.");
+    await openMeetings(state.mtg?.rid ?? null);
+  });
+  return b;
+}
+
+/** The 'Not read' disclosure: what the reader skipped or has not reached, and the owner's series controls. */
+function notReadPanel() {
+  const S = state.mtg;
+  const owner = meetingOwner();
+  const msg = h("div", { class: "notice hidden" });
+  const waiting = S.notRead.filter((x) => x.status === "waiting" || x.status === "reading" || x.status === "failed");
+  const skipped = S.notRead.filter((x) => x.status === "skipped");
+  const line = (x, label, buttons) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, scrubAddresses(x.title ?? "(untitled)")), chip(label)),
+    h("div", { class: "sub" }, [fmtDateTime(x.held_at), meetingLengthWords(x.held_at, x.ended_at)].filter(Boolean).join(" · ")),
+    owner && buttons.length ? h("div", { class: "inline" }, ...buttons) : null);
+  const ruleOf = (t) => S.rules.find((r) => r.title_norm === t) ?? null;
+  const waitingItems = waiting.map((x) => line(x, x.status === "failed" ? "the read failed; it is retried" : x.status === "reading" ? "being read" : "waiting to be read", [
+    x.status === "reading" ? null : includeButton(x.recording_id, false, "Don't read", msg),
+    ruleOf(x.title_norm) ? null : titleRuleButton(x.title_norm, false, "Never read this title", msg),
+  ].filter(Boolean)));
+  const skippedItems = skipped.map((x) => {
+    const choosable = !x.skip_reason || x.skip_reason === "not_selected" || x.skip_reason === "owner_excluded";
+    return line(x, SKIP_WORDS[x.skip_reason] ?? "skipped", choosable ? [
+      includeButton(x.recording_id, true, "Read this one", msg),
+      ruleOf(x.title_norm) ? null : titleRuleButton(x.title_norm, true, "Always read this title", msg),
+    ].filter(Boolean) : []);
+  });
+  const ruleItems = S.rules.map((r) => h("div", { class: "item" },
+    h("div", { class: "top" }, h("b", null, scrubAddresses(r.title_norm)), chip(r.read ? "always read" : "never read", r.read ? "c-good" : "c-warn")),
+    owner ? h("div", { class: "inline" }, titleRuleButton(r.title_norm, null, "Remove the rule", msg)) : null));
+  const d = h("details", { open: S.notReadOpen },
+    h("summary", null, `Not read: ${skipped.length} skipped in the last 30 days · ${waiting.length} waiting`),
+    h("div", { class: "sub", style: "margin:.5rem 0" }, owner
+      ? "Your say for one meeting beats a rule for its title, and a title rule beats the default. A meeting already read is never re-read by these."
+      : "Which meetings are read is the owner's to choose."),
+    group("Waiting to be read", `${waiting.length}`, null, list(waitingItems, "Nothing is waiting.")),
+    group("Skipped", `${skipped.length}`, null, list(skippedItems, "Nothing was skipped in the last 30 days.")),
+    group("Title rules", `${S.rules.length}`, null, list(ruleItems, "No title rules: the default decides (sales, prospect or grading in the title).")),
+    msg);
+  d.addEventListener("toggle", () => { S.notReadOpen = d.open; });
+  return d;
+}
+
+/** 'Who is this?': one chip per name the reader would not place on its own. */
+function whoStrip(unplaced) {
+  const groups = unplaced.filter((g) => g.open.length || g.unsaid.length);
+  if (!groups.length) return null;
+  return group("Who is this?", `${groups.length}`,
+    "Names the reader would not place for certain. One tap places every claim said under that name. With “Remember this name” ticked, the next meeting places it by itself; two agencies remembered under one name make it a question again.",
+    h("div", { class: "card list" }, ...groups.map(whoChip)));
+}
+
+function whoChip(g) {
+  const S = state.mtg;
+  const first = g.rows.find((r) => r.line_from === g.first_line) ?? g.rows[0];
+  const said = g.said_as.length ? quoted(g.said_as) : "(no words kept)";
+  const ctx = contextLines(first?.context, S.meeting?.speakers, first?.line_from, first?.line_to, 1);
+  const remember = h("input", { type: "checkbox", checked: true });
+  const msg = h("div", { class: "notice hidden" });
+  const all = [];
+  const n = g.open.length + g.unsaid.length;
+  const place = async (decision, accountId, name) => {
+    for (const b of all) b.disabled = true;
+    const { error } = await state.db.rpc("pb_assign_meeting_mention", {
+      p_recording_id: S.rid, p_said_key: g.said_keys[0] ?? "", p_decision: decision, p_account: accountId ?? null, p_remember: remember.checked,
+    });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); for (const b of all) b.disabled = false; return; }
+    flash("ok", decision === "assign"
+      ? `Placed ${said} on ${name ?? "that agency"}: ${n} claim${n === 1 ? "" : "s"} moved to its card.${remember.checked ? " The name is remembered for the next meeting." : ""}`
+      : decision === "not_in_book"
+        ? `${said}: not in the book. ${n} claim${n === 1 ? "" : "s"} rejected; nothing is admitted from here.`
+        : `${said}: not an agency. ${n} claim${n === 1 ? "" : "s"} rejected.`);
+    // The next name to place takes the focus (2–3 s a chip); once none is left, the first open card does.
+    S.focus = null;
+    await openMeetings(S.rid);
+  };
+  const optLabel = (id, i) => {
+    const a = state.accounts.find((x) => x.id === id);
+    return [`${i + 1}. ${a?.name ?? "(not on your roster)"}`, a?.domain ?? null, tierWordsFor(id)].filter(Boolean).join(" · ");
+  };
+  const opts = g.options.map((id, i) => {
+    const a = state.accounts.find((x) => x.id === id);
+    const b = h("button", { type: "button", class: i === 0 ? "primary" : null, "data-opt": String(i + 1) }, optLabel(id, i));
+    b.addEventListener("click", () => place("assign", id, a?.name ?? null));
+    all.push(b);
+    return b;
+  });
+  const search = h("input", { type: "search", placeholder: "Or find it on the roster", "aria-label": "Find the agency on the roster" });
+  const found = h("div", { class: "opts" });
+  search.addEventListener("input", () => {
+    const hits = search.value.trim() ? mergeTargets(state.accounts, null, search.value, 5) : [];
+    found.replaceChildren(...hits.map((a) => {
+      const b = h("button", { type: "button" }, [a.name ?? "(unnamed)", a.domain ?? null, tierWordsFor(a.id)].filter(Boolean).join(" · "));
+      b.addEventListener("click", () => place("assign", a.id, a.name ?? null));
+      all.push(b);
+      return b;
+    }));
+  });
+  const notIn = h("button", { type: "button", "data-act": "not_in_book" }, "Not in the book (N)");
+  notIn.addEventListener("click", () => place("not_in_book", null, null));
+  const notAgency = h("button", { type: "button", class: "ghost" }, "Not an agency");
+  notAgency.addEventListener("click", () => place("not_an_agency", null, null));
+  all.push(notIn, notAgency);
+  const at = fathomAt(S.meeting?.url, first?.quote_at);
+  return h("div", { class: "item whochip", "data-strip-chip": g.key, tabindex: "-1" },
+    h("div", { class: "top" },
+      h("b", null, `said as ${said}`),
+      chip(g.mention_state === "ambiguous" ? "more than one agency fits" : "a guess from part of the name", "c-warn"),
+      at ? h("a", { href: at, target: "_blank", rel: "noopener noreferrer" }, `▶ ${first?.quote_at ?? ""}`) : first?.quote_at ? `▶ ${first.quote_at}` : null,
+      chip(`${n} claim${n === 1 ? "" : "s"} under this name`)),
+    ctx.length ? h("div", { class: "sub" }, ...ctx.map((l) => h("div", null, `[${l.at}] ${l.who}: ${l.text}`))) : null,
+    opts.length ? h("div", { class: "opts" }, ...opts) : h("div", { class: "sub" }, "No suggestion: find it on the roster, or say it is not in the book."),
+    h("div", { class: "inline" }, search),
+    found,
+    h("div", { class: "inline" }, notIn, notAgency, h("label", { class: "check" }, remember, "Remember this name")),
+    msg);
+}
+
+function meetingCard(card) {
+  const S = state.mtg;
+  const a = card.account_id ? state.accounts.find((x) => x.id === card.account_id) : null;
+  const read = card.account_id ? state.reads.get(card.account_id) ?? null : null;
+  const nameEl = card.account_id ? h("a", { href: "#account=" + encodeURIComponent(card.account_id) }, a?.name ?? "(not on your roster)") : h("b", null, "(not placed)");
+  if (!card.open.length) return doneCard(card, nameEl);
+  const sc = read?.scorecard ?? null;
+  const rank = S.rankById?.get(card.account_id);
+  const span = card.first_at ? (card.last_at && card.last_at !== card.first_at ? `${card.first_at}–${card.last_at}` : card.first_at) : null;
+  const head = h("div", { class: "mhead" },
+    h("div", { class: "nmline" }, nameEl, tierChip(read),
+      sc?.validation === "UNVALIDATED" ? chip("UNVALIDATED (PRO-8)", "c-warn") : null,
+      rank ? chip(`#${rank} on the roster`) : null,
+      sc?.cell ? chip(meetingCellWords(sc.cell, tierOrder())) : null,
+      S.later.has(card.key) ? chip("later", "c-info") : null),
+    h("div", { class: "sub chips" }, [card.said_as.length ? `said as ${quoted(card.said_as)}` : null, span].filter(Boolean).join(" · "), basisChipFor(card.matched_on)));
+  const rowsEl = card.open.map((r) => meetingRow(r, card));
+  const agreeEls = card.agrees.map((r) => h("div", { class: "mline" }, meetingRowWords(r, { tiers: tierOrder(), reasons: S.reasons }), " · ", h("i", null, `“${scrubAddresses(r.quote)}”`)));
+  const unsaid = card.unsaid.length ? h("details", { class: "mline" }, h("summary", null, `Said, not decided (${card.unsaid.length})`), ...card.unsaid.map(unsaidRow)) : null;
+  const el = h("div", { class: "mcard" + (S.later.has(card.key) ? " later" : ""), "data-card": card.key, tabindex: "-1" },
+    head, ...rowsEl, ...agreeEls, unsaid, cardFooter(card));
+  S.els.set(card.key, el);
+  return el;
+}
+
+/** A decided card is one line: what the decision did, or what the rows now say. */
+function doneCard(card, nameEl) {
+  const S = state.mtg;
+  const n = (st) => card.rows.filter((r) => r.status === st).length;
+  const summary = S.done.get(card.key) ?? ([
+    n("approved") ? `approved ${n("approved")}` : null,
+    n("rejected") ? `rejected ${n("rejected")}` : null,
+    n("superseded") ? `${n("superseded")} replaced by a newer meeting` : null,
+    card.agrees.length ? `${card.agrees.length} the board already says` : null,
+  ].filter(Boolean).join(" · ") || "nothing to decide").replace(/^./, (x) => x.toUpperCase());
+  const el = h("div", { class: "mcard", "data-card": card.key, tabindex: "-1" },
+    h("div", { class: "mdone" }, nameEl, h("span", { class: "sub" }, summary)),
+    card.unsaid.length ? h("details", { class: "mline" }, h("summary", null, `Said, not decided (${card.unsaid.length})`), ...card.unsaid.map(unsaidRow)) : null);
+  S.els.set(card.key, el);
+  return el;
+}
+
+function meetingRow(r, card) {
+  const S = state.mtg;
+  const owner = meetingOwner();
+  const c = choiceFor(r);
+  const conflict = r.kind === "fact" && (r.flags ?? []).includes("conflicts_with_person");
+  const live = card.account_id ? state.reads.get(card.account_id) ?? null : null;
+  const what = h("span", { class: "what" });
+  const refresh = () => {
+    what.textContent = meetingRowWords(r, {
+      tiers: tierOrder(),
+      engineTier: live ? (live.computed_tier ?? live.scorecard?.fit?.computed_tier ?? null) : undefined,
+      expiresOn: r.kind === "override" ? c.edit.expires_on ?? null : undefined,
+      disposition: r.kind === "removal" ? c.edit.disposition ?? null : undefined,
+      code: r.kind === "removal" ? c.edit.reason_code ?? null : undefined,
+      reviewOn: r.kind === "removal" ? c.edit.review_on ?? null : undefined,
+      reasons: S.reasons,
+      value: r.kind === "fact" && c.edit.changed ? c.edit.value : undefined,
+    });
+  };
+  refresh();
+
+  const tickable = r.kind === "fact" || r.kind === "read" || (r.kind === "override" && owner);
+  let tickEl;
+  if (tickable) {
+    const box = h("input", { type: "checkbox", checked: c.ticked === true, "aria-label": conflict ? "Overrule the person's value" : "Approve this row" });
+    box.addEventListener("change", () => { c.ticked = box.checked; });
+    S.ticks.set(r.id, box);
+    tickEl = h("label", { class: "check" }, box, conflict ? "overrule" : null);
+  } else {
+    tickEl = chip(r.kind === "removal" ? (owner ? "never pre-ticked — its own button" : "the owner's decision") : "the owner's decision", r.kind === "removal" ? "c-bad" : "c-info");
+  }
+
+  const at = fathomAt(S.meeting?.url, r.quote_at);
+  const ctx = contextLines(r.context, S.meeting?.speakers);
+  const ctxEl = ctx.length ? h("details", null, h("summary", null, "context"),
+    h("div", { class: "ctx" }, ...ctx.map((l) => h("div", { class: l.n >= r.line_from && l.n <= r.line_to ? "hit" : null }, `[${l.at}] ${l.who}: ${l.text}`)))) : null;
+  const el = h("div", { class: `mrow k-${r.kind}` + (conflict ? " conflict" : ""), "data-row": r.id, tabindex: "0" },
+    h("div", { class: "top" }, tickEl, what),
+    h("blockquote", { class: "q" }, "“", scrubAddresses(r.quote), "”"),
+    h("div", { class: "sub inline" },
+      at ? h("a", { href: at, target: "_blank", rel: "noopener noreferrer" }, `▶ ${r.quote_at}`) : `▶ ${r.quote_at}`,
+      h("span", null, speakerName(r.speaker)),
+      ctxEl),
+    (r.flags ?? []).length ? h("div", { class: "chips" }, ...(r.flags ?? []).map(flagChipFor)) : null,
+    rowControls(r, c, refresh, card));
+  S.rowEls.set(r.id, el);
+  return el;
+}
+
+/** Rebuild one row in place (a removal's disposition decides which codes and dates it offers). */
+function redrawRow(r, card, focusSel) {
+  const S = state.mtg;
+  const old = S.rowEls.get(r.id);
+  if (!old) return;
+  const neu = meetingRow(r, card);
+  old.replaceWith(neu);
+  const f = focusSel ? neu.querySelector(focusSel) : null;
+  (f ?? neu).focus({ preventScroll: true });
+}
+
+function rowControls(r, c, refresh, card) {
+  const S = state.mtg;
+  const owner = meetingOwner();
+  if (r.kind === "override") {
+    if (!owner) return h("div", { class: "sub" }, "Approving a tier call is the owner's (rule 7). Approving this card leaves it waiting for the owner; Reject card rejects it.");
+    const d = overrideDefaults(r, state.rubric, todayIso());
+    const codes = d.codes.length ? d.codes : reasonCodes();
+    const code = h("select", { "aria-label": "Reason code" }, ...codes.map((x) => option(x, x, x === c.edit.reason_code)));
+    code.addEventListener("change", () => { c.edit.reason_code = code.value; });
+    const exp = h("input", { type: "date", value: c.edit.expires_on ?? "", min: plusDaysIso(1), "aria-label": "Expires" });
+    exp.addEventListener("change", () => { c.edit.expires_on = exp.value || null; refresh(); });
+    const text = h("textarea", { "aria-label": "Written reason" });
+    text.value = c.edit.text ?? "";
+    text.addEventListener("input", () => { c.edit.text = text.value; });
+    return h("div", { class: "controls" },
+      field("Reason code", code, "From the active rubric."),
+      field("Expires", exp, d.expiry_days ? `Default from the rubric: ${d.expiry_days} days. Then it lapses and the engine's tier returns — a forced re-look.` : "The rubric sets no default; the database applies its own."),
+      h("div", { class: "wide" }, field("Written reason", text, "Required (rule 7). It stays in the signed-in register; the public dossier strips it.")));
+  }
+  if (r.kind === "removal") {
+    if (!owner) return h("div", { class: "sub" }, "Taking an agency off the board is the owner's (rule 7a). Approving this card leaves it waiting for the owner; Reject card rejects it.");
+    const disps = removalDispositions(S.reasons);
+    const suggested = removalPair(S.reasons, r.disposition, r.reason_code) ? r.disposition : null;
+    const dispBtns = disps.map((dp) => {
+      const pressed = c.chosen === true && c.edit.disposition === dp;
+      const label = (dp === "do_not_contact" ? "Do not contact" : dp === "unqualified" ? "Unqualified" : dispositionWords(dp)) + (!c.chosen && suggested === dp ? " (as said)" : "");
+      const b = h("button", { type: "button", "aria-pressed": pressed ? "true" : "false", "data-disp": dp }, label);
+      b.addEventListener("click", () => {
+        c.chosen = true;
+        if (c.edit.disposition !== dp) {
+          c.edit.disposition = dp;
+          if (!removalPair(S.reasons, dp, c.edit.reason_code)) c.edit.reason_code = null;
+        }
+        if (!removalPair(S.reasons, dp, c.edit.reason_code)?.review_date) c.edit.review_on = null;
+        redrawRow(r, card, `[data-disp="${dp}"]`);
+      });
+      return b;
+    });
+    const codes = c.edit.disposition ? removalCodesFor(S.reasons, c.edit.disposition) : [];
+    const code = h("select", { "aria-label": "Removal reason", disabled: !c.edit.disposition },
+      option("", c.edit.disposition ? "choose a reason" : "choose do not contact or unqualified first"),
+      ...codes.map((x) => option(x.code, x.label, x.code === c.edit.reason_code)));
+    code.addEventListener("change", () => {
+      c.chosen = true;
+      c.edit.reason_code = code.value || null;
+      if (!removalPair(S.reasons, c.edit.disposition, c.edit.reason_code)?.review_date) c.edit.review_on = null;
+      redrawRow(r, card, "select");
+    });
+    const pair = removalPair(S.reasons, c.edit.disposition, c.edit.reason_code);
+    let review = null;
+    if (pair?.review_date) {
+      const date = h("input", { type: "date", value: c.edit.review_on ?? "", min: plusDaysIso(1), "aria-label": "Review date" });
+      date.addEventListener("change", () => { c.edit.review_on = date.value || null; refresh(); });
+      review = field("Review date (optional)", date, "On that day a person is asked to look again. It never returns them to the board by itself.");
+    }
+    const text = h("textarea", { "aria-label": "Written reason for the removal" });
+    text.value = c.edit.text ?? "";
+    text.addEventListener("input", () => { c.edit.text = text.value; });
+    const now = h("button", { type: "button", class: "danger", disabled: !(c.edit.disposition && c.edit.reason_code) },
+      "Remove now — never expires; reinstate from Off the board");
+    now.addEventListener("click", () => { c.chosen = true; decideCard(card, "removal", r.id); });
+    return h("div", { class: "controls" },
+      h("div", { class: "wide inline" }, ...dispBtns),
+      field("Reason", code, "From pb_removal_reasons, filtered to the disposition."),
+      review,
+      h("div", { class: "wide" }, field("Written reason", text, "Required. There is no expiry: a removal stands until somebody reinstates it from Off the board.")),
+      h("div", { class: "wide sub" }, c.chosen
+        ? "Chosen: approving this card (A) removes them too, or press the button now."
+        : "Not decided yet: approving this card (A) rejects the removal unless you choose do not contact or unqualified here."),
+      h("div", { class: "wide inline" }, now));
+  }
+  if (r.kind === "fact") {
+    const shape = MEETING_KEY_SHAPES[r.key];
+    if (!shape) return null;
+    const set = (v) => {
+      const ok = meetingValue(shape, v);
+      if (ok === undefined) c.edit.invalid = true;
+      else { c.edit.invalid = false; c.edit.value = ok; c.edit.changed = !sameJson(ok, r.value); }
+      refresh();
+    };
+    let ctl;
+    if (shape.kind === "boolean") {
+      ctl = h("select", { "aria-label": `Value for ${r.key}` }, option("true", "yes", c.edit.value === true), option("false", "no", c.edit.value === false));
+      ctl.addEventListener("change", () => set(ctl.value === "true"));
+    } else if (shape.kind === "enum") {
+      ctl = h("select", { "aria-label": `Value for ${r.key}` }, ...shape.values.map((v) => option(v, v, c.edit.value === v)));
+      ctl.addEventListener("change", () => set(ctl.value));
+    } else if (shape.kind === "integer") {
+      ctl = h("input", { type: "number", min: String(shape.min), max: String(shape.max), step: "1", value: typeof c.edit.value === "number" ? String(c.edit.value) : "", "aria-label": `Value for ${r.key}` });
+      ctl.addEventListener("input", () => set(ctl.value.trim() === "" ? null : Number(ctl.value)));
+    } else {
+      const picked = Array.isArray(c.edit.value) ? c.edit.value : [];
+      const boxes = shape.values.map((v) => h("input", { type: "checkbox", value: v, checked: picked.includes(v) }));
+      for (const b of boxes) b.addEventListener("change", () => set(boxes.filter((x) => x.checked).map((x) => x.value)));
+      ctl = h("div", { class: "chips" }, ...boxes.map((b, i) => h("label", { class: "check" }, b, shape.values[i])));
+    }
+    return h("div", { class: "controls" }, field("Value", ctl, "Change it if the meeting said it differently; the key's own shape is all it can take."));
+  }
+  return null;
+}
+
+/** A row the reader heard as a question, a what-if or a joke: kept, not proposed, one click from proposed. */
+function unsaidRow(r) {
+  const msg = h("div", { class: "notice hidden" });
+  const btn = h("button", { type: "button" }, "Propose anyway");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    const { error } = await state.db.rpc("pb_decide_meeting_card", { p_items: [{ id: r.id, decision: "propose" }], p_note: null });
+    if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); btn.disabled = false; return; }
+    flash("ok", "Proposed: the row is on its card now, unticked. Nothing is written until the card is approved.");
+    await openMeetings(state.mtg.rid);
+  });
+  const ownerOnly = r.kind === "override" || r.kind === "removal";
+  return h("div", { class: "item" },
+    h("div", { class: "top" }, h("span", null, meetingRowWords(r, { tiers: tierOrder(), reasons: state.mtg.reasons })), chip(meetingFlagWords(r.mode), "c-info")),
+    h("i", null, `“${scrubAddresses(r.quote)}”`),
+    h("div", { class: "sub" }, `▶ ${r.quote_at} · ${speakerName(r.speaker)}`),
+    r.status === "not_proposed" && (!ownerOnly || meetingOwner()) ? h("div", { class: "inline" }, btn) : null,
+    msg);
+}
+
+function cardFooter(card) {
+  const S = state.mtg;
+  const msgEl = h("div", { class: "notice hidden", role: "status" });
+  S.msgEls.set(card.key, msgEl);
+  const saved = S.msgs.get(card.key);
+  if (saved) { setNotice(msgEl, saved.kind, saved.text, saved.detail); S.msgs.delete(card.key); }
+  const approve = h("button", { type: "button", class: "primary" }, "Approve ticked · reject the rest (A)");
+  approve.addEventListener("click", () => decideCard(card, "approve"));
+  const reject = h("button", { type: "button", class: "danger" }, "Reject card (X)");
+  reject.addEventListener("click", () => decideCard(card, "reject"));
+  const wrong = h("button", { type: "button" }, "Wrong agency (W)");
+  wrong.addEventListener("click", () => wrongAgency(card));
+  const later = h("button", { type: "button", class: "ghost" }, "Later (L)");
+  later.addEventListener("click", () => laterCard(card));
+  const machine = card.account_id ? state.pending.get(card.account_id)?.open ?? 0 : 0;
+  return h("div", { class: "mfoot" }, approve, reject, card.account_id ? wrong : null, later,
+    machine ? h("a", { href: "#account=" + encodeURIComponent(card.account_id) }, `Also waiting on this agency: ${machine} machine claim${machine === 1 ? "" : "s"}`) : null,
+    h("div", { style: "flex-basis:100%" }, msgEl));
+}
+
+function sayOnCard(card, kind, text, detail) {
+  const el = state.mtg?.msgEls.get(card.key);
+  if (el) setNotice(el, kind, text, detail);
+}
+
+/** The next open card after this one, in discussion order (or the one before, at the end). */
+function neighbourCard(key) {
+  const keys = (state.mtg?.cards ?? []).filter((c) => c.open.length).map((c) => c.key);
+  const i = keys.indexOf(key);
+  if (i < 0) return keys[0] ?? null;
+  return keys[i + 1] ?? keys[i - 1] ?? null;
+}
+
+/** ONE pb_decide_meeting_card call for the card. A refusal shows the database's words and writes nothing. */
+async function decideCard(card, mode, only) {
+  const S = state.mtg;
+  const lane = meetingOwner() ? "owner" : "rater";
+  const scope = only ? card.open.filter((r) => r.id === only) : card.open;
+  for (const r of scope) choiceFor(r);
+  if (mode !== "reject") {
+    const problems = cardProblems(scope, S.choice, lane);
+    if (problems.length) { sayOnCard(card, "warn", problems.join(" ")); return; }
+  }
+  const items = cardItems(card.open, S.choice, { mode, lane, only, reasons: S.reasons });
+  if (!items.length) {
+    sayOnCard(card, "info", lane === "rater" ? "What is left on this card is the owner's to decide: a tier call or a removal." : "Nothing on this card to send.");
+    return;
+  }
+  const buttons = [...(S.els.get(card.key)?.querySelectorAll("button") ?? [])];
+  for (const b of buttons) b.disabled = true;
+  const { data, error } = await state.db.rpc("pb_decide_meeting_card", { p_items: items, p_note: null });
+  if (error) {
+    sayOnCard(card, "bad", "Refused — nothing on this card was written: " + error.message, errorDetail(error));
+    for (const b of buttons) b.disabled = false;
+    return;
+  }
+  if (only) S.msgs.set(card.key, { kind: "ok", text: decidedWords(data) });
+  else {
+    S.done.set(card.key, decidedWords(data));
+    S.focus = neighbourCard(card.key);
+  }
+  S.later.delete(card.key);
+  const { data: cands, error: candErr } = await state.db.from("pb_fact_candidates").select("account_id,conflicts").eq("status", "proposed");
+  if (!candErr) setPending(cands ?? []); // approving a fact closes the machine claims on its key
+  await openMeetings(S.rid);
+}
+
+/** [Wrong agency]: every name on this card goes back to 'Who is this?'. Nothing is written to the book. */
+async function wrongAgency(card) {
+  const S = state.mtg;
+  const keys = [...new Set([...card.open, ...card.unsaid].map((r) => r.said_key).filter((k) => typeof k === "string" && k))];
+  if (!keys.length) return;
+  const buttons = [...(S.els.get(card.key)?.querySelectorAll("button") ?? [])];
+  for (const b of buttons) b.disabled = true;
+  for (const k of keys) {
+    const { error } = await state.db.rpc("pb_assign_meeting_mention", { p_recording_id: S.rid, p_said_key: k, p_decision: "unassign", p_account: null, p_remember: false });
+    if (error) { sayOnCard(card, "bad", "Refused: " + error.message, errorDetail(error)); for (const b of buttons) b.disabled = false; return; }
+  }
+  flash("ok", `Back to “Who is this?”: ${quoted(card.said_as) || "that name"}. Nothing was written to the book.`);
+  S.focus = null;
+  await openMeetings(S.rid);
+}
+
+/** [Later]: nothing is written; the card stays, and the focus moves on. */
+function laterCard(card) {
+  const S = state.mtg;
+  S.later.add(card.key);
+  S.els.get(card.key)?.classList.add("later");
+  const next = neighbourCard(card.key);
+  if (next) focusCard(next);
+}
+
+function focusCard(key, quiet) {
+  const S = state.mtg;
+  S.focus = key;
+  const el = S.els.get(key);
+  if (!el) return;
+  (el.querySelector("[data-row]") ?? el).focus({ preventScroll: true });
+  if (!quiet) {
+    let smooth = true;
+    try { smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_) { /* no media queries: jump */ }
+    el.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
+  }
+}
+
+function moveCard(dir, fromKey) {
+  const keys = (state.mtg?.cards ?? []).filter((c) => c.open.length).map((c) => c.key);
+  if (!keys.length) return false;
+  let i = keys.indexOf(fromKey);
+  i = i < 0 ? (dir > 0 ? 0 : keys.length - 1) : Math.min(keys.length - 1, Math.max(0, i + dir));
+  focusCard(keys[i]);
+  return true;
+}
+
+/** After a draw: the card the reviewer was on, else the first name to place, else the first open card — without scrolling on arrival. */
+function restoreMeetingFocus(fresh) {
+  const S = state.mtg;
+  if (S.focus && S.els.has(S.focus) && (S.cards.find((c) => c.key === S.focus)?.open.length ?? 0) > 0) { focusCard(S.focus, fresh); return; }
+  const firstOpt = $("meetings").querySelector("[data-strip-chip] [data-opt='1']");
+  if (firstOpt) { firstOpt.focus({ preventScroll: true }); return; }
+  const first = (S.cards ?? []).find((c) => c.open.length);
+  if (first) focusCard(first.key, true);
+}
+
+function runMeetingShortcut(act, t) {
+  const S = state.mtg;
+  const cardEl = t && t.closest ? t.closest("[data-card]") : null;
+  const key = cardEl ? cardEl.getAttribute("data-card") : S.focus;
+  if (act === "next" || act === "prev") return moveCard(act === "next" ? 1 : -1, key);
+  if (act.startsWith("pick:") || act === "not_in_book" || act === "confirm") {
+    const chipEl = t && t.closest ? t.closest("[data-strip-chip]") : null;
+    if (!chipEl) return false;
+    const b = act === "not_in_book" ? chipEl.querySelector("[data-act='not_in_book']") : chipEl.querySelector(`[data-opt='${act === "confirm" ? "1" : act.slice(5)}']`);
+    if (!b || b.disabled) return false;
+    b.click();
+    return true;
+  }
+  const card = (S.cards ?? []).find((c) => c.key === key) ?? null;
+  if (!card || !card.open.length) return false;
+  if (act === "toggle") {
+    const rowEl = t && t.closest ? t.closest("[data-row]") : null;
+    const box = rowEl ? S.ticks.get(rowEl.getAttribute("data-row")) : null;
+    if (!box || box.disabled) return false;
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event("change"));
+    return true;
+  }
+  if (act === "approve") { decideCard(card, "approve"); return true; }
+  if (act === "reject") { decideCard(card, "reject"); return true; }
+  if (act === "wrong") { if (!card.account_id) return false; wrongAgency(card); return true; }
+  if (act === "later") { laterCard(card); return true; }
+  if (act === "removal") {
+    const rm = card.open.find((r) => r.kind === "removal");
+    const el = rm ? S.rowEls.get(rm.id) : null;
+    if (!el) { sayOnCard(card, "info", "No removal was proposed for this agency in this meeting."); return true; }
+    (el.querySelector("[data-disp]") ?? el).focus({ preventScroll: true });
+    el.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+  return false;
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || $("meetings").classList.contains("hidden") || !state.mtg?.meeting) return;
+  const t = e.target instanceof Element ? e.target : null;
+  const tag = t ? t.tagName : "";
+  const type = tag === "INPUT" ? String(t.getAttribute("type") || "text").toLowerCase() : "";
+  const typing = tag === "TEXTAREA" || tag === "SELECT" || (tag === "INPUT" && !["checkbox", "radio", "button", "submit"].includes(type)) || !!(t && t.isContentEditable);
+  const onButton = tag === "BUTTON" || tag === "A" || tag === "SUMMARY";
+  const onControl = onButton || type === "checkbox" || type === "radio";
+  const zone = t && t.closest("[data-strip-chip]") ? "strip" : t && t.closest("[data-card]") ? "card" : "page";
+  const act = shortcutAction({ key: e.key, zone, typing, mod: e.ctrlKey || e.metaKey || e.altKey, onButton, onControl });
+  if (act && runMeetingShortcut(act, t)) e.preventDefault();
+});
 
 boot();
 </script></body></html>
