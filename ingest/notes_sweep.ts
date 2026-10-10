@@ -138,6 +138,21 @@ export const MAX_CLAIMS_PER_NOTE = 24;
 /** Below this there is no prose to read, only a link or a one-liner. Not worth a model call. */
 export const MIN_NOTE_CHARS = 120;
 
+/**
+ * A Pipedrive note is read from 40 characters, not 120 (owner, 10 Oct 2026 — DECISIONS §64).
+ * The sales team's bluntest calls are its shortest: "I do not think it's a platinum
+ * opportunity… he might only be like a silver type" is 100 characters, and at 120 the owner's
+ * only two explicit disagreements with the board's tier were never read. The floor exists to
+ * skip a bare link or "NDA sent", and 40 still does. Every other channel keeps 120: a call
+ * summary or a page that short is a fetch that returned nothing, not a sentence.
+ */
+export const MIN_CHARS_BY_SOURCE: Readonly<Record<string, number>> = { pipedrive_note: 40 };
+
+/** The floor for one channel. One answer, read by the planner and by pb-notes. */
+export function minCharsFor(source: string | undefined): number {
+  return MIN_CHARS_BY_SOURCE[String(source ?? "")] ?? MIN_NOTE_CHARS;
+}
+
 /* ------------------------------------------------------------------ *
  * which notes are worth reading
  * ------------------------------------------------------------------ */
@@ -160,6 +175,8 @@ export interface SweepPlanInput {
   seen?: readonly string[];
   /** Safety valve on one run's spend. */
   max_notes?: number;
+  /** Shortest text worth a model call; minCharsFor(source). Absent → MIN_NOTE_CHARS. */
+  min_chars?: number;
 }
 
 export interface PlannedNote {
@@ -378,7 +395,7 @@ export function planSweep(input: SweepPlanInput): SweepPlan {
     }
 
     const text = stripHtml(note.content);
-    if (text.length < MIN_NOTE_CHARS) {
+    if (text.length < (input.min_chars ?? MIN_NOTE_CHARS)) {
       bump(counters, "too_short_to_read");
       continue;
     }

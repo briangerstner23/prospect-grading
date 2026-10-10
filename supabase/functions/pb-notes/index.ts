@@ -55,6 +55,7 @@ import {
   timeKey,
   promptVersionFor,
   MIN_NOTE_CHARS,
+  minCharsFor,
   oneRecordingPerMeeting,
   planSweep,
   verifyClaims,
@@ -700,6 +701,7 @@ Deno.serve(async (req: Request) => {
         since_id: cursorFor(channel.source).id,
         as_of,
         max_notes: budget,
+        min_chars: minCharsFor(channel.source),
       });
       notes.push(...plan.notes);
       add(channel.source, plan.counters);

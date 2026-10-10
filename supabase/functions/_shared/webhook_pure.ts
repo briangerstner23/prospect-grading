@@ -192,6 +192,31 @@ export function accountCreateRow(acct: AccountUpsert): Rec {
   };
 }
 
+/**
+ * What a refused account create (unique `key`, SQLSTATE 23505) actually was.
+ *
+ * Pipedrive sends `organization.create` and `organization.change` for a new org within the same
+ * second. Both events resolve against a book that does not hold the org yet, both decide
+ * "create", and the second insert loses the race on `pb_accounts_key_key`. Eleven runs failed
+ * that way between 28 Sep and 9 Oct 2026, and every one of them had in fact been created by its
+ * twin (DECISIONS §64). So the second event re-reads the row that holds the key:
+ *   - the same Pipedrive org holds it → `already_created`, a note, not an error;
+ *   - anything else holds it (another org, or an account with no org link) → `collision`, which
+ *     stays an error. Two different organisations normalising to one key is an identity question,
+ *     and rule 8 says a person answers it; this function never attaches across it.
+ */
+export function classifyCreateConflict(
+  holder: { id: unknown; pipedrive_org_id: unknown } | null,
+  orgId: number | null,
+): { kind: "already_created" | "collision"; account_id: string | null } {
+  if (holder === null || holder.id == null) return { kind: "collision", account_id: null };
+  const held = holder.pipedrive_org_id == null ? null : Number(holder.pipedrive_org_id);
+  if (orgId !== null && held !== null && held === orgId) {
+    return { kind: "already_created", account_id: String(holder.id) };
+  }
+  return { kind: "collision", account_id: String(holder.id) };
+}
+
 /** A pb_contacts row; `pipedrive_org_id` is not a column and is dropped. null when no account. */
 export function contactRow(contact: ContactUpsert, resolvedAccountId: string | null): Rec | null {
   const accountId = contact.account_id ?? resolvedAccountId;
