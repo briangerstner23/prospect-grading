@@ -172,6 +172,11 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             (cell as of a date from pb_reads.run_at, outcomes strictly after it, delivering clients
             left out and counted) · pb_lift() gains `forward`, the old `cells` labelled circular ·
             pb_snapshot_lift() stores both. Applied 24 Sep; the file carries its applied version.
+            20261010125317 sales notes intake (DECISIONS §64): pb-nightly-notes ten runs a night ·
+            pb-nightly-attribution 05:13 · orphan attribution skips merged rows · pipedrive_note
+            watermark wound back to 1 Sep for a re-read at the 40-character floor · a time-boxed
+            pb-notes-catchup that removes itself after 2026-10-11 05:00 UTC. Applied 10 Oct; the
+            file carries its applied version and is byte-identical to the applied statement (md5).
             20261010130000 sales notes intake (DECISIONS §64): pb-nightly-notes ten runs a night ·
             pb-nightly-attribution 05:13 · orphan attribution skips merged rows · pipedrive_note
             watermark wound back to 1 Sep for a re-read at the 40-character floor · a time-boxed
