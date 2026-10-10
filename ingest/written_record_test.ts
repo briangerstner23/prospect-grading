@@ -340,6 +340,28 @@ const HUMAN_HELD: ExistingFact = {
   eq("and marking the disagreement", r.candidates[0].conflicts, true);
 }
 
+{
+  /* A fact the owner approved out of a sales meeting (DECISIONS §65) is a PERSON's value: it ranks
+     with `rater` under rule 9, and 'sales_meeting' is deliberately not in DEFAULT_SUPERSEDABLE. So a
+     later note or call that disagrees with it can only ask — never write over the team's judgement. */
+  const meetingHeld: ExistingFact = {
+    key: "headcount", value: 40, evidence_label: "evidence",
+    source: "sales_meeting", observed_at: "2026-10-09", entered_by: "owner",
+  };
+  for (const source of ["pipedrive_note", "fathom_call"]) {
+    const note = { ...SCREENING, source };
+    const r = run(
+      [{ note_id: 9001, claims: [claim("headcount", 14, "Full-service agency, 14 people")] }],
+      [meetingHeld],
+      { notes: [note, PROFILE] },
+    );
+    eq(`a ${source} claim never overwrites a sales_meeting fact`, r.facts.length, 0);
+    eq(`it becomes a candidate instead (${source})`, [r.candidates.length, r.candidates[0]?.conflicts, r.candidates[0]?.current_value], [1, true, 40]);
+    eq(`counted as deferred to a person (${source})`, r.counters.deferred_to_human, 1);
+    check(`and the candidate names the meeting as what it deferred to (${source})`, r.candidates[0]?.note.includes("sales_meeting") === true);
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * 5 · rule 4 — dates come from the source
  * ------------------------------------------------------------------ */

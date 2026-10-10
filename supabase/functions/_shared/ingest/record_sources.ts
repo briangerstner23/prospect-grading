@@ -13,7 +13,10 @@
  * put a claim on the wrong agency's row, so it is deliberately timid:
  *
  *   · our own domains never count toward the answer;
- *   · a record with no outside domain is internal, and is not read at all;
+ *   · a record with no outside domain is internal, and is not read at all — still true on these
+ *     paths on purpose (DECISIONS §65): an internal SALES MEETING is not a call with an agency, so
+ *     it is never attributed by domain here; ingest/meeting_transcript.ts reads it separately, and
+ *     what it says waits for a person in pb_meeting_proposals;
  *   · a record with TWO different prospect domains on it is ambiguous, and is refused rather
  *     than guessed at — an introduction thread is not evidence about either party.
  *

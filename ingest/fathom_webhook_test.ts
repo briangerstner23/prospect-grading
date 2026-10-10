@@ -183,6 +183,25 @@ const basePayload = (o: Partial<FathomWebhookPayload> = {}): FathomWebhookPayloa
 }
 
 {
+  /* PINNED (DECISIONS §65). An internal meeting WITH a transcript — the sales meeting the meeting
+     reader reads — is still "internal only" here, so the webhook writes no pb_calls row for it and
+     no contact event, readiness input, dossier call or fathom_call sweep ever sees it. The meeting
+     is read from pb_webhook_inbox by ingest/meeting_transcript.ts, privately. Nobody should "fix"
+     this into a call row: that would publish the team's own judgements as an agency's call. */
+  const r = parseFathomWebhook(basePayload({
+    title: "Sales Standing Connect",
+    calendar_invitees: [{ ...RATER, is_external: false }, { name: "Owner", email: "owner@whitelabeliq.com", is_external: false }],
+    transcript: [
+      { speaker: { display_name: "Sales Rater", matched_calendar_invitee_email: RATER.email }, text: "Harbor & Pine said yes to the rebuild.", timestamp: "00:00:05" },
+      { speaker: { display_name: "Owner", matched_calendar_invitee_email: "owner@whitelabeliq.com" }, text: "Good, they are a strong one.", timestamp: "00:00:12" },
+    ],
+  }), KNOWN);
+  eq("an all-internal meeting with a transcript: still internal only, external false", [r.skip_reason, r.external], ["internal only", false]);
+  eq("and it attaches to no account, whatever the transcript names", [r.attach, r.call.account_id], [null, null]);
+  eq("the transcript is noticed but changes nothing", r.call.transcript_available, true);
+}
+
+{
   const r = parseFathomWebhook(basePayload({ calendar_invitees: [], transcript: [] }), KNOWN);
   eq("no attendees at all: external false, distinct skip reason", [r.external, r.skip_reason], [false, "no external attendee identified"]);
   const r2 = parseFathomWebhook(basePayload({ calendar_invitees: [{ name: "Nobody Known" }] }), KNOWN);
