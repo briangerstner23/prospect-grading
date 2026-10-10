@@ -4638,3 +4638,64 @@ six it knows (pb-verify included, which no deploy list carried before), pre-flig
 serves exactly the committed file, and deploys a one-line entrypoint pinned to the full sha with
 `verify_jwt` false. A push deploys nothing. Setting the token is now safe; it only enables the
 manual button.
+
+## §64 — What the sales team writes reaches the book (10 Oct 2026)
+
+**Owner, 10 Oct 2026: "ship all of it"**, after a nine-agent audit of where the sales team's
+conversations go. No rule changes. Each fix stays inside rules 8 and 9.
+
+What the audit measured: Pipedrive held 91 notes touched since 1 Sep, nearly all of them the sales
+team's own reads of named agencies. 57 were read and 41 produced a claim. 17 sat behind a nightly cap
+of 8. 9 were never read because they were under 120 characters, and that included the owner's only
+two explicit disagreements with the board's tier. Seven recorded calls sat unattached for agencies
+that entered the book after the one attribution pass on 16 Sep. And the Pipedrive webhook failed 11
+runs in 14 days on `pb_accounts_key_key`.
+
+1. **A Pipedrive note is read from 40 characters** (`MIN_CHARS_BY_SOURCE`, `minCharsFor()` in
+   `ingest/notes_sweep.ts`). Every other channel keeps 120: a call summary or a page that short is a
+   fetch that returned nothing. 40 still skips a bare link or "NDA sent".
+2. **The notes sweep runs ten times a night**, 05:15–05:42 UTC, every three minutes, up to 30
+   records per channel each, six in flight. One run fits about a dozen model calls into its 110 s
+   budget, so raising the cap without adding runs would have changed nothing. A run with nothing
+   past the watermark makes no model call.
+3. **Call attribution runs nightly at 05:13** (`pb-nightly-attribution`). It now skips merged rows:
+   a merged duplicate keeps its domain, so otherwise every call of a merged pair would stay
+   ambiguous for good. It writes one register note per account per day.
+4. **Two accounts got the domain their own records carry**, which is exact, single, and held by no
+   other account. This was an operator data step, not a migration, because agency data never enters
+   this repository (rule 2). A register note on each account names the evidence.
+5. **The Pipedrive note watermark went back to 1 Sep**, and a catch-up reads that range again the
+   same day (time-boxed to 2026-10-11 05:00 UTC; it removes itself). A re-read cannot write twice,
+   because the fingerprint (note id · updated_at · extractor version · key) is the same.
+6. **The webhook's create race is a note, not an error.** Pipedrive sends `organization.create` and
+   `organization.change` for a new org in the same second. Both decide "create", and the second
+   loses on the unique key. On SQLSTATE 23505 the handler now re-reads who holds the key
+   (`classifyCreateConflict`). If it's the same Pipedrive org, the event is already done. If
+   anything else holds the key, it stays an error, because two organisations sharing one key is an
+   identity question for a person.
+
+Deployed as pinned-commit entrypoints: pb-notes v17 and pb-pipedrive-webhook v3. Since its 14 Sep
+bundle, the webhook's closure changed only in additive code it never calls.
+
+## §65 — The daily sales meeting is the review, and what it says is judgement (10 Oct 2026)
+
+**Owner, 10 Oct 2026**, answering two questions:
+
+- **Where the Book 1 review happens:** "we now meet every day." This supersedes TB-48's Monday slot.
+  The sales team meets daily, and since 9 Oct it has held its own prospect-grading meeting. That
+  meeting is the review. It starts from the board, and what it decides lands as register rows.
+- **How what's said there counts:** "what we say in the meeting has high value as it is our
+  judgement from the research." Internal sales meetings are read. Until now `record_sources.ts`
+  discarded every record with no outside attendee as "internal", and the Fathom webhook never
+  stored them. Under this ruling:
+  - a claim the team makes about a named agency, once a person confirms it, ranks with `rater`
+    under rule 9, above every machine source;
+  - a tier call arrives as a proposed override, and "take them off" or a DNC as a proposed removal.
+    Each still needs one click on the owner lane (rules 7 and 7a), because a proposal is not a
+    decision.
+
+  None of this is public. The judgements are candid reads of named companies, and like the research
+  tables they stay signed-in only. They never reach `pb_board()` or `pb_dossier()`.
+
+Implementation is in progress. Per the rule that a ruling is applied when the deployed artefact
+contains it, this section says what was ruled, not what runs.

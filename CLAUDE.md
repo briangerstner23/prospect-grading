@@ -172,6 +172,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             (cell as of a date from pb_reads.run_at, outcomes strictly after it, delivering clients
             left out and counted) · pb_lift() gains `forward`, the old `cells` labelled circular ·
             pb_snapshot_lift() stores both. Applied 24 Sep; the file carries its applied version.
+            20261010130000 sales notes intake (DECISIONS §64): pb-nightly-notes ten runs a night ·
+            pb-nightly-attribution 05:13 · orphan attribution skips merged rows · pipedrive_note
+            watermark wound back to 1 Sep for a re-read at the 40-character floor · a time-boxed
+            pb-notes-catchup that removes itself after 2026-10-11 05:00 UTC.
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
@@ -367,11 +371,11 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
   took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
-- Deployed versions as of **18 Sep 2026**: **pb-score v14** (commit `d14223c`, the grid engine —
+- Deployed versions as of **10 Oct 2026**: **pb-score v14** (commit `d14223c`, the grid engine —
   deployed as a one-line entrypoint pinned to that commit's raw GitHub URL, so the deployed
-  function IS the commit; RUNBOOK §3; §52), **pb-notes v16** (commit `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
-  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-sync v2**, **pb-pipedrive-webhook v2**,
-  **pb-fathom-webhook v2** (those three from 14 Sep bundles, `561f289`/`53fb656`), and
+  function IS the commit; RUNBOOK §3; §52), **pb-notes v17** (10 Oct, pinned to the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
+  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v3** (10 Oct, pinned to the §64 merge commit: the create race is a note,
+  not an error), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
   **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in
   the deploy response; v1 `5378733` and v2 `9c253b5` were superseded by lexicon corrections —
   DECISIONS §54a, §54b). Read this line from `list_edge_functions`, never from here: on 18 Sep it
@@ -399,7 +403,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   pipeline, `pb-roster-step` every minute 05:01-05:10 walks the cursor (a stepper because pg_net
   dispatches only after the calling transaction commits; ~950 cards is two pages and the step
   no-ops once done), and `pb-roster-report` 05:12 recomputes `pb_roster_drift`. Then
-  `pb-nightly-notes` 05:45, `pb-autoconfirm` 06:00 (the lanes of §53, in-database) and
+  `pb-nightly-attribution` 05:13 (exact-domain call attribution, §64), `pb-nightly-notes` ten runs
+  05:15–05:42 (every 3 min, 30 per channel each, §64), `pb-autoconfirm` 06:00 (the lanes of §53, in-database) and
   `pb-nightly-score` 06:15 — the sweep runs before the score so a
   note read in the morning changes that morning's tier, and the roster runs before both so a card
   that moved overnight is in the same morning's queue. Last, `pb-nightly-watchdog` 07:00 writes a

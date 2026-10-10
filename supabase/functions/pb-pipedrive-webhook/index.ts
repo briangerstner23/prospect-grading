@@ -52,6 +52,7 @@ import {
   accountCreateRow,
   accountIdForOrg,
   candidateRows,
+  classifyCreateConflict,
   contactRow,
   dealAccountsMap,
   inboxRow,
@@ -200,7 +201,17 @@ Deno.serve(async (req: Request) => {
         }
       } else if (acct.mode === "create") {
         const { error } = await db.from("pb_accounts").insert(accountCreateRow(acct));
-        if (error) errors.push(`pb_accounts create: ${error.message}`);
+        if (error && (error as { code?: string }).code === "23505") {
+          /* Pipedrive sends organization.create and .change in the same second; the twin event
+             created the row first. Re-read who holds the key (DECISIONS §64). */
+          const { data: holder, error: hErr } = await db.from("pb_accounts").select("id,pipedrive_org_id").eq("key", acct.key).maybeSingle();
+          const verdict = hErr ? { kind: "collision" as const, account_id: null } : classifyCreateConflict(holder ?? null, acct.pipedrive_org_id);
+          if (verdict.kind === "already_created") {
+            notes.push(`organization ${acct.pipedrive_org_id}: already created as account ${verdict.account_id} by a concurrent event; nothing to do`);
+          } else {
+            errors.push(`pb_accounts create: key "${acct.key}" is held by ${verdict.account_id ?? "an unreadable row"}, not organization ${acct.pipedrive_org_id}; a person decides whether they are one company (rule 8)${hErr ? ` (${hErr.message})` : ""}`);
+          }
+        } else if (error) errors.push(`pb_accounts create: ${error.message}`);
         else {
           counts.accounts = 1;
           notes.push(`account created from pipedrive_org_id ${acct.pipedrive_org_id} (roster_source pipedrive)`);

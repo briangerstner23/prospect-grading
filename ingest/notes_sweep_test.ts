@@ -25,6 +25,8 @@ import {
   extractionPrompt,
   MAX_CLAIMS_PER_NOTE,
   MIN_NOTE_CHARS,
+  MIN_CHARS_BY_SOURCE,
+  minCharsFor,
   normalizeForQuote,
   oneRecordingPerMeeting,
   planSweep,
@@ -115,6 +117,23 @@ const plannedOf = (input: SweepPlanInput = BASE): PlannedNote => planSweep(input
   const p = planSweep({ ...BASE, notes: [note({ content: "<p>MNDA: https://example.test/x</p>" })] });
   eq("a note that is only a link is not worth a model call", p.read.length, 0);
   eq("and it is counted", p.counters.too_short_to_read, 1);
+}
+
+{
+  /* DECISIONS §64: a Pipedrive note is read from 40 characters. The owner's tier calls are this
+     short — the one below is 100 characters and was never read at 120. */
+  const tierCall = "<p>I do not think it's a platinum opportunity. Honestly he might only be like a silver type.</p>";
+  const at120 = planSweep({ ...BASE, notes: [note({ content: tierCall })] });
+  eq("at the default floor a short tier call is skipped", at120.read.length, 0);
+  const at40 = planSweep({ ...BASE, notes: [note({ content: tierCall })], min_chars: minCharsFor("pipedrive_note") });
+  eq("at the Pipedrive floor the same note is read", at40.read.length, 1);
+  const bare = planSweep({ ...BASE, notes: [note({ content: "<p>NDA Sent and signed</p>" })], min_chars: minCharsFor("pipedrive_note") });
+  eq("a bare paperwork note is still not worth a model call", bare.read.length, 0);
+  eq("the Pipedrive floor is 40", minCharsFor("pipedrive_note"), 40);
+  eq("a call summary keeps the default floor", minCharsFor("fathom_call"), MIN_NOTE_CHARS);
+  eq("a website keeps the default floor", minCharsFor("website"), MIN_NOTE_CHARS);
+  eq("an unknown channel keeps the default floor", minCharsFor(undefined), MIN_NOTE_CHARS);
+  check("no channel's floor is zero", Object.values(MIN_CHARS_BY_SOURCE).every((n) => n > 0));
 }
 
 {

@@ -57,6 +57,7 @@ import {
   accountCreateRow,
   accountIdForOrg,
   callRowForUpsert,
+  classifyCreateConflict,
   candidateRows,
   contactRow,
   dealAccountsMap,
@@ -582,6 +583,16 @@ const CALL: CallRow = {
   eq("accountAttachPatch: existing name/domain kept", accountAttachPatch(acct, { id: ACCOUNT.id, name: "Harbor & Pine Creative", domain: "hp.example" }), { pipedrive_org_id: 900, roster_source: "pipedrive", roster_certified: true });
   eq("accountAttachPatch: no existing row → minimal patch", accountAttachPatch(acct, null), { pipedrive_org_id: 900, roster_source: "pipedrive", roster_certified: true });
   eq("accountCreateRow", accountCreateRow({ ...acct, mode: "create", id: null }), { key: "harbor pine creative", name: "Harbor & Pine Creative LLC", domain: "harborpine.example", pipedrive_org_id: 900, roster_source: "pipedrive", roster_certified: true, book: "prospect" });
+}
+
+{
+  /* DECISIONS §64: the organization.create / organization.change race. */
+  eq("classifyCreateConflict: the twin event already created it", classifyCreateConflict({ id: ACCOUNT.id, pipedrive_org_id: 900 }, 900), { kind: "already_created", account_id: ACCOUNT.id });
+  eq("classifyCreateConflict: org id as text from the database", classifyCreateConflict({ id: ACCOUNT.id, pipedrive_org_id: "900" }, 900), { kind: "already_created", account_id: ACCOUNT.id });
+  eq("classifyCreateConflict: another org holds the key → collision", classifyCreateConflict({ id: ACCOUNT.id, pipedrive_org_id: 901 }, 900), { kind: "collision", account_id: ACCOUNT.id });
+  eq("classifyCreateConflict: an unlinked account holds the key → collision, never an attach", classifyCreateConflict({ id: ACCOUNT.id, pipedrive_org_id: null }, 900), { kind: "collision", account_id: ACCOUNT.id });
+  eq("classifyCreateConflict: no holder found → collision", classifyCreateConflict(null, 900), { kind: "collision", account_id: null });
+  eq("classifyCreateConflict: no org id on the event → collision", classifyCreateConflict({ id: ACCOUNT.id, pipedrive_org_id: 900 }, null), { kind: "collision", account_id: ACCOUNT.id });
 }
 
 {
