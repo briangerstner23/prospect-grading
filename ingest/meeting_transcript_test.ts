@@ -21,6 +21,7 @@ import {
   quoteInLines,
   renderLines,
   selectMeeting,
+  speakerNameOf,
   transcriptLines,
   windowsFor,
 } from "./meeting_transcript.ts";
@@ -181,6 +182,15 @@ eq("the labels are deterministic", JSON.stringify(transcriptLines(TRANSCRIPT)), 
   check("and says so in the notes", outside.notes.some((n) => n.includes("outside WLIQ")));
   const sister = transcriptLines([said("Partner", "p@sister.example", "Morning everyone.", "00:00:01")], { internal_domains: ["sister.example"] });
   eq("an extra internal domain is not external", sister.external_speaker, false);
+}
+{
+  // Fathom shows the address where it has no display name; the speaker list keeps the local part.
+  const bare = transcriptLines([said(REP_A.email, REP_A.email, "Morning, let us start.", "00:00:01")]);
+  check("a display name that is an address keeps only its local part", !JSON.stringify(bare.speakers).includes("@"),
+    JSON.stringify(bare.speakers));
+  eq("…and that local part is the name", bare.speakers[0]?.name, REP_A.email.slice(0, REP_A.email.indexOf("@")));
+  eq("speakerNameOf leaves an ordinary name alone", speakerNameOf("Rep A"), "Rep A");
+  eq("speakerNameOf of nothing is nothing", speakerNameOf(null), null);
 }
 {
   const s = transcriptLines("one long string");

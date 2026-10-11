@@ -334,6 +334,18 @@ function emailHost(email: string): string | null {
 }
 
 /**
+ * A display name as pb_meetings.speakers may hold it: an address inside it is cut to its local
+ * part, the dossier's own scrub (§43a). Fathom shows the address where it has no name — measured
+ * on 28 of 78,042 stored lines, 10 Oct 2026 — and pb_meetings.speakers carries names, never
+ * addresses.
+ */
+export function speakerNameOf(name: string | null): string | null {
+  if (name === null) return null;
+  const out = name.replace(/([A-Za-z0-9._%+-]+)@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "$1").trim();
+  return out === "" ? null : out;
+}
+
+/**
  * Body->transcript → numbered lines. Lines with no text are dropped before numbering, so a line
  * number is stable for a given payload. Speakers get S1, S2 … in order of first appearance, keyed
  * by their matched invitee address when Fathom has one and by display name when it does not.
@@ -383,7 +395,7 @@ export function transcriptLines(transcript: unknown, opts: { internal_domains?: 
     if (label === undefined) {
       label = `S${labelByKey.size + 1}`;
       labelByKey.set(key, label);
-      speakers.push({ label, name });
+      speakers.push({ label, name: speakerNameOf(name) });
     }
     if (email !== null) {
       const host = emailHost(email);

@@ -15,11 +15,19 @@
 --
 -- ONLY WHEN THERE IS WORK, decided in SQL so an idle tick makes no HTTP call and no model call:
 --   · a verified Fathom delivery past the 'sales_meeting' registration cursor (received_at, then id —
---     the 23 Sep cursor rule: a null last_seen_id means everything AT last_seen_at was read), or
+--     the 23 Sep cursor rule: a null last_seen_id means everything AT last_seen_at was read),
+--     compared at the cursor's own precision, or
 --   · a meeting 'waiting' to be read, or
 --   · one 'reading' whose lease is older than 150 s (a run that died mid-meeting).
 -- A delivery that is not an internal meeting still counts as work once: pb-notes registers nothing
 -- for it and moves the cursor past it, so the next tick is idle.
+--
+-- THE CURSOR'S PRECISION. pb-notes writes last_seen_at through timeKey(), which keeps milliseconds;
+-- received_at carries microseconds (1,188 of 1,190 verified Fathom deliveries, 10 Oct 2026).
+-- Compared raw, the newest delivery would sit forever a few microseconds past the cursor it set, and
+-- every tick would post to a pb-notes with nothing to do. So received_at is truncated to the
+-- millisecond first, which is exactly how isPastCursor (ingest/notes_sweep.ts) sees it, and the ids
+-- compare bytewise ("C"), as compareIds does for a uuid.
 --
 -- THE CALL. The nightly pattern (pb-nightly-notes): the Book's own bearer from Vault, the 150 s
 -- pg_net timeout, budget_ms 110000 so pb-notes stops itself inside it, six model calls in flight. The
@@ -48,8 +56,8 @@ select cron.schedule(
               left join public.pb_source_watermarks w on w.source = 'sales_meeting'
              where i.source = 'fathom' and i.verified
                and (w.last_seen_at is null
-                    or i.received_at > w.last_seen_at
-                    or (i.received_at = w.last_seen_at and w.last_seen_id is not null
+                    or date_trunc('milliseconds', i.received_at) > w.last_seen_at
+                    or (date_trunc('milliseconds', i.received_at) = w.last_seen_at and w.last_seen_id is not null
                         and i.id::text collate "C" > w.last_seen_id)))
        or exists (select 1 from public.pb_meetings m where m.status = 'waiting')
        or exists (select 1 from public.pb_meetings m
