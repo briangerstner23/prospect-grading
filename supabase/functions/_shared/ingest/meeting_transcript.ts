@@ -537,6 +537,24 @@ export const QUOTE_MIN_CHARS = 12;
 export const QUOTE_MAX_CHARS = 600;
 export const QUOTE_MAX_LINES = 6;
 
+/**
+ * A string's length as Postgres's char_length counts it: code points, not the UTF-16 units of
+ * `.length`. pb_meeting_proposals checks quote (12–600) and context (≤ 1,200) in these units, so a
+ * row measured with `.length` could pass here and fail there — an emoji is one character to the
+ * table and two to `.length` — and one refused row refuses the whole batch it was written in.
+ */
+export function charLength(s: string): number {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+}
+
+/** The first `max` code points of `s`: never half of a surrogate pair. */
+export function clipChars(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return Array.from(s).slice(0, Math.max(0, max)).join("");
+}
+
 export type QuoteCheck =
   | { ok: true; line_from: number; line_to: number; speaker: string; quote_at: string }
   | { ok: false; why: "too_short" | "too_long" | "bad_range" | "too_many_lines" | "not_in_lines" | "two_speakers" };

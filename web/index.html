@@ -1061,9 +1061,8 @@ function cleanMeetingEdit(kind, e) {
     if (typeof e.text === "string" && e.text.trim()) out.text = e.text.trim();
   } else if (kind === "fact") {
     if (e.value !== undefined && e.changed === true) out.value = e.value;
-  } else if (kind === "read") {
-    if (typeof e.text === "string" && e.text.trim() && e.changed === true) out.text = e.text.trim();
   }
+  // A read takes no edit: pb_decide_meeting_card writes the quote itself and reads no edit for it.
   return Object.keys(out).length ? out : null;
 }
 
@@ -3109,7 +3108,8 @@ function meetingHeader() {
 
   const rule = S.rules.find((r) => r.title_norm === m.title_norm) ?? null;
   const series = owner ? h("div", { class: "inline" },
-    m.status === "waiting" || m.status === "reading" ? includeButton(m.recording_id, false, "Don't read", msg) : null,
+    // pb_meeting_include moves only a waiting or failed meeting out of the queue; one being read is not moved.
+    m.status === "waiting" || m.status === "failed" ? includeButton(m.recording_id, false, "Don't read", msg) : null,
     rule
       ? [h("span", { class: "sub" }, `This title is ${rule.read ? "always read" : "never read"} by your rule.`), titleRuleButton(m.title_norm, null, "Remove the rule", msg)]
       : titleRuleButton(m.title_norm, false, "Never read this title", msg),
@@ -3144,9 +3144,11 @@ function includeButton(rid, include, label, msg) {
   const b = h("button", { type: "button", class: include ? "primary" : "ghost" }, label);
   b.addEventListener("click", async () => {
     b.disabled = true;
-    const { error } = await state.db.rpc("pb_meeting_include", { p_recording_id: rid, p_include: include });
+    const { data, error } = await state.db.rpc("pb_meeting_include", { p_recording_id: rid, p_include: include });
     if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); b.disabled = false; return; }
-    flash("ok", include
+    // The database leaves a meeting being read, read or a duplicate where it is, and says why.
+    if (data && data.changed === false && typeof data.note === "string") flash("info", "Nothing changed: " + data.note + ".");
+    else flash("ok", include
       ? "That meeting will be read on the reader's next pass; its cards arrive here a few minutes later."
       : "That meeting will not be read. Nothing it said reaches this screen.");
     await openMeetings(state.mtg?.rid ?? null);
@@ -3180,7 +3182,9 @@ function notReadPanel() {
     h("div", { class: "sub" }, [fmtDateTime(x.held_at), meetingLengthWords(x.held_at, x.ended_at)].filter(Boolean).join(" · ")),
     owner && buttons.length ? h("div", { class: "inline" }, ...buttons) : null);
   const ruleOf = (t) => S.rules.find((r) => r.title_norm === t) ?? null;
-  const waitingItems = waiting.map((x) => line(x, x.status === "failed" ? "the read failed; it is retried" : x.status === "reading" ? "being read" : "waiting to be read", [
+  // A failed read is never retried on its own (pb-notes claims only waiting and lapsed reading
+  // meetings): it waits for a deliberate re-read, RUNBOOK §33.
+  const waitingItems = waiting.map((x) => line(x, x.status === "failed" ? "the read failed; re-read it deliberately" : x.status === "reading" ? "being read" : "waiting to be read", [
     x.status === "reading" ? null : includeButton(x.recording_id, false, "Don't read", msg),
     ruleOf(x.title_norm) ? null : titleRuleButton(x.title_norm, false, "Never read this title", msg),
   ].filter(Boolean)));

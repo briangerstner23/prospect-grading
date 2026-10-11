@@ -58,7 +58,21 @@ ingest/     identity.ts · resolve_features.ts · notion_seed.ts · orbit_quotes
             notes_sweep.ts (which records are worth a model call, and what a model is allowed
             to have said — the quote and judgement checks live here; `keysFor(source)` is the ONE
             place a channel's key set is decided, read by both the prompt and the verifier so they
-            cannot drift) (+ *_test.ts)
+            cannot drift) ·
+            THE SALES-MEETING READER (DECISIONS §65), pure, three modules in pipeline order:
+            meeting_transcript.ts (which internal recordings are read — the webhook parser's own
+            "internal only" test, the owner's include, a title rule, the title patterns — one
+            recording per meeting; the transcript as numbered lines with S1..Sn speakers and no
+            addresses; and quoteInLines, the guarantee: a quote is one speaker's consecutive lines of
+            OUR transcript) · meeting_mentions.ts (pass 1's companies verified against the cited
+            lines, then resolved IN CODE against the roster, never by the model: a whole name
+            resolves, a token / domain / prefix only suggests, a shared word is ambiguous, our own
+            names and anyone at the meeting are refused) · meeting_claims.ts (both prompts printed
+            from data, four agencies to a call each seeing only its own lines, verifyMeetingClaims
+            refusing a quote on another agency's lines, the last word per agency, and proposalRows →
+            pb_meeting_proposals rows; never a fact, never a candidate) · name_tokens.ts (GENERIC and
+            FIRST_TOKEN_ALLOW, moved verbatim out of scripts/no_prospect_names.ts so the names check
+            and the meeting matcher agree on which words can name an agency) (+ *_test.ts)
 supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron · 120200 merge ·
             120300 fixes · 120400 candidate review · 20260910141528 touch search_path ·
             20260910190000 public read · 20260911001048 apollo staging ·
@@ -177,12 +191,29 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             watermark wound back to 1 Sep for a re-read at the 40-character floor · a time-boxed
             pb-notes-catchup that removes itself after 2026-10-11 05:00 UTC. Applied 10 Oct; the
             file carries its applied version and is byte-identical to the applied statement (md5).
-            20261010130000 sales notes intake (DECISIONS §64): pb-nightly-notes ten runs a night ·
-            pb-nightly-attribution 05:13 · orphan attribution skips merged rows · pipedrive_note
-            watermark wound back to 1 Sep for a re-read at the 40-character floor · a time-boxed
-            pb-notes-catchup that removes itself after 2026-10-11 05:00 UTC.
+            THE SALES-MEETING READER (DECISIONS §65) — two DRAFTS, NOT APPLIED; each carries a
+            drafting stamp and is re-filed under its applied version, byte-identical by md5, in the
+            sitting that applies it (RUNBOOK §28.6, §33): 20261011000000 sales meeting reader
+            (pb_meetings · pb_meeting_title_rules · pb_meeting_proposals · pb_meeting_aliases, all
+            owner/rater read-only · pb_facts.meeting_proposal_id + pb_facts_meeting_origin_check and a
+            trigger that refuses the source to every API role · the 'sales_meeting' cursor ·
+            pb_current_facts with sales_meeting at rank 0 beside rater · pb_reconcile_state() gains
+            meeting_privacy and meetings_work · pb_dossier() drops sales_meeting facts, origin-tagged
+            register rows and a meeting override's written reason · six definer functions:
+            pb_decide_meeting_card, pb_assign_meeting_mention, pb_meeting_include,
+            pb_meeting_title_rule, pb_dismiss_meeting, pb_meeting_supersede (service role) · section 0
+            refuses to run if pb_dossier / pb_reconcile_state moved since they were read (prosrc md5),
+            and a sentinel that a leaking version cannot pass) · 20261011000100 sales meeting cron
+            (pb-meetings, every 3 min outside 05:00–06:59 UTC, posting only when there is work —
+            applied LAST, after pb-notes carries the channel).
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
-            pb-pipedrive-webhook, _shared/
+            pb-pipedrive-webhook, _shared/ · pb-notes/extractor.ts (the ONE model call both pb-notes
+            paths make: the request, the API refusal, the JSON salvage) · pb-notes/meetings.ts (the
+            sales-meeting reader's orchestration, reached only by {sources:["sales_meeting"]} alone:
+            register → lease → pass 1 → resolve → pass 2 → pb_meeting_proposals; it writes
+            pb_meetings, pb_meeting_proposals, its watermark and pb_runs, and nothing else) ·
+            pb-notes/meetings_pure.ts (every branch of it that is not in ingest/, with no I/O;
+            meetings_pure_test.ts beside it, since meetings.ts needs Deno)
             (_shared/core and _shared/ingest are COPIES written by scripts/sync_shared.sh;
             never edit them by hand) · functions/README.md (deploy file lists)
 web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the prospect board, live,
@@ -205,7 +236,10 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             which lane each waiting claim is in, which lanes are switched on, a dry run before every
             real run so the number in the dialog is the number that lands, and the undo beside it.
             Every count comes from pb_fact_candidate_lanes, which IS the rule — the page never
-            restates a threshold.
+            restates a threshold. #meetings (DECISIONS §65) is the sales-meeting review, owner and
+            rater lanes only: one card per agency in discussion order, "Who is this?" for names the
+            reader would not place, and ONE pb_decide_meeting_card call per card — the page previews,
+            the function decides. No approve-all; a removal is never pre-ticked.
             Both are one file each, no build step
 explain/    generate_method.ts → docs/METHOD.md · method_test.ts (fails when stale)
 docs/       DESIGN.md · DECISIONS.md · METHOD.md (generated) · PHASE0.md · RUNBOOK.md
@@ -241,6 +275,13 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
             reconcile.ts (DECLARED vs RUNNING: calls pb_reconcile_state() — no secrets — and fails
             when the active rubric, the applied migrations, source liveness or rule 9 disagree with
             the record; CI runs it on push and every 6h; `--state f.json` runs offline) · reconcile_test.ts
+            · meeting_privacy_static_test.ts (the sales meeting's words stay behind sign-in, pinned in
+            text on the NEWEST definition of every object: the dossier's three filters, the four
+            tables' grants, the decide function's quote-free fact) · meeting_privacy_check.sql (the
+            operator harness, run through execute_sql inside begin … rollback right after migration
+            A: every lane refusal and the anon denial, RUNBOOK §33) · meeting_contract_test.ts (the
+            reader's four layers agree on every name: columns, check-constraint values, rpc
+            arguments, edit and result keys, the schedule's body)
 .github/    workflows/ci.yml — test · reconcile · deploy (MANUAL only since 2 Oct: the functions a person
             names, each as an entrypoint pinned to the commit; needs SUPABASE_ACCESS_TOKEN; DECISIONS §63)
             workflows/deploy-pages.yml — the page, manual
@@ -314,15 +355,22 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    rule**: no verbatim quote, or below `high`, or contradicting what a *person* recorded →
    `pb_fact_candidates`, never a write. A quote is only a quote if it is in the note —
    `notes_sweep.ts` checks it, so an invented sentence cannot reach `pb_facts` (DECISIONS §9).
+   **What a sales meeting says waits in `pb_meeting_proposals`, never in `pb_fact_candidates`** — no
+   lane, bulk rule or autoconfirm can see it — and only a person's click on its card
+   (`pb_decide_meeting_card`, owner or rater; a tier call or a removal owner only) writes it to
+   `pb_facts` or `pb_register` (DECISIONS §65).
 9. **Evidence outranks recency, and a person outranks a machine.** `pb_current_facts` and
    `latestFactPerKey` both resolve a key by `evidence > inferred > unknown`, then **source
-   precedence** (`rater > fathom_call > pipedrive_note > website > notion_master > apollo >
-   pipedrive > anything else`, added 15 Sep 2026), then newest written, then newest observed. The
+   precedence** (`rater = sales_meeting > fathom_call > pipedrive_note > website > notion_master >
+   apollo > pipedrive > anything else`; added 15 Sep 2026, `sales_meeting` tied at the top since
+   DECISIONS §65 — a meeting fact exists only once a person approved it on its card, and in the view
+   only once migration 20261011000000 is applied), then newest written, then newest observed. The
    view is what pb-score reads and the function is what the pure path reads; they must not drift —
    and they did, for two days, because the view changed in a migration that had no file
-   (DECISIONS §33). Without the middle step the tiebreak is which seed ran last — 38 accounts flip
-   across the Partner threshold on that alone (§22). `resolve_features_test.ts` pins the order
-   against the migration.
+   (DECISIONS §33). The order is stated a THIRD time, in the rule9 CTE of `pb_reconcile_state()`,
+   which CI compares against the view. Without the middle step the tiebreak is which seed ran last —
+   38 accounts flip across the Partner threshold on that alone (§22). `resolve_features_test.ts`
+   pins all three against the newest migrations.
 10. Tier words are always printed with **anticipated** and a confidence (PRO-1r), and with
    **UNVALIDATED (PRO-8)** while the rubric says so.
 11. **Orbit is read, never written.** Owner instruction, 16 Sep 2026: *"Do not, absolutely do not
@@ -362,7 +410,11 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   the summary and the resolved account, and `website` reads `pb_website_reads`, which the fetcher
   filled with page text and the account it belongs to. So `PB_ANTHROPIC_API_KEY` alone is enough to
   make the sweep do real work. A channel with no credential is skipped and said so in the run's
-  notes.
+  notes. `sales_meeting` is NOT a fifth channel: named alone in `sources` it routes to the meeting
+  reader (pb-notes/meetings.ts, DECISIONS §65, RUNBOOK §33), named beside any other it is a 400, and
+  the nightly body names no sources, so the nightly sweep never reaches it. It reads the internal
+  recordings pb-fathom-webhook already keeps whole in `pb_webhook_inbox` — the transcript, never
+  Fathom's summary — and writes proposals, never facts.
 
   **The `website` channel is narrower than the others on purpose** (DECISIONS §50). It reads a site
   the book has NEVER read — an account with a live `pb_account_reads` row is skipped, so superseding
@@ -421,6 +473,12 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   the forward read (`fwd:<cell>`, DECISIONS §62). The ninth, `pb-nightly-events` 06:05, runs the
   three contact-event builders (calls, email, quotes) so the morning's score and the lift see the
   morning's calls; email and quotes refresh only when a session refills their staging tables.
+  The tenth, **`pb-meetings`, is PENDING its migration** (20261011000100, applied last — RUNBOOK
+  §33; it is not in `cron.job` until then): every 3 minutes at 00:00–04:59 and 07:00–23:59 UTC,
+  clear of the nightly chain, it posts `{sources:["sales_meeting"], budget_ms:110000,
+  concurrency:6}` to pb-notes — and only when SQL finds work (a Fathom delivery past the
+  `sales_meeting` cursor, a `waiting` meeting, or a `reading` one whose 150 s lease lapsed), so an
+  idle tick makes no HTTP call and no model call (DECISIONS §65).
 - **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
   prospect-stage card with no account (`missing`), an account whose card has moved to a partner
   stage or Friends of WLIQ (`departed`) — and writes nothing else. It may not: PRO-18's
@@ -464,7 +522,15 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   (`pb_account_reads`, `pb_briefs`, `pb_chase_scores`) are `authenticated` **select only and
   `anon` nothing** — deliberately narrower than `pb_facts`, because they carry candid judgements
   about named companies (who is price-sensitive, whose owner is retiring) rather than facts.
-  Opening them to `anon` is the owner's call, not a default. This returns nothing when the book
+  Opening them to `anon` is the owner's call, not a default. The four sales-meeting tables
+  (`pb_meetings`, `pb_meeting_title_rules`, `pb_meeting_proposals`, `pb_meeting_aliases`;
+  DECISIONS §65, migration 20261011000000, a draft until applied) are narrower still: `authenticated`
+  SELECT, `anon` nothing, and a policy that lets only the **owner and rater lanes** read a row
+  (`pb_is_wliq() and pb_role() in ('owner','rater')`), because they hold what the team said about
+  named agencies, quotes included. Nobody writes them over PostgREST — pb-notes (service role) and
+  the definer functions do — and the six meeting functions are `authenticated` (or, for
+  `pb_meeting_supersede`, service role) only, never `anon`. They fall to the queries' defaults
+  (`SELECT` / `(none)`), so the queries need no new exception. This returns nothing when the book
   is in order:
 
   ```sql

@@ -2514,3 +2514,236 @@ the engine or the rubric.
 
 **`pb_chase_board` is not filtered** (§50, open). Nothing reads it today, so nothing shows a removed
 agency — but anything built on it must exclude `pb_removals` itself.
+
+## 33 · Reading the sales meetings
+
+DECISIONS §65. The team's internal sales meeting is the review, and what it says about a named agency
+is judgement: once a person confirms it on its card it ranks with `rater` under rule 9. pb-notes
+reads the meeting's TRANSCRIPT (never Fathom's summary) out of the delivery pb-fathom-webhook already
+keeps whole in `pb_webhook_inbox`, and writes **proposals** — `pb_meeting_proposals`, owner and rater
+lanes only. Nothing reaches `pb_facts` or `pb_register` until somebody approves a card in
+`index.html#meetings`; nothing is ever parked in `pb_fact_candidates`.
+
+**Status: built, not running.** Migration A (`…_prospect_book_sales_meeting_reader.sql`) and migration
+B (`…_prospect_book_sales_meeting_cron.sql`) are drafts carrying drafting stamps, and pb-notes v17 has
+no `sales_meeting` route. The order below is the order things happen in; do not skip ahead.
+
+| Step | What | Done when |
+|---|---|---|
+| 1 | Apply migration A, transcribe it (33.1) | it applied (section 0 and the sentinel passed) and the file carries the applied version, md5-identical |
+| 2 | Verify it in the database (33.2) | both CLAUDE.md grants queries empty, the harness raises nothing |
+| 3 | Merge, then deploy pb-notes pinned to the merge commit (RUNBOOK §3) | `verify_jwt: false` in the deploy response; fetched back, it is the one-line entrypoint |
+| 4 | Register (33.3) | `pb_meetings` holds the internal recordings, the cursor is at the newest delivery |
+| 5 | Dry run one meeting and hand-check it (33.4) | 2 or fewer of 20 proposals wrong |
+| 6 | Read the three newest for real, one `recording_id` per call; the owner reviews them in one sitting | cards decided, the time per card measured |
+| 7 | Apply migration B, transcribe it (33.1) | `cron.job` holds `pb-meetings`; an idle tick writes no `pb_runs` row |
+| 8 | The next morning (33.6) | the 06:15 run carried the approvals; the anon probe finds nothing |
+
+### 33.1 · Applying a migration and transcribing it (the md5 rule)
+
+Each draft is applied once, through the MCP's `apply_migration`, with the **file's bytes unchanged** —
+including its "PLACEHOLDER VERSION" header, which stays as applied. Names:
+`prospect_book_sales_meeting_reader`, then (last) `prospect_book_sales_meeting_cron`.
+
+Migration A refuses to run rather than overwrite something newer. Section 0 compares the live
+`pb_dossier()` and `pb_reconcile_state()` with the bodies the file was built from (prosrc md5
+`ab44f7fd…` and `d6c124b7…`), and checks that `pb_current_facts` names no source the file does not.
+If it raises, another session changed one of them: rebuild sections 9–10 (or 6) from the LIVE body
+(`pg_get_functiondef`, `pg_get_viewdef`), keep the three §65 edits, update the expected md5 and
+apply that (§50a, §53a). Section 12, the sentinel, renders a synthetic account's dossier with a
+meeting fact, an override and a note on it and raises if any of the words, the meeting link or the
+literal `sales_meeting` comes out — then rolls itself back. A version that leaks cannot apply.
+
+Then file it under the version the database recorded, in the same sitting:
+
+```sql
+select version, name, md5(statements[1]) as md5
+  from supabase_migrations.schema_migrations
+ where name in ('prospect_book_sales_meeting_reader', 'prospect_book_sales_meeting_cron');
+```
+
+```bash
+git mv supabase/migrations/20261011000000_prospect_book_sales_meeting_reader.sql \
+       supabase/migrations/<version>_prospect_book_sales_meeting_reader.sql
+md5sum supabase/migrations/<version>_prospect_book_sales_meeting_reader.sql   # must equal md5 above
+```
+
+The tests read every object from the newest migration that defines it, so the rename needs no other
+change; CLAUDE.md's migration line drops "DRAFT" and gains the version. Until the renamed file is on
+main, CI's reconcile reports the applied name as unfiled — apply, transcribe and merge together.
+
+### 33.2 · Checking migration A, and the privacy harness
+
+```sql
+select count(*) from public.pb_board();                               -- unchanged by the apply
+select pb_reconcile_state() -> 'rule9_mismatches',                    -- 0
+       pb_reconcile_state() -> 'meeting_privacy',                     -- {"checked": 0, "leaks": 0}
+       pb_reconcile_state() -> 'meetings_work';
+select option_value from pg_options_to_table(
+  (select reloptions from pg_class where oid = 'public.pb_current_facts'::regclass));  -- true
+```
+
+Run both grants queries from CLAUDE.md: they must return nothing (the four new tables fall to
+`authenticated` SELECT and `anon` nothing). Then run `scripts/meeting_privacy_check.sql` whole through
+`execute_sql`. It is one `begin … rollback`: synthetic owner, rater and viewer members, a synthetic
+account and meeting, and one live prospect read as the subject — nothing survives it. Success is the
+absence of an exception and three NOTICE lines. It proves every lane refusal (a rater approving a
+tier call or a removal, a viewer, a non-WLIQ address), every rule refusal (no written reason, an
+unknown code, an override at the computed tier or with no computed tier, a removal with an expiry, a
+fact that overrules a person without the tick, a card over two agencies, an unplaced name), what the
+writes look like, and that `anon` gets the dossier and the board without a word of it. Run it again
+after any change to `pb_dossier()`, `pb_board()` or the six meeting functions.
+
+### 33.3 · Registering
+
+Every call registers before it reads, and a register-only call makes no model call (so it needs no
+API key). From the container, through `pg_net` as in §17:
+
+```sql
+select net.http_post(
+  url     := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-notes',
+  headers := jsonb_build_object('Content-Type','application/json',
+    'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets
+                                  where name = 'PB_SYNC_TOKEN' limit 1)),
+  body    := jsonb_build_object('sources', jsonb_build_array('sales_meeting'), 'register_only', true),
+  timeout_milliseconds := 150000) as request_id;
+
+select status, skip_reason, selected_by, count(*) from public.pb_meetings group by 1, 2, 3 order by 1, 2, 3;
+```
+
+`sales_meeting` must be the ONLY source named: beside any other the call is a 400. Registration reads
+the Fathom deliveries past the `pb_source_watermarks('sales_meeting')` cursor — `(received_at, id)`,
+light columns only — and keeps the INTERNAL recordings with a transcript, by the webhook parser's own
+"internal only" test. Each becomes one `pb_meetings` row:
+
+- **Which are read.** The owner's say on one meeting (`include`) beats a title rule, which beats the
+  title patterns (`\bsales\b`, `\bprospect`, `\bgrading\b`, any case). Selected → `waiting`; not →
+  `skipped` with `not_selected` or `owner_excluded`. Someone outside WLIQ speaking (`external_speaker`)
+  or no spoken lines (`no_transcript`) is found at read time and is a refusal no rule overrides.
+- **Include and title rules**, owner only, from the "Not read" panel on the review screen or in SQL as
+  the owner: `pb_meeting_include(recording_id, true|false)` moves a meeting `skipped` ↔ `waiting` (or
+  a `failed` one out of the queue) and never touches one being read, read or a duplicate — it answers
+  `changed: false` with the reason. `pb_meeting_title_rule(title, true|false|null)` reads, never reads,
+  or forgets every meeting with that exact title (whitespace collapsed, lower-cased), and re-selects
+  the ones not yet read that the owner has not ruled on one by one.
+- **One recording per meeting.** Fathom sends one recording per recorder. Same normalised title, same
+  UTC date and overlapping by at least half of the shorter are one meeting; the longest is read and
+  the rest are `duplicate` of it. A meeting already being read or read keeps its representative.
+
+The cursor passes every delivery considered, internal or not, so the next call is idle. At design
+time (10 Oct 2026) a first registration found 78 internal recordings with transcripts: 21 `waiting`,
+2 `duplicate`, 55 `skipped`.
+
+### 33.4 · The dry run, and the hand check before anything is written
+
+```sql
+-- the newest waiting meeting
+select recording_id, held_at, status from public.pb_meetings
+ where status = 'waiting' order by held_at desc limit 1;
+-- then the same net.http_post with
+--   body := jsonb_build_object('sources', jsonb_build_array('sales_meeting'),
+--                              'recording_id', '<recording_id>', 'dry_run', true)
+select status_code, content::jsonb -> 'counters', content::jsonb -> 'usage'
+  from net._http_response where id = <request_id>;
+```
+
+A dry run reads and verifies exactly as a real one and writes only its `pb_runs` row: no lease, no
+registration, no proposal, no cursor. The response carries the proposals, QUOTES INCLUDED, for the hand
+check. That response sits in `net._http_response` (service role only) for a few hours: read what you
+need, then `delete from net._http_response where id = <request_id>`.
+
+Read the counters: `meeting.pass1.mentions_verified` against `meeting.pass1.as_said_not_on_line` and
+`mention_unverified`; `meeting.mentions.resolved / suggested / ambiguous / unknown / refused` (a
+placeholder or one of our own names must be `refused`, never a card); `meeting.pass2.quote_verified`
+against `meeting.pass2.other_agency_lines` and `outside_segment` (a quote from another agency's lines
+is the wrong-company class, §60, and is dropped); `meeting.proposals.proposed / not_proposed /
+agrees` and `meeting.proposals.pre_ticked`; `usage`, and `meeting.ms.pass1` / `meeting.ms.pass2` for time. Then check 20 proposals against the
+transcript for the wrong agency, the wrong field, and decided versus merely floated. Proceed when 2 or
+fewer of 20 are wrong. Otherwise tighten the prompt and bump `MEETING_PROMPT_VERSION` (`meeting@v2`)
+before anything is written — every fingerprint carries the extractor id, so a new version is a clean
+second read.
+
+### 33.5 · Reading for real, and a deliberate re-read
+
+| Body (with `sources: ["sales_meeting"]`) | Does |
+|---|---|
+| `{}` | register, then read the oldest `waiting` meeting (what the schedule sends, with `budget_ms` 110000 and `concurrency` 6) |
+| `{recording_id}` | read that one, if `waiting` or a `reading` whose lease lapsed; 404 not registered, 409 duplicate, skipped, already read or leased |
+| `{recording_id, reread: true}` | read a `read`, `partial` or `failed` meeting again from pass 1 |
+
+A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
+pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. Out of
+budget, the meeting stays `reading` with its progress and the next call resumes it — with the model
+it started with — and re-reads nothing. It ends `read`, or `partial` when an agency's reply was
+unusable, or `failed` when pass 1's was. **A failed meeting is never retried on its own**: fix the
+cause and re-read it deliberately.
+
+A re-read starts again from nothing — mentions, progress and counts cleared; what it spent stays in
+`usage`. Under the SAME extractor the fingerprint keeps every claim already proposed from landing
+twice, so it adds only what is new (the agencies a `partial` read missed). Under a NEW extractor
+(another model, or a new prompt version) the new rows sit beside the old ones and the later line wins
+between them — so **dismiss the meeting's open proposals first** ("Dismiss meeting", or
+`pb_dismiss_meeting(recording_id, null)`), then re-read.
+
+The review itself is the screen's: one card per agency in the order they came up; "Who is this?" for
+a name the reader would not place (placing it, with "Remember this name", writes `pb_meeting_aliases`
+and the next meeting places it alone); A approves what is ticked on that card and rejects the rest,
+in one `pb_decide_meeting_card` call that re-derives every rule. A tier call or a removal is the
+owner's; a removal is never pre-ticked and never expires. Facts and overrides move the tier at the
+next 06:15 score; a removal leaves the board at once.
+
+### 33.6 · What a halt looks like, and the checks that keep running
+
+A **halt** is an API refusal (no credit, a bad key, overload — `classifyExtractorFailure` decides, as
+for every channel) or a call that never answered. The meeting goes back to `waiting` with what it had,
+the lease is released, nothing is marked read, and the run row says so:
+
+```sql
+select started_at, status, counts -> 'halted' as halted, counts -> 'wrote' as wrote, errors
+  from public.pb_runs where kind = 'ingest' and source = 'sales_meeting'
+ order by started_at desc limit 10;
+-- status 'failed' (or 'partial' if it wrote first), halted 1, and an errors note
+-- "HALTED — <recording_id> pass 1: the extractor API answered 529 …"
+```
+
+The schedule posts again on its next tick, because a `waiting` meeting is work; while the cause lasts
+every tick halts the same way. Fix the cause, or stop it: `select cron.unschedule('pb-meetings');`.
+Run notes carry recording ids, refs and counts — never a quote, a name or a title.
+
+Every CI reconcile (push, and every 6 h) reads two blocks of `pb_reconcile_state()`:
+`meeting_privacy` renders `pb_dossier()` for the 20 accounts with the newest approved proposals and
+counts any approved quote, origin-tagged register text or literal `sales_meeting` found there — any
+leak FAILS CI; `meetings_work` warns on a failed meeting this week, a lease stuck over three hours,
+meetings selected but none read, and an open card older than three days (proposals never expire on a
+timer). The invariant that is never allowed to move:
+
+```sql
+select count(*) from public.pb_fact_candidates where source = 'sales_meeting';   -- 0, always
+```
+
+**The anon probe**, after the first real approval: call the dossier of an approved account the way
+the public does, with the page's publishable key, and look for the start of its approved quotes —
+expect nothing. From a machine with a route to `*.supabase.co`:
+
+```bash
+curl -sS "https://sgagrmapuovnjwvgsxbp.supabase.co/rest/v1/rpc/pb_dossier" \
+  -H "apikey: <the publishable key in web/index.html>" -H "Content-Type: application/json" \
+  -d '{"p_account_id":"<account_id>"}' | grep -c -F "<the first words of an approved quote>"   # 0
+```
+
+or, from the container, as `anon` inside a transaction that changes nothing:
+
+```sql
+begin;
+select set_config('probe.acct', (select account_id::text from public.pb_meeting_proposals
+                                  where status = 'approved' order by decided_at desc limit 1), true);
+select set_config('probe.needles', (select string_agg(left(btrim(regexp_replace(lower(quote), '[^a-z0-9]+', ' ', 'g')), 40), '|')
+                                      from public.pb_meeting_proposals
+                                     where status = 'approved' and account_id = current_setting('probe.acct')::uuid), true);
+set local role anon;
+select count(*) filter (where position(n in d) > 0) as leaks, count(*) as needles
+  from unnest(string_to_array(current_setting('probe.needles'), '|')) n,
+       (select btrim(regexp_replace(lower(public.pb_dossier(current_setting('probe.acct')::uuid)::text),
+                                    '[^a-z0-9]+', ' ', 'g')) as d) x;      -- leaks 0
+rollback;
+```

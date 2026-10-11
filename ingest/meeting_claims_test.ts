@@ -375,6 +375,44 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
 }
 
 /* ------------------------------------------------------------------ *
+ * 4a · lengths as the table counts them (char_length: code points)
+ * ------------------------------------------------------------------ */
+
+{
+  // pb_meeting_proposals checks quote between 12 and 600 and context at most 1,200 in CHARACTERS.
+  // `.length` counts UTF-16 units, so an emoji is two of them and one character to the table; a row
+  // measured the wrong way passes here, fails there, and refuses the whole batch it was written in.
+  const emoji = "\u{1F44D}";
+  const L: TranscriptLine[] = [
+    { n: 1, at: "00:00:01", seconds: 1, speaker: "S1", text: `Quillfern then, ok ${emoji.repeat(5)} and they have forty people on staff.` },
+    { n: 2, at: "00:00:09", seconds: 9, speaker: "S2", text: `Quillfern ${emoji.repeat(1300)} they want the rebuild before spring.` },
+  ];
+  const cl: Array<ClusterForBatch & ProposalCluster> = [
+    { ref: "A1", state: "resolved", said_key: "quillfern", said_as: ["Quillfern"], account_id: "quill", matched_on: "name", options: ["quill"], segments: [{ from: 1, to: 2 }] },
+  ];
+  const plan = planBatches(cl, L);
+  const v = (quote: string, line: number) => verifyMeetingClaims(
+    { claims: [{ ref: "A1", type: "read", topic: "fit", quote, line_from: line, line_to: line, mode: "asserted" }] },
+    { lines: L, batch: plan.batches[0], owners: plan.owners, tiers: TIERS, overrideCodes: OVERRIDE_CODES, removalReasons: REASONS },
+  );
+  const short = `ok ${emoji.repeat(5)}`;
+  eq("a quote of 13 UTF-16 units but 8 characters is too short for the table, and refused here",
+    [short.length, v(short, 1).claims.length, v(short, 1).counters.quote_length], [13, 0, 1]);
+  eq("a quote of 12 real characters is kept", v("forty people", 1).claims.length, 1);
+
+  const [row] = proposalRows({
+    ...BASE, clusters: cl, lines: L,
+    claims: [vc({ type: "read", key: null, value: null, topic: "timing", quote: "they want the rebuild before spring", line_from: 2, line_to: 2, quote_at: "00:00:09" })],
+  });
+  const ctx = row.context ?? "";
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  let chars = 0;
+  for (const _ of ctx) chars++;
+  eq("a context longer than 1,200 characters is clipped to 1,200 characters, not 1,200 UTF-16 units", chars, 1200);
+  check("…and never cuts an emoji in half (a lone surrogate the database would refuse)", !lone.test(ctx));
+}
+
+/* ------------------------------------------------------------------ *
  * 5 · drift and purity
  * ------------------------------------------------------------------ */
 

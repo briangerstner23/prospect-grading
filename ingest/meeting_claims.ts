@@ -30,7 +30,7 @@
 
 import { coerceClaimValue, keyShapeLines, keysFor, normalizeForQuote, timeKey } from "./notes_sweep.ts";
 import { noteFingerprint, sameValue } from "./written_record.ts";
-import { excerptFor, MEETING_SOURCE, QUOTE_MAX_CHARS, QUOTE_MAX_LINES, QUOTE_MIN_CHARS, quoteInLines, renderLines } from "./meeting_transcript.ts";
+import { charLength, clipChars, excerptFor, MEETING_SOURCE, QUOTE_MAX_CHARS, QUOTE_MAX_LINES, QUOTE_MIN_CHARS, quoteInLines, renderLines } from "./meeting_transcript.ts";
 import type { ExcerptLine, LineRange, TranscriptLine } from "./meeting_transcript.ts";
 
 /* ------------------------------------------------------------------ *
@@ -413,9 +413,11 @@ export function verifyMeetingClaims(raw: unknown, ctx: MeetingVerifyContext): Me
 
     const q = quoteInLines(ctx.lines, { quote: c.quote, line_from: c.line_from, line_to: c.line_to });
     if (!q.ok) { bump(counters, `quote_${q.why}`); return; }
-    // Stored whitespace-collapsed, so the row always meets pb_meeting_proposals' 12–600 check.
+    // Stored whitespace-collapsed and measured in code points, as char_length measures it, so the
+    // row always meets pb_meeting_proposals' 12–600 check.
     const quote = String(c.quote).replace(/\s+/g, " ").trim();
-    if (quote.length < QUOTE_MIN_CHARS || quote.length > QUOTE_MAX_CHARS) { bump(counters, "quote_length"); return; }
+    const quoteChars = charLength(quote);
+    if (quoteChars < QUOTE_MIN_CHARS || quoteChars > QUOTE_MAX_CHARS) { bump(counters, "quote_length"); return; }
     const own = new Set(it.owned);
     let shared = false;
     for (let n = q.line_from; n <= q.line_to; n++) {
@@ -688,12 +690,13 @@ function contextFor(lines: readonly TranscriptLine[] | undefined, from: number, 
   let b = to + CONTEXT_PAD_LINES;
   const pick = () => lines.filter((l) => l.n >= a && l.n <= b);
   let text = renderLines(pick());
-  while (text.length > CONTEXT_MAX_CHARS && (a < from || b > to)) {
+  while (charLength(text) > CONTEXT_MAX_CHARS && (a < from || b > to)) {
     if (b - to >= from - a && b > to) b--;
     else a++;
     text = renderLines(pick());
   }
-  return text.length > CONTEXT_MAX_CHARS ? text.slice(0, CONTEXT_MAX_CHARS) : text || null;
+  // In code points, as the table's char_length check counts, and never half a surrogate pair.
+  return clipChars(text, CONTEXT_MAX_CHARS) || null;
 }
 
 /** Order-insensitive for lists (climb_signals), canonical otherwise. */

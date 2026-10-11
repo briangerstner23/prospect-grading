@@ -1,8 +1,10 @@
 -- Prospect Book — the sales-meeting reader's schedule (DECISIONS §65). Migration B of two, applied
 -- LAST: after migration A (prospect_book_sales_meeting_reader), after pb-notes carries the
 -- `sales_meeting` channel (supabase/functions/pb-notes/meetings.ts), and after the first meetings were
--- read by hand and reviewed (RUNBOOK §32). Applied before that, it would post to a pb-notes that
--- answers 400 to a body naming only sales_meeting.
+-- read by hand and reviewed (RUNBOOK §33). Applied before pb-notes carries the channel, every tick
+-- would reach the old sweep, which ignores a source it does not know: it would sweep no channel and
+-- still write an empty 'written_record' run row every three minutes, which notes_work would count
+-- as unproductive runs.
 --
 -- PLACEHOLDER VERSION. 20261011000100 is a drafting stamp; the file is re-filed under its applied
 -- version, byte-identical to schema_migrations.statements by md5 (RUNBOOK §28.6).

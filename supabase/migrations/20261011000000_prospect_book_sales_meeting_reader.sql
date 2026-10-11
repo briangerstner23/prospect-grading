@@ -1302,7 +1302,7 @@ select jsonb_build_object(
 $$;
 
 comment on function public.pb_reconcile_state() is
-  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count, whether the latest notes run did any work, whether any sales-meeting quote reaches pb_dossier() or pb_board() (meeting_privacy), and whether the meeting reader is keeping up (meetings_work). Counts only — never a quote, a name or pb_runs.errors; callable by anon (DECISIONS §34, §65).';
+  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count, whether the latest notes run did any work, whether any sales-meeting quote or register text reaches pb_dossier() for the 20 accounts with the newest approved meeting proposals (meeting_privacy; pb_board() prints no such text and is pinned by meeting_privacy_static_test.ts instead), and whether the meeting reader is keeping up (meetings_work). Counts only — never a quote, a name or pb_runs.errors; callable by anon (DECISIONS §34, §65).';
 
 -- 11 · privileges ------------------------------------------------------------------------------
 -- The 20260918160352 lesson: a new function arrives executable by PUBLIC (and, here, by the project's

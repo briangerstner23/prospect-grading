@@ -180,8 +180,19 @@ export interface RosterInput {
   people?: readonly (string | null | undefined)[];
 }
 
-export type MatchedOn = "name" | "alias" | "learned" | "token" | "domain" | "prefix" | "person";
-export type MentionState = "resolved" | "suggested" | "ambiguous" | "unknown" | "refused";
+/**
+ * What a placement rests on. pb_meeting_proposals.matched_on allows exactly these ('person' is a
+ * placement a reviewer made); scripts/meeting_contract_test.ts pins the two lists together.
+ */
+export const MATCHED_ON = ["name", "alias", "learned", "token", "domain", "prefix", "person"] as const;
+export type MatchedOn = typeof MATCHED_ON[number];
+
+/**
+ * What a mention is. Only the first three are ever read or stored as proposals (meeting_claims
+ * READ_STATES); pb_meeting_proposals.mention_state allows exactly those.
+ */
+export const MENTION_STATES = ["resolved", "suggested", "ambiguous", "unknown", "refused"] as const;
+export type MentionState = typeof MENTION_STATES[number];
 
 type Basis = "name" | "alias" | "learned" | "weak" | "token" | "domain";
 
