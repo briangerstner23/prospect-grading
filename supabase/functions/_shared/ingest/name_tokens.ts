@@ -23,6 +23,7 @@ export const GENERIC: ReadonlySet<string> = new Set([
   "momentum", "snap", "snapshot", "wonder", "haystack", "watermark", "avenue", "mega", "metropolis",
   "nomadic", "shift", "the deal", "the fold", "the escape", "illuminated", "intrigue", "techies",
   "moor", "unity", "not yet", "tbd", "good company", "second mile", "the machine", "franco",
+  "better",
 ]);
 
 /**
@@ -52,7 +53,7 @@ export const FIRST_TOKEN_ALLOW: ReadonlySet<string> = new Set([
   "response", "fixture", "artifact", "migration", "identity", "candidate", "confidence",
   "crypto",
   // Ordinary English and ordinary technical English, six letters or more.
-  "address", "advanced", "against", "already", "analysis", "another", "answer", "anything",
+  "address", "advanced", "against", "already", "always", "analysis", "another", "answer", "anything",
   "appear", "applied", "approach", "archive", "around", "article", "assign", "attempt", "author",
   "average", "backup", "balance", "before", "behind", "believe", "benefit", "better", "between",
   "beyond", "billing", "branch", "broken", "browser", "budget", "builder", "building", "business",
