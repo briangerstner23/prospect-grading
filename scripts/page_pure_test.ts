@@ -18,7 +18,7 @@ import vm from "node:vm";
 // The meeting review's mirrors are pinned against the modules they mirror (DECISIONS §65).
 import { coerceClaimValue, EXTRACTABLE, keysFor } from "../ingest/notes_sweep.ts";
 import type { ClaimShape } from "../ingest/notes_sweep.ts";
-import { BLOCKING_FLAGS, DEFAULT_OVERRIDE_CODE, defaultSelected, HISTORIC_DAYS } from "../ingest/meeting_claims.ts";
+import { BLOCKING_FLAGS, DEFAULT_OVERRIDE_CODE, defaultSelected, defaultText, HISTORIC_DAYS, PERSON_SOURCES } from "../ingest/meeting_claims.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pagePath = join(here, "..", "web", "index.html");
@@ -81,6 +81,7 @@ const {
   tiersMoved, meetingRowWords, meetingFlagWords, meetingCellWords, overrideDefaults, removalDispositions, removalCodesFor,
   removalPair, removalEdit, cardItems, cardProblems, shortcutAction, decidedWords, meetingCounts, meetingCountWords,
   meetingsWaiting, pickMeeting, clockSecondsOf, fathomAt, meetingLengthWords, contextLines,
+  MEETING_PERSON_SOURCES, meetingDefaultText, meetingSameValue, meetingLiveFlags, readTierWords,
 } = helpers;
 
 function run(): void {
@@ -471,6 +472,12 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
   eq("MEETING_DEFAULT_OVERRIDE_CODE mirrors meeting_claims", MEETING_DEFAULT_OVERRIDE_CODE, DEFAULT_OVERRIDE_CODE);
   eq("MEETING_HISTORIC_DAYS mirrors meeting_claims", MEETING_HISTORIC_DAYS, HISTORIC_DAYS);
   eq("MEETING_BLOCKING_FLAGS mirrors meeting_claims", [...MEETING_BLOCKING_FLAGS].sort(), [...BLOCKING_FLAGS].sort());
+  eq("MEETING_PERSON_SOURCES mirrors meeting_claims", [...MEETING_PERSON_SOURCES].sort(), [...PERSON_SOURCES].sort());
+  for (const kind of ["fact", "override", "removal", "read"]) for (const topic of [null, "price"]) {
+    const r = { kind, quote: "they said a thing about the agency", quote_at: "00:05:00", topic, held_on: "2026-10-09" };
+    eq(`meetingDefaultText mirrors meeting_claims.defaultText (${kind}, ${topic})`, meetingDefaultText(r), defaultText(r, { held_on: "2026-10-09" }));
+    check(`meetingDefaultText never carries the quote (${kind})`, !String(meetingDefaultText(r)).includes(r.quote));
+  }
   eq("MEETING_KIND_ORDER is removal, tier call, facts, reads", MEETING_KIND_ORDER, ["removal", "override", "fact", "read"]);
   {
     let mismatches = 0;
@@ -506,6 +513,43 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
   eq("meetingStartsTicked: a row a person placed is decided by the same rule now", meetingStartsTicked(prow("t3", { mention_state: "suggested", matched_on: "person", default_selected: false })), true);
   eq("meetingStartsTicked: placed by a person but flagged stays unticked", meetingStartsTicked(prow("t4", { mention_state: "suggested", matched_on: "person", default_selected: false, flags: ["historic"] })), false);
   eq("meetingStartsTicked: nothing that is not proposed", meetingStartsTicked(prow("t5", { status: "agrees" })), false);
+  eq("meetingStartsTicked: a stored default_selected does not outlive a flag the book has raised since",
+    meetingStartsTicked(prow("t6", { default_selected: true, flags: ["conflicts_with_person"] })), false);
+
+  /* -- meetingLiveFlags: the book's flags re-derived from what the screen holds now -- */
+  {
+    const person = (value: unknown, source = "rater") => ({ account_id: "acc-q", key: "headcount", value, evidence_label: "evidence", source });
+    eq("meetingLiveFlags: a person who recorded another value since → conflicts_with_person",
+      meetingLiveFlags(prow("l1"), { facts: [person(25)] }), ["conflicts_with_person"]);
+    eq("meetingLiveFlags: an approved meeting value is a person's too",
+      meetingLiveFlags(prow("l2"), { facts: [person(25, "sales_meeting")] }), ["conflicts_with_person"]);
+    eq("meetingLiveFlags: a machine value is no conflict", meetingLiveFlags(prow("l3"), { facts: [person(25, "website")] }), []);
+    eq("meetingLiveFlags: the same value is no conflict", meetingLiveFlags(prow("l4"), { facts: [person(40)] }), []);
+    eq("meetingLiveFlags: a stale conflict is cleared", meetingLiveFlags(prow("l5", { flags: ["conflicts_with_person", "historic"] }), { facts: [] }), ["historic"]);
+    eq("meetingLiveFlags: no facts loaded → the stored flags stand", meetingLiveFlags(prow("l6", { flags: ["conflicts_with_person"] }), {}), ["conflicts_with_person"]);
+    eq("meetingLiveFlags: a list in another order is the same value",
+      meetingLiveFlags(prow("l7", { key: "climb_signals", value: ["b", "a"] }), { facts: [{ ...person(["a", "b"]), key: "climb_signals" }] }), []);
+    const ov = (tier: string, extra: Row = {}) => prow("o", { kind: "override", key: null, value: null, tier, ...extra });
+    eq("meetingLiveFlags: no read → no_computed_tier", meetingLiveFlags(ov("Gold"), { read: null }), ["no_computed_tier"]);
+    eq("meetingLiveFlags: a tier computed since clears it", meetingLiveFlags(ov("Gold", { flags: ["no_computed_tier"] }), { read: { computed_tier: "Silver", effective_tier: "Silver" } }), []);
+    eq("meetingLiveFlags: the computed tier under a live override → contradicts_live_override",
+      meetingLiveFlags(ov("Silver"), { read: { computed_tier: "Silver", effective_tier: "Gold" } }), ["contradicts_live_override"]);
+    eq("meetingLiveFlags: an unplaced row keeps what it was written with", meetingLiveFlags(prow("u", { account_id: null, flags: ["historic"] }), { facts: [person(25)] }), ["historic"]);
+    eq("meetingLiveFlags: a decided row keeps what it was written with", meetingLiveFlags(prow("d", { status: "approved" }), { facts: [person(25)] }), []);
+    check("meetingSameValue: numbers, strings, lists", meetingSameValue(40, 40) && !meetingSameValue(40, "40") && meetingSameValue(["x", "y"], ["y", "x"]) && !meetingSameValue(["x"], ["x", "y"]));
+    // A row a person placed was written with no snapshot at all; now the screen raises the flag, the
+    // row is not ticked, and the card sends overrule only if the person ticks it themselves.
+    const placed = prow("p", { mention_state: "resolved", matched_on: "person", default_selected: false });
+    const live = { ...placed, flags: meetingLiveFlags(placed, { facts: [person(25)] }) };
+    eq("a placed row that would overrule a person starts unticked", meetingStartsTicked(live), false);
+    eq("…and ticked on purpose, it goes with overrule", cardItems([live], { p: { ticked: true } }, { lane: "owner" }), [{ id: "p", decision: "approve", overrule: true }]);
+  }
+
+  /* -- readTierWords: rule 10 on one line -- */
+  eq("readTierWords: tier, confidence and UNVALIDATED", readTierWords({ scorecard: { effective_tier: "Gold", confidence_grade: "B", validation: "UNVALIDATED" } }), "anticipated Gold · confidence B · UNVALIDATED (PRO-8)");
+  eq("readTierWords: a validated read prints no label", readTierWords({ scorecard: { effective_tier: "Gold", confidence_grade: "B", validation: "VALIDATED" } }), "anticipated Gold · confidence B");
+  eq("readTierWords: no tier", readTierWords({ scorecard: { status: "Unclassified", validation: "UNVALIDATED" } }), "no anticipated tier · Unclassified · UNVALIDATED (PRO-8)");
+  eq("readTierWords: no read", readTierWords(null), "not yet scored");
 
   /* -- groupMeetingCards: discussion order, fixed row order, unplaced by said_key -- */
   {
@@ -553,6 +597,17 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     includes("meetingRowWords: the live engine tier beats the row's snapshot", meetingRowWords(tierCall, { tiers: TIERS, engineTier: "Bronze" }), "engine: anticipated Bronze");
     includes("meetingRowWords: no engine tier", meetingRowWords(prow("o3", { kind: "override", tier: "Gold", engine_tier: null }), { tiers: TIERS }), "engine: no anticipated tier yet");
     eq("meetingRowWords: a tier the board already has", meetingRowWords(prow("o4", { kind: "override", tier: "Gold", status: "agrees" }), {}), "Tier anticipated Gold — team agrees with the board");
+    eq("meetingRowWords: the engine's tier against a live override names the override, its lapse, and what approving does",
+      meetingRowWords(prow("o5", { kind: "override", tier: "Silver", engine_tier: "Silver", effective_tier: "Gold", flags: ["contradicts_live_override"] }),
+        { tiers: TIERS, liveOverrideUntil: "2027-01-08" }),
+      "Tier → anticipated Silver (engine: anticipated Silver) · the board shows anticipated Gold by a live override until 8 Jan 2027; approving ends it");
+    includes("meetingRowWords: a do-not-contact over a live unqualified removal says so",
+      meetingRowWords(prow("r9", { kind: "removal", disposition: "do_not_contact", flags: ["upgrades_removal"] }), { disposition: "do_not_contact" }),
+      "already off the board as unqualified; this records the stronger call");
+    for (const f of ["contradicts_live_override", "upgrades_removal"]) check(`meetingFlagWords names ${f} in words`, !meetingFlagWords(f).includes("_"));
+    includes("cardProblems: a ticked tier call with no computed tier is refused on screen first",
+      cardProblems([prow("o6", { kind: "override", tier: "Gold", flags: ["no_computed_tier"] })], { o6: { ticked: true, edit: { text: "x", reason_code: "other" } } }, "owner").join(" "),
+      "no computed tier");
     eq("meetingRowWords: removal in words, never expiring",
        meetingRowWords(prow("x", { kind: "removal" }), { disposition: "do_not_contact", code: "asked_to_stop", reasons: REASONS }), "Remove — do not contact · asked us to stop · never expires");
     eq("meetingRowWords: a removal with nothing chosen asks for the disposition",
@@ -598,7 +653,8 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     eq("overrideDefaults: a code the rubric does not list falls back", overrideDefaults(prow("o", { reason_code: "made_up" }), spec, "2026-10-10").reason_code, "relationship_known");
     eq("overrideDefaults: without relationship_known, other", overrideDefaults(prow("o"), { override: { reason_codes: ["data_wrong", "other"], expiry_default_days: 90 } }, "2026-10-10").reason_code, "other");
     eq("overrideDefaults: the prefilled reason is the row's default_text", d.text, "\"they are gold now\" — Sales Connect, 2026-10-09 00:05:00");
-    eq("overrideDefaults: no default_text → the quote, quoted", overrideDefaults(prow("o"), spec, "2026-10-10").text, "\"they have about forty people now\"");
+    eq("overrideDefaults: no default_text → where it was said, never the quote",
+      overrideDefaults(prow("o", { kind: "override" }), spec, "2026-10-10").text, "Tier call made in the sales meeting of 2026-10-09 at 00:05:00; the words are on its meeting card.");
     eq("overrideDefaults: no rubric → no codes, no expiry", [overrideDefaults(prow("o"), null, "2026-10-10").codes, overrideDefaults(prow("o"), null, "2026-10-10").expires_on], [[], null]);
     check("overrideDefaults holds no literal 90 and no literal code (they come from the spec)", !/\b90\b/.test(String(overrideDefaults)) && !String(overrideDefaults).includes("relationship_known"));
     eq("addDaysIso crosses a year", addDaysIso("2026-12-30", 3), "2027-01-02");

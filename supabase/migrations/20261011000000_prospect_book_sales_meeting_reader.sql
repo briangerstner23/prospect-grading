@@ -43,6 +43,16 @@
 -- wait in their own owner/rater-only table and the decide function writes pb_facts directly, with no
 -- quote. The invariant: zero pb_fact_candidates rows with source 'sales_meeting', ever.
 --
+-- WHY NOTHING A DECISION WRITES CARRIES THE QUOTE. pb_register is readable by every signed-in WLIQ
+-- address, the viewer lane included, and an override's text is copied into pb_reads.scorecard
+-- .override.reason, which pb_reads_read shows the same lanes. The team's words are owner and rater
+-- only, like the four tables below. So every register row a decision writes names WHERE it was said
+-- (the meeting's date and the line's timestamp) and points at the proposal (payload.proposal_id),
+-- and the review screen shows the words from there; the default written reason a tier call or a
+-- removal is prefilled with (pb_meeting_proposals.default_text, ingest/meeting_claims.ts defaultText)
+-- carries neither the quote nor the meeting's title. A person who wants the words in a reason types
+-- them, on purpose.
+--
 -- PRIVILEGES. anon holds nothing on the four tables or the six functions. Each table: RLS on, every
 -- privilege revoked from anon and authenticated, SELECT back to authenticated, and one SELECT policy
 -- narrower than pb_facts' (owner and rater lanes only, as the research tables are). No insert,
@@ -454,6 +464,7 @@ declare
   v_exp      timestamptz;
   v_days     numeric;
   v_disp     text;
+  v_live     text;
   v_rev      text;
   v_fact     uuid;
   v_reg      uuid;
@@ -612,7 +623,7 @@ begin
         values ('note', v_acct, v_me,
                 'Confirmed ' || p.key || ' from the sales meeting of ' || v_held || '; it is now a fact ('
                   || v_closed || ' machine claim(s) on that key closed).',
-                jsonb_build_object('origin', 'sales_meeting', 'proposal_id', p.id, 'recording_id', p.recording_id,
+                jsonb_build_object('origin', 'sales_meeting', 'proposal_id', p.id,
                                    'quote_at', p.quote_at, 'key', p.key, 'fact_id', v_fact,
                                    'candidates_closed', v_closed, 'overruled', v_overrule and v_cur_id is not null));
       end if;
@@ -651,17 +662,20 @@ begin
       if v_ctier is null then
         raise exception 'the engine refuses an override until this account has a computed tier';
       end if;
-      if lower(v_tier) = lower(v_ctier) then
-        raise exception 'anticipated % is already the computed tier; an override to it changes nothing', v_tier;
-      end if;
-      if lower(v_tier) = lower(coalesce(v_etier, '')) then
+      -- What the board shows is the effective tier (the computed one when no override is live).
+      if lower(v_tier) = lower(coalesce(v_etier, v_ctier)) then
+        if lower(v_tier) = lower(v_ctier) then
+          raise exception 'anticipated % is already the computed tier and no live override moves the board off it; '
+                          'an override to it changes nothing', v_tier;
+        end if;
         v_status := 'agrees';                         -- a live override already says it
       else
+        -- Including the computed tier while a live override shows another: the team disagrees with
+        -- that override, and the newer override returns the board to the engine's tier.
         insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at)
         values ('override', v_acct, v_me, v_code, v_text,
                 jsonb_build_object('tier', v_tier, 'reason_code', v_code, 'expires_at', v_exp,
-                                   'origin', 'sales_meeting', 'proposal_id', p.id, 'recording_id', p.recording_id,
-                                   'quote_at', p.quote_at),
+                                   'origin', 'sales_meeting', 'proposal_id', p.id, 'quote_at', p.quote_at),
                 v_exp)
         returning id into v_reg;
         c_override := c_override + 1;
@@ -673,8 +687,14 @@ begin
       if v_disp is null or v_code is null then
         raise exception 'a removal needs a disposition and a reason code; pick them on the card';
       end if;
-      if exists (select 1 from public.pb_removals x where x.account_id = v_acct) then
-        v_status := 'agrees';                         -- already off the board
+      -- Rule 7a's two dispositions are not equal. A live removal agrees with this one only when it
+      -- says the same or something stronger: a live do_not_contact covers anything; a live
+      -- unqualified (which may carry a review date) does NOT cover a do_not_contact. That one is
+      -- written, and as the newest removal row it becomes what pb_removals shows.
+      v_live := null;
+      select x.disposition into v_live from public.pb_removals x where x.account_id = v_acct;
+      if v_live is not null and (v_live = v_disp or v_live = 'do_not_contact') then
+        v_status := 'agrees';                         -- already off the board, at least as firmly
       else
         v_text := btrim(case when v_edit ? 'text' then coalesce(v_edit->>'text', '') else coalesce(p.default_text, '') end);
         v_rev := nullif(v_edit->>'review_on', '');
@@ -686,18 +706,22 @@ begin
         values ('removal', v_acct, v_me, v_code, v_text,
                 jsonb_strip_nulls(jsonb_build_object('disposition', v_disp, 'review_on', v_rev,
                                                      'origin', 'sales_meeting', 'proposal_id', p.id,
-                                                     'recording_id', p.recording_id)),
+                                                     'quote_at', p.quote_at)),
                 v_exp)
         returning id into v_reg;
         c_removal := c_removal + 1;
       end if;
 
     elsif p.kind = 'read' then
-      -- The quote only; the model never paraphrases and neither does this.
+      -- No quote, and no paraphrase: pb_register is readable by every signed-in address, the viewer
+      -- lane included, and the team's words are owner and rater only (DECISIONS §65), like the
+      -- fact branch above. The row says where the read was said and points at the proposal, which
+      -- the review screen shows to the two lanes that may read it.
       insert into public.pb_register (kind, account_id, made_by, text, payload)
       values ('note', v_acct, v_me,
-              '"' || p.quote || '" — sales meeting ' || v_held || ' (' || coalesce(p.topic, 'other') || ')',
-              jsonb_build_object('origin', 'sales_meeting', 'proposal_id', p.id, 'recording_id', p.recording_id,
+              'Read on ' || coalesce(p.topic, 'other') || ' from the sales meeting of ' || v_held || ' at '
+                || p.quote_at || '; the words are on its meeting card.',
+              jsonb_build_object('origin', 'sales_meeting', 'proposal_id', p.id,
                                  'quote_at', p.quote_at, 'topic', p.topic))
       returning id into v_reg;
       c_reads := c_reads + 1;

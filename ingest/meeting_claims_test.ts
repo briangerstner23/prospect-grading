@@ -20,6 +20,7 @@ import {
   DEFAULT_OVERRIDE_CODE,
   defaultSelected,
   defaultText,
+  removalCovers,
   hedgeFlags,
   HISTORIC_DAYS,
   MAX_FACTS_PER_AGENCY,
@@ -275,7 +276,7 @@ const BASE: ProposalInput = {
     { account_id: "quill", computed_tier: "Silver", effective_tier: "Gold" },
     { account_id: "ngc", computed_tier: null, effective_tier: null },
   ],
-  removed: ["ngc"],
+  removals: [{ account_id: "ngc", disposition: "unqualified" }],
   overrideCodes: OVERRIDE_CODES,
 };
 const rows = (claims: VerifiedClaim[], o: Partial<ProposalInput> = {}) => proposalRows({ ...BASE, ...o, claims });
@@ -295,26 +296,49 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
 }
 {
   const [a, b] = rows([vc({ type: "tier_call", tier: "Gold", key: null }), vc({ type: "tier_call", tier: "Silver", key: null, ref: "A1" })]);
-  eq("a tier equal to the effective tier → agrees", a.status, "agrees");
-  eq("a tier equal to the computed tier → agrees", b.status, "agrees");
+  eq("a tier equal to the effective tier (the one the board shows) → agrees", a.status, "agrees");
+  eq("the computed tier under a live override → proposed, flagged contradicts_live_override, not pre-ticked",
+    [b.status, b.flags, b.default_selected], ["proposed", ["contradicts_live_override"], false]);
+  const [noOv] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: "Silver" }] });
+  eq("the computed tier with no live override → agrees", [noOv.status, noOv.flags], ["agrees", []]);
+  const [noEff] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: null }] });
+  eq("no effective tier recorded → the computed one is what the board shows", noEff.status, "agrees");
   const [c] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })]);
   eq("a different tier is proposed, with the default reason code", [c.kind, c.status, c.reason_code, c.default_selected], ["override", "proposed", DEFAULT_OVERRIDE_CODE, true]);
   eq("the model's code is kept when the rubric lists it", rows([vc({ type: "tier_call", tier: "Platinum", key: null, code: "timing_known" })])[0].reason_code, "timing_known");
   eq("no relationship_known in the rubric → 'other'", rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { overrideCodes: ["data_wrong", "other"] })[0].reason_code, "other");
-  check("default_text carries the quote, title and timestamp",
-    c.default_text === `"They have about forty people on staff, call it 40." — Sales Standing Connect, 2026-10-09 00:01:40`, String(c.default_text));
+  eq("default_text names the meeting's date and the line, never the quote or the title (pb_register is viewer-readable)",
+    c.default_text, "Tier call made in the sales meeting of 2026-10-09 at 00:01:40; the words are on its meeting card.");
   const [d] = rows([vc({ ref: "A2", type: "tier_call", tier: "Gold", key: null, line_from: 10, line_to: 10, quote: "They would only ever be a Gold opportunity" })]);
   eq("no computed tier → flagged and not pre-ticked", [d.status, d.flags, d.default_selected], ["proposed", ["no_computed_tier"], false]);
 }
 {
-  const [r] = rows([vc({ ref: "A2", type: "removal", disposition: "do_not_contact", code: "x_asked", key: null, line_from: 8, line_to: 8 })]);
-  eq("a removal of an agency already off the board → agrees", r.status, "agrees");
+  const [r] = rows([vc({ ref: "A2", type: "removal", disposition: "unqualified", code: "too_small", key: null, line_from: 8, line_to: 8 })]);
+  eq("an unqualified removal of an agency already off the board as unqualified → agrees", [r.status, r.flags], ["agrees", []]);
+  const [any] = rows([vc({ ref: "A2", type: "removal", disposition: null, code: null, key: null, line_from: 8, line_to: 8 })]);
+  eq("'take them off' with no disposition, already off → agrees", any.status, "agrees");
+  const [dnc] = rows([vc({ ref: "A2", type: "removal", disposition: "do_not_contact", code: "x_asked", key: null, line_from: 8, line_to: 8 })]);
+  eq("a do-not-contact over a live UNQUALIFIED removal stays proposed, flagged upgrades_removal, never pre-ticked (rule 7a)",
+    [dnc.status, dnc.flags, dnc.default_selected], ["proposed", ["upgrades_removal"], false]);
+  const [dnc2] = rows([vc({ ref: "A2", type: "removal", disposition: "do_not_contact", code: "x_asked", key: null, line_from: 8, line_to: 8 })],
+    { removals: [{ account_id: "ngc", disposition: "do_not_contact" }] });
+  eq("a do-not-contact over a live do-not-contact → agrees", dnc2.status, "agrees");
+  const [unq] = rows([vc({ ref: "A2", type: "removal", disposition: "unqualified", code: "too_small", key: null, line_from: 8, line_to: 8 })],
+    { removals: [{ account_id: "ngc", disposition: "do_not_contact" }] });
+  eq("an unqualified under a live do-not-contact is covered by the stronger one → agrees", unq.status, "agrees");
+  eq("removalCovers: permission covers fit, never the other way round",
+    [removalCovers("do_not_contact", "unqualified"), removalCovers("unqualified", "do_not_contact"), removalCovers("unqualified", "unqualified"),
+     removalCovers(null, "do_not_contact"), removalCovers("unqualified", null)],
+    [true, false, true, false, true]);
   const [s] = rows([vc({ type: "removal", disposition: "do_not_contact", code: "x_asked", key: null })]);
   eq("a removal is NEVER default_selected", [s.status, s.default_selected], ["proposed", false]);
   eq("a removal carries its code and disposition, no review date", [s.reason_code, s.disposition, s.review_on], ["x_asked", "do_not_contact", null]);
-  check("a removal's text is the quote and the meeting date", s.default_text === `"They have about forty people on staff, call it 40." — sales meeting 2026-10-09`);
+  eq("a removal's text names the meeting's date and line, not the quote", s.default_text, "Removal called for in the sales meeting of 2026-10-09 at 00:01:40; the words are on its meeting card.");
   const [t] = rows([vc({ type: "read", topic: "price", key: null })]);
-  check("a read's text names its topic", t.default_text?.endsWith("(price)") === true);
+  eq("a read's text names its topic, not the quote", t.default_text, "Read on price from the sales meeting of 2026-10-09 at 00:01:40; the words are on its meeting card.");
+  const [o] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })]);
+  for (const x of [o, s, t]) check(`no default_text carries the quote or the meeting's title (${x.kind})`,
+    !String(x.default_text).includes(x.quote) && !String(x.default_text).includes("Sales Standing Connect"));
 }
 {
   const [same] = rows([vc({ ref: "A2", key: "headcount", value: 40, line_from: 8, line_to: 8 })]);
@@ -351,6 +375,14 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
   eq("the fingerprint is stable across reruns", rows([vc({ value: 41 })])[0].fingerprint, a);
   check("it differs across extractor ids", rows([vc({})], { extractor: extractorId("model-y", MEETING_PROMPT_VERSION) })[0].fingerprint !== a);
   check("it differs for the same key on two agencies", rows([vc({ ref: "A2" })])[0].fingerprint !== a);
+  // A re-read may hear the same agency under a different set of spoken forms; a resolved cluster's
+  // claims keep their fingerprint, so a decided claim cannot come back as an open row.
+  const reheard = CLUSTERS.map((cl) => cl.ref === "A1" ? { ...cl, said_as: [...cl.said_as, "another way of saying it"], said_key: cl.said_key + "|another way of saying it" } : cl);
+  eq("…and is the same for a resolved agency heard under other spoken forms", rows([vc({})], { clusters: reheard })[0].fingerprint, a);
+  const unplaced = rows([vc({ ref: "A3", key: "delivery_headcount", value: 12, line_from: 11, line_to: 11 })])[0].fingerprint;
+  const unplacedReheard = rows([vc({ ref: "A3", key: "delivery_headcount", value: 12, line_from: 11, line_to: 11 })],
+    { clusters: CLUSTERS.map((cl) => cl.ref === "A3" ? { ...cl, said_key: cl.said_key + "|other" } : cl) })[0].fingerprint;
+  check("an unplaced name is still keyed by what was said", unplaced !== unplacedReheard);
   check("it differs for another key", rows([vc({ key: "money", value: "present" })])[0].fingerprint !== a);
   check("two reads of one agency do not collide", new Set(rows([vc({ type: "read", topic: "fit", line_from: 2 }), vc({ type: "read", topic: "fit", line_from: 3 })]).map((r) => r.fingerprint)).size === 2);
   check("it is eight hex characters", /^[0-9a-f]{8}$/.test(a));
@@ -371,7 +403,7 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
   eq("one a person placed is", defaultSelected({ ...base, mention_state: "suggested", matched_on: "person" }), true);
   eq("no account, no tick", defaultSelected({ ...base, account_id: null }), false);
   for (const s of ["agrees", "not_proposed", "approved", "rejected", "superseded"]) eq(`status ${s} is not pre-ticked`, defaultSelected({ ...base, status: s }), false);
-  eq("defaultText of a fact is null", defaultText({ kind: "fact", quote: "x", quote_at: "00:00:01" }, { title: "T", held_on: "2026-10-09" }), null);
+  eq("defaultText of a fact is null", defaultText({ kind: "fact", quote_at: "00:00:01" }, { held_on: "2026-10-09" }), null);
 }
 
 /* ------------------------------------------------------------------ *

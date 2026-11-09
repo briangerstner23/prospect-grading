@@ -754,7 +754,9 @@ const MEETING_KIND_ORDER = ["removal", "override", "fact", "read"];
 /** Mirrors of ingest/meeting_claims.ts DEFAULT_OVERRIDE_CODE, HISTORIC_DAYS and BLOCKING_FLAGS. page_pure_test pins all three. */
 const MEETING_DEFAULT_OVERRIDE_CODE = "relationship_known";
 const MEETING_HISTORIC_DAYS = 21;
-const MEETING_BLOCKING_FLAGS = ["shared_segment", "question", "hypothetical", "joke", "historic", "conflicts_with_person", "no_computed_tier"];
+const MEETING_BLOCKING_FLAGS = ["shared_segment", "question", "hypothetical", "joke", "historic", "conflicts_with_person", "no_computed_tier", "contradicts_live_override"];
+/** meeting_claims.PERSON_SOURCES, mirrored: a value one of these holds as evidence is a person's. */
+const MEETING_PERSON_SOURCES = ["rater", "sales_meeting"];
 
 /**
  * keysFor('sales_meeting'): the only keys a meeting fact may carry and the only values each may
@@ -807,6 +809,76 @@ function scrubAddresses(text) {
   return String(text).replace(/[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[A-Za-z]{2,}/g, "[address]");
 }
 
+/**
+ * meeting_claims.defaultText, mirrored: where the reason was said, never the quote or the meeting's
+ * title. It lands in pb_register.text, which every signed-in lane reads; the words stay on the card.
+ */
+function meetingDefaultText(row) {
+  if (!row || typeof row !== "object") return null;
+  const at = `the sales meeting of ${row.held_on} at ${row.quote_at}`;
+  if (row.kind === "override") return `Tier call made in ${at}; the words are on its meeting card.`;
+  if (row.kind === "removal") return `Removal called for in ${at}; the words are on its meeting card.`;
+  if (row.kind === "read") return `Read on ${row.topic ?? "other"} from ${at}; the words are on its meeting card.`;
+  return null;
+}
+
+/** meeting_claims' sameFactValue, mirrored: lists compare in any order, everything else as JSON. */
+function meetingSameValue(a, b) {
+  const j = (v) => { try { return JSON.stringify(v ?? null); } catch { return String(v); } };
+  if (Array.isArray(a) && Array.isArray(b)) return j(a.map(String).sort()) === j(b.map(String).sort());
+  return a === b || j(a) === j(b);
+}
+
+/**
+ * The flags that describe the BOOK rather than the meeting, re-derived from what the screen holds
+ * now. A row is written with snapshots of the book at read time, and a row nobody had placed was
+ * written with none at all, so its stored flags can be stale or missing — and pb_decide_meeting_card
+ * re-derives them anyway, refusing the whole card when they disagree (a person's value with no
+ * overrule, a tier call with no computed tier). `live` is { read, facts }: the account's
+ * pb_current_reads row (null when it has none) and its pb_current_facts rows. Either left undefined
+ * keeps the stored flags it would have recomputed. The meeting's own flags (shared_segment,
+ * historic, …) and upgrades_removal (the screen holds no removals) are kept as written.
+ */
+function meetingLiveFlags(row, live) {
+  const stored = Array.isArray(row?.flags) ? row.flags.slice() : [];
+  if (!row || row.status !== "proposed" || typeof row.account_id !== "string" || !row.account_id || !live || typeof live !== "object") return stored;
+  let out = stored;
+  if (row.kind === "fact" && Array.isArray(live.facts)) {
+    out = out.filter((f) => f !== "conflicts_with_person");
+    const held = live.facts.find((f) => f && f.account_id === row.account_id && f.key === row.key);
+    if (held && held.evidence_label === "evidence" && MEETING_PERSON_SOURCES.includes(held.source) && !meetingSameValue(held.value, row.value)) {
+      out.push("conflicts_with_person");
+    }
+  }
+  if (row.kind === "override" && live.read !== undefined) {
+    out = out.filter((f) => f !== "no_computed_tier" && f !== "contradicts_live_override");
+    const comp = live.read?.computed_tier ?? null;
+    if (!comp) out.push("no_computed_tier");
+    const shown = live.read?.effective_tier ?? comp;
+    const t = String(row.tier ?? "").toLowerCase();
+    if (comp && t && t === String(comp).toLowerCase() && t !== String(shown ?? "").toLowerCase()) out.push("contradicts_live_override");
+  }
+  return [...new Set(out)].sort();
+}
+
+/**
+ * A read's tier as the rules print it everywhere (rule 10): the anticipated tier with its
+ * confidence, and UNVALIDATED (PRO-8) while the rubric says so. The text of the roster's tier chip
+ * plus the label the card header prints beside it, for places that have room for one line only.
+ */
+function readTierWords(read) {
+  if (!read) return "not yet scored";
+  const sc = read.scorecard ?? {};
+  const unval = sc.validation === "UNVALIDATED" ? " · UNVALIDATED (PRO-8)" : "";
+  if (sc.effective_tier) {
+    const conf = sc.confidence_grade
+      ? `confidence ${sc.confidence_grade}${sc.confidence_override ? " (overridden)" : ""}`
+      : (sc.fit?.confidence ?? "confidence not set");
+    return `anticipated ${sc.effective_tier} · ${conf}${unval}`;
+  }
+  return (sc.status === "Unclassified" ? "no anticipated tier · Unclassified" : "no anticipated tier") + unval;
+}
+
 /** meeting_claims.defaultSelected, mirrored. A removal is never pre-ticked. */
 function meetingDefaultTick(row) {
   if (!row || (row.status !== undefined && row.status !== "proposed")) return false;
@@ -819,14 +891,15 @@ function meetingDefaultTick(row) {
 }
 
 /**
- * Does a row start ticked on screen? The server's default_selected, written when the meeting was
- * read — except for a row a person has since placed ('Who is this?'), which was written unplaced
- * and so unticked; the same rule decides it now. Never a removal, never anything not proposed.
+ * Does a row start ticked on screen? The same rule the reader used for default_selected, applied
+ * NOW: to the row as it stands (a name a person has since placed) and to its flags as
+ * meetingLiveFlags re-derived them (a person who recorded a value since, a tier the engine has since
+ * computed). The stored default_selected was right when it was written and can be stale; a row that
+ * would now overrule a person is never ticked for you. Never a removal, never anything not proposed.
  */
 function meetingStartsTicked(row) {
   if (!row || row.status !== "proposed" || row.kind === "removal") return false;
-  if (row.default_selected === true) return true;
-  return row.matched_on === "person" && meetingDefaultTick(row);
+  return meetingDefaultTick(row);
 }
 
 /**
@@ -951,6 +1024,11 @@ function meetingRowWords(row, ctx) {
     let s = `Tier → ${tierWords(row.tier)} (engine: ${engine ? tierWords(engine) : "no anticipated tier yet"})${until}`;
     const moved = tiersMoved(row.tier, engine, c.tiers);
     if (moved !== null && moved > 1) s += ` · moves ${moved} tiers; the board will flag it`;
+    if ((row.flags ?? []).includes("contradicts_live_override")) {
+      const shown = c.effectiveTier !== undefined ? c.effectiveTier : row.effective_tier;
+      const lapses = c.liveOverrideUntil ? ` until ${dayMonthWords(c.liveOverrideUntil)}` : "";
+      s += ` · the board shows ${tierWords(shown)} by a live override${lapses}; approving ends it`;
+    }
     return s;
   }
   if (row.kind === "removal") {
@@ -963,6 +1041,7 @@ function meetingRowWords(row, ctx) {
     if (disp) parts.push(label ? label.charAt(0).toLowerCase() + label.slice(1) : "choose a reason");
     if (c.reviewOn) parts.push(`a person looks again on ${dayMonthWords(c.reviewOn)}`);
     parts.push("never expires");
+    if ((row.flags ?? []).includes("upgrades_removal")) parts.push("already off the board as unqualified; this records the stronger call");
     return parts.join(" · ");
   }
   if (row.kind === "fact") {
@@ -989,6 +1068,8 @@ function meetingFlagWords(flag) {
     case "historic": return `said more than ${MEETING_HISTORIC_DAYS} days before it was read`;
     case "conflicts_with_person": return "a person recorded something else";
     case "no_computed_tier": return "no computed tier yet — the engine refuses an override until there is one";
+    case "contradicts_live_override": return "the engine's own tier, while a live override shows another";
+    case "upgrades_removal": return "off the board only as unqualified; the team said do not contact";
     default: return String(flag ?? "").replace(/_/g, " ");
   }
 }
@@ -1009,7 +1090,8 @@ function overrideDefaults(row, spec, today) {
   const days = ov?.expiry_default_days;
   const expiry_days = typeof days === "number" && Number.isFinite(days) && days > 0 ? days : null;
   const expires_on = expiry_days === null ? null : addDaysIso(today, expiry_days);
-  const text = typeof row?.default_text === "string" && row.default_text.trim() ? row.default_text : row?.quote ? `"${row.quote}"` : "";
+  // Never the quote: this text lands in pb_register, which every signed-in lane reads (§65).
+  const text = typeof row?.default_text === "string" && row.default_text.trim() ? row.default_text : meetingDefaultText(row) ?? "";
   return { codes, reason_code, expiry_days, expires_on, text };
 }
 
@@ -1126,6 +1208,7 @@ function cardProblems(rows, choice, lane) {
     if (r.kind === "override" && lane === "owner" && c.ticked === true) {
       if (!(typeof e.text === "string" && e.text.trim())) out.push("The tier call needs a written reason (rule 7).");
       if (!e.reason_code) out.push("The tier call needs a reason code.");
+      if ((r.flags ?? []).includes("no_computed_tier")) out.push("The tier call cannot apply yet: the engine has no computed tier for this agency. Untick it.");
     }
     if (r.kind === "fact" && c.ticked === true && e.invalid === true) out.push(`${r.key}: that value does not fit the key.`);
   }
@@ -2943,16 +3026,16 @@ function speakerName(label) {
   return scrubAddresses(s?.name || label || "a speaker");
 }
 function tierWordsFor(id) {
-  const read = state.reads.get(id);
-  const t = read?.scorecard?.effective_tier;
-  return t ? `anticipated ${t}` : read ? "no anticipated tier" : "not yet scored";
+  // Rule 10: the anticipated tier with its confidence, and UNVALIDATED (PRO-8) while it is.
+  return readTierWords(state.reads.get(id) ?? null);
 }
 function basisChipFor(m) {
   if (!m) return null;
   return chip(BASIS_WORDS[m] ?? String(m), m === "person" || m === "learned" ? "c-good" : m === "name" || m === "alias" ? "c-info" : "c-warn");
 }
 function flagChipFor(f) {
-  const tone = f === "conflicts_with_person" || f === "no_computed_tier" ? "c-bad" : f === "shared_segment" || f === "historic" ? "c-warn" : "c-info";
+  const tone = ["conflicts_with_person", "no_computed_tier", "contradicts_live_override", "upgrades_removal"].includes(f) ? "c-bad"
+    : f === "shared_segment" || f === "historic" ? "c-warn" : "c-info";
   return chip(meetingFlagWords(f), tone);
 }
 const quoted = (said) => (said ?? []).map((s) => `“${scrubAddresses(s)}”`).join(" / ");
@@ -2969,7 +3052,8 @@ function choiceFor(r) {
       // The claim's pair is shown only when it is an active pb_removal_reasons pair, and even then it
       // is a suggestion: the owner chooses (a disposition, or [Remove now]) or it is not a removal.
       const pair = removalPair(S.reasons, r.disposition, r.reason_code);
-      c.edit = { disposition: pair ? r.disposition : null, reason_code: pair ? r.reason_code : null, review_on: null, text: r.default_text || `"${r.quote}"` };
+      // Never the quote by default: the reason lands in pb_register, which every signed-in lane reads.
+      c.edit = { disposition: pair ? r.disposition : null, reason_code: pair ? r.reason_code : null, review_on: null, text: r.default_text || meetingDefaultText(r) || "" };
     } else if (r.kind === "fact") {
       c.edit = { value: r.value, changed: false, invalid: false };
     }
@@ -3019,6 +3103,23 @@ async function openMeetings(rid) {
     meeting = m.data ?? null;
     rows = p.data ?? [];
     err = m.error || p.error || null;
+    // The book as it stands NOW for the open rows' agencies: a row carries snapshots of the book at
+    // read time (none at all if nobody had placed it), and the decide function re-derives them.
+    const factKeys = [...new Set(rows.filter((r) => r.status === "proposed" && r.kind === "fact" && r.account_id).map((r) => r.key))];
+    const factAccts = [...new Set(rows.filter((r) => r.status === "proposed" && r.kind === "fact" && r.account_id).map((r) => r.account_id))];
+    let facts;
+    if (factAccts.length) {
+      const f = await db.from("pb_current_facts").select("account_id,key,value,evidence_label,source").in("account_id", factAccts).in("key", factKeys);
+      if (window.location.hash !== startHash) return;
+      facts = f.error ? undefined : (f.data ?? []);
+    }
+    rows = rows.map((r) => r.status !== "proposed" || !r.account_id ? r : {
+      ...r,
+      flags: meetingLiveFlags(r, {
+        read: state.reads.has(r.account_id) ? state.reads.get(r.account_id) : (state.reads.size ? null : undefined),
+        facts: facts ? facts.filter((x) => x.account_id === r.account_id) : undefined,
+      }),
+    });
     // A bare #meetings names the meeting it opened, so a reload or a shared link lands on the same one.
     if (!rid && meeting) history.replaceState(null, "", window.location.pathname + window.location.search + meetingHash(chosen));
   }
@@ -3339,6 +3440,8 @@ function meetingRow(r, card) {
     what.textContent = meetingRowWords(r, {
       tiers: tierOrder(),
       engineTier: live ? (live.computed_tier ?? live.scorecard?.fit?.computed_tier ?? null) : undefined,
+      effectiveTier: live ? (live.effective_tier ?? live.scorecard?.effective_tier ?? null) : undefined,
+      liveOverrideUntil: live?.scorecard?.override?.expires_at ? String(live.scorecard.override.expires_at).slice(0, 10) : null,
       expiresOn: r.kind === "override" ? c.edit.expires_on ?? null : undefined,
       disposition: r.kind === "removal" ? c.edit.disposition ?? null : undefined,
       code: r.kind === "removal" ? c.edit.reason_code ?? null : undefined,
@@ -3405,7 +3508,7 @@ function rowControls(r, c, refresh, card) {
     return h("div", { class: "controls" },
       field("Reason code", code, "From the active rubric."),
       field("Expires", exp, d.expiry_days ? `Default from the rubric: ${d.expiry_days} days. Then it lapses and the engine's tier returns — a forced re-look.` : "The rubric sets no default; the database applies its own."),
-      h("div", { class: "wide" }, field("Written reason", text, "Required (rule 7). It stays in the signed-in register; the public dossier strips it.")));
+      h("div", { class: "wide" }, field("Written reason", text, "Required (rule 7). Every signed-in lane reads it in the register and the public dossier strips it, so it names where the call was made, not the words; type them only if they belong there.")));
   }
   if (r.kind === "removal") {
     if (!owner) return h("div", { class: "sub" }, "Taking an agency off the board is the owner's (rule 7a). Approving this card leaves it waiting for the owner; Reject card rejects it.");
@@ -3453,7 +3556,7 @@ function rowControls(r, c, refresh, card) {
       h("div", { class: "wide inline" }, ...dispBtns),
       field("Reason", code, "From pb_removal_reasons, filtered to the disposition."),
       review,
-      h("div", { class: "wide" }, field("Written reason", text, "Required. There is no expiry: a removal stands until somebody reinstates it from Off the board.")),
+      h("div", { class: "wide" }, field("Written reason", text, "Required. There is no expiry: a removal stands until somebody reinstates it from Off the board. Every signed-in lane reads it, so it names where the call was made, not the words.")),
       h("div", { class: "wide sub" }, c.chosen
         ? "Chosen: approving this card (A) removes them too, or press the button now."
         : "Not decided yet: approving this card (A) rejects the removal unless you choose do not contact or unqualified here."),

@@ -433,7 +433,7 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
     extractor: "meeting@v1+model-x", as_of: "2026-10-10", clusters: cl, claims,
     facts: [{ account_id: "acc-1", key: "headcount", value: 40, evidence_label: "evidence", source: "rater" }],
     reads: [{ account_id: "acc-1", computed_tier: "Gold", effective_tier: "Gold" }],
-    removed: ["acc-1"], overrideCodes: ["data_wrong", "relationship_known", "timing_known", "other"],
+    removals: [{ account_id: "acc-1", disposition: "unqualified" }], overrideCodes: ["data_wrong", "relationship_known", "timing_known", "other"],
   });
   check("proposalRows was exercised", rows.length > 500, String(rows.length));
   const values = (k: keyof ProposalRow) => rows.map((r) => r[k]).filter((v): v is string => typeof v === "string");

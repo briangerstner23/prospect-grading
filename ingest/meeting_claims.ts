@@ -593,7 +593,23 @@ export const PROPOSAL_DB_COLUMNS: readonly string[] = [
 /** Any of these on a row means a person must tick it deliberately. */
 export const BLOCKING_FLAGS: readonly string[] = [
   "shared_segment", "question", "hypothetical", "joke", "historic", "conflicts_with_person", "no_computed_tier",
+  "contradicts_live_override",
 ];
+
+/**
+ * Does a removal already on the board say what the team said, or something stronger? Rule 7a's two
+ * dispositions are not equal: `do_not_contact` is about permission and takes no review date;
+ * `unqualified` is about fit and may carry one, which queues a person to look again. So a live
+ * do-not-contact covers anything the meeting says, and a live unqualified covers an unqualified (or
+ * a "take them off" with no disposition) — but NOT a do-not-contact. Counting that one as "agrees"
+ * would lose the team's permission call for good, and when the review date came due a person would
+ * be asked to reconsider an agency the team said not to contact.
+ */
+export function removalCovers(live: string | null, said: string | null | undefined): boolean {
+  if (said === null || said === undefined || said === "") return true;
+  if (live === said) return true;
+  return live === "do_not_contact";
+}
 
 /**
  * Does a row start ticked? Only when it is a proposal, its mention is resolved (or a person placed
@@ -620,18 +636,23 @@ export function defaultSelected(row: {
 }
 
 /**
- * The prefilled, editable written reason. A tier call's carries the quote, the meeting's title,
- * its date and the line's timestamp — the team's real reason, so rule 7 is not weakened. A fact
- * has none: its pb_facts note is written by the decide function and never carries a quote.
+ * The prefilled, editable written reason, which lands in pb_register.text. It names WHERE the
+ * reason was said — the meeting's date and the line's timestamp — and never carries the quote or the
+ * meeting's title. pb_register is readable by every signed-in address (the viewer lane included),
+ * and an override's text is copied into pb_reads.scorecard.override.reason; the team's words are
+ * owner and rater only, like the four meeting tables (DECISIONS §65). The quote stays on the
+ * proposal, which the register row points at through payload.proposal_id, and the review screen
+ * shows it from there. A person who wants the words in the reason types them, on purpose. A fact
+ * has none: its pb_facts note is written by the decide function and never carries a quote either.
  */
 export function defaultText(
-  row: { kind: string; quote: string; quote_at: string; topic?: string | null },
-  meeting: { title: string | null; held_on: string },
+  row: { kind: string; quote_at: string; topic?: string | null },
+  meeting: { held_on: string },
 ): string | null {
-  const q = `"${row.quote}"`;
-  if (row.kind === "override") return `${q} — ${meeting.title ?? "sales meeting"}, ${meeting.held_on} ${row.quote_at}`;
-  if (row.kind === "removal") return `${q} — sales meeting ${meeting.held_on}`;
-  if (row.kind === "read") return `${q} — sales meeting ${meeting.held_on} (${row.topic ?? "other"})`;
+  const at = `the sales meeting of ${meeting.held_on} at ${row.quote_at}`;
+  if (row.kind === "override") return `Tier call made in ${at}; the words are on its meeting card.`;
+  if (row.kind === "removal") return `Removal called for in ${at}; the words are on its meeting card.`;
+  if (row.kind === "read") return `Read on ${row.topic ?? "other"} from ${at}; the words are on its meeting card.`;
   return null;
 }
 
@@ -662,6 +683,12 @@ export interface SnapshotRead {
   effective_tier: string | null;
 }
 
+/** A pb_removals row for a resolved account: who is off the board, and on which disposition. */
+export interface SnapshotRemoval {
+  account_id: string;
+  disposition: string | null;
+}
+
 export interface ProposalInput {
   meeting: { recording_id: string; title: string | null; held_at: string | null };
   /** extractorId(model, MEETING_PROMPT_VERSION): 'meeting@v1+<model>'. */
@@ -675,8 +702,8 @@ export interface ProposalInput {
   lines?: readonly TranscriptLine[];
   facts?: readonly SnapshotFact[];
   reads?: readonly SnapshotRead[];
-  /** Account ids pb_removals holds. */
-  removed?: readonly string[];
+  /** The pb_removals rows of the resolved accounts (the LATEST removal per account, with its disposition). */
+  removals?: readonly SnapshotRemoval[];
   /** The active rubric's spec.override.reason_codes. */
   overrideCodes: readonly string[];
 }
@@ -716,17 +743,25 @@ function daysBefore(earlier: string, later: string): number {
 /**
  * Verified claims → pb_meeting_proposals rows. For each claim of a readable cluster:
  *
- *   status    'not_proposed' for a hypothetical, question or joke; 'agrees' when the book already
- *             says it — a tier equal to the effective or the computed tier, a removal of an agency
- *             already off the board, a fact equal to the value a PERSON holds; else 'proposed';
+ *   status    'not_proposed' for a hypothetical, question or joke; 'agrees' when the board already
+ *             says it — a tier equal to the EFFECTIVE tier (the one the board shows), a removal the
+ *             live removal covers (removalCovers), a fact equal to the value a PERSON holds; else
+ *             'proposed';
  *   flags     the verifier's, plus 'historic' (held more than HISTORIC_DAYS before as_of),
- *             'conflicts_with_person' (a fact that disagrees with a person's value) and
- *             'no_computed_tier' (a tier call the engine would refuse);
+ *             'conflicts_with_person' (a fact that disagrees with a person's value),
+ *             'no_computed_tier' (a tier call the engine would refuse), 'contradicts_live_override'
+ *             (the team's tier is the computed one while a live override shows another: the team
+ *             disagrees with the override, which is not agreeing with the board) and
+ *             'upgrades_removal' (a do-not-contact said of an agency the board holds off only as
+ *             unqualified);
  *   display   current_value / current_source, engine_tier / effective_tier — snapshots only;
  *   defaults  default_selected (defaultSelected), default_text (defaultText), and an override's
  *             reason_code: the model's if the rubric lists it, else DEFAULT_OVERRIDE_CODE;
- *   identity  a fingerprint over (source, recording, extractor, said_key, kind, key) — stable
- *             across reruns, new under a new extractor, distinct per agency.
+ *   identity  a fingerprint over (source, recording, extractor, WHO, kind, key), where WHO is the
+ *             account for a resolved cluster and the said_key only for a cluster nobody has placed —
+ *             stable across reruns (a re-read's pass 1 may hear a different set of spoken forms for
+ *             the same agency, and a fingerprint over them would bring back claims a person already
+ *             decided), new under a new extractor, distinct per agency.
  *
  * Rows of a mention that is not resolved carry account_id null and no snapshot; they wait for a
  * person to place them, and the decide function refuses them until then.
@@ -737,7 +772,8 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
   const heldKey = timeKey(input.meeting.held_at);
   const held_on = heldKey !== "" ? heldKey.slice(0, 10) : input.as_of.slice(0, 10);
   const historic = daysBefore(held_on, input.as_of) > HISTORIC_DAYS;
-  const removed = new Set(input.removed ?? []);
+  const liveRemoval = new Map<string, string | null>();
+  for (const x of input.removals ?? []) if (x && typeof x.account_id === "string") liveRemoval.set(x.account_id, x.disposition ?? null);
   const codes = input.overrideCodes ?? [];
   const fallbackCode = codes.includes(DEFAULT_OVERRIDE_CODE) ? DEFAULT_OVERRIDE_CODE : codes.includes("other") ? "other" : codes[0] ?? null;
 
@@ -769,12 +805,25 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
       }
     } else if (kind === "override" && account !== null) {
       const t = (c.tier ?? "").toLowerCase();
-      const eff = (read?.effective_tier ?? "").toLowerCase();
       const comp = (read?.computed_tier ?? "").toLowerCase();
-      if (status === "proposed" && (t === eff || t === comp)) status = "agrees";
+      // The board shows the effective tier; with no override it is the computed one.
+      const shown = (read?.effective_tier ?? read?.computed_tier ?? "").toLowerCase();
+      if (t !== "" && t === shown) {
+        if (status === "proposed") status = "agrees";
+      } else if (t !== "" && t === comp) {
+        // The team named the engine's tier while a live override shows another: they disagree
+        // with the override. The owner sees it, and approving it ends the override (rule 7).
+        flags.add("contradicts_live_override");
+      }
       if (!read || !read.computed_tier) flags.add("no_computed_tier");
     } else if (kind === "removal" && account !== null) {
-      if (status === "proposed" && removed.has(account)) status = "agrees";
+      if (liveRemoval.has(account)) {
+        if (removalCovers(liveRemoval.get(account) ?? null, c.disposition)) {
+          if (status === "proposed") status = "agrees";
+        } else {
+          flags.add("upgrades_removal");
+        }
+      }
     }
 
     const discriminator = kind === "fact" ? String(c.key) : kind === "read" ? `${c.topic}|${c.line_from}` : "";
@@ -812,11 +861,12 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
       effective_tier: read?.effective_tier ?? null,
       default_text: null,
       extractor: input.extractor,
-      fingerprint: noteFingerprint([MEETING_SOURCE, input.meeting.recording_id, input.extractor, cl.said_key, kind, discriminator]),
+      fingerprint: noteFingerprint([MEETING_SOURCE, input.meeting.recording_id, input.extractor,
+        account !== null ? `acct:${account}` : `said:${cl.said_key}`, kind, discriminator]),
       status,
     };
     row.default_selected = defaultSelected(row);
-    row.default_text = defaultText(row, { title: input.meeting.title, held_on });
+    row.default_text = defaultText(row, { held_on });
     rows.push(row);
   }
   return rows;

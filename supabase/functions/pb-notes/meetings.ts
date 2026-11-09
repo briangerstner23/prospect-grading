@@ -83,7 +83,7 @@ import {
   segmentPrompt,
   verifyMeetingClaims,
 } from "../_shared/ingest/meeting_claims.ts";
-import type { ProposalRow, RemovalReason, SnapshotFact, SnapshotRead, VerifiedClaim } from "../_shared/ingest/meeting_claims.ts";
+import type { ProposalRow, RemovalReason, SnapshotFact, SnapshotRead, SnapshotRemoval, VerifiedClaim } from "../_shared/ingest/meeting_claims.ts";
 import { callExtractor, ExtractorReplyError } from "./extractor.ts";
 import type { ExtractorResult } from "./extractor.ts";
 import {
@@ -673,13 +673,13 @@ async function readMeeting(
 
   let facts: SnapshotFact[] = [];
   let reads: SnapshotRead[] = [];
-  let removed: string[] = [];
+  let removals: SnapshotRemoval[] = [];
   const accounts = [...new Set(clusters.filter((c) => c.state === "resolved" && c.account_id).map((c) => String(c.account_id)))];
   if (plan.batches.length > 0 && accounts.length > 0) {
     const snap = await snapshot(db, accounts);
     facts = snap.facts;
     reads = snap.reads;
-    removed = snap.removed;
+    removals = snap.removals;
   }
 
   const system = claimsPrompt({ tiers: vocab.tiers, overrideCodes: vocab.overrideCodes, removalReasons: reasons });
@@ -752,7 +752,7 @@ async function readMeeting(
       lines: tl.lines,
       facts,
       reads,
-      removed,
+      removals,
       overrideCodes: vocab.overrideCodes,
     });
     addCounters(here, proposalCounts(rows));
@@ -861,13 +861,14 @@ async function rosterIndex(db: DbLike, people: string[]) {
 /**
  * What the book says now about the agencies the meeting resolved: the current facts (rule 9's
  * winners, as pb-score reads them), the current computed and effective tiers, and who is off the
- * board. Display snapshots and status hints only — the decide function re-derives all of it.
+ * board ON WHICH DISPOSITION (a live unqualified removal does not cover a do-not-contact; rule 7a).
+ * Display snapshots and status hints only — the decide function re-derives all of it.
  */
-async function snapshot(db: DbLike, accounts: string[]): Promise<{ facts: SnapshotFact[]; reads: SnapshotRead[]; removed: string[] }> {
+async function snapshot(db: DbLike, accounts: string[]): Promise<{ facts: SnapshotFact[]; reads: SnapshotRead[]; removals: SnapshotRemoval[] }> {
   const [f, r, x] = await Promise.all([
     selectIn(db, "pb_current_facts", "account_id", accounts, "id,account_id,key,value,evidence_label,source", 100, "id"),
     selectIn(db, "pb_current_reads", "account_id", accounts, "account_id,computed_tier,effective_tier", 100, "account_id"),
-    selectIn(db, "pb_removals", "account_id", accounts, "account_id", 100, "account_id"),
+    selectIn(db, "pb_removals", "account_id", accounts, "account_id,disposition", 100, "account_id"),
   ]);
   return {
     facts: f.map((row) => ({
@@ -882,6 +883,9 @@ async function snapshot(db: DbLike, accounts: string[]): Promise<{ facts: Snapsh
       computed_tier: (row.computed_tier as string | null) ?? null,
       effective_tier: (row.effective_tier as string | null) ?? null,
     })),
-    removed: [...new Set(x.map((row) => String(row.account_id)))],
+    removals: x.map((row) => ({
+      account_id: String(row.account_id),
+      disposition: typeof row.disposition === "string" ? row.disposition : null,
+    })),
   };
 }
