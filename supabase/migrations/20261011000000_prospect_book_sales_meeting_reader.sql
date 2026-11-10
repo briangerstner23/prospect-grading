@@ -22,6 +22,8 @@
 --   six SECURITY DEFINER functions: pb_decide_meeting_card, pb_assign_meeting_mention,
 --   pb_meeting_include, pb_meeting_title_rule, pb_dismiss_meeting (authenticated) and
 --   pb_meeting_supersede (service role).
+--   pb_meeting_follow_merge, a trigger on pb_accounts: a merged record's proposals and learned
+--   names go with it to the surviving account.
 --
 -- WHAT IT CHANGES, each rebuilt from its LIVE body, never from a file (§50a, §53a). The bodies
 -- below were read back on 10 Oct 2026 with pg_get_functiondef / pg_get_viewdef; section 0 refuses
@@ -32,9 +34,12 @@
 --                      plus two count-only blocks: meeting_privacy (a live canary CI runs every 6 h
 --                      over the dossiers of the 20 newest-approved accounts) and meetings_work.
 --   pb_dossier         three filters: no sales_meeting fact, no origin-tagged register row, and the
---                      trace's override.reason and approver stripped once any meeting-origin override
+--                      trace's override.reason and approver (override.approver, and the name in the
+--                      engine's "Override applied" note) stripped once any meeting-origin override
 --                      exists for the account. linkedin_url, the removal filter and the address scrub
 --                      survive and are asserted below.
+--   pb_removed, pb_removal  a WLIQ address or no rows, as pb_register's own read policy says: a
+--                      removal's written reason may carry words a person typed from a meeting.
 --
 -- WHY NOTHING IS PARKED IN pb_fact_candidates. The lanes view's `agree` CTE counts quoted proposed
 -- candidates of any kind, so a parked meeting judgement would corroborate a matching machine claim
@@ -62,9 +67,10 @@
 -- create-or-replace and is asserted in section 11 rather than restated.
 --
 -- The sentinel (section 12) inserts a synthetic account, meeting, approved proposal, sales_meeting
--- fact and origin-tagged override and note, renders pb_dossier() for it, checks the live canary in
--- pb_reconcile_state() both ways (clean, then a deliberate leak it must see), and rolls all of it
--- back. A version that leaks cannot apply.
+-- fact, origin-tagged override and note, and a read whose trace carries the override's reason and
+-- approver, renders pb_dossier() for it, checks the live canary in pb_reconcile_state() both ways
+-- (clean, then a deliberate leak it must see), and rolls all of it back. A version that leaks
+-- cannot apply.
 
 -- 0 · the live bodies this file was built from ---------------------------------------------------
 do $$
@@ -372,7 +378,15 @@ end $$;
 -- and nothing more for a tier call or a removal. Newer = the later meeting (held_at, then
 -- recording_id); inside one meeting, the later line — except reads, which never supersede a read
 -- of their own meeting (up to three per agency is the point). Only pairs touching p_recording_id
--- are considered. Service role (pb-notes, after it writes a meeting) and the two decision functions.
+-- are considered. Service role (pb-notes, after it writes a meeting), the decision functions and
+-- the merge trigger.
+--
+-- Supersession is a function of the rows as they stand, so it is re-derived, never only added to.
+-- A superseded row names ONE row that beat it; when that row has since been rejected, sent back to
+-- 'Who is this?', placed on another agency or merged away, the older word is the newest again. It
+-- goes back to 'proposed' first — nothing decides a superseded row, and a re-read skips its
+-- fingerprint, so left alone it would be lost for good — and the pass below then runs over its own
+-- meeting too, so a third, still-valid newer word supersedes it again. Returns the rows superseded.
 create or replace function public.pb_meeting_supersede(p_recording_id text)
 returns integer
 language plpgsql
@@ -380,38 +394,60 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_n integer := 0;
+  v_n    integer := 0;
+  v_k    integer;
+  v_recs text[];
+  v_r    text;
 begin
-  with ranked as (
-    select p.id, p.recording_id, p.account_id, p.kind, p.status, p.line_from,
-           case p.kind when 'fact' then coalesce(p.key, '') when 'read' then coalesce(p.topic, '') else '' end as disc,
-           coalesce(m.held_at, m.created_at) as held
-      from public.pb_meeting_proposals p
-      join public.pb_meetings m on m.recording_id = p.recording_id
-     where p.account_id is not null
-       and p.account_id in (select q.account_id from public.pb_meeting_proposals q
-                             where q.recording_id = p_recording_id and q.account_id is not null)
-  ),
-  pick as (
-    select o.id as old_id,
-           (select n.id
-              from ranked n
-             where n.account_id = o.account_id and n.kind = o.kind and n.disc = o.disc
-               and n.id <> o.id
-               and n.status in ('proposed', 'approved', 'agrees')
-               and (n.recording_id = p_recording_id or o.recording_id = p_recording_id)
-               and not (n.kind = 'read' and n.recording_id = o.recording_id)
-               and (n.held, n.recording_id, n.line_from, n.id::text) > (o.held, o.recording_id, o.line_from, o.id::text)
-             order by n.held desc, n.recording_id desc, n.line_from desc, n.id::text desc
-             limit 1) as new_id
-      from ranked o
-     where o.status = 'proposed'
+  with back as (
+    update public.pb_meeting_proposals t
+       set status = 'proposed', superseded_by = null
+     where t.status = 'superseded'
+       and (t.recording_id = p_recording_id
+            or t.superseded_by in (select s.id from public.pb_meeting_proposals s
+                                    where s.recording_id = p_recording_id))
+       and not exists (select 1 from public.pb_meeting_proposals s
+                        where s.id = t.superseded_by
+                          and s.account_id = t.account_id
+                          and s.status in ('proposed', 'approved', 'agrees'))
+    returning t.recording_id
   )
-  update public.pb_meeting_proposals t
-     set status = 'superseded', superseded_by = pick.new_id
-    from pick
-   where t.id = pick.old_id and pick.new_id is not null and t.status = 'proposed';
-  get diagnostics v_n = row_count;
+  select array_agg(distinct b.recording_id) into v_recs from back b;
+  v_recs := array[p_recording_id] || array_remove(coalesce(v_recs, '{}'::text[]), p_recording_id);
+
+  foreach v_r in array v_recs loop
+    with ranked as (
+      select p.id, p.recording_id, p.account_id, p.kind, p.status, p.line_from,
+             case p.kind when 'fact' then coalesce(p.key, '') when 'read' then coalesce(p.topic, '') else '' end as disc,
+             coalesce(m.held_at, m.created_at) as held
+        from public.pb_meeting_proposals p
+        join public.pb_meetings m on m.recording_id = p.recording_id
+       where p.account_id is not null
+         and p.account_id in (select q.account_id from public.pb_meeting_proposals q
+                               where q.recording_id = v_r and q.account_id is not null)
+    ),
+    pick as (
+      select o.id as old_id,
+             (select n.id
+                from ranked n
+               where n.account_id = o.account_id and n.kind = o.kind and n.disc = o.disc
+                 and n.id <> o.id
+                 and n.status in ('proposed', 'approved', 'agrees')
+                 and (n.recording_id = v_r or o.recording_id = v_r)
+                 and not (n.kind = 'read' and n.recording_id = o.recording_id)
+                 and (n.held, n.recording_id, n.line_from, n.id::text) > (o.held, o.recording_id, o.line_from, o.id::text)
+               order by n.held desc, n.recording_id desc, n.line_from desc, n.id::text desc
+               limit 1) as new_id
+        from ranked o
+       where o.status = 'proposed'
+    )
+    update public.pb_meeting_proposals t
+       set status = 'superseded', superseded_by = pick.new_id
+      from pick
+     where t.id = pick.old_id and pick.new_id is not null and t.status = 'proposed';
+    get diagnostics v_k = row_count;
+    v_n := v_n + v_k;
+  end loop;
   return v_n;
 end $$;
 
@@ -420,9 +456,10 @@ end $$;
 -- pb_decide_meeting_card: one atomic call per agency card. Items are
 --   [{id, decision: 'approve'|'reject'|'propose', overrule?: bool,
 --     edit?: {value?, tier?, reason_code?, text?, expires_at?, disposition?, review_on?}}]
--- 1–20 items, every one locked FOR UPDATE, all on ONE placed account whose book is prospect or
--- parked. 'approve' and 'reject' take a 'proposed' row; 'propose' is [Propose anyway] and takes a
--- 'not_proposed' row (a question, joke or hypothetical) back to 'proposed', writing nothing else.
+-- 1–20 items, every one locked FOR UPDATE, all on ONE placed account, whose book must be prospect
+-- or parked for an approval. 'approve' and 'reject' take a 'proposed' row; 'propose' is [Propose
+-- anyway] and takes a 'not_proposed' row (a question, joke or hypothetical) back to 'proposed',
+-- writing nothing to the book. Every decision re-derives supersession for its meeting.
 -- Owner or rater for facts, reads, rejects and propose; owner ONLY to approve a tier call or a
 -- removal (rules 7, 7a). One wrong item refuses the whole card. Everything is re-derived here at
 -- decision time (the §51 lesson): the page previews, this function decides.
@@ -528,10 +565,13 @@ begin
   if v_k <> 1 then
     raise exception 'a card is one agency; these proposals name % agencies', v_k;
   end if;
+  -- Only an approval writes to the book, so only an approval needs a live agency. A card on an
+  -- agency since promoted can still be rejected, or a row proposed, rather than sit open for good.
   select a.book into v_book from public.pb_accounts a where a.id = v_acct;
-  if v_book is null or v_book not in ('prospect', 'parked') then
-    raise exception 'that agency is % in the book; only a prospect or parked agency takes a meeting decision',
-      coalesce(v_book, 'missing');
+  if (v_book is null or v_book not in ('prospect', 'parked'))
+     and exists (select 1 from jsonb_array_elements(p_items) e where (e->>'decision') = 'approve') then
+    raise exception 'that agency is % in the book; only a prospect or parked agency takes a meeting approval '
+                    '(reject the card instead)', coalesce(v_book, 'missing');
   end if;
 
   if v_role <> 'owner' and exists (
@@ -554,6 +594,10 @@ begin
     end if;
     v_overrule := coalesce((v_item->>'overrule')::boolean, false);
     v_held := to_char(p.held_on, 'YYYY-MM-DD');
+    -- Every decision changes which word is newest, not only an approval: [Propose anyway] can
+    -- reopen an older word beside a newer one (or a newer one beside an older), and a reject can
+    -- remove the row that beat an older one. So each one's meeting is re-derived below.
+    if not (p.recording_id = any (v_recs)) then v_recs := v_recs || p.recording_id; end if;
 
     if v_dec = 'propose' then
       update public.pb_meeting_proposals set status = 'proposed' where id = p.id;
@@ -732,10 +776,11 @@ begin
            result_id = coalesce(v_fact, v_reg)
      where id = p.id;
     if v_status = 'agrees' then c_agrees := c_agrees + 1; else c_approved := c_approved + 1; end if;
-    if not (p.recording_id = any (v_recs)) then v_recs := v_recs || p.recording_id; end if;
   end loop;
 
-  -- Every approval supersedes the older proposed rows of the same (account, kind, key).
+  -- Every approval supersedes the older proposed rows of the same (account, kind, key); a reject
+  -- returns the older rows it had beaten; a re-proposed row is superseded at once by a newer word
+  -- that already stands, or supersedes the older open ones.
   foreach v_r in array v_recs loop
     c_super := c_super + public.pb_meeting_supersede(v_r);
   end loop;
@@ -753,8 +798,12 @@ end $$;
 --   unassign       the wrong agency: back to 'Who is this?', and a learned name that pointed there
 --                  is forgotten.
 --   not_in_book / not_an_agency   those rows are rejected with that note.
--- "Open" is proposed, not_proposed or agrees; an 'agrees' computed against one account means nothing
--- for another, so a re-pointed row goes back to 'proposed'.
+-- "Open" is anything no person decided: proposed, not_proposed, agrees or superseded. An 'agrees' or
+-- a 'superseded' computed against one account means nothing for another, so a re-pointed row goes
+-- back to 'proposed' and pb_meeting_supersede re-derives it. A superseded row moves with its name
+-- for the same reason a proposed one does: the name was the wrong agency, so all it said was too.
+-- Each of the four then re-runs pb_meeting_supersede for the meeting, which returns to 'proposed'
+-- any older word elsewhere that one of these rows had beaten and no longer beats.
 create or replace function public.pb_assign_meeting_mention(
   p_recording_id text, p_said_key text, p_decision text, p_account uuid default null, p_remember boolean default true)
 returns jsonb
@@ -785,7 +834,7 @@ begin
 
   perform 1 from public.pb_meeting_proposals
    where recording_id = p_recording_id and said_key = p_said_key
-     and status in ('proposed', 'not_proposed', 'agrees')
+     and status in ('proposed', 'not_proposed', 'agrees', 'superseded')
    order by id for update;
   if not found then
     raise exception 'no open proposal for that name in that meeting';
@@ -807,9 +856,10 @@ begin
     end if;
     update public.pb_meeting_proposals
        set account_id = p_account, matched_on = 'person', mention_state = 'resolved',
-           status = case when status = 'agrees' then 'proposed' else status end
+           status = case when status in ('agrees', 'superseded') then 'proposed' else status end,
+           superseded_by = null
      where recording_id = p_recording_id and said_key = p_said_key
-       and status in ('proposed', 'not_proposed', 'agrees');
+       and status in ('proposed', 'not_proposed', 'agrees', 'superseded');
     get diagnostics v_n = row_count;
     if coalesce(p_remember, true) then
       insert into public.pb_meeting_aliases (said_key, account_id, confirmed_by, from_recording, active)
@@ -825,25 +875,28 @@ begin
     select array_agg(distinct account_id) into v_old
       from public.pb_meeting_proposals
      where recording_id = p_recording_id and said_key = p_said_key
-       and status in ('proposed', 'not_proposed', 'agrees') and account_id is not null;
+       and status in ('proposed', 'not_proposed', 'agrees', 'superseded') and account_id is not null;
     update public.pb_meeting_proposals
        set account_id = null, matched_on = null, mention_state = 'ambiguous',
-           status = case when status = 'agrees' then 'proposed' else status end
+           status = case when status in ('agrees', 'superseded') then 'proposed' else status end,
+           superseded_by = null
      where recording_id = p_recording_id and said_key = p_said_key
-       and status in ('proposed', 'not_proposed', 'agrees');
+       and status in ('proposed', 'not_proposed', 'agrees', 'superseded');
     get diagnostics v_n = row_count;
     update public.pb_meeting_aliases
        set active = false
      where said_key = p_said_key and account_id = any (coalesce(v_old, '{}'::uuid[])) and active;
     get diagnostics v_forgot = row_count;
+    v_super := public.pb_meeting_supersede(p_recording_id);
 
   else
     update public.pb_meeting_proposals
        set status = 'rejected', decided_by = v_me, decided_at = now(),
            decision_note = case p_decision when 'not_in_book' then 'not in the book' else 'not an agency' end
      where recording_id = p_recording_id and said_key = p_said_key
-       and status in ('proposed', 'not_proposed', 'agrees');
+       and status in ('proposed', 'not_proposed', 'agrees', 'superseded');
     get diagnostics v_n = row_count;
+    v_super := public.pb_meeting_supersede(p_recording_id);
   end if;
 
   return jsonb_build_object(
@@ -975,8 +1028,10 @@ begin
   return jsonb_build_object('ok', true, 'title_norm', v_t, 'read', p_read, 'meetings_reselected', v_n);
 end $$;
 
--- pb_dismiss_meeting: [Dismiss meeting]. Rejects every still-proposed row of that meeting and writes
--- nothing else. Owner or rater.
+-- pb_dismiss_meeting: [Dismiss meeting]. Rejects every still-proposed row of that meeting — and its
+-- superseded ones, which would otherwise come back the day the row that beat them is rejected — and
+-- writes nothing else. Then the meeting's supersession is re-derived, so an older meeting's word
+-- that one of these rows had beaten is open again. Owner or rater.
 create or replace function public.pb_dismiss_meeting(p_recording_id text, p_note text default null)
 returns jsonb
 language plpgsql
@@ -1000,10 +1055,62 @@ begin
   update public.pb_meeting_proposals
      set status = 'rejected', decided_by = v_me, decided_at = now(),
          decision_note = coalesce(nullif(btrim(p_note), ''), 'dismissed with the meeting')
-   where recording_id = p_recording_id and status = 'proposed';
+   where recording_id = p_recording_id and status in ('proposed', 'superseded');
   get diagnostics v_n = row_count;
+  perform public.pb_meeting_supersede(p_recording_id);
   return jsonb_build_object('ok', true, 'recording_id', p_recording_id, 'rejected', v_n);
 end $$;
+
+-- pb_meeting_follow_merge: a merge takes the meeting's words with it. pb_merge_accounts moves the
+-- facts and the register to the surviving account and knows nothing of the tables above; it is not
+-- rebuilt here, because rebuilding it means copying its live body into this file (§50a). A trigger on
+-- the merge itself does their part, whatever path merges. Without it a merged record's open cards
+-- could never be approved (decide refuses a merged agency) and its learned names would keep pointing
+-- at it, out of reach of the survivor's [Wrong agency].
+--   proposals   every one moves, decided ones too: an approved word on the merged record must still
+--               beat an older open one on the survivor. 'agrees' goes back to 'proposed' (it was
+--               computed against the other record), and pb_meeting_supersede re-derives the newest
+--               word across the two for every meeting that moved.
+--   names       an active learned name moves, unless the survivor already holds that name, active or
+--               not: a person's "not this one" there is not overruled by a merge.
+-- SECURITY INVOKER: the merge runs as the table owner (pb_merge_accounts is a definer) or the
+-- service role, both of which may write these tables; nobody else can update pb_accounts.
+create or replace function public.pb_meeting_follow_merge()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_recs text[];
+  v_r    text;
+begin
+  with moved as (
+    update public.pb_meeting_proposals p
+       set account_id = new.merged_into,
+           status = case when p.status = 'agrees' then 'proposed' else p.status end
+     where p.account_id = new.id
+    returning p.recording_id
+  )
+  select array_agg(distinct m.recording_id) into v_recs from moved m;
+
+  insert into public.pb_meeting_aliases (said_key, account_id, confirmed_by, confirmed_at, from_recording, active)
+  select a.said_key, new.merged_into, a.confirmed_by, a.confirmed_at, a.from_recording, true
+    from public.pb_meeting_aliases a
+   where a.account_id = new.id and a.active
+  on conflict (said_key, account_id) do nothing;
+  update public.pb_meeting_aliases set active = false where account_id = new.id and active;
+
+  foreach v_r in array coalesce(v_recs, '{}'::text[]) loop
+    perform public.pb_meeting_supersede(v_r);
+  end loop;
+  return null;
+end $$;
+
+create trigger pb_meeting_follow_merge after update of book, merged_into on public.pb_accounts
+  for each row
+  when (new.book = 'merged' and new.merged_into is not null
+        and (old.book is distinct from new.book or old.merged_into is distinct from new.merged_into))
+  execute function public.pb_meeting_follow_merge();
 
 -- 9 · pb_dossier(uuid), rebuilt from the live body with the three §65 filters -------------------
 -- The live definition (pg_get_functiondef md5 d7066184…, prosrc md5 ab44f7fd…) is byte-identical to
@@ -1038,12 +1145,24 @@ as $function$
             -- §65: a meeting-origin override's written reason is the team's own quote, and the
             -- trace carries it at override.reason (measured: nowhere else; r.reason carries only
             -- the code). Over-redaction is the cheap direction: once the account has ANY such
-            -- override, the reason and the approver leave the trace of every read.
+            -- override, the reason and the approver leave the trace of every read. The approver is
+            -- in two places: override.approver, and the one note the engine writes it into
+            -- (core/engine.ts: "Override applied: A → B (code, approver)."), which keeps its tiers
+            -- and its code and loses the name: "Override applied: A → B (code).".
             'trace', case when exists (
                        select 1 from pb_register g
                         where g.account_id = p_account_id and g.kind = 'override'
                           and g.payload->>'origin' = 'sales_meeting')
-                     then r.scorecard #- '{override,reason}' #- '{override,approver}'
+                     then jsonb_set(r.scorecard #- '{override,reason}' #- '{override,approver}', '{trace,notes}',
+                            coalesce((
+                              select jsonb_agg(case when n #>> '{}' like 'Override applied:%'
+                                                    then to_jsonb(regexp_replace(n #>> '{}',
+                                                           '^(Override applied: [^(]*\([^,()]*), .*\)\.$', '\1).'))
+                                                    else n end order by i)
+                                from jsonb_array_elements(case when jsonb_typeof(r.scorecard #> '{trace,notes}') = 'array'
+                                                               then r.scorecard #> '{trace,notes}' end)
+                                     with ordinality e(n, i)), '[]'::jsonb),
+                            false)
                      else r.scorecard end)
           from pb_current_reads r where r.account_id = p_account_id),
 
@@ -1172,6 +1291,98 @@ as $function$
          )::jsonb
     from raw;
 $function$;
+
+-- 9a · pb_removed() and pb_removal(uuid): no wider than pb_register -----------------------------
+-- Both return a removal's written reason and who removed it, and both are SECURITY DEFINER, so
+-- pb_register's own read policy (pb_is_wliq()) never reaches them: as 20260918100000 wrote them, any
+-- `authenticated` session reads every reason — another system's user in this shared project, or an
+-- anonymous sign-in if one is ever enabled. A meeting removal's default reason carries no quote, but
+-- a reason a person types may, on purpose. So each now says what the table says: a WLIQ address, or
+-- no rows. The viewer lane still reads them, as it reads pb_register; the board asks only as the
+-- owner; service_role reads pb_removals directly and never needed them. Rebuilt from the live
+-- bodies, which are byte-identical to 20260918100000's (checked 10 Nov 2026); one line each, marked
+-- §65, and the guard refuses to run if either has moved since. Signature, volatility, SECURITY
+-- DEFINER, search_path and the grants (authenticated and service_role; create-or-replace keeps
+-- them) unchanged, and asserted in section 11.
+do $$
+begin
+  if (select md5(p.prosrc) from pg_proc p where p.oid = 'public.pb_removed()'::regprocedure)
+       is distinct from '5315239bc5c9c73835504ccc452c47df'
+     or (select md5(p.prosrc) from pg_proc p where p.oid = 'public.pb_removal(uuid)'::regprocedure)
+       is distinct from 'c66bffd2f3128210893bc3aecc58745b' then
+    raise exception 'pb_removed() or pb_removal(uuid) has moved since this file was written; rebuild section 9a '
+                    'from the live bodies (DECISIONS §50a) instead of overwriting them';
+  end if;
+end $$;
+
+create or replace function public.pb_removed()
+returns table (
+  account_id   uuid,
+  name         text,
+  disposition  text,
+  reason_code  text,
+  label        text,
+  reason       text,
+  removed_by   text,
+  removed_at   timestamptz,
+  review_on    date,
+  due_review   boolean
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select rm.account_id, a.name, rm.disposition, rm.reason_code,
+         coalesce(rr.label, rm.reason_code) as label,
+         rm.reason, rm.removed_by, rm.removed_at, rm.review_on,
+         (rm.review_on is not null and rm.review_on <= current_date) as due_review
+    from public.pb_removals rm
+    join public.pb_accounts a on a.id = rm.account_id
+    left join public.pb_removal_reasons rr
+      on rr.disposition = rm.disposition and rr.code = rm.reason_code
+   where public.pb_is_wliq()   -- §65: what pb_register_read says, said here
+   order by (rm.review_on is not null and rm.review_on <= current_date) desc,
+            rm.removed_at desc;
+$$;
+
+create or replace function public.pb_removal(p_account_id uuid)
+returns table (
+  account_id   uuid,
+  disposition  text,
+  reason_code  text,
+  label        text,
+  reason       text,
+  removed_by   text,
+  removed_at   timestamptz,
+  review_on    date,
+  due_review   boolean
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select rm.account_id, rm.disposition, rm.reason_code,
+         coalesce(rr.label, rm.reason_code) as label,
+         rm.reason, rm.removed_by, rm.removed_at, rm.review_on,
+         (rm.review_on is not null and rm.review_on <= current_date) as due_review
+    from public.pb_removals rm
+    left join public.pb_removal_reasons rr
+      on rr.disposition = rm.disposition and rr.code = rm.reason_code
+   where rm.account_id = p_account_id
+     and public.pb_is_wliq();   -- §65: what pb_register_read says, said here
+$$;
+
+comment on function public.pb_removed() is
+  'Everything taken off the board, newest first, with anything due a review at the top. A WLIQ address '
+  'or no rows, as pb_register''s read policy says: the reason is a candid judgement about a named company '
+  'and may carry words a person typed from a sales meeting (DECISIONS §50, §65).';
+
+comment on function public.pb_removal(uuid) is
+  'One account''s current removal state, or no row. What the dossier''s panel reads to know whether it '
+  'is offering a removal or a reinstatement (DECISIONS §50). A WLIQ address or no rows, as pb_register''s '
+  'read policy says (§65).';
 
 -- 10 · pb_reconcile_state(), rebuilt from the live body ----------------------------------------
 -- The live definition (pg_get_functiondef md5 868704ff…, prosrc md5 d6c124b7…) is byte-identical to
@@ -1362,7 +1573,8 @@ begin
     'f.source <> ''sales_meeting''',
     'coalesce(payload->>''origin'', '''') <> ''sales_meeting''',
     '#- ''{override,reason}''',
-    '#- ''{override,approver}''']
+    '#- ''{override,approver}''',
+    '''^(Override applied: [^(]*\([^,()]*), .*\)\.$'', ''\1).''']
   loop
     if position(v_n in v_def) = 0 then
       raise exception 'pb_dossier() lost or lacks: %', v_n;
@@ -1374,6 +1586,16 @@ begin
      or not has_function_privilege('anon', 'public.pb_reconcile_state()', 'execute') then
     raise exception 'anon lost EXECUTE on pb_dossier() or pb_reconcile_state()';
   end if;
+
+  -- The two removal reads: still signed-in only, and now a WLIQ address only.
+  foreach v_f in array array['public.pb_removed()', 'public.pb_removal(uuid)'] loop
+    if has_function_privilege('anon', v_f, 'execute') or not has_function_privilege('authenticated', v_f, 'execute') then
+      raise exception 'EXECUTE on % should be authenticated, never anon', v_f;
+    end if;
+    if position('public.pb_is_wliq()' in pg_get_functiondef(v_f::regprocedure)) = 0 then
+      raise exception '% lacks its pb_is_wliq() guard', v_f;
+    end if;
+  end loop;
 
   -- anon holds nothing new; authenticated reads the four tables and writes none of them.
   foreach v_t in array array['public.pb_meetings', 'public.pb_meeting_title_rules',
@@ -1408,13 +1630,17 @@ end $$;
 
 -- 12 · the sentinel ----------------------------------------------------------------------------
 -- Inside a sub-block: a synthetic account, a read meeting, an approved proposal whose quote is a
--- random sentinel, a sales_meeting fact carrying it in its note and its link, and an origin-tagged
--- override and note carrying it. pb_dossier() of that account must render it (its marker is in the
--- name) without the quote, the meeting link or the literal 'sales_meeting'; the live canary must
--- report it checked and clean; then one untagged register row carrying the quote — a deliberate
--- leak — must make the canary count it. A private SQLSTATE rolls all of it back; then, outside, a
--- problem raises for real and nothing in this file applies. No pb_reads row is written (rule 6), so
--- the trace strip is pinned by the static test and the live canary instead.
+-- random sentinel, a sales_meeting fact carrying it in its note and its link, an origin-tagged
+-- override and note carrying it, and the read pb-score would write after that override: its
+-- scorecard carries the quote at override.reason and a random approver at override.approver and in
+-- the engine's "Override applied" note. pb_dossier() of that account must render it (its marker is
+-- in the name, the override's tier and the note in the trace) without the quote, the approver, the
+-- meeting link or the literal 'sales_meeting'; the live canary must report it checked and clean;
+-- then one untagged register row carrying the quote — a deliberate leak — must make the canary
+-- count it. A private SQLSTATE rolls all of it back; then, outside, a problem raises for real and
+-- nothing in this file applies. The pb_reads row is the one write rule 6 keeps for pb-score; it is
+-- made here only because nothing else exercises the trace strip before apply, and like everything
+-- in the block it never outlives it.
 do $sentinel$
 declare
   v_marker  text := 'pbmark' || replace(gen_random_uuid()::text, '-', '');
@@ -1425,7 +1651,13 @@ declare
   v_prop    uuid;
   v_spec    jsonb;
   v_doc     text;
+  v_dj      jsonb;
   v_mp      jsonb;
+  v_appr    text := 'pbappr' || replace(gen_random_uuid()::text, '-', '');
+  v_code    text;
+  v_from    text;
+  v_tier    text;
+  v_note    text;
   v_problem text := null;
 begin
   begin
@@ -1465,15 +1697,41 @@ begin
       ('note', v_acct, 'sentinel@example.invalid', null, '"' || v_quote || '" — sentinel read',
        jsonb_build_object('origin', 'sales_meeting', 'proposal_id', v_prop, 'recording_id', v_rec), null);
 
-    v_doc := public.pb_dossier(v_acct)::text;
+    -- The read, in the shape core/engine.ts gives an applied override (override.*, trace.notes).
+    v_code := coalesce(v_spec->'override'->'reason_codes'->>0, 'other');
+    v_tier := coalesce(v_spec->'vocabulary'->'tiers'->>0, 'none');
+    v_from := coalesce(v_spec->'vocabulary'->'tiers'->>1, 'none');
+    v_note := 'Override applied: ' || v_from || ' → ' || v_tier || ' (' || v_code || ', ' || v_appr || '@example.invalid).';
+    insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, as_of, status, effective_tier,
+                                 computed_tier, reason, scorecard, scorecard_sha256)
+    values (v_acct, 'sentinel', 'sentinel', current_date, 'Overridden', v_tier, v_from,
+            'Overridden by the owner (' || v_code || '). Sentinel read.',
+            jsonb_build_object(
+              'override', jsonb_build_object('tier', v_tier, 'reason_code', v_code,
+                                             'reason', '"' || v_quote || '" — sentinel override',
+                                             'approver', v_appr || '@example.invalid'),
+              'trace', jsonb_build_object('tier_reasoning', 'sentinel', 'notes', jsonb_build_array('Sentinel note.', v_note))),
+            'sentinel');
+
+    v_dj := public.pb_dossier(v_acct);
+    v_doc := v_dj::text;
     if v_doc is null or position(v_marker in v_doc) = 0 then
       v_problem := 'pb_dossier() did not render the sentinel account, so the check proved nothing';
+    elsif v_dj #>> '{read,trace,override,tier}' is distinct from v_tier
+          or position('Override applied: ' in coalesce(v_dj #>> '{read,trace,trace,notes}', '')) = 0 then
+      v_problem := 'pb_dossier() did not render the sentinel read''s override and its note, so the trace check '
+                   'proved nothing';
     elsif position(v_quote in v_doc) > 0 then
       v_problem := 'pb_dossier() published a sales-meeting quote';
+    elsif position(v_appr in v_doc) > 0 then
+      v_problem := 'pb_dossier() published a meeting override''s approver from its read''s trace';
     elsif position(v_url in v_doc) > 0 then
       v_problem := 'pb_dossier() published a sales-meeting link';
     elsif position('sales_meeting' in v_doc) > 0 then
       v_problem := 'pb_dossier() published the literal sales_meeting';
+    elsif not coalesce(v_dj #> '{read,trace,trace,notes}' @> jsonb_build_array(
+                         'Override applied: ' || v_from || ' → ' || v_tier || ' (' || v_code || ').'), false) then
+      v_problem := 'pb_dossier() dropped the override note''s tiers or code along with its approver';
     end if;
 
     if v_problem is null then

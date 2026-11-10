@@ -13,7 +13,9 @@
  *   · an item or edit key the page sends that pb_decide_meeting_card never reads (a silent no-op),
  *     or a result key the page waits for that the function never returns;
  *   · a format the table checks (quote_at, speaker, lengths, option count) that the core does not
- *     produce, and the schedule's body against the options pb-notes parses.
+ *     produce, and the schedule's body against the options pb-notes parses;
+ *   · a path that changes which proposal is the newest word — a decision of any kind, a placement,
+ *     a dismissal, a merge — without re-deriving supersession (section 6).
  *
  * Every one of those is a mistake the database would report only at the first real write — as a
  * refused batch, a refused card, or as nothing at all. The objects are read from the NEWEST
@@ -623,6 +625,60 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   check("the schedule's dead-lease test is LEASE_MS", lease !== null && Number(lease[1]) * 1000 === LEASE_MS, lease?.[1] ?? "none");
   const timeout = /timeout_milliseconds\s*:=\s*(\d+)/.exec(cron);
   check("pg_net waits longer than the run's own budget", timeout !== null && Number(timeout[1]) > DEFAULT_BUDGET_MS);
+}
+
+/* ------------------------------------------------------------------ *
+ * 6 · the newest word: every change that can move it re-derives it
+ * ------------------------------------------------------------------ */
+{
+  // pb_meeting_supersede stores which row beat which. A row that is rejected, unplaced, re-pointed
+  // or merged away can stop beating an older one, and nothing decides a superseded row, so every
+  // path that changes a row's status or agency re-runs it, and it undoes before it adds.
+  const sup = sqlFunction("pb_meeting_supersede").body;
+  const undo = /update\s+public\.pb_meeting_proposals\s+t\s+set\s+status\s*=\s*'proposed'\s*,\s*superseded_by\s*=\s*null\s+where\s+t\.status\s*=\s*'superseded'([\s\S]*?)returning/i.exec(sup);
+  check("pb_meeting_supersede first returns a superseded row to 'proposed' when what beat it no longer does", undo !== null);
+  check("…which is: no longer on the same agency, or no longer proposed, approved or agrees",
+    undo !== null && /s\.id\s*=\s*t\.superseded_by/.test(undo[1]) && /s\.account_id\s*=\s*t\.account_id/.test(undo[1]) &&
+    /s\.status\s+in\s*\(\s*'proposed'\s*,\s*'approved'\s*,\s*'agrees'\s*\)/.test(undo[1]));
+  check("…and then re-runs the pass over the meetings of the rows it returned, not only its own",
+    /foreach\s+v_r\s+in\s+array\s+v_recs\s+loop/i.test(sup) && /q\.recording_id\s*=\s*v_r\b/.test(sup) && !/=\s*p_recording_id\s+and\s+q\./.test(sup));
+
+  const decide = sqlFunction("pb_decide_meeting_card").body;
+  const loop = decide.slice(decide.search(/for\s+v_item\s+in\b/i));
+  const firstBranch = loop.search(/if\s+v_dec\s*=\s*'propose'/);
+  check("pb_decide_meeting_card notes every item's meeting before the propose and reject branches skip ahead",
+    firstBranch > 0 && /v_recs\s*:=\s*v_recs\s*\|\|\s*p\.recording_id/.test(loop.slice(0, firstBranch)));
+  check("…and re-derives supersession for each of them", /foreach\s+v_r\s+in\s+array\s+v_recs\s+loop\s+c_super\s*:=\s*c_super\s*\+\s*public\.pb_meeting_supersede\(v_r\)/i.test(decide));
+  // Only an approval writes to the book; a card on a promoted agency can still be rejected.
+  check("pb_decide_meeting_card's book check applies to approvals only",
+    /v_book\s+not\s+in\s*\(\s*'prospect'\s*,\s*'parked'\s*\)\s*\)\s*and\s+exists\s*\(\s*select\s+1\s+from\s+jsonb_array_elements\(p_items\)\s+e\s+where\s*\(e->>'decision'\)\s*=\s*'approve'\s*\)/i.test(decide));
+
+  const assign = sqlFunction("pb_assign_meeting_mention").body;
+  const openSets = [...assign.matchAll(/status\s+in\s*\(([^)]*)\)/gi)].map((m) => [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]));
+  check("pb_assign_meeting_mention moves every undecided row of the name, superseded ones included",
+    openSets.length >= 4 && openSets.filter((s) => s.includes("not_proposed")).every((s) => JSON.stringify(sorted(s)) === JSON.stringify(sorted(["proposed", "not_proposed", "agrees", "superseded"]))),
+    JSON.stringify(openSets));
+  check("…a re-pointed or unplaced superseded row goes back to 'proposed', pointing at nothing",
+    (assign.match(/case\s+when\s+status\s+in\s*\(\s*'agrees'\s*,\s*'superseded'\s*\)\s+then\s+'proposed'\s+else\s+status\s+end\s*,\s*superseded_by\s*=\s*null/gi) ?? []).length === 2);
+  const branches = assign.split(/\belsif\s+p_decision\s*=\s*'unassign'\s+then\b|\n\s*else\s*\n/i);
+  check("…and each of assign, unassign and the two rejections re-runs pb_meeting_supersede",
+    branches.length === 3 && branches.every((b) => /public\.pb_meeting_supersede\(p_recording_id\)/.test(b)), `${branches.length} branches`);
+
+  const dismiss = sqlFunction("pb_dismiss_meeting").body;
+  check("pb_dismiss_meeting rejects the meeting's superseded rows with its proposed ones, then re-derives",
+    /status\s+in\s*\(\s*'proposed'\s*,\s*'superseded'\s*\)/.test(dismiss) && /public\.pb_meeting_supersede\(p_recording_id\)/.test(dismiss));
+
+  // A merge carries the meeting's words to the surviving account, whatever path merges.
+  const follow = sqlFunction("pb_meeting_follow_merge").body;
+  check("pb_meeting_follow_merge moves every proposal of the merged record to the survivor",
+    /update\s+public\.pb_meeting_proposals\s+p\s+set\s+account_id\s*=\s*new\.merged_into[\s\S]*?where\s+p\.account_id\s*=\s*new\.id\s+returning/i.test(follow));
+  check("…its learned names, never over a name the survivor already holds",
+    /insert\s+into\s+public\.pb_meeting_aliases[\s\S]*?new\.merged_into[\s\S]*?on\s+conflict\s*\(\s*said_key\s*,\s*account_id\s*\)\s+do\s+nothing/i.test(follow) &&
+    /update\s+public\.pb_meeting_aliases\s+set\s+active\s*=\s*false\s+where\s+account_id\s*=\s*new\.id/i.test(follow));
+  check("…and re-derives the newest word for every meeting that moved", /perform\s+public\.pb_meeting_supersede\(v_r\)/.test(follow));
+  const trig = migs.map((m) => m.sql).join("\n");
+  check("pb_meeting_follow_merge fires after a row of pb_accounts becomes merged",
+    /create\s+trigger\s+pb_meeting_follow_merge\s+after\s+update\s+of\s+book\s*,\s*merged_into\s+on\s+public\.pb_accounts\s+for\s+each\s+row\s+when\s*\(\s*new\.book\s*=\s*'merged'\s+and\s+new\.merged_into\s+is\s+not\s+null/i.test(trig));
 }
 
 /* ------------------------------------------------------------------ *

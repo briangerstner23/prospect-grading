@@ -2703,7 +2703,17 @@ meeting's removal only when it is as firm — a live `do_not_contact` covers any
 approved, becomes the removal pb_removals shows (rule 7a). No register row a decision writes carries
 the quote or the meeting's title: pb_register is read by every signed-in lane, the viewer's included,
 so the row names the meeting's date and the line and points at the proposal; the prefilled written
-reason is the same, and a person who wants the words in it types them.
+reason is the same, and a person who wants the words in it types them. That typed reason is why
+`pb_removed()` and `pb_removal()` answer a WLIQ address only, as pb_register's own policy does.
+
+Which word is newest is re-derived, never only added to (`pb_meeting_supersede`). An older claim a
+newer meeting superseded is open again once that newer row stops beating it — rejected on its card,
+sent back to "Who is this?", placed on another agency, or dismissed with its meeting — and is
+superseded again if a third, newer word still stands; "Propose anyway" on an older row is superseded
+at once by a newer one that stands. A card on an agency promoted since it was read can be rejected,
+not approved. A merge, by any path, carries the merged record's proposals and learned names to the
+survivor (the `pb_meeting_follow_merge` trigger), where the newer word wins; a name the survivor
+already holds, even one a person forgot there, is left as it is.
 
 ### 33.6 · What a halt looks like, and the checks that keep running
 

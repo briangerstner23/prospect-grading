@@ -1,10 +1,10 @@
 -- WLIQ Prospect Book — the sales-meeting reader's operator harness (DECISIONS §65).
 --
 -- Run it through execute_sql RIGHT AFTER migration A (prospect_book_sales_meeting_reader) applies,
--- and again after any change to pb_dossier(), pb_board() or the six meeting functions. It runs inside
--- BEGIN … ROLLBACK and leaves nothing behind: every member, account, meeting, proposal, fact,
--- candidate and register row it makes is synthetic and is rolled back. It RAISES on the first leak or
--- missing refusal; success is the absence of an exception (and the NOTICE lines).
+-- and again after any change to pb_dossier(), pb_board(), the six meeting functions or the two removal
+-- reads. It runs inside BEGIN … ROLLBACK and leaves nothing behind: every member, account, meeting,
+-- proposal, fact, candidate, read and register row it makes is synthetic and is rolled back. It RAISES
+-- on the first leak or missing refusal; success is the absence of an exception (and the NOTICE lines).
 --
 -- What it proves, in order:
 --   1. Lanes. As a synthetic rater: approving a tier call, approving a removal, and a removal carrying
@@ -21,12 +21,20 @@
 --      expiry_default_days), the removal (no expiry) and a read; the removed agency leaves pb_board().
 --      No register row the decide function wrote carries a quote: pb_register is readable by every
 --      signed-in lane, the viewer's included, and the words are owner and rater only.
---   4. Placement: assign remembers the name, unassign forgets it.
+--   4. Placement: assign remembers the name, unassign forgets it. The newest word, re-derived: an
+--      older meeting's claim that a newer one superseded is open again once the newer one is sent
+--      back to 'Who is this?', rejected on its card or dismissed with its meeting, and superseded again
+--      once it is placed back; [Propose anyway] on an older row supersedes it at once. A card on an
+--      agency since promoted can be rejected and not approved. A merge carries the merged record's
+--      proposals and learned names to the survivor, where the newer word wins.
 --   5. As `authenticated`: a hand insert cannot pose as a meeting fact; a rater reads the proposals,
---      a viewer reads none of them; nobody updates them directly.
+--      a viewer reads none of them; nobody updates them directly; an address outside WLIQ reads no
+--      removal's written reason through pb_removed() or pb_removal(), and a WLIQ address does.
 --   6. As `anon`: pb_dossier() and pb_board() carry none of the quotes, the override text, the read,
---      the meeting link or the literal 'sales_meeting'; the four tables are denied; the decide function
---      is denied.
+--      the meeting link or the literal 'sales_meeting'; a read as pb-score would write it after the
+--      meeting's override (synthetic, rolled back) reaches the dossier without the override's reason
+--      or its approver, in override.* or in the engine's note; the four tables are denied; the decide
+--      function is denied.
 --   7. Invariants: zero pb_fact_candidates rows with source 'sales_meeting'; the lanes view count is
 --      back where it started.
 --
@@ -60,6 +68,12 @@ declare
   v_cand    uuid;
   p_fact1   uuid; p_read1 uuid; p_read2 uuid; p_over uuid; p_over_same uuid; p_rem uuid;
   p_fact2   uuid; p_over_b uuid; p_fact_b uuid; p_unplaced uuid;
+  v_old     text;      -- an older and a middle meeting, for the newest-word cases (section 4)
+  v_mid     text;
+  v_c       uuid;      -- a synthetic agency promoted under its open card
+  v_d       uuid;      -- a synthetic agency merged into v_b
+  p_o1 uuid; p_n1 uuid; p_o2 uuid; p_n2 uuid; p_o3 uuid; p_m3 uuid; p_c1 uuid; p_c2 uuid; p_d1 uuid; p_b1 uuid;
+  v_note    text;
   q         text[];
   v_r       jsonb;
   v_fail    text;
@@ -378,6 +392,19 @@ begin
   if v_n <> 0 then
     raise exception 'HARNESS 3k: % register row(s) the decide function wrote carry a quote; pb_register is read by every signed-in lane', v_n;
   end if;
+  -- The read pb-score would write tomorrow morning, in the engine's shape, with a written reason a
+  -- person typed from the meeting. Rule 6 keeps pb_reads for pb-score; this row is rolled back with
+  -- the rest, and it is the only way to see the trace strip work on the subject account before then.
+  v_note := 'Override applied: ' || v_ctier || ' → ' || v_tier || ' (relationship_known, ' || v_owner || ').';
+  insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, run_at, as_of, status, effective_tier,
+                               computed_tier, reason, scorecard, scorecard_sha256)
+  values (v_a, 'harness', 'harness', clock_timestamp(), current_date, 'Overridden', v_tier, v_ctier,
+          'Overridden by the owner (relationship_known). Harness read.',
+          jsonb_build_object(
+            'override', jsonb_build_object('tier', v_tier, 'reason_code', 'relationship_known', 'reason', q[3],
+                                           'approver', v_owner),
+            'trace', jsonb_build_object('tier_reasoning', 'harness', 'notes', jsonb_build_array(v_note))),
+          'harness');
 
   -- 4 · placement ------------------------------------------------------------------------------
   v_r := public.pb_assign_meeting_mention(v_rec, 'harness c', 'assign', v_b, true);
@@ -390,6 +417,155 @@ begin
                                           where said_key = 'harness c' and account_id = v_b and active)
      or (select account_id from public.pb_meeting_proposals where id = p_unplaced) is not null then
     raise exception 'HARNESS 4b: unassign did not send the name back and forget it (%)', v_r;
+  end if;
+
+  -- The newest word, re-derived. An older meeting says harness_k5 about v_b; this meeting says it
+  -- again under another spoken name, which wins.
+  v_old := 'harness-old-' || v_marker;
+  v_mid := 'harness-mid-' || v_marker;
+  insert into public.pb_meetings (recording_id, inbox_id, title, title_norm, held_at, ended_at, url, include,
+                                  selected_by, status, read_at)
+  values (v_old, gen_random_uuid(), 'Harness sales connect', 'harness sales connect', now() - interval '3 days',
+          now() - interval '3 days', null, true, 'owner', 'read', now()),
+         (v_mid, gen_random_uuid(), 'Harness sales connect', 'harness sales connect', now() - interval '2 days',
+          now() - interval '2 days', null, true, 'owner', 'read', now());
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_old, v_b, array['harness d'], 'harness d', 'resolved', 'name', 'fact', 'harness_k5', '5'::jsonb,
+          'harness quote eleven ' || v_marker, 20, 20, '00:03:00', 'S1', 'asserted', current_date - 3, 'harness',
+          'h11:' || v_marker, 'proposed')
+  returning id into p_o1;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_rec, v_b, array['harness e'], 'harness e', 'resolved', 'name', 'fact', 'harness_k5', '6'::jsonb,
+          'harness quote twelve ' || v_marker, 21, 21, '00:03:10', 'S2', 'asserted', current_date, 'harness',
+          'h12:' || v_marker, 'proposed')
+  returning id into p_n1;
+  perform public.pb_meeting_supersede(v_rec);
+  if (select status || '/' || coalesce(superseded_by::text, '') from public.pb_meeting_proposals where id = p_o1)
+     is distinct from 'superseded/' || p_n1 then
+    raise exception 'HARNESS 4c: the older meeting''s claim was not superseded by the newer one';
+  end if;
+  perform public.pb_assign_meeting_mention(v_rec, 'harness e', 'unassign', null, false);
+  if (select status || '/' || coalesce(superseded_by::text, '') from public.pb_meeting_proposals where id = p_o1)
+     is distinct from 'proposed/' then
+    raise exception 'HARNESS 4d: [Wrong agency] on the newer claim left the older one superseded by a row that names nobody';
+  end if;
+  perform public.pb_assign_meeting_mention(v_rec, 'harness e', 'assign', v_b, false);
+  if (select status from public.pb_meeting_proposals where id = p_o1) <> 'superseded' then
+    raise exception 'HARNESS 4e: placing the newer claim back did not supersede the older one again';
+  end if;
+  perform public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_n1, 'decision', 'reject')));
+  if (select status from public.pb_meeting_proposals where id = p_o1) <> 'proposed' then
+    raise exception 'HARNESS 4f: rejecting the newer claim left the older one superseded';
+  end if;
+
+  -- [Propose anyway] on an older row a newer word already beats: superseded at once.
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_old, v_b, array['harness d'], 'harness d', 'resolved', 'name', 'fact', 'harness_k6', '1'::jsonb,
+          'harness quote thirteen ' || v_marker, 22, 22, '00:03:20', 'S1', 'question', current_date - 3, 'harness',
+          'h13:' || v_marker, 'not_proposed')
+  returning id into p_o2;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_rec, v_b, array['harness e'], 'harness e', 'resolved', 'person', 'fact', 'harness_k6', '2'::jsonb,
+          'harness quote fourteen ' || v_marker, 23, 23, '00:03:30', 'S2', 'asserted', current_date, 'harness',
+          'h14:' || v_marker, 'proposed')
+  returning id into p_n2;
+  perform public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_o2, 'decision', 'propose')));
+  if (select status || '/' || coalesce(superseded_by::text, '') from public.pb_meeting_proposals where id = p_o2)
+     is distinct from 'superseded/' || p_n2 then
+    raise exception 'HARNESS 4g: [Propose anyway] opened an older claim beside the newer word that beats it';
+  end if;
+
+  -- [Dismiss meeting] on the newer meeting: the older claim it had beaten is open again.
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_old, v_b, array['harness d'], 'harness d', 'resolved', 'name', 'fact', 'harness_k7', '1'::jsonb,
+          'harness quote fifteen ' || v_marker, 24, 24, '00:03:40', 'S1', 'asserted', current_date - 3, 'harness',
+          'h15:' || v_marker, 'proposed')
+  returning id into p_o3;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_mid, v_b, array['harness f'], 'harness f', 'resolved', 'name', 'fact', 'harness_k7', '2'::jsonb,
+          'harness quote sixteen ' || v_marker, 1, 1, '00:00:10', 'S1', 'asserted', current_date - 2, 'harness',
+          'h16:' || v_marker, 'proposed')
+  returning id into p_m3;
+  perform public.pb_meeting_supersede(v_mid);
+  perform public.pb_dismiss_meeting(v_mid, 'harness');
+  if (select status from public.pb_meeting_proposals where id = p_o3) <> 'proposed'
+     or (select status from public.pb_meeting_proposals where id = p_m3) <> 'rejected' then
+    raise exception 'HARNESS 4h: dismissing the newer meeting left the older claim superseded';
+  end if;
+
+  -- A card on an agency promoted since it was read: it can be rejected, never approved.
+  insert into public.pb_accounts (key, name, book)
+  values ('harness-c:' || v_marker, 'Harness account c ' || v_marker, 'prospect') returning id into v_c;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_old, v_c, array['harness g'], 'harness g', 'resolved', 'name', 'fact', 'harness_k8', '1'::jsonb,
+          'harness quote seventeen ' || v_marker, 25, 25, '00:03:50', 'S1', 'asserted', current_date - 3, 'harness',
+          'h17:' || v_marker, 'proposed')
+  returning id into p_c1;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_old, v_c, array['harness g'], 'harness g', 'resolved', 'name', 'fact', 'harness_k9', '1'::jsonb,
+          'harness quote eighteen ' || v_marker, 26, 26, '00:04:00', 'S1', 'asserted', current_date - 3, 'harness',
+          'h18:' || v_marker, 'proposed')
+  returning id into p_c2;
+  update public.pb_accounts set book = 'promoted' where id = v_c;
+  begin
+    perform public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_c1, 'decision', 'approve')));
+    v_fail := 'a card on a promoted agency was approved';
+  exception when others then
+    if sqlerrm not like '%meeting approval%' then v_fail := 'promoted approval refused for the wrong reason: ' || sqlerrm; end if;
+  end;
+  if v_fail is not null then raise exception 'HARNESS 4i: %', v_fail; end if;
+  v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_c2, 'decision', 'reject')));
+  if (v_r->>'rejected')::int <> 1 then
+    raise exception 'HARNESS 4j: a card on a promoted agency could not be rejected (%)', v_r;
+  end if;
+
+  -- A merge: the merged record's proposal and learned name go to the survivor, where the newer word wins.
+  perform set_config('request.jwt.claims', jsonb_build_object('email', v_owner, 'role', 'authenticated')::text, true);
+  insert into public.pb_accounts (key, name, book)
+  values ('harness-d:' || v_marker, 'Harness account d ' || v_marker, 'prospect') returning id into v_d;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_old, v_d, array['harness h'], 'harness h', 'resolved', 'learned', 'fact', 'harness_k10', '1'::jsonb,
+          'harness quote nineteen ' || v_marker, 27, 27, '00:04:10', 'S1', 'asserted', current_date - 3, 'harness',
+          'h19:' || v_marker, 'proposed')
+  returning id into p_d1;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+     quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+  values (v_rec, v_b, array['harness e'], 'harness e', 'resolved', 'person', 'fact', 'harness_k10', '2'::jsonb,
+          'harness quote twenty ' || v_marker, 28, 28, '00:04:20', 'S2', 'asserted', current_date, 'harness',
+          'h20:' || v_marker, 'proposed')
+  returning id into p_b1;
+  insert into public.pb_meeting_aliases (said_key, account_id, confirmed_by, from_recording, active)
+  values ('harness h', v_d, v_owner, v_old, true);
+  perform public.pb_merge_accounts(v_d, v_b, 'harness');
+  if (select account_id from public.pb_meeting_proposals where id = p_d1) is distinct from v_b then
+    raise exception 'HARNESS 4k: a merge left the merged record''s proposal on it, where no card can approve it';
+  end if;
+  if (select status || '/' || coalesce(superseded_by::text, '') from public.pb_meeting_proposals where id = p_d1)
+     is distinct from 'superseded/' || p_b1 then
+    raise exception 'HARNESS 4l: after the merge the survivor''s newer word did not supersede the merged record''s older one';
+  end if;
+  if not exists (select 1 from public.pb_meeting_aliases where said_key = 'harness h' and account_id = v_b and active)
+     or exists (select 1 from public.pb_meeting_aliases where said_key = 'harness h' and account_id = v_d and active) then
+    raise exception 'HARNESS 4m: a merge did not carry the learned name to the survivor';
   end if;
 
   -- 7 · invariants -----------------------------------------------------------------------------
@@ -407,6 +583,8 @@ begin
   perform set_config('harness.url', v_url, true);
   perform set_config('harness.p_fact1', p_fact1::text, true);
   perform set_config('harness.p_over', p_over::text, true);
+  perform set_config('harness.tier', v_tier, true);
+  perform set_config('harness.note', replace(v_note, ', ' || v_owner || ').', ').'), true);
   perform set_config('harness.needles', array_to_string(q || array[
       (select g.text from public.pb_register g where g.kind = 'override' and g.payload->>'proposal_id' = p_over::text),
       (select g.text from public.pb_register g where g.kind = 'note' and g.payload->>'proposal_id' = p_read1::text)],
@@ -456,6 +634,16 @@ begin
        + (select count(*) from public.pb_meeting_aliases) + (select count(*) from public.pb_meeting_title_rules)
     into v_n;
   if v_n <> 0 then raise exception 'HARNESS 5e: a viewer reads % meeting rows', v_n; end if;
+  -- The two definer reads of a removal's written reason: no wider than pb_register's own policy.
+  if (select count(*) from public.pb_removal(current_setting('harness.a')::uuid)) <> 1 then
+    raise exception 'HARNESS 5f: a WLIQ address does not see the subject''s removal through pb_removal()';
+  end if;
+  perform set_config('request.jwt.claims',
+    jsonb_build_object('email', 'someone@example.com', 'role', 'authenticated')::text, true);
+  if (select count(*) from public.pb_removal(current_setting('harness.a')::uuid)) <> 0
+     or (select count(*) from public.pb_removed()) <> 0 then
+    raise exception 'HARNESS 5g: an address outside WLIQ read a removal''s written reason through pb_removal() or pb_removed()';
+  end if;
   perform set_config('request.jwt.claims', '', true);
   raise notice 'meeting_privacy_check: authenticated holds what it should and no more';
 end
@@ -467,6 +655,7 @@ set local role anon;
 do $anon$
 declare
   v_doc   text;
+  v_dj    jsonb;
   v_board text;
   v_n     text;
   v_t     text;
@@ -475,6 +664,15 @@ begin
   v_doc := public.pb_dossier(current_setting('harness.a')::uuid)::text;
   select coalesce(string_agg(b::text, ' '), '') into v_board from public.pb_board() b;
   if v_doc is null then raise exception 'HARNESS 6a: pb_dossier() rendered nothing for the subject account'; end if;
+  v_dj := v_doc::jsonb;
+  if v_dj #>> '{read,trace,override,tier}' is distinct from current_setting('harness.tier')
+     or not coalesce(v_dj #> '{read,trace,trace,notes}' @> jsonb_build_array(current_setting('harness.note')), false) then
+    raise exception 'HARNESS 6e: the harness read did not reach the dossier with its tier and its note less the approver';
+  end if;
+  if (v_dj #> '{read,trace,override}') ? 'reason' or (v_dj #> '{read,trace,override}') ? 'approver'
+     or position('harness-owner' in (v_dj -> 'read')::text) > 0 then
+    raise exception 'HARNESS 6f: the dossier''s read carries a meeting override''s reason or approver';
+  end if;
   foreach v_n in array string_to_array(current_setting('harness.needles'), '|')
                        || array[current_setting('harness.url'), current_setting('harness.rec'), 'sales_meeting'] loop
     if v_n is not null and v_n <> '' and (position(v_n in v_doc) > 0 or position(v_n in v_board) > 0) then

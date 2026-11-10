@@ -13,7 +13,9 @@
  * narrower than pb_facts for everyone else; no meeting migration grants anything to anon; the
  * decide function writes pb_facts with no quote and no link; nothing writes pb_fact_candidates;
  * the SQL copy of the title patterns equals MEETING_TITLE_PATTERNS; the schedule only posts when
- * there is work.
+ * there is work; the two definer reads of a removal's written reason (pb_removed, pb_removal)
+ * answer a WLIQ address only, as pb_register's own policy does; the sentinel exercises the trace
+ * strip on a real read before apply.
  *
  * Run: node --experimental-strip-types scripts/meeting_privacy_static_test.ts
  */
@@ -89,7 +91,45 @@ function newest(re: RegExp, end: RegExp): { file: string; body: string } {
   check("pb_dossier() is still SECURITY DEFINER with a fixed search_path",
     /security\s+definer/i.test(d.body) && /set\s+search_path\s*=\s*public/i.test(d.body));
   check("the trace strip is conditional on a meeting-origin override",
-    /when\s+exists\s*\(\s*select\s+1\s+from\s+pb_register\s+g[\s\S]{0,200}g\.kind\s*=\s*'override'[\s\S]{0,120}'sales_meeting'\s*\)\s*then\s+r\.scorecard\s+#-/i.test(d.body));
+    /when\s+exists\s*\(\s*select\s+1\s+from\s+pb_register\s+g[\s\S]{0,200}g\.kind\s*=\s*'override'[\s\S]{0,120}'sales_meeting'\s*\)\s*then\s+jsonb_set\(\s*r\.scorecard\s+#-/i.test(d.body));
+  // The engine writes the approver a second time, into trace.notes (core/engine.ts). The strip
+  // rewrites that note in place, under the same condition, and the rewrite does what it says on
+  // the engine's own sentence: the tiers and the code stay, the name goes.
+  check("…and the approver leaves the engine's 'Override applied' note too",
+    /jsonb_set\(\s*r\.scorecard\s+#-\s*'\{override,reason\}'\s+#-\s*'\{override,approver\}'\s*,\s*'\{trace,notes\}'/.test(d.body) &&
+    /like\s+'Override applied:%'/.test(d.body));
+  const rewrite = /regexp_replace\(n\s+#>>\s+'\{\}',\s*'([^']+)',\s*'([^']+)'\)/.exec(d.body);
+  check("the note rewrite was found", rewrite !== null);
+  if (rewrite) {
+    // POSIX ARE and JavaScript agree on this pattern (no class shorthands, no lookarounds).
+    const re = new RegExp(rewrite[1]);
+    const js = rewrite[2].replace(/\\(\d)/g, "$$$1");
+    const engineNote = (code: string, approver: string) => `Override applied: Silver → Gold (${code}, ${approver}).`;
+    check("the rewrite keeps the tiers and the code and drops the approver",
+      engineNote("relationship_known", "owner@example.test").replace(re, js) === "Override applied: Silver → Gold (relationship_known)." &&
+      engineNote("no code", "someone, with a comma").replace(re, js) === "Override applied: Silver → Gold (no code).",
+      engineNote("relationship_known", "owner@example.test").replace(re, js));
+    const engineSrc = readFileSync(join(root, "core/engine.ts"), "utf8");
+    check("core/engine.ts still writes the note in the shape the rewrite expects",
+      engineSrc.includes("notes.push(`Override applied: ${computedTier} → ${ov.tier} (${ov.reason_code ?? \"no code\"}, ${ov.approver}).`);"));
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 1a · pb_removed() and pb_removal(uuid): a WLIQ address or no rows
+ * ------------------------------------------------------------------ */
+{
+  // Definer reads of pb_removals: pb_register's read policy cannot reach inside them, so each says
+  // it itself. A removal's reason is free text a person may have typed from a meeting.
+  for (const fn of ["pb_removed", "pb_removal"]) {
+    const d = newest(new RegExp(`create\\s+(?:or\\s+replace\\s+)?function\\s+public\\.${fn}\\s*\\(`, "i"), /\$\$;/);
+    check(`a migration defines ${fn}()`, d.file !== "");
+    check(`${fn}() (${d.file}) returns rows only to a WLIQ address`, /\bwhere\b[\s\S]*\bpublic\.pb_is_wliq\(\)/i.test(d.body));
+    check(`${fn}() (${d.file}) is still SECURITY DEFINER with a fixed search_path`,
+      /security\s+definer/i.test(d.body) && /set\s+search_path\s*=\s*public/i.test(d.body));
+    const toAnon = files.filter((f) => new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${fn}\\s*\\([^)]*\\)[^;]*\\banon\\b`, "i").test(code(text.get(f) ?? "")));
+    check(`no migration grants ${fn}() to anon`, toAnon.length === 0, toAnon.join(", "));
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -223,6 +263,21 @@ check("the sales-meeting migrations are on disk", meetingFiles.length >= 2, meet
     /create\s+trigger\s+pb_meeting_proposal_guard\s+before\s+update\s+on\s+public\.pb_meeting_proposals/i.test(a) &&
     /to_jsonb\(new\)\s*-\s*array\['status',\s*'decided_by',\s*'decided_at',\s*'decision_note',\s*'result_id',\s*'superseded_by',\s*'account_id',\s*'matched_on',\s*'mention_state'\]/.test(a));
   check("migration A carries the sentinel and it rolls itself back", /do\s+\$sentinel\$/i.test(a) && /errcode\s*=\s*'PBS01'/.test(a) && /when\s+sqlstate\s+'PBS01'/.test(a));
+  // The trace strip is exercised before apply, not only pinned in text: inside the rolled-back
+  // block, a read whose scorecard carries the quote at override.reason and a random approver at
+  // override.approver and in the engine's note; the dossier must render that read without either.
+  const sentinel = /do\s+\$sentinel\$[\s\S]*?\$sentinel\$\s*;/i.exec(a)?.[0] ?? "";
+  const rolledBack = sentinel.slice(0, sentinel.search(/errcode\s*=\s*'PBS01'/));
+  const readIns = /insert\s+into\s+public\.pb_reads\b[\s\S]*?\);/i.exec(rolledBack)?.[0] ?? "";
+  check("the sentinel writes a read inside its rolled-back block", readIns !== "");
+  check("…whose override carries the quote as its reason and a random approver",
+    /'reason'\s*,\s*'"'\s*\|\|\s*v_quote\b/.test(readIns) && /'approver'\s*,\s*v_appr\b/.test(readIns) &&
+    /v_appr\s+text\s*:=\s*'pbappr'\s*\|\|\s*replace\(gen_random_uuid\(\)/.test(sentinel));
+  check("…and whose trace carries the approver in the engine's note",
+    /'notes'\s*,\s*jsonb_build_array\([^)]*\bv_note\b/.test(readIns) && /v_note\s*:=\s*'Override applied: '[^;]*v_appr\b/.test(rolledBack));
+  check("…and the dossier must render that read, and fail on the quote or the approver",
+    /'\{read,trace,override,tier\}'/.test(rolledBack) && /position\(v_quote\s+in\s+v_doc\)\s*>\s*0/.test(rolledBack) &&
+    /position\(v_appr\s+in\s+v_doc\)\s*>\s*0/.test(rolledBack));
 
   // The SQL copy of the title patterns (used when a title rule is forgotten) is MEETING_TITLE_PATTERNS.
   const sqlPatterns = /v_pattern\s+constant\s+text\[\]\s*:=\s*array\[([^\]]*)\]/i.exec(a)?.[1] ?? "";
