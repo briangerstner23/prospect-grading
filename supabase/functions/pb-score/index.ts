@@ -11,8 +11,10 @@
  * resolveFeatures → grade. Then, unless preview:
  *   - insert pb_reads (scorecard_sha256 over JSON.stringify(scorecard))
  *   - upsert pb_potential_snapshots, one per ranked account per day per estimator (DECISIONS §36)
- *   - update pb_accounts.status / effective_tier / cell (listing columns)
- *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors}
+ *   - update pb_accounts.status / effective_tier / cell (listing columns) where they changed,
+ *     one call per patch (listingUpdates; RUNBOOK §15, 10 Nov 2026)
+ *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors,
+ *     snapshots, listing_updated}
  * A per-account failure is collected into errors and the run continues.
  *
  * ?preview=1 scores under the named (draft) rubric, writes NOTHING — no reads, no run — and
@@ -41,19 +43,21 @@ import {
   buildSnapshotRow,
   diffEntry,
   groupBy,
-  listingPatch,
+  listingUpdates,
   rankDiff,
   scorecardJson,
   tallyScorecards,
+  toListing,
   toResolveAccount,
 } from "../_shared/score_pure.ts";
-import type { CurrentRead, DiffEntry } from "../_shared/score_pure.ts";
+import type { CurrentRead, DiffEntry, Listing } from "../_shared/score_pure.ts";
 import { grade } from "../_shared/core/engine.ts";
 import { resolveFeatures } from "../_shared/ingest/resolve_features.ts";
 import type { DealRow, EngagementRow, FactRow, RegisterRow, SignalRow } from "../_shared/ingest/resolve_features.ts";
 import type { ProspectScorecard } from "../_shared/core/prospect_types.ts";
 
-const ACCOUNT_COLS = "id,key,name,relationship_type,roster_source,roster_certified,lineage,book";
+// status / effective_tier / cell are read back so the listing write can skip what has not moved.
+const ACCOUNT_COLS = "id,key,name,relationship_type,roster_source,roster_certified,lineage,book,status,effective_tier,cell";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -235,19 +239,16 @@ Deno.serve(async (req: Request) => {
   }
   const writeErrors: string[] = [];
   let snapshotsWritten = 0;
+  let listingUpdated = 0;
   try {
     const readRows: Rec[] = [];
     for (const sc of cards) readRows.push(buildReadRow(sc, runId, await sha256Hex(scorecardJson(sc))));
     const ins = await insertBatches(db, "pb_reads", readRows);
     writeErrors.push(...ins.errors);
 
-    for (const sc of cards) {
-      const { error } = await db.from("pb_accounts").update(listingPatch(sc)).eq("id", sc.account_id);
-      if (error) writeErrors.push(`pb_accounts ${sc.account_id}: ${error.message}`);
-    }
-
     // The calibration loop starts here (R4): what the book claimed today, kept so it can be
     // scored against actuals later. A re-run the same day replaces the day's row, never doubles it.
+    // Written before the listing, which was the step a CPU-time kill landed in (10 Nov 2026).
     const snapRows: Rec[] = [];
     for (const sc of cards) {
       const row = buildSnapshotRow(sc, rubric.spec, runId);
@@ -257,6 +258,17 @@ Deno.serve(async (req: Request) => {
     writeErrors.push(...snaps.errors);
     snapshotsWritten = snaps.wrote;
     notes.push(`potential snapshots: ${snaps.wrote} written for ${snapRows.length} ranked of ${cards.length} scored`);
+
+    // Only the accounts whose listing moved, one call per patch — never one call per account.
+    const listingNow = new Map<string, Listing>();
+    for (const a of accounts) listingNow.set(String(a.id), toListing(a));
+    const updates = listingUpdates(cards, listingNow);
+    for (const u of updates) {
+      const { error } = await db.from("pb_accounts").update(u.patch).in("id", u.ids);
+      if (error) writeErrors.push(`pb_accounts listing (${u.ids.length} accounts): ${error.message}`);
+      else listingUpdated += u.ids.length;
+    }
+    notes.push(`listing: ${listingUpdated} of ${cards.length} accounts changed, written in ${updates.length} call(s)`);
   } catch (e) {
     writeErrors.push(errorMessage(e));
   }
@@ -265,7 +277,7 @@ Deno.serve(async (req: Request) => {
   const status = runStatus(cards.length, allErrors.length);
   try {
     // snapshots goes into counts, not only notes: the response truncates notes past 200 and pb_runs is the record.
-    await finishRun(db, runId, status, { ...counts, snapshots: snapshotsWritten, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
+    await finishRun(db, runId, status, { ...counts, snapshots: snapshotsWritten, listing_updated: listingUpdated, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
   } catch (e) {
     writeErrors.push(errorMessage(e));
   }

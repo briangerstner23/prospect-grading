@@ -773,6 +773,26 @@ Two things about that query, both of which cost an hour to learn:
 > a tier flip, and the trace is what turns that into a diagnosis (`icp_derivation` went "stated"
 > → "none" while the fact sat in `pb_current_facts` the whole time).
 
+> **24 Oct – 10 Nov 2026 — the score ran out of CPU after writing the reads, on 11 of 18 nights**
+> (24, 25, 26 and 29 Oct; 2, 3, 4, 5, 6, 9 and 10 Nov). Each left a pb-score row at `running` and a
+> watchdog row saying "the function answered 546".
+> The function log says `CPU Time exceeded` at about 31 s: an edge function has a CPU-time
+> ceiling as well as a wall clock, and the run was right at it. The reads had landed (1,078 each
+> night, within three seconds of the run starting), so the board was current; what was cut off
+> was everything after them. pb-score then sent one `update pb_accounts … where id = …` per
+> account, 1,078 round trips whether or not anything had changed, and on 10 Nov it was killed at
+> 858, so about 220 accounts kept the day before's listing columns, no potential snapshots were
+> written on any of those nights, and the run row never finished. The nights it fit took about
+> 26 s; the book had grown from about 960 accounts to 1,078 over the same weeks. The fix (`listingUpdates`) reads the listing back, writes only the accounts that moved,
+> one call per patch, and writes the snapshots before the listing. A `running` pb-score row with
+> a fresh set of reads under its `run_id` is this shape, not a score that never happened:
+>
+> ```sql
+> select r.id, r.started_at, r.status, count(x.*) as reads
+>   from pb_runs r left join pb_reads x on x.run_id = r.id
+>  where r.source = 'pb-score' and r.status = 'running' group by 1, 2, 3 order by 2 desc;
+> ```
+
 `status` is `running` (never finished — investigate), `success`, `partial` (some rows
 errored; see `errors`) or `failed`. The seed run's `counts.skipped` lists the organisations
 and Notion rows dropped as "already an Agency Partner" by design (PRO-10).

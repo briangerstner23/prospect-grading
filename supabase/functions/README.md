@@ -255,8 +255,11 @@ account `resolveFeatures` → `grade`; a per-account failure lands in `errors` a
 continues. Then:
 
 - **default** — inserts `pb_reads` (`scorecard_sha256` = SHA-256 of `JSON.stringify(scorecard)`),
-  updates `pb_accounts.status / effective_tier / cell`, writes `pb_runs` with counts
-  `{scored, parked, unclassified, overridden, ranked, errors}`. Response `{ok, run_id, status,
+  upserts the day's `pb_potential_snapshots`, then updates `pb_accounts.status / effective_tier /
+  cell` on the accounts whose listing moved — one `update … where id in (…)` per patch, at most
+  100 ids to a call (`listingUpdates`; one call per account hit the CPU-time ceiling on 11 of 18
+  nights from 24 Oct 2026, RUNBOOK §15) — and writes `pb_runs` with counts `{scored, parked, unclassified,
+  overridden, ranked, errors, snapshots, listing_updated}`. Response `{ok, run_id, status,
   rubric_version, as_of, counts, errors, notes}`.
 - **`preview=1`** — writes **nothing** (no reads, no run) and returns `{preview: true, rubric_version,
   rubric_status, counts, changed, diff: [{account_id, name, from_tier, to_tier, from_status,

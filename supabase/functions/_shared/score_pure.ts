@@ -137,6 +137,66 @@ export function listingPatch(sc: ProspectScorecard): { status: string; effective
   return { status: sc.status, effective_tier: sc.effective_tier, cell: sc.cell };
 }
 
+/** The listing columns as a pb_accounts row holds them before tonight's write. */
+export interface Listing {
+  status: string | null;
+  effective_tier: string | null;
+  cell: string | null;
+}
+
+/** One `update pb_accounts set <patch> where id in (<ids>)`. */
+export interface ListingUpdate {
+  patch: { status: string; effective_tier: string | null; cell: string | null };
+  ids: string[];
+}
+
+/**
+ * The listing writes tonight's scorecards need, in as few calls as possible.
+ *
+ * Until 10 Nov 2026 pb-score sent one `update … where id = …` per scored account, every night,
+ * whether or not anything had changed: 1,078 round trips after the reads were written. Each one
+ * costs the worker CPU to build and parse, and an edge function has a CPU-time ceiling, not only
+ * a wall clock. On 11 of 18 nights from 24 Oct the gateway answered 546 "CPU Time exceeded"
+ * part-way through that loop (858 of 1,078 on 10 Nov): the reads had landed, but the rest of the listing, the day's
+ * potential snapshots and the run row's finish never did, so each of those nights left a `running`
+ * row and a watchdog row behind.
+ *
+ * So: an account whose row already shows the scorecard's listing is left alone, and the rest are
+ * grouped by the patch they take — every account moving to the same status, tier and cell is one
+ * call — with at most `size` ids to a call so the `in (…)` list keeps the URL short (the same
+ * bound selectIn uses). An account missing from `current` (no row read back) is always written.
+ * The order is fixed (by patch, then id) so the same inputs make the same calls.
+ */
+export function listingUpdates(
+  cards: readonly ProspectScorecard[],
+  current: ReadonlyMap<string, Listing>,
+  size = 100,
+): ListingUpdate[] {
+  if (!Number.isInteger(size) || size < 1) throw new Error(`listingUpdates: size must be a positive integer, got ${size}`);
+  const groups = new Map<string, ListingUpdate>();
+  for (const sc of cards) {
+    const patch = listingPatch(sc);
+    const now = current.get(sc.account_id);
+    if (now && now.status === patch.status && now.effective_tier === patch.effective_tier && now.cell === patch.cell) continue;
+    const key = JSON.stringify([patch.status, patch.effective_tier, patch.cell]);
+    const g = groups.get(key);
+    if (g) g.ids.push(sc.account_id);
+    else groups.set(key, { patch, ids: [sc.account_id] });
+  }
+  const out: ListingUpdate[] = [];
+  for (const key of [...groups.keys()].sort()) {
+    const g = groups.get(key)!;
+    const ids = [...new Set(g.ids)].sort();
+    for (let i = 0; i < ids.length; i += size) out.push({ patch: g.patch, ids: ids.slice(i, i + size) });
+  }
+  return out;
+}
+
+/** A pb_accounts row's listing columns, as `listingUpdates` compares them. */
+export function toListing(row: Rec): Listing {
+  return { status: toStr(row.status), effective_tier: toStr(row.effective_tier), cell: toStr(row.cell) };
+}
+
 export interface CurrentRead {
   account_id: string;
   effective_tier: string | null;

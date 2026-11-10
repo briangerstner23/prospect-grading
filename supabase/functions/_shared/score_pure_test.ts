@@ -13,7 +13,8 @@ import { dirname, join } from "node:path";
 
 import { grade } from "./core/engine.ts";
 import type { ProspectFeatures, ProspectScorecard } from "./core/prospect_types.ts";
-import { buildSnapshotRow, compareKey, diffEntry, rankDiff } from "./score_pure.ts";
+import { buildSnapshotRow, compareKey, diffEntry, listingPatch, listingUpdates, rankDiff, toListing } from "./score_pure.ts";
+import type { Listing } from "./score_pure.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const load = (p: string) => JSON.parse(readFileSync(join(here, p), "utf8"));
@@ -116,6 +117,67 @@ check("same card, same row", JSON.stringify(buildSnapshotRow(ranked[0], rubric, 
   check("diffEntry: the same position is not an order change", dSame.order_changed === false, JSON.stringify(dSame));
   const dLegacy = diffEntry(cards[2], current.get("c")!);
   check("diffEntry: without ranks the old shape still works, with nulls", dLegacy.from_rank === null && dLegacy.to_rank === null && dLegacy.order_changed === false);
+}
+
+/* ---- 5 · the listing write: only what moved, one call per patch (pb-score, 10 Nov 2026) ---- */
+{
+  // Real scorecards from the golden fixtures, re-keyed so ids are ours to order.
+  const all = golden.map((g, i) => ({ ...cardOf(g.id), account_id: `acct-${String(i).padStart(3, "0")}` }));
+  const asListing = (sc: ProspectScorecard): Listing => ({ status: sc.status, effective_tier: sc.effective_tier, cell: sc.cell });
+
+  // Nothing moved: no call at all — the old loop made one per account.
+  const same = new Map(all.map((sc) => [sc.account_id, asListing(sc)] as [string, Listing]));
+  check("listingUpdates: a night where nothing moved makes no call", listingUpdates(all, same).length === 0);
+
+  // Everything is new (no row read back): every account is written, each exactly once.
+  const fresh = listingUpdates(all, new Map());
+  const freshIds = fresh.flatMap((u) => u.ids);
+  check("listingUpdates: an account with no current listing is always written, once",
+    freshIds.length === all.length && new Set(freshIds).size === all.length, JSON.stringify(freshIds));
+  const distinctPatches = new Set(all.map((sc) => JSON.stringify(listingPatch(sc)))).size;
+  check("listingUpdates: one call per distinct patch when every group fits", fresh.length === distinctPatches, `${fresh.length} calls for ${distinctPatches} patches`);
+  check("listingUpdates: every call sets exactly what listingPatch says for each of its ids",
+    fresh.every((u) => u.ids.every((id) => JSON.stringify(listingPatch(all.find((sc) => sc.account_id === id)!)) === JSON.stringify(u.patch))));
+
+  // One account moved tier, one moved cell, one moved status; the rest stand.
+  const moved = new Map(same);
+  moved.set(all[0].account_id, { ...asListing(all[0]), effective_tier: all[0].effective_tier === "Gold" ? "Silver" : "Gold" });
+  moved.set(all[1].account_id, { ...asListing(all[1]), cell: "some-other-cell" });
+  moved.set(all[2].account_id, { ...asListing(all[2]), status: all[2].status === "Parked" ? "Ranked" : "Parked" });
+  const few = listingUpdates(all, moved);
+  const fewIds = few.flatMap((u) => u.ids).sort();
+  check("listingUpdates: only the three that moved are written, whichever column moved",
+    JSON.stringify(fewIds) === JSON.stringify([all[0], all[1], all[2]].map((sc) => sc.account_id).sort()), JSON.stringify(fewIds));
+
+  // A null on one side and a value on the other is a change; null on both is not.
+  const nullTier = all.find((sc) => sc.effective_tier === null);
+  if (nullTier) {
+    const m = new Map(same);
+    m.set(nullTier.account_id, { ...asListing(nullTier), effective_tier: "Bronze" });
+    check("listingUpdates: a tier the scorecard clears to null is written", listingUpdates(all, m).some((u) => u.ids.includes(nullTier.account_id) && u.patch.effective_tier === null));
+  } else check("listingUpdates: the fixtures carry an account with no tier (needed by the null case)", false);
+
+  // The URL bound: no call carries more than `size` ids, and splitting loses nothing.
+  const big = Array.from({ length: 250 }, (_, i) => ({ ...all[0], account_id: `bulk-${String(i).padStart(3, "0")}` }));
+  const chunks = listingUpdates(big, new Map(), 100);
+  check("listingUpdates: 250 accounts on one patch are three calls of at most 100",
+    chunks.length === 3 && chunks.every((u) => u.ids.length <= 100) && chunks.flatMap((u) => u.ids).length === 250, chunks.map((u) => u.ids.length).join(","));
+
+  // Deterministic: the same inputs make the same calls in the same order, whatever the card order.
+  const a1 = JSON.stringify(listingUpdates(all, moved));
+  const a2 = JSON.stringify(listingUpdates([...all].reverse(), moved));
+  check("listingUpdates: deterministic, independent of card order", a1 === a2);
+
+  // A scorecard listed twice (a replayed account) is still one id in one call.
+  const dup = listingUpdates([all[0], all[0]], new Map());
+  check("listingUpdates: a repeated account is written once", dup.length === 1 && dup[0].ids.length === 1);
+
+  let threw = false;
+  try { listingUpdates(all, new Map(), 0); } catch { threw = true; }
+  check("listingUpdates: a non-positive size is refused, never an endless loop", threw);
+
+  // toListing reads the row the way the comparison needs: blanks and absent columns are null.
+  check("toListing: absent and blank columns are null", JSON.stringify(toListing({ status: "Ranked", effective_tier: "  ", cell: undefined })) === JSON.stringify({ status: "Ranked", effective_tier: null, cell: null }));
 }
 
 console.log(`score_pure_test: ${passed} passed, ${failures.length} failed`);
