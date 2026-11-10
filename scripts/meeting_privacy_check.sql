@@ -10,7 +10,8 @@
 --   1. Lanes. As a synthetic rater: approving a tier call, approving a removal, and a removal carrying
 --      expires_at are refused. A viewer and a non-WLIQ address are refused outright.
 --   2. Rules, as a synthetic owner: an override with no written reason, with an unknown reason code,
---      at the computed tier, or on an account with no computed tier is refused; a removal carrying an
+--      at the computed tier (on an account no live override moves), or on an account with no computed
+--      tier is refused; a removal carrying an
 --      expiry is refused by pb_register_removal_guard; a fact that disagrees with a person's value is
 --      refused without overrule; a card spanning two agencies is refused; an unplaced name cannot be
 --      decided.
@@ -18,6 +19,8 @@
 --      link; the waiting machine candidate on that key superseded; origin-tagged register notes). The
 --      owner's card lands the overruling fact, the override (expiry = today + the rubric's
 --      expiry_default_days), the removal (no expiry) and a read; the removed agency leaves pb_board().
+--      No register row the decide function wrote carries a quote: pb_register is readable by every
+--      signed-in lane, the viewer's included, and the words are owner and rater only.
 --   4. Placement: assign remembers the name, unassign forgets it.
 --   5. As `authenticated`: a hand insert cannot pose as a meeting fact; a rater reads the proposals,
 --      a viewer reads none of them; nobody updates them directly.
@@ -72,6 +75,8 @@ begin
     from public.pb_current_reads r
     join public.pb_accounts a on a.id = r.account_id
    where a.book = 'prospect' and r.computed_tier is not null
+     -- no live override moves the board off the computed tier, so an override TO it changes nothing
+     and lower(coalesce(r.effective_tier, r.computed_tier)) = lower(r.computed_tier)
      and not exists (select 1 from public.pb_removals x where x.account_id = r.account_id)
      and r.account_id in (select b.account_id from public.pb_board() b)
    order by r.account_id
@@ -143,20 +148,22 @@ begin
      line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
   values (v_rec, v_a, array['harness a'], 'harness a', 'resolved', 'name', 'override', v_tier, 'relationship_known',
           q[3], 12, 12, '00:01:20', 'S1', 'asserted', current_date,
-          '"' || q[3] || '" — Harness sales connect, ' || current_date || ' 00:01:20', 'harness', 'h3:' || v_marker, 'proposed')
+          'Tier call made in the sales meeting of ' || current_date || ' at 00:01:20; the words are on its meeting card.',
+          'harness', 'h3:' || v_marker, 'proposed')
   returning id into p_over;
   insert into public.pb_meeting_proposals
     (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
      line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
   values (v_rec, v_a, array['harness a'], 'harness a', 'resolved', 'name', 'override', v_ctier, 'relationship_known',
-          q[8], 18, 18, '00:02:20', 'S1', 'asserted', current_date, '"' || q[8] || '" — harness', 'harness',
+          q[8], 18, 18, '00:02:20', 'S1', 'asserted', current_date, 'Tier call made in the harness meeting.', 'harness',
           'h8:' || v_marker, 'proposed')
   returning id into p_over_same;
   insert into public.pb_meeting_proposals
     (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, reason_code, disposition, quote,
      line_from, line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
   values (v_rec, v_a, array['harness a'], 'harness a', 'resolved', 'name', 'removal', 'too_small', 'unqualified', q[4],
-          13, 13, '00:01:30', 'S1', 'asserted', current_date, '"' || q[4] || '" — sales meeting ' || current_date,
+          13, 13, '00:01:30', 'S1', 'asserted', current_date,
+          'Removal called for in the sales meeting of ' || current_date || ' at 00:01:30; the words are on its meeting card.',
           'harness', 'h4:' || v_marker, 'proposed')
   returning id into p_rem;
   insert into public.pb_meeting_proposals
@@ -169,7 +176,7 @@ begin
     (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
      line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
   values (v_rec, v_b, array['harness b'], 'harness b', 'resolved', 'name', 'override', v_tier, 'relationship_known',
-          q[6], 15, 15, '00:01:50', 'S2', 'asserted', current_date, '"' || q[6] || '" — harness', 'harness',
+          q[6], 15, 15, '00:01:50', 'S2', 'asserted', current_date, 'Tier call made in the harness meeting.', 'harness',
           'h6:' || v_marker, 'proposed')
   returning id into p_over_b;
   insert into public.pb_meeting_proposals
@@ -365,6 +372,11 @@ begin
   end if;
   if exists (select 1 from public.pb_board() b where b.account_id = v_a) then
     raise exception 'HARNESS 3j: the removed agency is still on pb_board()';
+  end if;
+  select count(*) into v_n from public.pb_register g, unnest(q) x
+   where g.account_id in (v_a, v_b) and g.payload->>'origin' = 'sales_meeting' and position(x in g.text) > 0;
+  if v_n <> 0 then
+    raise exception 'HARNESS 3k: % register row(s) the decide function wrote carry a quote; pb_register is read by every signed-in lane', v_n;
   end if;
 
   -- 4 · placement ------------------------------------------------------------------------------

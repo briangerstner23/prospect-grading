@@ -191,6 +191,21 @@ check("the sales-meeting migrations are on disk", meetingFiles.length >= 2, meet
   check("…naming no quote", !/\bquote\b/i.test(ins), ins.replace(/\s+/g, " ").slice(0, 160));
   check("…with evidence_url null right after the sales_meeting source", /'sales_meeting'\s*,\s*null\s*,/i.test(ins));
   check("…and the proposal it came from", /meeting_proposal_id/.test(ins) && /\bp\.id\b/.test(ins));
+  // No register row a decision writes carries the quote: pb_register is readable by every signed-in
+  // lane, the viewer's included, and an override's text is copied into pb_reads.scorecard.
+  // Each insert up to its `returning`, or the end of its branch — a literal may hold a ';'.
+  const regIns = [...decide.matchAll(/insert\s+into\s+public\.pb_register\b/gi)].map((m) => {
+    const rest = decide.slice(m.index ?? 0);
+    const ends = [/returning\s+id\s+into\s+\w+\s*;/i, /\n\s*(?:end\s+if|elsif)\b/i].map((re) => {
+      const e = re.exec(rest);
+      return e ? e.index + e[0].length : rest.length;
+    });
+    return rest.slice(0, Math.min(...ends));
+  });
+  check("pb_decide_meeting_card writes pb_register (fact notes, overrides, removals, reads)", regIns.length >= 4, String(regIns.length));
+  check("…and no register insert names the quote", regIns.every((x) => !/\bp\.quote\b/i.test(x)),
+    regIns.filter((x) => /\bp\.quote\b/i.test(x)).map((x) => x.replace(/\s+/g, " ").slice(0, 120)).join(" | "));
+  check("…nor the recording (the proposal id is the pointer)", regIns.every((x) => !/'recording_id'/.test(x)));
   check("pb_decide_meeting_card holds the owner lane for tier calls and removals",
     /v_role\s*<>\s*'owner'[\s\S]{0,400}m\.kind\s+in\s*\(\s*'override'\s*,\s*'removal'\s*\)/i.test(decide));
   check("pb_decide_meeting_card re-derives against pb_current_facts", /from\s+public\.pb_current_facts\b/i.test(decide));

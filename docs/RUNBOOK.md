@@ -2680,7 +2680,10 @@ cause and re-read it deliberately.
 
 A re-read starts again from nothing — mentions, progress and counts cleared; what it spent stays in
 `usage`. Under the SAME extractor the fingerprint keeps every claim already proposed from landing
-twice, so it adds only what is new (the agencies a `partial` read missed). Under a NEW extractor
+twice, so it adds only what is new (the agencies a `partial` read missed). A resolved agency's
+fingerprint is keyed on its account, not on the spoken forms pass 1 happened to hear, so a claim a
+person already decided does not come back because the re-read heard the name differently; a name
+nobody has placed is still keyed on what was said. Under a NEW extractor
 (another model, or a new prompt version) the new rows sit beside the old ones and the later line wins
 between them — so **dismiss the meeting's open proposals first** ("Dismiss meeting", or
 `pb_dismiss_meeting(recording_id, null)`), then re-read.
@@ -2691,6 +2694,16 @@ and the next meeting places it alone); A approves what is ticked on that card an
 in one `pb_decide_meeting_card` call that re-derives every rule. A tier call or a removal is the
 owner's; a removal is never pre-ticked and never expires. Facts and overrides move the tier at the
 next 06:15 score; a removal leaves the board at once.
+
+"The board already says it" (`agrees`) means what the board SHOWS: a tier call agrees only with the
+effective tier, so the engine's own tier named while a live override shows another stays open,
+flagged `contradicts_live_override` (approving it ends the override); and a live removal covers a
+meeting's removal only when it is as firm — a live `do_not_contact` covers anything, a live
+`unqualified` does not cover a do-not-contact, which stays open flagged `upgrades_removal` and, once
+approved, becomes the removal pb_removals shows (rule 7a). No register row a decision writes carries
+the quote or the meeting's title: pb_register is read by every signed-in lane, the viewer's included,
+so the row names the meeting's date and the line and points at the proposal; the prefilled written
+reason is the same, and a person who wants the words in it types them.
 
 ### 33.6 · What a halt looks like, and the checks that keep running
 
