@@ -170,6 +170,16 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
     const own = grade(base(), R);
     const passed = grade(base(), R, { rubric_fingerprint: fingerprint(R) });
     eq("rubric_fingerprint option: the scorecard is identical to the one grade() computes itself", JSON.stringify(passed), JSON.stringify(own));
+    // The fast path itself. Every other check here compares against the engine's own hash, so they
+    // all pass when the option is silently dropped and grade() hashes the rubric per account again
+    // (about 680 ms of pb-score's CPU over the book, RUNBOOK §15). A well-formed value the engine
+    // could not have computed for R proves the option is the one printed. Only pb-score passes the
+    // option, and always as fingerprint(rubric.spec) of the rubric it grades with, so no real read
+    // ever carries a value like this one.
+    const stand_in = "00000000";
+    check("rubric_fingerprint option: the stand-in is not R's own fingerprint", own.rubric_fingerprint !== stand_in);
+    eq("rubric_fingerprint option: a well-formed value is used as given, not recomputed",
+      grade(base(), R, { rubric_fingerprint: stand_in }).rubric_fingerprint, stand_in);
     for (const junk of ["", "DEC7D291", "dec7d29", "dec7d2911", "not-a-hash", null]) {
       eq(`rubric_fingerprint option: ${JSON.stringify(junk)} is ignored and the engine computes its own`,
         grade(base(), R, { rubric_fingerprint: junk as string | null }).rubric_fingerprint, own.rubric_fingerprint);

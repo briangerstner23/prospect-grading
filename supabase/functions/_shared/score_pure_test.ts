@@ -222,6 +222,29 @@ check("same card, same row", JSON.stringify(buildSnapshotRow(ranked[0], rubric, 
     !partial.ok && partial.status === "partial" && partial.http === 500 && partial.errors.length === 1, JSON.stringify(partial));
 }
 
+/* ---- 7 · pb-score hashes the rubric once and hands it to grade() (pb-score, 10 Nov 2026) ----
+ *
+ * engine_test pins that grade() uses a well-formed rubric_fingerprint it is given. This pins the
+ * other half: that pb-score still gives it one, computed once before the account loop, from the very
+ * rubric it grades with. Without it every account re-hashes the whole rubric (about 680 ms of CPU over
+ * the book against the ~2 s ceiling, RUNBOOK §15), and the labels stay right, so nothing else notices.
+ * index.ts imports jsr: and cannot run under Node, so this reads its text.
+ */
+{
+  const src = readFileSync(join(here, "../pb-score/index.ts"), "utf8");
+  const hashAt = src.search(/const\s+rubricFingerprint\s*=\s*fingerprint\(\s*rubric\.spec\s*\)/);
+  const loopAt = src.search(/for\s*\(\s*const\s+a\s+of\s+accounts\s*\)/);
+  check("pb-score: fingerprint(rubric.spec) is computed once, before the account loop",
+    hashAt >= 0 && loopAt >= 0 && hashAt < loopAt, `hash at ${hashAt}, loop at ${loopAt}`);
+  const gradeCalls = [...src.matchAll(/\bgrade\(\s*resolved\.features\s*,\s*rubric\.spec\s*,\s*\{([^}]*)\}\s*\)/g)];
+  check("pb-score: there is exactly one grade() call over the resolved features", gradeCalls.length === 1, String(gradeCalls.length));
+  check("pb-score: that call passes rubric_fingerprint: rubricFingerprint",
+    gradeCalls.length === 1 && /\brubric_fingerprint\s*:\s*rubricFingerprint\b/.test(gradeCalls[0][1]), gradeCalls[0]?.[1] ?? "");
+  check("pb-score: fingerprint and grade come from the same engine copy",
+    /import\s*\{[^}]*\bfingerprint\b[^}]*\bgrade\b[^}]*\}\s*from\s*"\.\.\/_shared\/core\/engine\.ts"/.test(src)
+      || /import\s*\{[^}]*\bgrade\b[^}]*\bfingerprint\b[^}]*\}\s*from\s*"\.\.\/_shared\/core\/engine\.ts"/.test(src));
+}
+
 console.log(`score_pure_test: ${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  FAIL  ${f}`);
 process.exit(failures.length ? 1 : 0);
