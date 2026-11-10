@@ -14,6 +14,9 @@ import {
   clusterMentions,
   domainLabel,
   FILLER_WORDS,
+  MENTION_LEAD_LINES,
+  MENTION_REACH_LINES,
+  nearMentions,
   OWN_NAMES,
   resolveMention,
   resolveSurface,
@@ -232,6 +235,36 @@ const LINES = [
   eq("a cluster merges every resolved mention's segments", clusters[0].segments, [{ from: 1, to: 3 }, { from: 7, to: 7 }]);
   eq("said_key is the sorted speech keys", clusters[0].said_key, "quill|quillfern|quillfern digital");
   eq("said_key is stable whatever the input order", clusterMentions([second, { ...r1 }])[0].said_key, clusters[0].said_key);
+}
+
+/* A range cannot carry a company onto the next discussion: its lines reach only so far from a line
+   its name was verified on, and the rest are cut and counted. */
+{
+  eq("the reach is five lines before a name and thirty after it", [MENTION_LEAD_LINES, MENTION_REACH_LINES], [5, 30]);
+  eq("nearMentions: a range inside the reach is whole", nearMentions(10, 30, [12]), [{ from: 10, to: 30 }]);
+  eq("nearMentions: a range running on is cut thirty lines after its name", nearMentions(10, 200, [12]), [{ from: 10, to: 42 }]);
+  eq("nearMentions: and five lines before it", nearMentions(1, 50, [40]), [{ from: 35, to: 50 }]);
+  eq("nearMentions: two names far apart keep their own stretches, not the gap", nearMentions(10, 300, [12, 200]), [{ from: 10, to: 42 }, { from: 195, to: 230 }]);
+  eq("nearMentions: names close together are one stretch", nearMentions(10, 300, [12, 40]), [{ from: 10, to: 70 }]);
+
+  const text = (n: number) =>
+    n === 10 ? "Next is Quillfern Digital, they asked about a rebuild."
+    : n === 120 ? "Back to Quillfern, they signed."
+    : n === 60 ? "Other topic now: the conference in the spring."
+    : `Line ${n} of the meeting.`;
+  const long = Array.from({ length: 200 }, (_, i) => ({ n: i + 1, text: text(i + 1) }));
+  const v = verifySegments({
+    companies: [
+      { ref: "C1", as_said: ["Quillfern Digital", "Quillfern"], kind: "agency", segments: [{ from: 8, to: 130 }], mention_lines: [10, 120] },
+      { ref: "C2", as_said: ["Quillfern"], kind: "agency", segments: [{ from: 115, to: 125 }], mention_lines: [120] },
+    ],
+  }, long);
+  const c1 = v.mentions.find((m) => m.ref === "C1") as VerifiedMention;
+  eq("a model's range over another discussion keeps only the lines near its names", c1.segments, [{ from: 8, to: 40 }, { from: 115, to: 130 }]);
+  check("…so the talk between them is nobody's, not this company's", !c1.segments.some((sg) => sg.from <= 60 && sg.to >= 60));
+  eq("the lines cut are counted, once per trimmed range", [v.counters.segment_trimmed, v.counters.segment_lines_trimmed], [1, 123 - 33 - 16]);
+  const c2 = v.mentions.find((m) => m.ref === "C2") as VerifiedMention;
+  eq("a range inside the reach is untouched", c2.segments, [{ from: 115, to: 125 }]);
 }
 
 {

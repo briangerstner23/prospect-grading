@@ -15,11 +15,13 @@ import { fileURLToPath } from "node:url";
 import {
   BATCH_SIZE,
   BLOCKING_FLAGS,
+  claimDiscriminator,
   claimsMessage,
   claimsPrompt,
   DEFAULT_OVERRIDE_CODE,
   defaultSelected,
   defaultText,
+  dropAlreadyOnCard,
   removalCovers,
   hedgeFlags,
   HISTORIC_DAYS,
@@ -35,7 +37,7 @@ import {
   tierNamed,
   verifyMeetingClaims,
 } from "./meeting_claims.ts";
-import type { Batch, ClusterForBatch, ProposalCluster, ProposalInput, RemovalReason, VerifiedClaim } from "./meeting_claims.ts";
+import type { Batch, CardRow, ClusterForBatch, ProposalCluster, ProposalInput, ProposalRow, RemovalReason, VerifiedClaim } from "./meeting_claims.ts";
 import type { TranscriptLine } from "./meeting_transcript.ts";
 import { MAX_AS_SAID, MAX_COMPANIES, MAX_MENTION_LINES, MAX_SEGMENTS } from "./meeting_mentions.ts";
 import { EXTRACTABLE, extractorId, keysFor, MEETING_PROMPT_VERSION } from "./notes_sweep.ts";
@@ -386,6 +388,57 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
   check("it differs for another key", rows([vc({ key: "money", value: "present" })])[0].fingerprint !== a);
   check("two reads of one agency do not collide", new Set(rows([vc({ type: "read", topic: "fit", line_from: 2 }), vc({ type: "read", topic: "fit", line_from: 3 })]).map((r) => r.fingerprint)).size === 2);
   check("it is eight hex characters", /^[0-9a-f]{8}$/.test(a));
+  eq("claimDiscriminator: a fact's key, a read's topic and line, nothing for an override or a removal", [
+    claimDiscriminator({ kind: "fact", key: "headcount", topic: null, line_from: 5 }),
+    claimDiscriminator({ kind: "read", key: null, topic: "fit", line_from: 3 }),
+    claimDiscriminator({ kind: "override", key: null, topic: null, line_from: 5 }),
+    claimDiscriminator({ kind: "removal", key: null, topic: null, line_from: 5 }),
+  ], ["headcount", "fit|3", "", ""]);
+}
+
+/* A re-read after a person placed the name: the rows the first read wrote kept the fingerprint of
+   what was said; the re-read resolves the same agency (by the name the person taught it) and keys
+   its rows on the account. Those are the same claims, and none may come back as an open row. */
+{
+  const said = "bluebarrow";
+  const claims = [
+    vc({ ref: "A3", key: "delivery_headcount", value: 12, line_from: 11, line_to: 11 }),
+    vc({ ref: "A3", type: "tier_call", tier: "Gold", key: null, line_from: 11, line_to: 11 }),
+    vc({ ref: "A3", type: "read", topic: "fit", key: null, line_from: 12, line_to: 12 }),
+  ];
+  const first = rows(claims);
+  eq("first read: the unplaced name's rows carry no agency", first.map((r) => [r.account_id, r.said_key]), [[null, said], [null, said], [null, said]]);
+  // pb_assign_meeting_mention: account_id, matched_on 'person' and mention_state 'resolved' — and
+  // the fingerprint stays what it was (the row guard keeps it immutable).
+  const placed: CardRow[] = first.map((r) => ({ account_id: "blue", kind: r.kind, key: r.key, topic: r.topic, line_from: r.line_from, extractor: r.extractor }));
+  const learned = CLUSTERS.map((cl) => cl.ref === "A3" ? { ...cl, state: "resolved", account_id: "blue", matched_on: "learned" } : cl);
+  const again = rows(claims, { clusters: learned });
+  check("the re-read keys the same claims on the account, so the fingerprint alone lets them back in",
+    again.every((r, i) => r.account_id === "blue" && r.fingerprint !== first[i].fingerprint));
+  const kept = dropAlreadyOnCard(again, placed);
+  eq("dropAlreadyOnCard: every claim the meeting already holds for that agency is dropped", [kept.rows.length, kept.dropped], [0, 3]);
+
+  const others = rows([
+    vc({ ref: "A3", key: "money", value: "present", line_from: 11, line_to: 11 }),
+    vc({ ref: "A3", type: "read", topic: "fit", key: null, line_from: 11, line_to: 11 }),
+  ], { clusters: learned });
+  eq("another key, or the same topic on another line, is a new claim and stays", dropAlreadyOnCard(others, placed).rows.map((r) => [r.kind, r.key, r.topic, r.line_from]),
+    [["fact", "money", null, 11], ["read", null, "fit", 11]]);
+  const newer = rows([vc({ ref: "A3", type: "tier_call", tier: "Platinum", key: null, line_from: 12, line_to: 12 })], { clusters: learned });
+  eq("an override is one per agency per meeting: a re-read's other tier is the same claim", dropAlreadyOnCard(newer, placed).dropped, 1);
+  const elsewhere = rows([vc({ ref: "A1", key: "delivery_headcount", value: 12, line_from: 3, line_to: 3 })], { clusters: learned });
+  eq("another agency's claim on the same key stays", dropAlreadyOnCard(elsewhere, placed).rows.length, 1);
+  const otherModel = rows(claims, { clusters: learned, extractor: extractorId("model-y", MEETING_PROMPT_VERSION) });
+  eq("under another extractor nothing is dropped (RUNBOOK §33.5: dismiss first)", dropAlreadyOnCard(otherModel, placed).dropped, 0);
+  const stillUnplaced = rows(claims);
+  eq("a row the read did not place is left to its fingerprint", dropAlreadyOnCard(stillUnplaced, placed).rows.length, 3);
+  // A merge moves a row to the survivor with the merged record's fingerprint; the re-read hears the survivor.
+  const merged: CardRow[] = [{ account_id: "quill", kind: "fact", key: "headcount", topic: null, line_from: 2, extractor: EXTRACTOR }];
+  eq("a row a merge moved to the survivor holds that claim too", dropAlreadyOnCard(rows([vc({})]), merged).dropped, 1);
+  const unplacedCard: CardRow[] = [{ account_id: null, kind: "fact", key: "headcount", topic: null, line_from: 5, extractor: EXTRACTOR }];
+  eq("a card with no agency holds nothing for one", dropAlreadyOnCard(rows([vc({})]), unplacedCard).dropped, 0);
+  const typed: ProposalRow[] = dropAlreadyOnCard([], placed).rows;
+  eq("nothing in, nothing out", typed.length, 0);
 }
 
 /* the pre-tick truth table: every flag, every kind, every mode */

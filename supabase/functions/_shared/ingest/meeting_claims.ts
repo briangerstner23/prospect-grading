@@ -18,7 +18,9 @@
  *   · reduceClaims: the last word per agency — one tier call, one removal, eight facts, three reads;
  *   · proposalRows: pb_meeting_proposals rows, with status, flags, the server's pre-tick
  *     (defaultSelected — a removal is NEVER pre-ticked), the prefilled written reason
- *     (defaultText) and a fingerprint (written_record.noteFingerprint) that makes a re-run free.
+ *     (defaultText) and a fingerprint (written_record.noteFingerprint) that makes a re-run free;
+ *   · dropAlreadyOnCard: a re-read's rows less the claims its meeting already holds for the same
+ *     agency, whatever fingerprint those were written under (a person placed the name since).
  *
  * Nothing here writes. A row is a proposal until pb_decide_meeting_card runs under a signed-in
  * person; nothing is ever parked in pb_fact_candidates.
@@ -741,6 +743,15 @@ function daysBefore(earlier: string, later: string): number {
 }
 
 /**
+ * What a claim is ABOUT within its agency, apart from who heard it said: a fact's key; a read's
+ * topic and first line; nothing more for an override or a removal (one of each per agency per
+ * meeting — reduceClaims keeps the last word). The fingerprint and dropAlreadyOnCard both use it.
+ */
+export function claimDiscriminator(r: { kind: string; key: string | null; topic: string | null; line_from: number }): string {
+  return r.kind === "fact" ? String(r.key) : r.kind === "read" ? `${r.topic}|${r.line_from}` : "";
+}
+
+/**
  * Verified claims → pb_meeting_proposals rows. For each claim of a readable cluster:
  *
  *   status    'not_proposed' for a hypothetical, question or joke; 'agrees' when the board already
@@ -826,7 +837,7 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
       }
     }
 
-    const discriminator = kind === "fact" ? String(c.key) : kind === "read" ? `${c.topic}|${c.line_from}` : "";
+    const discriminator = claimDiscriminator({ kind, key: c.key, topic: c.topic, line_from: c.line_from });
     const row: ProposalRow = {
       recording_id: input.meeting.recording_id,
       account_id: account,
@@ -870,4 +881,36 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
     rows.push(row);
   }
   return rows;
+}
+
+/** A pb_meeting_proposals row of the meeting being read that carries an agency. */
+export interface CardRow {
+  account_id: string | null;
+  kind: string;
+  key: string | null;
+  topic: string | null;
+  line_from: number;
+  extractor: string;
+}
+
+/**
+ * A read's rows less those its meeting already holds on a card: the same agency, kind and
+ * claimDiscriminator under the same extractor, in any status — whatever fingerprint that row was
+ * written under. `onCards` are the meeting's rows that carry an agency.
+ *
+ * The fingerprint is fixed when a row is written; its agency is not. A name nobody had placed is
+ * keyed on what was said (said:<said_key>), and a person places it afterwards ("Who is this?") —
+ * or a merge moves a row to the surviving account. A re-read under the same extractor then hears
+ * that agency as a resolved one, by the name the person taught it or by the survivor's, keys it on
+ * the account, and without this every claim a person had decided would come back as a new open
+ * row beside the decision. A row the read has not placed carries no agency and is left to its
+ * fingerprint. Under a new extractor nothing is dropped: those rows sit beside the old ones, and
+ * RUNBOOK §33.5 says to dismiss the meeting's open proposals before such a re-read.
+ */
+export function dropAlreadyOnCard(rows: readonly ProposalRow[], onCards: readonly CardRow[]): { rows: ProposalRow[]; dropped: number } {
+  const id = (r: { account_id: string | null; kind: string; key: string | null; topic: string | null; line_from: number; extractor: string }) =>
+    [r.extractor, r.account_id ?? "", r.kind, claimDiscriminator(r)].join("\u0000");
+  const held = new Set((onCards ?? []).filter((r) => r && r.account_id).map(id));
+  const kept = (rows ?? []).filter((r) => r.account_id === null || !held.has(id(r)));
+  return { rows: kept, dropped: (rows ?? []).length - kept.length };
 }

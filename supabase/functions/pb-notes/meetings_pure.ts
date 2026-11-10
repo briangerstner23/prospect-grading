@@ -14,6 +14,8 @@
  *                       like an agency is not one)
  *   rubricVocabulary    the active rubric's tiers and override codes, or null
  *   progressOf / storedClusters / modelFromExtractor   what a resumed read picks up
+ *   roundHeadroom       what the next round of calls is expected to take, against the budget
+ *   failureKind         halt, skip, or out of time: what a failed call means for the meeting
  *   failureNote         an extractor failure as a note that quotes NOTHING (ids and counts only)
  *   addUsage / addCounters / proposalCounts            bookkeeping
  *
@@ -32,7 +34,7 @@ import {
 } from "../_shared/ingest/meeting_transcript.ts";
 import type { InboxLight, MeetingSpeaker, RecordingSpan, TitleRule } from "../_shared/ingest/meeting_transcript.ts";
 import type { MentionCluster } from "../_shared/ingest/meeting_mentions.ts";
-import { ExtractorApiError, ExtractorReplyError } from "./extractor.ts";
+import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError } from "./extractor.ts";
 import type { ExtractorUsage } from "./extractor.ts";
 
 /* ------------------------------------------------------------------ *
@@ -119,6 +121,12 @@ export function parseMeetingBody(body: Rec, today: string): ParsedBody {
       return { ok: false, error: "budget_ms must be a positive number of milliseconds" };
     }
     budget_ms = Math.floor(b.budget_ms);
+    /* A run longer than its lease loses the meeting to the next tick while it is still writing,
+       and what it read is thrown away (lease_lost). */
+    if (budget_ms > MAX_BUDGET_MS) {
+      notes.push(`budget_ms ${budget_ms} was capped at ${MAX_BUDGET_MS}: the meeting's lease is ${LEASE_MS / 1000}s.`);
+      budget_ms = MAX_BUDGET_MS;
+    }
   }
 
   let concurrency = MAX_CONCURRENCY;
@@ -279,6 +287,13 @@ export interface RegisteredMeeting {
 /** How long a lease holds. A run's budget is 110 s; a lease older than this belongs to a dead run. */
 export const LEASE_MS = 150_000;
 
+/**
+ * The longest budget a run may ask for. Every model call is stopped at the budget (an AbortSignal),
+ * so a run's last call ends by then; the rest of the lease, 30 s, is for the writes after it. The
+ * lease is taken after registration, so it always ends later than the run's start + LEASE_MS.
+ */
+export const MAX_BUDGET_MS = LEASE_MS - 30_000;
+
 /** The instant before which a lease is free. */
 export function leaseCutoff(now_ms: number): string {
   return new Date(now_ms - LEASE_MS).toISOString();
@@ -305,16 +320,39 @@ export interface RegistrationPlan {
 }
 
 /**
- * New recordings + the pb_meetings rows of the same dates (and of the same ids) → what to write.
+ * The registered rows of one meeting, as an interrupted registration leaves them and nothing else
+ * does: two recordings still representatives (the new one was inserted, the one it displaced was
+ * never relabelled), or a duplicate of a recording that is itself a duplicate now (its pointer was
+ * never moved). False when a duplicate points at a recording that was not handed in — that is not
+ * the whole meeting, and nothing is relabelled on a part of one.
+ */
+function halfRelabelled(members: readonly string[], existing: ReadonlyMap<string, RegisteredMeeting>): boolean {
+  const rows = members.map((id) => existing.get(id)).filter((m): m is RegisteredMeeting => m !== undefined);
+  const pointsAt = (m: RegisteredMeeting) => (m.status === "duplicate" && m.duplicate_of ? m.duplicate_of : null);
+  if (rows.some((m) => pointsAt(m) !== null && !existing.has(pointsAt(m) as string))) return false;
+  if (rows.filter((m) => m.status !== "duplicate").length >= 2) return true;
+  return rows.some((m) => pointsAt(m) !== null && existing.get(pointsAt(m) as string)?.status === "duplicate");
+}
+
+/**
+ * New recordings + every pb_meetings row of the dates any of them (or of the registered rows with
+ * their ids) was held on → what to write.
  *
- *   · a recording already registered is left exactly as it is;
+ *   · a recording already registered is not inserted again;
  *   · recordings are grouped into meetings by groupRecording (same title, same UTC date, overlap of
- *     at least half the shorter); a group with no new member is not touched;
+ *     at least half the shorter);
  *   · the representative is inserted 'waiting' when selectMeeting selects it, else 'skipped'; a
- *     new representative inherits the owner's include from the one it replaces;
+ *     new representative — or a registered duplicate it promotes — inherits the owner's include
+ *     from the one it replaces;
  *   · every other new member is inserted 'duplicate' of the representative, and a registered
  *     member a new, longer recording displaced becomes 'duplicate' too — unless it is locked
- *     (read, being read, or holding mentions), in which case it stays the representative.
+ *     (read, being read, or holding mentions), in which case it stays the representative;
+ *   · a group with no new member is touched only to finish relabels an earlier run planned and did
+ *     not write. meetings.ts writes the inserts first and the relabels after, one by one; when a
+ *     relabel fails it keeps the cursor, so the next run is handed the same deliveries — already
+ *     registered, no longer new. Their meeting's rows are then half-relabelled (halfRelabelled),
+ *     and the relabels planned for them are the ones the earlier run never wrote. Any other group
+ *     without a new member is left exactly as it is.
  */
 export function planRegistration(input: {
   candidates: readonly NewRecording[];
@@ -348,7 +386,9 @@ export function planRegistration(input: {
   const inserts: Rec[] = [];
   const updates: Array<{ recording_id: string; from_status: string; patch: Rec }> = [];
   for (const g of groupRecording(spans)) {
-    if (!g.members.some((id) => fresh.has(id))) continue;
+    const hasNew = g.members.some((id) => fresh.has(id));
+    if (!hasNew && !halfRelabelled(g.members, existing)) continue;
+    const planned = updates.length;
     const rep = g.representative;
     /* The meeting's say so far: the include of the registered member that was its representative. */
     const previous = g.members.map((id) => existing.get(id)).find((m) => m !== undefined && m.status !== "duplicate");
@@ -357,7 +397,11 @@ export function planRegistration(input: {
     const repNew = fresh.get(rep);
     const repOld = existing.get(rep);
     const title = repNew ? repNew.title_norm : repOld ? repOld.title_norm : "";
-    const sel = selectMeeting({ title, include: repNew ? inherited : repOld?.include ?? null, rules: input.rules });
+    /* A duplicate never holds an include of its own (pb_meeting_include refuses one), so one that
+       becomes the representative takes the meeting's, as a new representative does. */
+    const promoted = repOld !== undefined && repOld.status === "duplicate";
+    const include = repNew || promoted ? inherited : repOld?.include ?? null;
+    const sel = selectMeeting({ title, include, rules: input.rules });
 
     for (const id of g.members) {
       const n = fresh.get(id);
@@ -386,7 +430,13 @@ export function planRegistration(input: {
           updates.push({
             recording_id: id,
             from_status: m.status,
-            patch: { status: sel.selected ? "waiting" : "skipped", skip_reason: sel.skip_reason, selected_by: sel.selected_by, duplicate_of: null },
+            patch: {
+              status: sel.selected ? "waiting" : "skipped",
+              skip_reason: sel.skip_reason,
+              selected_by: sel.selected_by,
+              include,
+              duplicate_of: null,
+            },
           });
           bump(counters, "relabelled.representative");
         }
@@ -398,6 +448,7 @@ export function planRegistration(input: {
         bump(counters, m.status === "duplicate" ? "relabelled.duplicate_of" : "relabelled.displaced");
       }
     }
+    if (!hasNew && updates.length > planned) bump(counters, "relabelled.unfinished_meeting");
   }
   /* Representatives first, so a duplicate's reference is always to a row the same write holds. */
   inserts.sort((a, b) => (a.status === "duplicate" ? 1 : 0) - (b.status === "duplicate" ? 1 : 0));
@@ -499,15 +550,35 @@ export function readVerdict(status: string, opts: { reread: boolean; dry_run: bo
   return { ok: true };
 }
 
+/** What one round of calls is expected to take before there is a measurement. */
+export const FIRST_CALL_GUESS_MS = 60_000;
+
+/**
+ * What the next round of calls is expected to take, checked against what is left of the budget
+ * before the round starts: the slowest round of this pass so far; before there is one, the first
+ * guess — or, for pass 2, the time pass 1 took in this run when that is longer. Pass 1 is one call
+ * over the whole transcript, and it is the only measurement of this meeting a first pass-2 round
+ * has; a fixed guess shorter than it started rounds the budget could not finish.
+ */
+export function roundHeadroom(slowestRoundMs: number, earlierPassMs = 0): number {
+  const n = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0);
+  if (n(slowestRoundMs) > 0) return n(slowestRoundMs);
+  return Math.max(FIRST_CALL_GUESS_MS, n(earlierPassMs));
+}
+
 /**
  * Does this failure stop the run, or only this call's agencies?
  *
  *   an API refusal       notes_sweep.classifyExtractorFailure decides, as for every channel;
  *   an unusable reply    'skip': it arrived, it was read, and retrying gives the same answer;
- *   anything else        'halt': a network failure or a timeout says nothing about the meeting,
- *                        so nothing is marked failed and the next tick tries again.
+ *   the run's deadline   'out_of_time': the call was still running when the budget ran out and was
+ *                        stopped (ExtractorTimeoutError). Like stopping before a call, not a
+ *                        failure: those agencies are left for the next run, nothing is marked;
+ *   anything else        'halt': a network failure says nothing about the meeting, so nothing is
+ *                        marked failed and the next tick tries again.
  */
-export function failureKind(e: unknown): "halt" | "skip" {
+export function failureKind(e: unknown): "halt" | "skip" | "out_of_time" {
+  if (e instanceof ExtractorTimeoutError) return "out_of_time";
   if (e instanceof ExtractorApiError) return classifyExtractorFailure(e.status, e.message);
   if (e instanceof ExtractorReplyError) return "skip";
   return "halt";
@@ -518,6 +589,7 @@ export function failureKind(e: unknown): "halt" | "skip" {
  * (which would put the meeting's words in pb_runs) and never repeats an API error body.
  */
 export function failureNote(e: unknown): string {
+  if (e instanceof ExtractorTimeoutError) return "a call stopped at the run's budget";
   if (e instanceof ExtractorApiError) return `the extractor API answered ${e.status}`;
   if (e instanceof ExtractorReplyError) {
     return `an unusable reply (${e.reason}, stop_reason ${e.stop_reason ?? "?"}, ${e.text_chars} chars)`;

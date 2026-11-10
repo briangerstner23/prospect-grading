@@ -55,6 +55,7 @@ import {
   CLAIMABLE_STATUSES,
   DEFAULT_BUDGET_MS,
   LEASE_MS,
+  MAX_BUDGET_MS,
   MAX_CONCURRENCY,
   MEETING_BODY_KEYS,
   meetingRoute,
@@ -625,6 +626,10 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   check("the schedule's dead-lease test is LEASE_MS", lease !== null && Number(lease[1]) * 1000 === LEASE_MS, lease?.[1] ?? "none");
   const timeout = /timeout_milliseconds\s*:=\s*(\d+)/.exec(cron);
   check("pg_net waits longer than the run's own budget", timeout !== null && Number(timeout[1]) > DEFAULT_BUDGET_MS);
+  // Every call stops at the budget, so a budget the lease can hold is what keeps the next tick from
+  // re-claiming a meeting this run is still writing.
+  check("the schedule's budget is one the lease holds (MAX_BUDGET_MS, under LEASE_MS)",
+    typeof body.budget_ms === "number" && body.budget_ms <= MAX_BUDGET_MS && MAX_BUDGET_MS < LEASE_MS, String(body.budget_ms));
 }
 
 /* ------------------------------------------------------------------ *

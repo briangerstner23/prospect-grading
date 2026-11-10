@@ -7,7 +7,9 @@
  * filed against the wrong agency (the §60 wrong-company class):
  *
  *   · verifySegments keeps a spoken name only if it is on a line the model cited, and a segment
- *     only if it holds such a line — an invented mention cannot place a single line;
+ *     only if it holds such a line — an invented mention cannot place a single line — and only
+ *     as far as it stays near one (nearMentions), so a range cannot carry a company onto the next
+ *     discussion;
  *   · resolveSurface / resolveMention match the words against the roster WITHOUT the model ever
  *     seeing the roster. A whole name held by exactly one account resolves; a single distinctive
  *     word, a domain label or a prefix only SUGGESTS, and a shared or ordinary word is AMBIGUOUS —
@@ -563,6 +565,19 @@ export const MAX_AS_SAID = 5;
 export const MAX_SEGMENTS = 12;
 export const MAX_MENTION_LINES = 20;
 
+/**
+ * How far a company's lines reach from a line its name was verified on: this many before, and
+ * MENTION_REACH_LINES after. A segment is the model's own range, and its lines are what pass 2
+ * treats as this company's (planBatches' ownership). A range that runs on over the next discussion
+ * would hand those lines to this company, and if pass 1 did not list the company actually being
+ * discussed there, nothing else owns them to flag the overlap — so a quote about it would verify
+ * as this one's. Talk runs on after a name far more than it runs ahead of one ("they", "their
+ * owner"), hence the asymmetry. A first setting, to be re-cut from the dry runs' counters
+ * (pass1.segment_lines_trimmed).
+ */
+export const MENTION_LEAD_LINES = 5;
+export const MENTION_REACH_LINES = 30;
+
 export interface SegmentVerification {
   mentions: VerifiedMention[];
   counters: Record<string, number>;
@@ -597,14 +612,32 @@ function intList(v: unknown, max: number): number[] {
 }
 
 /**
+ * The parts of [from, to] within MENTION_LEAD_LINES before or MENTION_REACH_LINES after one of
+ * `mentions` (sorted ascending), in order. Never empty when the range holds a mention line.
+ */
+export function nearMentions(from: number, to: number, mentions: readonly number[]): Array<{ from: number; to: number }> {
+  const out: Array<{ from: number; to: number }> = [];
+  for (const m of mentions) {
+    const a = Math.max(from, m - MENTION_LEAD_LINES);
+    const b = Math.min(to, m + MENTION_REACH_LINES);
+    if (a > b) continue;
+    const prev = out[out.length - 1];
+    if (prev && a <= prev.to + 1) prev.to = Math.max(prev.to, b);
+    else out.push({ from: a, to: b });
+  }
+  return out;
+}
+
+/**
  * Pass 1's reply → the mentions the transcript supports.
  *
  *   · a kind other than agency or unclear is dropped (counted by kind);
  *   · a spoken form survives only if it is on at least one line the model cited for that company,
  *     and a cited line survives only if one surviving form is on it — so neither a name nor a
  *     line can be invented;
- *   · a segment is clipped to the transcript and kept only if it holds a surviving line; kept
- *     segments are merged where they touch;
+ *   · a segment is clipped to the transcript and kept only if it holds a surviving line, and then
+ *     only within MENTION_LEAD_LINES before and MENTION_REACH_LINES after a surviving line (the
+ *     lines cut are counted, segment_lines_trimmed); kept segments are merged where they touch;
  *   · a company left with no form or no segment is dropped.
  */
 export function verifySegments(raw: unknown, lines: readonly SpokenLine[]): SegmentVerification {
@@ -661,7 +694,10 @@ export function verifySegments(raw: unknown, lines: readonly SpokenLine[]): Segm
       to = Math.min(to, last);
       if (from > to) continue;
       if (!verified.some((n) => n >= from && n <= to)) { bump(counters, "segment_without_mention"); continue; }
-      segs.push({ from, to });
+      const near = nearMentions(from, to, verified);
+      const cut = to - from + 1 - near.reduce((k, r) => k + r.to - r.from + 1, 0);
+      if (cut > 0) { bump(counters, "segment_trimmed"); bump(counters, "segment_lines_trimmed", cut); }
+      segs.push(...near);
     }
     segs.sort((a, b) => a.from - b.from || a.to - b.to);
     const merged: Array<{ from: number; to: number }> = [];

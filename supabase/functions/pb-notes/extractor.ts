@@ -1,21 +1,26 @@
 /**
  * pb-notes — the one model call, shared by every channel.
  *
- *   callExtractor(apiKey, model, system, user) → { value, usage, stop_reason }
+ *   callExtractor(apiKey, model, system, user, signal?) → { value, usage, stop_reason }
  *
  * Moved out of index.ts unchanged in behaviour (DECISIONS §65), so the nightly notes sweep and the
  * sales-meeting reader (meetings.ts) make exactly the same call and salvage the reply the same way:
  * a raw fetch to /v1/messages, max_tokens 16000, no temperature, the text blocks joined, the
- * outermost {…} parsed, and a reply cut off mid-array salvaged to its last complete entry.
+ * outermost {…} parsed, and a reply cut off mid-array salvaged to its last complete entry. The
+ * reader adds one thing, a deadline: its run holds a lease on the meeting, and a call still running
+ * when the lease passes to the next run would be paid for and thrown away.
  *
- * Three ways it can end, and the caller tells them apart:
+ * Four ways it can end, and the caller tells them apart:
  *
- *   ExtractorApiError    the API refused the call (status ≠ 2xx). Says nothing about the record;
- *                        notes_sweep.classifyExtractorFailure decides whether that halts the run.
- *   ExtractorReplyError  the reply arrived — and was billed — but held no usable JSON. Its message
- *                        is the one index.ts has always thrown; it also carries the usage, so a
- *                        meeting read can count what an unusable reply cost.
- *   a value              whatever came back; the verifiers decide what it is worth.
+ *   ExtractorApiError      the API refused the call (status ≠ 2xx). Says nothing about the record;
+ *                          notes_sweep.classifyExtractorFailure decides whether that halts the run.
+ *   ExtractorReplyError    the reply arrived — and was billed — but held no usable JSON. Its message
+ *                          is the one index.ts has always thrown; it also carries the usage, so a
+ *                          meeting read can count what an unusable reply cost.
+ *   ExtractorTimeoutError  the caller's own deadline (an AbortSignal it passed) stopped the call
+ *                          before it answered. Says nothing about the record or the API. Only the
+ *                          meeting reader passes a signal; the notes sweep's call is as it was.
+ *   a value                whatever came back; the verifiers decide what it is worth.
  *
  * Pure apart from fetch: parseReplyJson, replyText and usageOf take no clock, no network and no
  * filesystem, and meetings_pure_test.ts runs them under Node.
@@ -61,6 +66,17 @@ export class ExtractorReplyError extends Error {
     this.stop_reason = stop_reason;
     this.text_chars = text_chars;
     this.usage = usage;
+  }
+}
+
+/**
+ * The caller's deadline stopped the call: the signal it passed was aborted before the reply was
+ * read. Nothing is known about what the call cost, and nothing about the record.
+ */
+export class ExtractorTimeoutError extends Error {
+  constructor() {
+    super("the call was stopped at the caller's deadline");
+    this.name = "ExtractorTimeoutError";
   }
 }
 
@@ -125,32 +141,48 @@ export function parseReplyJson(text: string, stop_reason: unknown): ParsedReply 
 
 /**
  * One model call. Returns whatever came back, with what it cost; the caller's verifier decides
- * what it is worth.
+ * what it is worth. `signal`, when given, bounds the whole call — the request and the reading of
+ * its reply — and an abort becomes an ExtractorTimeoutError. Without one the call is unbounded,
+ * exactly as it always was.
  */
-export async function callExtractor(apiKey: string, model: string, system: string, user: string): Promise<ExtractorResult> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      // The current models think before they answer, and thinking is billed and counted inside
-      // max_tokens. At 1500 the budget was spent before any text block arrived, so every
-      // response parsed as "no claims array" — an empty answer that looked like an honest
-      // "the note says nothing". Leave room for both.
-      max_tokens: 16000,
-      // No `temperature`: sampling parameters are removed on the current models and a request
-      // carrying one is rejected with a 400. Determinism comes from the prompt and the
-      // validator, not from a sampling knob.
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
-  });
-  if (!res.ok) throw new ExtractorApiError(res.status, await res.text());
-  const body = await res.json();
+export async function callExtractor(
+  apiKey: string,
+  model: string,
+  system: string,
+  user: string,
+  signal?: AbortSignal,
+): Promise<ExtractorResult> {
+  let body: unknown;
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        // The current models think before they answer, and thinking is billed and counted inside
+        // max_tokens. At 1500 the budget was spent before any text block arrived, so every
+        // response parsed as "no claims array" — an empty answer that looked like an honest
+        // "the note says nothing". Leave room for both.
+        max_tokens: 16000,
+        // No `temperature`: sampling parameters are removed on the current models and a request
+        // carrying one is rejected with a 400. Determinism comes from the prompt and the
+        // validator, not from a sampling knob.
+        system,
+        messages: [{ role: "user", content: user }],
+      }),
+      signal,
+    });
+    if (!res.ok) throw new ExtractorApiError(res.status, await res.text());
+    body = await res.json();
+  } catch (e) {
+    /* An API refusal that arrived is still a refusal, whatever the clock did after it. */
+    if (signal?.aborted && !(e instanceof ExtractorApiError)) throw new ExtractorTimeoutError();
+    throw e;
+  }
   const usage = usageOf(body);
   const stop = isRec(body) && typeof (body as Rec).stop_reason === "string" ? String((body as Rec).stop_reason) : null;
   const text = replyText(body);

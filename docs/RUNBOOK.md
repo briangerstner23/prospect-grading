@@ -2653,7 +2653,9 @@ check. That response sits in `net._http_response` (service role only) for a few 
 need, then `delete from net._http_response where id = <request_id>`.
 
 Read the counters: `meeting.pass1.mentions_verified` against `meeting.pass1.as_said_not_on_line` and
-`mention_unverified`; `meeting.mentions.resolved / suggested / ambiguous / unknown / refused` (a
+`mention_unverified`; `meeting.pass1.segment_lines_trimmed` (a company's lines reach only 5 before and
+30 after a line its name was verified on; a high count says pass 1's ranges run on over other
+discussions, or that the reach is too short for how this team talks); `meeting.mentions.resolved / suggested / ambiguous / unknown / refused` (a
 placeholder or one of our own names must be `refused`, never a card); `meeting.pass2.quote_verified`
 against `meeting.pass2.other_agency_lines` and `outside_segment` (a quote from another agency's lines
 is the wrong-company class, §60, and is dropped); `meeting.proposals.proposed / not_proposed /
@@ -2672,9 +2674,12 @@ second read.
 | `{recording_id, reread: true}` | read a `read`, `partial` or `failed` meeting again from pass 1 |
 
 A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
-pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. Out of
-budget, the meeting stays `reading` with its progress and the next call resumes it — with the model
-it started with — and re-reads nothing. It ends `read`, or `partial` when an agency's reply was
+pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. Every model
+call carries the budget as its deadline and is stopped there if it has not answered (`out_of_time`),
+and `budget_ms` is capped at 120000, so no call outlives the lease. Out of budget in pass 2, the meeting
+stays `reading` with its progress and the next call resumes it — with the model it started with — and
+re-reads nothing; out of budget in pass 1, nothing was kept, and it goes back to `waiting` (a pass 1
+that never fits the budget shows as `pass1.out_of_time` on every tick and a meeting that is never read). It ends `read`, or `partial` when an agency's reply was
 unusable, or `failed` when pass 1's was. **A failed meeting is never retried on its own**: fix the
 cause and re-read it deliberately.
 
@@ -2683,7 +2688,10 @@ A re-read starts again from nothing — mentions, progress and counts cleared; w
 twice, so it adds only what is new (the agencies a `partial` read missed). A resolved agency's
 fingerprint is keyed on its account, not on the spoken forms pass 1 happened to hear, so a claim a
 person already decided does not come back because the re-read heard the name differently; a name
-nobody has placed is still keyed on what was said. Under a NEW extractor
+nobody has placed is still keyed on what was said. A row keeps the fingerprint it was written with
+when a person places its name afterwards (or a merge moves it), so the re-read also drops any claim
+the meeting already holds on a card for the same agency, kind and key (a read: topic and line), under
+the same extractor and in any status (`proposals.already_on_card`). Under a NEW extractor
 (another model, or a new prompt version) the new rows sit beside the old ones and the later line wins
 between them — so **dismiss the meeting's open proposals first** ("Dismiss meeting", or
 `pb_dismiss_meeting(recording_id, null)`), then re-read.
@@ -2718,7 +2726,8 @@ already holds, even one a person forgot there, is left as it is.
 ### 33.6 · What a halt looks like, and the checks that keep running
 
 A **halt** is an API refusal (no credit, a bad key, overload — `classifyExtractorFailure` decides, as
-for every channel) or a call that never answered. The meeting goes back to `waiting` with what it had,
+for every channel) or a call that failed without an answer. A call stopped at the run's own budget is
+not a halt: it is `stopped_on_time`, as above. The meeting goes back to `waiting` with what it had,
 the lease is released, nothing is marked read, and the run row says so:
 
 ```sql

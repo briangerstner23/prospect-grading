@@ -25,12 +25,14 @@ import {
   emptyUsage,
   failureKind,
   failureNote,
+  FIRST_CALL_GUESS_MS,
   heldDates,
   INBOX_LIGHT_SELECT,
   inboxCandidates,
   isLocked,
   LEASE_MS,
   leaseCutoff,
+  MAX_BUDGET_MS,
   MAX_CONCURRENCY,
   meetingPeople,
   meetingRoute,
@@ -42,11 +44,12 @@ import {
   proposalCounts,
   readVerdict,
   REREADABLE_STATUSES,
+  roundHeadroom,
   rubricVocabulary,
   storedClusters,
 } from "./meetings_pure.ts";
 import type { InboxLightRow, NewRecording, RegisteredMeeting } from "./meetings_pure.ts";
-import { ExtractorApiError, ExtractorReplyError, parseReplyJson, replyText, usageOf } from "./extractor.ts";
+import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError, parseReplyJson, replyText, usageOf } from "./extractor.ts";
 import { extractorId, MEETING_PROMPT_VERSION, PROMPT_VERSION } from "../_shared/ingest/notes_sweep.ts";
 
 let passed = 0;
@@ -100,17 +103,37 @@ eq("route: a non-array sources is the notes sweep (as before)", meetingRoute("sa
   eq("body: at most six calls at once", MAX_CONCURRENCY, 6);
 }
 {
-  const p = parseMeetingBody({ sources: ["sales_meeting"], recording_id: 5001, dry_run: true, budget_ms: 140000.7, concurrency: 9, model: " model-x ", as_of: "2026-10-01" }, "2026-10-10");
+  const p = parseMeetingBody({ sources: ["sales_meeting"], recording_id: 5001, dry_run: true, budget_ms: 100000.7, concurrency: 9, model: " model-x ", as_of: "2026-10-01" }, "2026-10-10");
   check("body: a full body parses", p.ok);
   if (p.ok) {
     eq("body: a numeric recording id becomes text", p.opts.recording_id, "5001");
-    eq("body: budget floored", p.opts.budget_ms, 140000);
+    eq("body: budget floored", p.opts.budget_ms, 100000);
     eq("body: concurrency capped at six", p.opts.concurrency, 6);
     check("body: the cap is said", p.notes.some((n) => n.includes("capped")));
     eq("body: model trimmed", p.opts.model, "model-x");
     eq("body: as_of kept", p.opts.as_of, "2026-10-01");
     eq("body: dry run", p.opts.dry_run, true);
   }
+}
+{
+  /* Every call is stopped at the budget, so the budget is what bounds a run; a run longer than
+     its lease would lose the meeting to the next tick while it is still writing. */
+  const p = parseMeetingBody({ sources: ["sales_meeting"], budget_ms: 220000 }, "2026-10-10");
+  check("body: a budget past what the lease holds is capped", p.ok && p.opts.budget_ms === MAX_BUDGET_MS, JSON.stringify(p));
+  check("body: …and the cap is said", p.ok && p.notes.some((n) => n.includes("budget_ms 220000 was capped at 120000")));
+  const at = parseMeetingBody({ sources: ["sales_meeting"], budget_ms: MAX_BUDGET_MS }, "2026-10-10");
+  check("body: the cap itself is allowed, with no note", at.ok && at.opts.budget_ms === MAX_BUDGET_MS && at.notes.length === 0);
+  eq("budget: the cap is 120 s", MAX_BUDGET_MS, 120_000);
+  check("budget: the longest run leaves 30 s of its lease for the writes after its last call", MAX_BUDGET_MS + 30_000 <= LEASE_MS);
+  check("budget: the default is under the cap", DEFAULT_BUDGET_MS <= MAX_BUDGET_MS);
+}
+{
+  eq("headroom: before any measurement, the first guess", roundHeadroom(0), FIRST_CALL_GUESS_MS);
+  eq("headroom: the first guess is a minute", FIRST_CALL_GUESS_MS, 60_000);
+  eq("headroom: pass 2's first round reserves pass 1's own time when it was longer", roundHeadroom(0, 95_000), 95_000);
+  eq("headroom: …and the guess when pass 1 was quicker", roundHeadroom(0, 20_000), FIRST_CALL_GUESS_MS);
+  eq("headroom: once a round of this pass is measured, the slowest of them", roundHeadroom(35_000, 95_000), 35_000);
+  eq("headroom: nonsense is no measurement", roundHeadroom(Number.NaN, -5), FIRST_CALL_GUESS_MS);
 }
 {
   const bad: Array<[string, Record<string, unknown>]> = [
@@ -284,6 +307,68 @@ const byId = (rows: Record<string, unknown>[], id: string) => rows.find((r) => r
   const noEnd = planRegistration({ candidates: [rec("7501", { ended_at: null }), rec("7502")], existing: [], rules: [], now_ms: NOW });
   eq("register: a recording with no end time is never grouped", [byId(noEnd.inserts, "7501").status, byId(noEnd.inserts, "7502").status], ["waiting", "waiting"]);
 }
+{
+  /* A relabel failed after the inserts landed, so the cursor stayed and the same delivery comes
+     back — registered now, no longer new. The retry plans the relabels the first run never wrote. */
+  const late = rec("7602", { held_at: "2026-10-09T19:00:00.000Z", ended_at: "2026-10-09T20:10:00.000Z" });
+  const before = [
+    reg("7601", { include: true, selected_by: "owner" } as Partial<RegisteredMeeting>),
+    reg("7600", { status: "duplicate", duplicate_of: "7601", ended_at: "2026-10-09T19:40:00.000Z" }),
+  ];
+  const first = planRegistration({ candidates: [late], existing: before, rules: [], now_ms: NOW });
+  const inserted = byId(first.inserts, "7602");
+  const afterInserts = [...before, reg("7602", {
+    ended_at: late.ended_at, status: String(inserted.status), include: inserted.include as boolean | null, duplicate_of: null,
+  })];
+  const retry = planRegistration({ candidates: [late], existing: afterInserts, rules: [], now_ms: NOW });
+  eq("register retry: nothing is inserted twice", [retry.inserts, retry.counters.already_registered], [[], 1]);
+  eq("register retry: exactly the relabels the first run planned", retry.updates, first.updates);
+  eq("register retry: counted as a meeting left half-relabelled", retry.counters["relabelled.unfinished_meeting"], 1);
+  const oneDone = afterInserts.map((m) => m.recording_id === "7601" ? { ...m, status: "duplicate", duplicate_of: "7602" } : m);
+  const rest = planRegistration({ candidates: [late], existing: oneDone, rules: [], now_ms: NOW });
+  eq("register retry: a pointer left on the displaced recording is moved too", rest.updates.map((u) => [u.recording_id, u.patch.duplicate_of]), [["7600", "7602"]]);
+  const claimed = afterInserts.map((m) => m.recording_id === "7601" ? { ...m, status: "reading", read_started_at: "2026-10-10T11:59:30.000Z" } : m);
+  const taken = planRegistration({ candidates: [late], existing: claimed, rules: [], now_ms: NOW });
+  eq("register retry: if the displaced one was claimed meanwhile, it stays read and the new one is its duplicate",
+    taken.updates.map((u) => [u.recording_id, u.from_status, u.patch.status, u.patch.duplicate_of]), [["7602", "waiting", "duplicate", "7601"]]);
+}
+{
+  /* The promotion failed: a registered duplicate was to become the representative. Its include is
+     the meeting's — a duplicate never holds one of its own. */
+  const late = rec("7703", { held_at: "2026-10-09T19:05:00.000Z", ended_at: "2026-10-09T19:50:00.000Z" });
+  const before = [
+    reg("7701", { include: true, selected_by: "owner", ended_at: "2026-10-09T19:30:00.000Z" } as Partial<RegisteredMeeting>),
+    reg("7702", { status: "duplicate", duplicate_of: "7701", ended_at: "2026-10-09T20:00:00.000Z" }),
+  ];
+  const first = planRegistration({ candidates: [late], existing: before, rules: [], now_ms: NOW });
+  const promote = first.updates.find((u) => u.recording_id === "7702");
+  eq("register: a promoted duplicate inherits the owner's include", promote && [promote.patch.status, promote.patch.include, promote.patch.selected_by], ["waiting", true, "owner"]);
+  const afterInserts = [...before, reg("7703", { held_at: late.held_at, ended_at: late.ended_at, status: "duplicate", duplicate_of: "7702" })];
+  const retry = planRegistration({ candidates: [late], existing: afterInserts, rules: [], now_ms: NOW });
+  eq("register retry: a duplicate of a duplicate is finished the same way", retry.updates, first.updates);
+}
+{
+  /* Any other meeting without a new member is left exactly as it is. */
+  const other = rec("7899", { title: "Lunch", title_norm: "lunch" });
+  const unlockedLonger = planRegistration({
+    candidates: [other],
+    existing: [reg("7801", { ended_at: "2026-10-09T19:30:00.000Z" }), reg("7802", { status: "duplicate", duplicate_of: "7801", ended_at: "2026-10-09T20:00:00.000Z" })],
+    rules: [], now_ms: NOW,
+  });
+  eq("register: a consistent meeting is not re-decided on another delivery's day", unlockedLonger.updates, []);
+  const partial = planRegistration({
+    candidates: [other],
+    existing: [reg("7901"), reg("7902", { ended_at: "2026-10-09T20:00:00.000Z" }), reg("7903", { status: "duplicate", duplicate_of: "7999" })],
+    rules: [], now_ms: NOW,
+  });
+  eq("register: nothing is relabelled on part of a meeting (a duplicate whose representative was not loaded)", partial.updates, []);
+  const bothRead = planRegistration({
+    candidates: [rec("7951")],
+    existing: [reg("7951", { status: "read" }), reg("7952", { status: "read", ended_at: "2026-10-09T19:55:00.000Z" })],
+    rules: [], now_ms: NOW,
+  });
+  eq("register: two recordings both read stay as they are", [bothRead.updates, bothRead.counters["relabelled.unfinished_meeting"]], [[], undefined]);
+}
 
 eq("lease: 150 s", LEASE_MS, 150_000);
 eq("lease: the cutoff", leaseCutoff(NOW), "2026-10-10T11:57:30.000Z");
@@ -350,6 +435,9 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   eq("failure: a 400 about this request skips", failureKind(new ExtractorApiError(400, "messages: too long")), "skip");
   eq("failure: an unusable reply skips", failureKind(new ExtractorReplyError("no JSON", "no_json", "end_turn", 10, { input_tokens: 1, output_tokens: 1 })), "skip");
   eq("failure: a network error halts (it says nothing about the meeting)", failureKind(new TypeError("error sending request")), "halt");
+  eq("failure: a call stopped at the run's deadline is out of time, not a halt and not a skip", failureKind(new ExtractorTimeoutError()), "out_of_time");
+  eq("failure: the timeout note says only that", failureNote(new ExtractorTimeoutError()), "a call stopped at the run's budget");
+  check("failure: the timeout is an Error the callers can tell apart", new ExtractorTimeoutError() instanceof Error && !(new ExtractorTimeoutError() instanceof ExtractorApiError));
   const notes = [
     failureNote(new ExtractorApiError(400, `{"error":"${SENTINEL}"}`)),
     failureNote(new ExtractorReplyError(`no JSON in the reply: ${SENTINEL}`, "no_json", "max_tokens", 4100, { input_tokens: 1, output_tokens: 1 })),
@@ -450,6 +538,30 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   check("the claim matches only a free lease", /\.is\("read_started_at", null\)/.test(mc) && /\.lt\("read_started_at", leaseCutoff\(Date\.now\(\)\)\)/.test(mc));
   check("every write to a claimed meeting is guarded by the lease", /\.eq\("recording_id", rid\)\.eq\("read_started_at", lease\)/.test(mc));
   check("a halt sends the meeting back to waiting and releases the lease", (mc.match(/status: "waiting", read_started_at: null/g) ?? []).length >= 2);
+
+  /* The deadline: every call stops at the run's budget, which MAX_BUDGET_MS keeps inside the lease. */
+  check("the deadline is the run's start plus its budget", /const deadline = ctx\.started \+ o\.budget_ms;/.test(mc));
+  const calls = mc.match(/tryCall\(ctx\.apiKey,[^\n]*/g) ?? [];
+  check("every model call carries the deadline (pass 1 and pass 2)", calls.length === 2 && calls.every((c) => /, deadline\)/.test(c)), JSON.stringify(calls));
+  check("tryCall turns the deadline into a signal on the call", /AbortSignal\.timeout\(Math\.max\(1, deadline - Date\.now\(\)\)\)/.test(mc) &&
+    /callExtractor\(apiKey, model, system, user, signal\)/.test(mc));
+  check("extractor.ts hands the signal to fetch and an abort back as ExtractorTimeoutError",
+    /\bsignal,\s*\}\);/.test(code(extractor)) && /signal\?\.aborted && !\(e instanceof ExtractorApiError\)\) throw new ExtractorTimeoutError\(\)/.test(extractor));
+  check("pass 1 checks the budget before every round after the first", /if \(i > 0 && outOfTime\(roundHeadroom\(slowest1\)\)\)/.test(mc));
+  check("pass 2's first round reserves pass 1's own time", /outOfTime\(roundHeadroom\(slowest, here\["ms\.pass1"\] \?\? 0\)\)/.test(mc));
+  check("a call stopped at the deadline is out of time in both passes, never a failed agency", (mc.match(/kind === "out_of_time"/g) ?? []).length === 2);
+  check("pass 1 out of time sends the meeting back to waiting, the run not halted", /if \(outOfTime1\) \{[\s\S]{0,400}?status: "waiting", read_started_at: null/.test(mc) &&
+    !/if \(outOfTime1\) \{[\s\S]{0,400}?run\.halted =/.test(mc));
+
+  /* Registration sees whole meetings, so a retry can finish what a failed relabel left. */
+  check("registration loads the days the registered rows were held on, not only the new ones'", /heldDates\(\[\.\.\.found\.candidates, \.\.\.byId\.map/.test(mc));
+
+  /* A re-read does not bring back what a person decided after placing a name. */
+  check("the meeting's carded rows are read under its own extractor, with an agency",
+    /selectAll\(db, "pb_meeting_proposals", "account_id,kind,key,topic,line_from,extractor", \(q: DbLike\) =>\s*q\.eq\("recording_id", rid\)\.eq\("extractor", extractor\)\.not\("account_id", "is", null\)/.test(mc));
+  check("rows already on a card are dropped before the upsert, in a dry run too",
+    mc.indexOf("dropAlreadyOnCard(produced, onCards)") > 0 && mc.indexOf("dropAlreadyOnCard(produced, onCards)") < mc.indexOf("if (dry) {\n      dryRows.push(...rows)") &&
+    mc.indexOf("if (dry) {\n      dryRows.push(...rows)") < mc.indexOf('.upsert(rows, { onConflict: "fingerprint"'));
 
   /* The route: the nightly sweep cannot reach it, and it cannot be half-honoured. */
   check("index.ts routes through meetingRoute before the sweep starts its run", index.indexOf("meetingRoute(body.sources)") > 0 &&

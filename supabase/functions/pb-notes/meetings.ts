@@ -27,8 +27,9 @@
  *                 round by round inside the budget. verifyMeetingClaims refuses a quote that is not
  *                 one speaker's lines of THAT agency; reduceClaims keeps the last word.
  *   6. WRITE      proposalRows against a snapshot of the book (current facts, current reads,
- *                 removals) → pb_meeting_proposals, upserted on the fingerprint so a re-run writes
- *                 nothing twice; then pb_meeting_supersede, so the newest meeting's word wins.
+ *                 removals), less what this meeting already has on a card (dropAlreadyOnCard) →
+ *                 pb_meeting_proposals, upserted on the fingerprint so a re-run writes nothing
+ *                 twice; then pb_meeting_supersede, so the newest meeting's word wins.
  *   7. CLOSE      'read', or 'partial' when an agency's call came back unusable; usage and counts on
  *                 the meeting; a pb_runs row (kind ingest, source sales_meeting, credits_spent).
  *
@@ -41,12 +42,15 @@
  * the run's notes carry recording ids, refs and counts — never a quote, a name or a title.
  *
  * WHEN IT STOPS:
- *   · out of budget — before a call whose expected time would cross budget_ms. The meeting stays
- *     'reading' with its progress written and its lease left to lapse (LEASE_MS), so the next tick
- *     resumes it where it stopped and re-reads nothing.
- *   · halt — the API refused (classifyExtractorFailure) or the call never answered. The lease is
- *     released, the meeting goes back to 'waiting' with whatever progress it had, and the run is
- *     'failed' (or 'partial' if it wrote first). Nothing is marked read that was not read.
+ *   · out of budget — before a round of calls whose expected time (roundHeadroom) would cross
+ *     budget_ms, or at budget_ms itself: every call carries that deadline as an AbortSignal, so one
+ *     still running is stopped there ('out_of_time'), never left to outlive the lease. In pass 2 the
+ *     meeting stays 'reading' with its progress written and its lease left to lapse (LEASE_MS), so
+ *     the next tick resumes it where it stopped and re-reads nothing; in pass 1 nothing was stored,
+ *     so the lease is released and the meeting goes back to 'waiting'. Not a failure either way.
+ *   · halt — the API refused (classifyExtractorFailure) or the call failed without an answer. The
+ *     lease is released, the meeting goes back to 'waiting' with whatever progress it had, and the
+ *     run is 'failed' (or 'partial' if it wrote first). Nothing is marked read that was not read.
  *   · skip — a reply came back unusable. Pass 1: the meeting is 'failed' (re-read it deliberately).
  *     Pass 2: those agencies are recorded in progress.failed_refs and the meeting ends 'partial'.
  *
@@ -77,13 +81,22 @@ import type {
 import {
   claimsMessage,
   claimsPrompt,
+  dropAlreadyOnCard,
   planBatches,
   proposalRows,
   reduceClaims,
   segmentPrompt,
   verifyMeetingClaims,
 } from "../_shared/ingest/meeting_claims.ts";
-import type { ProposalRow, RemovalReason, SnapshotFact, SnapshotRead, SnapshotRemoval, VerifiedClaim } from "../_shared/ingest/meeting_claims.ts";
+import type {
+  CardRow,
+  ProposalRow,
+  RemovalReason,
+  SnapshotFact,
+  SnapshotRead,
+  SnapshotRemoval,
+  VerifiedClaim,
+} from "../_shared/ingest/meeting_claims.ts";
 import { callExtractor, ExtractorReplyError } from "./extractor.ts";
 import type { ExtractorResult } from "./extractor.ts";
 import {
@@ -94,6 +107,7 @@ import {
   emptyUsage,
   failureKind,
   failureNote,
+  FIRST_CALL_GUESS_MS,
   heldDates,
   INBOX_LIGHT_SELECT,
   inboxCandidates,
@@ -107,6 +121,7 @@ import {
   proposalCounts,
   readVerdict,
   REREADABLE_STATUSES,
+  roundHeadroom,
   rubricVocabulary,
   storedClusters,
 } from "./meetings_pure.ts";
@@ -116,9 +131,6 @@ export interface MeetingDeps {
   /** The standing model when neither the body nor PB_EXTRACTOR_MODEL names one. */
   defaultModel: string;
 }
-
-/** What one call is expected to take before there is a measurement: pass 1, or a pass-2 round. */
-const FIRST_CALL_GUESS_MS = 60_000;
 
 const WATERMARK_NOTE = `${MEETING_PROMPT_VERSION}: registration cursor over pb_webhook_inbox (received_at, id)`;
 
@@ -150,20 +162,17 @@ function bump(c: Record<string, number>, k: string, by = 1): void {
   c[k] = (c[k] ?? 0) + by;
 }
 
-/** Run `fn` over `items`, `size` at a time; results in input order. */
-async function inRounds<T, R>(items: readonly T[], size: number, fn: (t: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = [];
-  for (let i = 0; i < items.length; i += Math.max(1, size)) {
-    out.push(...(await Promise.all(items.slice(i, i + Math.max(1, size)).map(fn))));
-  }
-  return out;
-}
-
 type CallOutcome = { ok: true; r: ExtractorResult } | { ok: false; e: unknown };
 
-async function tryCall(apiKey: string, model: string, system: string, user: string): Promise<CallOutcome> {
+/**
+ * One model call, stopped at `deadline` (the run's start + budget_ms) if it has not answered by
+ * then: a call that outlived the budget would outlive the lease too, and what it read would be
+ * thrown away by the guarded write that found the lease gone.
+ */
+async function tryCall(apiKey: string, model: string, system: string, user: string, deadline: number): Promise<CallOutcome> {
   try {
-    return { ok: true, r: await callExtractor(apiKey, model, system, user) };
+    const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+    return { ok: true, r: await callExtractor(apiKey, model, system, user, signal) };
   } catch (e) {
     return { ok: false, e };
   }
@@ -294,7 +303,9 @@ async function register(db: DbLike, o: MeetingOptions, run: RunState): Promise<R
   if (found.candidates.length > 0) {
     const ids = found.candidates.map((c) => c.recording_id);
     const byId = await selectIn(db, "pb_meetings", "recording_id", ids, REGISTERED_COLS, 100, "recording_id");
-    const dates = heldDates(found.candidates);
+    /* Every row of every day any of them was held on — the registered rows' own days too, so a
+       meeting planRegistration sees is the whole meeting (it finishes half-done relabels). */
+    const dates = heldDates([...found.candidates, ...byId.map((r) => ({ held_at: (r.held_at as string | null) ?? null }))]);
     let sameDays: Rec[] = [];
     if (dates.length > 0) {
       const from = `${dates[0]}T00:00:00.000Z`;
@@ -509,6 +520,9 @@ async function readMeeting(
   const rid = String(m.recording_id);
   const dry = o.dry_run;
   const outOfTime = (need: number) => Date.now() - ctx.started + need > o.budget_ms;
+  /* Every call stops here at the latest; MAX_BUDGET_MS keeps it inside the lease. */
+  const deadline = ctx.started + o.budget_ms;
+  const budgetS = Math.round(o.budget_ms / 1000);
 
   /* What this run adds to the meeting. A resumed read adds to what is stored; a fresh one or a
      re-read starts its counts again (a re-read's claim already cleared them). */
@@ -604,10 +618,24 @@ async function readMeeting(
     here["pass1.windows"] = windows.length;
     const system = segmentPrompt();
     const t1 = Date.now();
-    const replies = await inRounds(windows, o.concurrency, async (w) => {
-      const lines = tl.lines.filter((l) => l.n >= w.from && l.n <= w.to);
-      return { lines, out: await tryCall(ctx.apiKey, model, system, renderLines(lines)) };
-    });
+    /* Round by round, like pass 2, and a round starts only while the budget can hold it. Every
+       window or none: the mentions are stored only once all of them are in. */
+    const replies: Array<{ lines: typeof tl.lines; out: CallOutcome }> = [];
+    let slowest1 = 0;
+    let outOfTime1 = false;
+    for (let i = 0; i < windows.length; i += o.concurrency) {
+      if (i > 0 && outOfTime(roundHeadroom(slowest1))) {
+        outOfTime1 = true;
+        bump(here, "pass1.windows_not_started", windows.length - i);
+        break;
+      }
+      const tr = Date.now();
+      replies.push(...await Promise.all(windows.slice(i, i + o.concurrency).map(async (w) => {
+        const lines = tl.lines.filter((l) => l.n >= w.from && l.n <= w.to);
+        return { lines, out: await tryCall(ctx.apiKey, model, system, renderLines(lines), deadline) };
+      })));
+      slowest1 = Math.max(slowest1, Date.now() - tr);
+    }
     here["ms.pass1"] = Date.now() - t1;
 
     const mentions: VerifiedMention[] = [];
@@ -615,9 +643,13 @@ async function readMeeting(
     for (const [i, x] of replies.entries()) {
       charge(run, spend, x.out);
       if (!x.out.ok) {
-        if (failureKind(x.out.e) === "halt") {
+        const kind = failureKind(x.out.e);
+        if (kind === "halt") {
           run.halted = `${rid} pass 1: ${failureNote(x.out.e)}`;
           bump(here, "pass1.halted");
+        } else if (kind === "out_of_time") {
+          outOfTime1 = true;
+          bump(here, "pass1.out_of_time");
         } else if (failed === null) {
           failed = x.out.e;
         }
@@ -633,6 +665,14 @@ async function readMeeting(
 
     if (run.halted !== null) {
       run.notes.push(`HALTED — ${run.halted}. ${rid} goes back to waiting; nothing was marked read.`);
+      return await finishWith({ status: "waiting", read_started_at: null });
+    }
+    if (outOfTime1) {
+      /* Nothing of pass 1 is kept, so there is nothing to resume: the lease is released and the
+         next run starts the meeting again. Not a failure, and nothing is marked. */
+      run.stopped_early = true;
+      run.counters["stopped_on_time"] = 1;
+      run.notes.push(`${rid}: pass 1 did not finish inside the ${budgetS}s budget; ${rid} goes back to waiting and is read from the start next run.`);
       return await finishWith({ status: "waiting", read_started_at: null });
     }
     if (failed !== null) {
@@ -682,6 +722,24 @@ async function readMeeting(
     removals = snap.removals;
   }
 
+  /* What this meeting already holds on its cards under this extractor, by agency — whatever those
+     rows' fingerprints. A row keeps the fingerprint it was written with, but not its agency: a
+     person places a name afterwards, or a merge moves it. dropAlreadyOnCard keeps a re-read from
+     bringing those claims back as new open rows. */
+  let onCards: CardRow[] = [];
+  if (plan.batches.length > 0) {
+    onCards = (await selectAll(db, "pb_meeting_proposals", "account_id,kind,key,topic,line_from,extractor", (q: DbLike) =>
+      q.eq("recording_id", rid).eq("extractor", extractor).not("account_id", "is", null).order("id")))
+      .map((r) => ({
+        account_id: (r.account_id as string | null) ?? null,
+        kind: String(r.kind ?? ""),
+        key: (r.key as string | null) ?? null,
+        topic: (r.topic as string | null) ?? null,
+        line_from: Number(r.line_from),
+        extractor: String(r.extractor ?? ""),
+      }));
+  }
+
   const system = claimsPrompt({ tiers: vocab.tiers, overrideCodes: vocab.overrideCodes, removalReasons: reasons });
   const dryRows: ProposalRow[] = [];
   let slowest = 0;
@@ -689,36 +747,47 @@ async function readMeeting(
   let stoppedOnTime = false;
   let interrupted = false;
   const t2 = Date.now();
+  const stopOnTime = (left: number) => {
+    stoppedOnTime = true;
+    run.stopped_early = true;
+    run.counters["stopped_on_time"] = 1;
+    run.notes.push(
+      `${rid}: stopped after ${Math.round((Date.now() - ctx.started) / 1000)}s of a ${budgetS}s budget with ` +
+      `${left} of ${plan.batches.length} batch(es) to go; the next run resumes it.`,
+    );
+  };
 
   while (next < plan.batches.length) {
-    const headroom = slowest > 0 ? slowest : FIRST_CALL_GUESS_MS;
-    if (outOfTime(headroom)) {
-      stoppedOnTime = true;
-      run.stopped_early = true;
-      run.counters["stopped_on_time"] = 1;
-      run.notes.push(
-        `${rid}: stopped after ${Math.round((Date.now() - ctx.started) / 1000)}s of a ${Math.round(o.budget_ms / 1000)}s budget with ` +
-        `${plan.batches.length - next} of ${plan.batches.length} batch(es) to go; the next run resumes it.`,
-      );
+    /* Before the first measured round, pass 1's own time in this run, when longer than the guess. */
+    if (outOfTime(roundHeadroom(slowest, here["ms.pass1"] ?? 0))) {
+      stopOnTime(plan.batches.length - next);
       break;
     }
     const round = plan.batches.slice(next, next + o.concurrency);
     next += round.length;
     const tr = Date.now();
-    const outs = await Promise.all(round.map(async (b) => ({ b, out: await tryCall(ctx.apiKey, model, system, claimsMessage(b)) })));
+    const outs = await Promise.all(round.map(async (b) => ({ b, out: await tryCall(ctx.apiKey, model, system, claimsMessage(b), deadline) })));
 
     const claims: VerifiedClaim[] = [];
     const doneNow: string[] = [];
     const failedNow: string[] = [];
     let haltedHere = false;
+    let timedOut = 0;
     for (const { b, out } of outs) {
       charge(run, spend, out);
       const refs = b.items.map((it) => it.ref);
       if (!out.ok) {
-        if (failureKind(out.e) === "halt") {
+        const kind = failureKind(out.e);
+        if (kind === "halt") {
           haltedHere = true;
           run.halted = `${rid} batch ${b.index}: ${failureNote(out.e)}`;
           bump(here, "pass2.batch_halted");
+          continue;
+        }
+        if (kind === "out_of_time") {
+          /* Neither done nor failed: the next run reads these agencies again. */
+          timedOut++;
+          bump(here, "pass2.batch_out_of_time");
           continue;
         }
         failedNow.push(...refs);
@@ -743,7 +812,7 @@ async function readMeeting(
 
     const reduced = reduceClaims(claims);
     addCounters(here, reduced.counters, "pass2");
-    const rows = proposalRows({
+    const produced = proposalRows({
       meeting: { recording_id: rid, title: (m.title as string | null) ?? null, held_at: (m.held_at as string | null) ?? null },
       extractor,
       as_of: o.as_of,
@@ -755,6 +824,9 @@ async function readMeeting(
       removals,
       overrideCodes: vocab.overrideCodes,
     });
+    const fresh = dropAlreadyOnCard(produced, onCards);
+    const rows = fresh.rows;
+    if (fresh.dropped > 0) bump(here, "proposals.already_on_card", fresh.dropped);
     addCounters(here, proposalCounts(rows));
 
     if (dry) {
@@ -791,6 +863,10 @@ async function readMeeting(
     if (!(await guarded({ ...bookkeeping(), progress }))) { interrupted = true; break; }
     slowest = Math.max(slowest, Date.now() - tr);
     if (haltedHere) break;
+    if (timedOut > 0) {
+      stopOnTime(plan.batches.length - next + timedOut);
+      break;
+    }
   }
   here["ms.pass2"] = Date.now() - t2;
   report.agencies_read = progress.done_refs.length;
