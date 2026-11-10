@@ -191,6 +191,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             watermark wound back to 1 Sep for a re-read at the 40-character floor · a time-boxed
             pb-notes-catchup that removes itself after 2026-10-11 05:00 UTC. Applied 10 Oct; the
             file carries its applied version and is byte-identical to the applied statement (md5).
+            20261110004329 notes catch-up after the key: PB_ANTHROPIC_API_KEY was refused (401) from
+            13 Oct to 9 Nov and every notes run halted; the owner replaced it 10 Nov 00:40 UTC. The
+            same time-boxed pb-notes-catchup (pipedrive_note + fathom_call, every 3 min), removing
+            itself at 2026-11-10 05:00 UTC. Applied 10 Nov; byte-identical to its statement (md5).
             THE SALES-MEETING READER (DECISIONS §65) — two DRAFTS, NOT APPLIED; each carries a
             drafting stamp and is re-filed under its applied version, byte-identical by md5, in the
             sitting that applies it (RUNBOOK §28.6, §33): 20261011000000 sales meeting reader
