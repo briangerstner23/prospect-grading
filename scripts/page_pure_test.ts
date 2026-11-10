@@ -953,6 +953,16 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     page.includes("return pagedRows((from, to) => db.from(\"pb_meeting_proposals\")"), openReads);
   check("…and both the roster's count and the review's picker use it",
     page.includes("const { data, error } = await openMeetingProposals(state.db);") && page.includes("    openMeetingProposals(db),\n"));
+  // The book's accounts and current reads both outnumber max-rows, and the screen's live checks rest on them: a read cut
+  // from the answer flags its agency "no computed tier", an account cut from it can never be placed by "Who is this?".
+  // Only one agency's own row, or the records merged into it, may be read without paging.
+  const bookLoads = [...page.matchAll(/from\("(?:pb_accounts|pb_current_reads)"\)\.select\([^\n]*/g)].map((m) => m[0])
+    .filter((x) => !/\.eq\("(?:id|merged_into)", id\)/.test(x));
+  check("the book's accounts and current reads are read a page at a time: an exact count, a unique order, a range, never .limit()",
+    bookLoads.length === 2 &&
+    bookLoads.every((x) => x.includes('{ count: "exact" }') && /\.order\("(?:id|account_id)"\)\.range\(from, to\)\)/.test(x) && !x.includes(".limit(")) &&
+    page.includes('pagedRows((from, to) => state.db.from("pb_accounts")') && page.includes('pagedRows((from, to) => state.db.from("pb_current_reads")'), bookLoads);
+  check("…and the roster is put back in name order once every page is in", page.includes("state.accounts = (acc.data ?? []).sort((x, y) => String(x.name"));
   check("the picker holds every meeting with an open card, not only the newest read ones",
     page.includes("meetingsMissing(list.data ?? [], waiting.byRecording)") && page.includes("pickMeeting(meetings, waiting.byRecording)") && page.includes("list: meetings,"));
   check("the open rows are shown as the book stands now, and a row's overrule follows the value as edited",

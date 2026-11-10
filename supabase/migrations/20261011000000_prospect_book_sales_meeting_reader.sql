@@ -1425,10 +1425,11 @@ comment on function public.pb_removal(uuid) is
 --       on its newest definition, and scripts/meeting_privacy_check.sql reads it as anon.
 --   meetings_work {selected_7d, read_7d, failed_7d, stale_reading, oldest_open_days, latest_run}
 --       check 7 warns on the counts, and FAILS when latest_run (the newest finished pb_runs row with
---       source 'sales_meeting': status, finished_at and two counts, never its notes) halted. A halt
---       puts the meeting back to 'waiting' with its lease released, so no count here moves while
---       every tick halts the same way; only the run row says so — as notes_work.latest does for
---       check 5. latest_run is null before the first meeting run.
+--       source 'sales_meeting': status, finished_at and two counts, never its notes) halted, or
+--       closed 'failed' without a halt. A halt puts the meeting back to 'waiting' with its lease
+--       released, a failed write or a crash leaves its lease to lapse, and either way no count here
+--       moves while every tick fails the same way; only the run row says so — as notes_work.latest
+--       does for check 5. latest_run is null before the first meeting run.
 create or replace function public.pb_reconcile_state() returns jsonb
 language sql stable security definer set search_path = public, supabase_migrations as
 $$

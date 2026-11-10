@@ -280,13 +280,36 @@ const green = (): State => ({
   check("a newest meeting run that did not halt passes", !v.failures.some((f) => f.startsWith("meeting")) && !v.warnings.some((w) => w.startsWith("meetings_work")));
   check("…and the summary names it", v.summary.some((x) => x.startsWith("meetings: 6 selected and 5 read") && x.includes("newest run success")));
 }
+/* The newest meeting run closed 'failed' with no halt: a refused write (runStatus(0, errors > 0)), an
+   unreadable rubric, or a crash. The meeting stays 'reading', its lease lapses and the next tick
+   re-claims it — refreshing read_started_at, so stale_reading never counts it — and fails the same
+   way. As with a halt the counts are a healthy week's: only the run row says the reader is stuck. */
 {
-  // A crash closes the run 'failed' with the counters it had and no halted key: not a halt.
+  const s = green();
+  s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
+    latest_run: { status: "failed", finished_at: day(0.01), halted: 0, wrote: 0 } };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a 'failed' meeting run with halted 0 fails", v.failures.some((f) => f.startsWith("meeting run failed (finished") && f.includes("0 row(s) written")), v.failures.join(" | "));
+  check("…and is not reported as a halt", !v.failures.some((f) => f.startsWith("meeting run halted")));
+  check("…though no meeting count moved", !v.warnings.some((w) => w.startsWith("meetings_work")));
+  check("…and the 'keeps up' summary is not printed over it", !v.summary.some((x) => x.startsWith("meetings:")));
+}
+{
+  // A crash closes the run 'failed' with the counters it had and no halted key: not a halt, still a failure.
   const s = green();
   s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
     latest_run: { status: "failed", finished_at: day(0.01), halted: null, wrote: null } };
   const v = evaluate(s, ledger, disk, FP, NOW);
-  check("a newest meeting run with no halted count is not a halt", !v.failures.some((f) => f.startsWith("meeting run halted")));
+  check("a crashed meeting run (no halted count) is not a halt", !v.failures.some((f) => f.startsWith("meeting run halted")));
+  check("…but it fails", v.failures.some((f) => f.startsWith("meeting run failed")), v.failures.join(" | "));
+}
+{
+  // 'partial' with no halt wrote something before an error: the reader is moving, so it passes.
+  const s = green();
+  s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
+    latest_run: { status: "partial", finished_at: day(0.01), halted: 0, wrote: 3 } };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a 'partial' meeting run with no halt passes", !v.failures.some((f) => f.startsWith("meeting")) && v.summary.some((x) => x.includes("newest run partial")));
 }
 {
   const v = evaluate(green(), ledger, disk, FP, NOW);

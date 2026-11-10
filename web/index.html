@@ -1668,9 +1668,12 @@ function openMeetingProposals(db) {
 }
 
 async function loadBook() {
+  // The book holds more accounts and current reads than PostgREST's max-rows, so both are read a page
+  // at a time on a unique order: a cut answer would leave an agency with no read ("no computed tier")
+  // or out of "Who is this?". The roster is put back in name order once every page is in.
   const [acc, reads, runs, pending] = await Promise.all([
-    state.db.from("pb_accounts").select("*").in("book", ["prospect", "parked", "promoted"]).order("name"), // 'merged' rows are history, read only from a survivor's sheet
-    state.db.from("pb_current_reads").select("*"),
+    pagedRows((from, to) => state.db.from("pb_accounts").select("*", { count: "exact" }).in("book", ["prospect", "parked", "promoted"]).order("id").range(from, to)), // 'merged' rows are history, read only from a survivor's sheet
+    pagedRows((from, to) => state.db.from("pb_current_reads").select("*", { count: "exact" }).order("account_id").range(from, to)),
     state.db.from("pb_runs").select("kind,status,started_at,finished_at,source").eq("kind", "score").order("started_at", { ascending: false }).limit(1),
     // Signed-in only: pb_fact_candidates is behind auth, so a reader sees the book without the queue.
     state.db.from("pb_fact_candidates").select("account_id,conflicts").eq("status", "proposed"),
@@ -1678,7 +1681,7 @@ async function loadBook() {
   ]);
   if (acc.error) loadError("pb_accounts", acc.error);
   if (reads.error) loadError("pb_current_reads", reads.error);
-  state.accounts = acc.data ?? [];
+  state.accounts = (acc.data ?? []).sort((x, y) => String(x.name ?? "").localeCompare(String(y.name ?? ""), "en", { sensitivity: "base" }));
   state.reads = new Map((reads.data ?? []).map((r) => [r.account_id, r]));
   state.lastRun = { readAt: latestOf((reads.data ?? []).map((r) => r.run_at)), run: runs.data?.[0] ?? null };
   setPending(pending.data ?? []);

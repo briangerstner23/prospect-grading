@@ -2737,7 +2737,10 @@ it. A fact edited on its card is checked against a person's value as
 edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
 own value goes as `agrees`. Every meeting holding an open card is in the picker however old (the
 reader works a backlog oldest first), and the open proposals behind the roster's count and the
-picker are read a page at a time with an exact count, so PostgREST's max-rows cannot cut them short.
+picker are read a page at a time with an exact count, so PostgREST's max-rows cannot cut them short —
+as are the book's accounts and current reads the screen's checks rest on, since both now outnumber
+it: a cut read would flag an agency "no computed tier", and a cut roster would hide it from "Who is
+this?".
 
 Which word is newest is re-derived, never only added to (`pb_meeting_supersede`). An older claim a
 newer meeting superseded is open again once that newer row stops beating it — rejected on its card,
@@ -2777,7 +2780,9 @@ survivor and never the read, so a merged record is checked against the survivor'
 counts any approved quote, origin-tagged register text or literal `sales_meeting` found there — any
 leak FAILS CI; `meetings_work` FAILS CI when the reader's newest finished run halted (its
 `latest_run`, the pb_runs row above — a halt releases the lease and leaves the meeting `waiting`, so
-no count moves while every tick halts), and warns on a failed meeting this week, a lease stuck over
+no count moves while every tick halts) or closed `failed` without a halt (a refused write, an
+unreadable rubric or a crash: the lease lapses, the next tick re-claims the meeting and fails the
+same way, and again only the run row says so), and warns on a failed meeting this week, a lease stuck over
 three hours, meetings selected but none read, and an open card older than three days (proposals
 never expire on a timer). The invariant that is never allowed to move:
 
