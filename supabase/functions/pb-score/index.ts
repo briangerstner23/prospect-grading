@@ -15,7 +15,9 @@
  *     one call per patch (listingUpdates; RUNBOOK §15, 10 Nov 2026)
  *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors,
  *     snapshots, listing_updated}
- * A per-account failure is collected into errors and the run continues.
+ * A per-account failure is collected into errors and the run continues. The answer is decided
+ * after the run row is finished (scoreAnswer): if that last write fails, the response says so
+ * with a 500, rather than ok: true over a row left at running.
  *
  * ?preview=1 scores under the named (draft) rubric, writes NOTHING — no reads, no run — and
  * returns {diff: [{account_id, name, from_tier, to_tier, from_status, to_status, from_rank,
@@ -45,6 +47,7 @@ import {
   groupBy,
   listingUpdates,
   rankDiff,
+  scoreAnswer,
   scorecardJson,
   tallyScorecards,
   toListing,
@@ -248,7 +251,9 @@ Deno.serve(async (req: Request) => {
 
     // The calibration loop starts here (R4): what the book claimed today, kept so it can be
     // scored against actuals later. A re-run the same day replaces the day's row, never doubles it.
-    // Written before the listing, which was the step a CPU-time kill landed in (10 Nov 2026).
+    // Written before the listing: on ten of the eleven killed nights (RUNBOOK §15) the kill came in
+    // the old per-account listing loop and no snapshot landed. The order alone is no guarantee —
+    // on 29 Oct the kill came inside this upsert — the small listing step below is what protects it.
     const snapRows: Rec[] = [];
     for (const sc of cards) {
       const row = buildSnapshotRow(sc, rubric.spec, runId);
@@ -275,20 +280,25 @@ Deno.serve(async (req: Request) => {
 
   const allErrors: unknown[] = [...errors, ...writeErrors.map((m) => ({ error: m }))];
   const status = runStatus(cards.length, allErrors.length);
+  // snapshots and listing_updated go into counts, not only notes: the response truncates notes
+  // past 200 and pb_runs is the record. The response carries them too, for the night pb_runs can't.
+  const runCounts = { ...counts, snapshots: snapshotsWritten, listing_updated: listingUpdated };
+  let finishError: string | null = null;
   try {
-    // snapshots goes into counts, not only notes: the response truncates notes past 200 and pb_runs is the record.
-    await finishRun(db, runId, status, { ...counts, snapshots: snapshotsWritten, listing_updated: listingUpdated, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
+    await finishRun(db, runId, status, { ...runCounts, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
   } catch (e) {
-    writeErrors.push(errorMessage(e));
+    finishError = errorMessage(e);
   }
+  // Decided after finishRun, so a run row that could not be closed is a 500, never ok: true.
+  const answer = scoreAnswer(cards.length, allErrors, finishError);
   return json({
-    ok: allErrors.length === 0,
+    ok: answer.ok,
     run_id: runId,
-    status,
+    status: answer.status,
     rubric_version: rubric.version,
     as_of: asOf,
-    counts,
-    errors: allErrors,
+    counts: runCounts,
+    errors: answer.errors,
     notes: notes.length > 200 ? [...notes.slice(0, 200), `… ${notes.length - 200} more`] : notes,
-  }, allErrors.length === 0 ? 200 : 500);
+  }, answer.http);
 });

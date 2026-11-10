@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 
 import { grade } from "./core/engine.ts";
 import type { ProspectFeatures, ProspectScorecard } from "./core/prospect_types.ts";
-import { buildSnapshotRow, compareKey, diffEntry, listingPatch, listingUpdates, rankDiff, toListing } from "./score_pure.ts";
+import { buildSnapshotRow, compareKey, diffEntry, listingPatch, listingUpdates, rankDiff, scoreAnswer, toListing } from "./score_pure.ts";
 import type { Listing } from "./score_pure.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -178,6 +178,48 @@ check("same card, same row", JSON.stringify(buildSnapshotRow(ranked[0], rubric, 
 
   // toListing reads the row the way the comparison needs: blanks and absent columns are null.
   check("toListing: absent and blank columns are null", JSON.stringify(toListing({ status: "Ranked", effective_tier: "  ", cell: undefined })) === JSON.stringify({ status: "Ranked", effective_tier: null, cell: null }));
+
+  // A kill that cut last night's listing write off is repaired tonight: the comparison is against
+  // the row as stored, so a row still holding an older listing is written even when tonight's
+  // scorecard matches last night's read exactly (10 Nov kept 149 rows from 8 Nov this way).
+  const stale = new Map(same);
+  const older: Listing = { status: all[3].status === "Parked" ? "Ranked" : "Parked", effective_tier: "Bronze", cell: "an-older-cell" };
+  stale.set(all[3].account_id, older);
+  const repair = listingUpdates(all, stale);
+  check("listingUpdates: a row a kill left on an older listing is written the next night, and only it",
+    repair.length === 1 && JSON.stringify(repair[0].ids) === JSON.stringify([all[3].account_id])
+      && JSON.stringify(repair[0].patch) === JSON.stringify(listingPatch(all[3])), JSON.stringify(repair));
+}
+
+/* ---- 6 · the answer is decided after the run row is finished (pb-score, 10 Nov 2026) ---- */
+{
+  const accountErr = { account_id: "acct-1", name: "fixture-1", error: "boom" };
+
+  const clean = scoreAnswer(1078, [], null);
+  check("scoreAnswer: a clean run that closed its row answers ok, success, 200",
+    clean.ok && clean.status === "success" && clean.http === 200 && clean.errors.length === 0, JSON.stringify(clean));
+
+  // The defect: finishRun threw, and the answer still said ok: true, 'success', 200.
+  const unclosed = scoreAnswer(1078, [], "pb_runs update: upstream timed out");
+  check("scoreAnswer: a run row that could not be closed is never ok, never a 200",
+    !unclosed.ok && unclosed.http === 500, JSON.stringify(unclosed));
+  check("scoreAnswer: …and its status is no longer 'success' (the reads landed, so partial)", unclosed.status === "partial", unclosed.status);
+  check("scoreAnswer: …and the finish error is in the answer's errors, saying the row is left at running",
+    unclosed.errors.length === 1 && JSON.stringify(unclosed.errors[0]).includes("pb_runs update: upstream timed out")
+      && JSON.stringify(unclosed.errors[0]).includes("left at running"), JSON.stringify(unclosed.errors));
+
+  const nothing = scoreAnswer(0, [], "pb_runs update: upstream timed out");
+  check("scoreAnswer: nothing scored and the row not closed is 'failed'", nothing.status === "failed" && nothing.http === 500, JSON.stringify(nothing));
+
+  const given = [accountErr];
+  const both = scoreAnswer(1077, given, "pb_runs update: 502");
+  check("scoreAnswer: account errors and the finish error are both reported, in that order",
+    both.errors.length === 2 && both.errors[0] === accountErr && both.status === "partial" && both.http === 500, JSON.stringify(both));
+  check("scoreAnswer: the caller's error list is not modified", given.length === 1);
+
+  const partial = scoreAnswer(1077, [accountErr], null);
+  check("scoreAnswer: an account error with the row closed is partial and a 500, as before",
+    !partial.ok && partial.status === "partial" && partial.http === 500 && partial.errors.length === 1, JSON.stringify(partial));
 }
 
 console.log(`score_pure_test: ${passed} passed, ${failures.length} failed`);

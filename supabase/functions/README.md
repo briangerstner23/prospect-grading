@@ -260,7 +260,9 @@ continues. Then:
   100 ids to a call (`listingUpdates`; one call per account hit the CPU-time ceiling on 11 of 18
   nights from 24 Oct 2026, RUNBOOK §15) — and writes `pb_runs` with counts `{scored, parked, unclassified,
   overridden, ranked, errors, snapshots, listing_updated}`. Response `{ok, run_id, status,
-  rubric_version, as_of, counts, errors, notes}`.
+  rubric_version, as_of, counts, errors, notes}`, decided after the run row is closed
+  (`scoreAnswer`): `counts` carries `snapshots` and `listing_updated` too, and a failed write to
+  `pb_runs` is a 500 with the error in `errors`, never `ok: true` over a row left at `running`.
 - **`preview=1`** — writes **nothing** (no reads, no run) and returns `{preview: true, rubric_version,
   rubric_status, counts, changed, diff: [{account_id, name, from_tier, to_tier, from_status,
   to_status, changed}], errors}` against `pb_current_reads`. A non-active (`draft` / `retired`)

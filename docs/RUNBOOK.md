@@ -777,21 +777,41 @@ Two things about that query, both of which cost an hour to learn:
 > (24, 25, 26 and 29 Oct; 2, 3, 4, 5, 6, 9 and 10 Nov). Each left a pb-score row at `running` and a
 > watchdog row saying "the function answered 546".
 > The function log says `CPU Time exceeded` at about 31 s: an edge function has a CPU-time
-> ceiling as well as a wall clock, and the run was right at it. The reads had landed (1,078 each
-> night, within three seconds of the run starting), so the board was current; what was cut off
-> was everything after them. pb-score then sent one `update pb_accounts … where id = …` per
-> account, 1,078 round trips whether or not anything had changed, and on 10 Nov it was killed at
-> 858, so about 220 accounts kept the day before's listing columns, no potential snapshots were
-> written on any of those nights, and the run row never finished. The nights it fit took about
-> 26 s; the book had grown from about 960 accounts to 1,078 over the same weeks. The fix (`listingUpdates`) reads the listing back, writes only the accounts that moved,
-> one call per patch, and writes the snapshots before the listing. A `running` pb-score row with
-> a fresh set of reads under its `run_id` is this shape, not a score that never happened:
+> ceiling as well as a wall clock (Supabase documents 2 s of CPU per request; time spent waiting
+> on I/O does not count), and the kill lands wherever the run's total crosses it, not in any one
+> step. The reads had landed within three seconds of the run starting, so the board was current:
+> 960 a night on 24–26 Oct, 973 on 29 Oct, 1,063 to 1,078 in November, as the book grew. pb-score
+> then sent one `update pb_accounts … where id = …` per account, every account every night whether
+> or not anything had changed, and only after that upserted the potential snapshots, 200 rows to a
+> batch. On ten of the eleven nights the kill came inside that listing loop and no snapshot was
+> written. On 10 Nov it came at 858 of 1,078, so about 220 accounts kept an older listing: 71 as
+> 9 Nov left them (that night died at 929) and 149 as 8 Nov left them, the last night that finished.
+> On **29 Oct** the run got through all 973 listing updates and was killed inside the snapshot
+> upsert after its first batch: 200 of that day's 604 snapshots exist, every one carrying
+> `assumptions.run_id` = that run. On all eleven the run row never finished. The nights it fit
+> took about 26 s.
+> The fix (`listingUpdates`) reads the listing back, writes only the accounts that moved, one call
+> per patch, and writes the snapshots before the listing. What protects the run is the lower
+> total — a handful of calls a night where there were a thousand; the order only helps beside it,
+> since 29 Oct shows a run short of CPU can be cut off inside the snapshots too. A listing write a
+> kill does cut off is repaired the next night, because `listingUpdates` compares against the row
+> as stored, never against the last read. A `running` pb-score row with a fresh set of reads under
+> its `run_id` is this shape, not a score that never happened:
 >
 > ```sql
 > select r.id, r.started_at, r.status, count(x.*) as reads
 >   from pb_runs r left join pb_reads x on x.run_id = r.id
 >  where r.source = 'pb-score' and r.status = 'running' group by 1, 2, 3 order by 2 desc;
 > ```
+>
+> The same change made pb-score decide its answer after it closes the run row. Before it, a
+> failed final PATCH to `pb_runs` on an otherwise clean night left the row at `running` while the
+> function answered 200 with `ok: true` and status `success` (the error went into a list nothing
+> read again). It now answers 500 with a `pb_runs update: …` error in `errors`, and the response's
+> `counts` carries `snapshots` and `listing_updated` as the row would have. So for a `running`
+> pb-score row the watchdog's "the function answered …" names the shape: 546 is a kill, 500 is a
+> run whose work landed and whose row could not be closed — read the body from
+> `net._http_response` the same morning, before pg_net prunes it.
 
 `status` is `running` (never finished — investigate), `success`, `partial` (some rows
 errored; see `errors`) or `failed`. The seed run's `counts.skipped` lists the organisations
