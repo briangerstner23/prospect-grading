@@ -27,6 +27,13 @@
       "Bash(git remote -v)",
       "Bash(git worktree list *)",
 
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push origin *)",
+      "Bash(git pull *)",
+      "Bash(git merge *)",
+      "Bash(git mv *)",
+
       "Bash(npm test *)",
       "Bash(npm run *)",
       "Bash(node --experimental-strip-types *)",
@@ -52,6 +59,8 @@
       "Bash(which *)",
       "Bash(pwd)",
 
+      "mcp__Supabase__apply_migration",
+      "mcp__Supabase__deploy_edge_function",
       "mcp__Supabase__execute_sql",
       "mcp__Supabase__list_tables",
       "mcp__Supabase__list_migrations",
@@ -69,7 +78,11 @@
     ],
     "deny": [
       "Bash(git push --force *)",
-      "Bash(git push -f *)"
+      "Bash(git push -f *)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git push * +*)"
     ]
   }
 }
