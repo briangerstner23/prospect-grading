@@ -163,6 +163,22 @@ eq("fingerprint: independent vector — FNV-1a over JSON.stringify(\"a\") = 61a1
   eq("fingerprint: independent vector over canonical JSON (FNV-1a in Python: ffddc74b)", fingerprint({ b: 1, a: [1, { d: 2, c: 3 }], "≥": "x", z: null, n: 0.5 }), "ffddc74b");
   check("fingerprint: array order still matters", fingerprint([1, 2]) !== fingerprint([2, 1]));
   check("fingerprint: a changed value still changes the hash", fingerprint(keySorted({ ...R, version: "0.1.1" })) !== fingerprint(R));
+  // GradeOptions.rubric_fingerprint (10 Nov 2026): a caller grading a whole book hashes the rubric
+  // once and passes it in. The scorecard must be the one grade() computes on its own, byte for byte,
+  // and a value that is not a fingerprint is ignored, never printed on a read.
+  {
+    const own = grade(base(), R);
+    const passed = grade(base(), R, { rubric_fingerprint: fingerprint(R) });
+    eq("rubric_fingerprint option: the scorecard is identical to the one grade() computes itself", JSON.stringify(passed), JSON.stringify(own));
+    for (const junk of ["", "DEC7D291", "dec7d29", "dec7d2911", "not-a-hash", null]) {
+      eq(`rubric_fingerprint option: ${JSON.stringify(junk)} is ignored and the engine computes its own`,
+        grade(base(), R, { rubric_fingerprint: junk as string | null }).rubric_fingerprint, own.rubric_fingerprint);
+    }
+    const over = { tier: "Gold", reason_code: "other", reason: "r", approver: "owner@example.test", expires_at: "2099-01-01" };
+    eq("rubric_fingerprint option: it rides beside an override without disturbing it",
+      JSON.stringify(grade(base(), R, { override: over as never, rubric_fingerprint: fingerprint(R) })),
+      JSON.stringify(grade(base(), R, { override: over as never })));
+  }
   for (const [version, rubric] of Object.entries(RUBRICS)) {
     eq(`fingerprint: rubric ${version} bytes are the pinned ones (re-record PINNED_FINGERPRINT deliberately when the rubric changes)`, fingerprint(rubric), PINNED_FINGERPRINT[version]);
   }

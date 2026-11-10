@@ -344,6 +344,16 @@ export interface ConfidenceOverride {
 export interface GradeOptions {
   override?: Override | null;
   confidence_override?: ConfidenceOverride | null;
+  /**
+   * `fingerprint(rubric)`, computed ONCE by a caller that grades many accounts under the same
+   * rubric object — pb-score. Without it the engine hashes the whole rubric's canonical JSON on
+   * every call: about 0.6 ms a call at 0.1.7's size, three quarters of grade()'s cost, and over
+   * a 1,078-account book about a third of an edge function's CPU ceiling (RUNBOOK §15, 10 Nov
+   * 2026). It must be `fingerprint()` of the very rubric passed in; it is a label on the read,
+   * never an input to any rule. Anything but eight lower-case hex characters is ignored and the
+   * engine computes its own. Added 10 Nov 2026; additive and nullable (DECISIONS §8).
+   */
+  rubric_fingerprint?: string | null;
 }
 
 /* ------------------------------------------------------------------ *

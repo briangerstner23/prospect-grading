@@ -54,7 +54,7 @@ import {
   toResolveAccount,
 } from "../_shared/score_pure.ts";
 import type { CurrentRead, DiffEntry, Listing } from "../_shared/score_pure.ts";
-import { grade } from "../_shared/core/engine.ts";
+import { fingerprint, grade } from "../_shared/core/engine.ts";
 import { resolveFeatures } from "../_shared/ingest/resolve_features.ts";
 import type { DealRow, EngagementRow, FactRow, RegisterRow, SignalRow } from "../_shared/ingest/resolve_features.ts";
 import type { ProspectScorecard } from "../_shared/core/prospect_types.ts";
@@ -191,6 +191,9 @@ Deno.serve(async (req: Request) => {
   const cards: ProspectScorecard[] = [];
   const errors: Array<{ account_id: string; name: string; error: string }> = [];
   const notes: string[] = [];
+  // Hashed once for the whole book, not once per account inside grade() (RUNBOOK §15): the same
+  // value grade() would compute, from the same object, for a fraction of the CPU.
+  const rubricFingerprint = fingerprint(rubric.spec);
   for (const a of accounts) {
     const id = String(a.id);
     try {
@@ -204,7 +207,7 @@ Deno.serve(async (req: Request) => {
         as_of: asOf,
         rubric: rubric.spec,
       });
-      const sc = grade(resolved.features, rubric.spec, { override: resolved.override, confidence_override: resolved.confidence_override });
+      const sc = grade(resolved.features, rubric.spec, { override: resolved.override, confidence_override: resolved.confidence_override, rubric_fingerprint: rubricFingerprint });
       cards.push(sc);
       for (const n of resolved.notes) notes.push(`${sc.name}: ${n}`);
     } catch (e) {
