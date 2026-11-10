@@ -25,9 +25,11 @@
  *      pb_reconcile_state() without `notes_work` warns that the check could not run.
  *   6. No sales-meeting words on a public read (always a FAIL; DECISIONS §65). The database's own
  *      canary, `meeting_privacy`, renders pb_dossier() for the accounts with the newest approved
- *      meeting proposals and counts every approved quote, every origin-tagged register text and
- *      the literal 'sales_meeting' it finds there. Any leak fails: what the team says about a named
- *      agency is signed-in only, and anything published cannot be taken back (§61). An older
+ *      meeting proposals, and the records merged into them (checked against the survivor's words,
+ *      since a merge moves the proposals and never the read), and counts every approved quote, every
+ *      origin-tagged register text and the literal 'sales_meeting' it finds there. Any leak fails:
+ *      what the team says about a named agency is signed-in only, and anything published cannot be
+ *      taken back (§61). An older
  *      pb_reconcile_state() without the block warns that the check could not run.
  *   7. The meeting reader keeps up. Its newest run HALTED fails, as check 5 does for notes: a halt
  *      sends the meeting back to 'waiting' with its lease released, so none of the counts below

@@ -454,8 +454,14 @@ end $$;
 -- 8 · the five a person calls ------------------------------------------------------------------
 
 -- pb_decide_meeting_card: one atomic call per agency card. Items are
---   [{id, decision: 'approve'|'reject'|'propose', overrule?: bool,
+--   [{id, decision: 'approve'|'reject'|'propose', overrule?: bool, only_if_agrees?: bool,
 --     edit?: {value?, tier?, reason_code?, text?, expires_at?, disposition?, review_on?}}]
+-- A tier call naming the tier the board already shows — the engine's own with no override live, or
+-- a live override's — is recorded 'agrees' and writes nothing, as the reader would have written it:
+-- refusing it left a reject as the only way to close the card, and a reject is exactly what returns
+-- an older meeting's contradicting call (pb_meeting_supersede). only_if_agrees is how the page sends
+-- such a row it never asked the person to tick: approve it only while it still agrees, and refuse
+-- the card if the board has moved since it was loaded, rather than write an override nobody chose.
 -- 1–20 items, every one locked FOR UPDATE, all on ONE placed account, whose book must be prospect
 -- or parked for an approval. 'approve' and 'reject' take a 'proposed' row; 'propose' is [Propose
 -- anyway] and takes a 'not_proposed' row (a question, joke or hypothetical) back to 'proposed',
@@ -487,6 +493,7 @@ declare
   v_status   text;
   v_held     text;
   v_overrule boolean;
+  v_agree    boolean;
   v_value    jsonb;
   v_cur_id   uuid;
   v_cur_val  jsonb;
@@ -593,6 +600,10 @@ begin
       raise exception 'edit is an object';
     end if;
     v_overrule := coalesce((v_item->>'overrule')::boolean, false);
+    v_agree := coalesce((v_item->>'only_if_agrees')::boolean, false);
+    if v_agree and (v_dec <> 'approve' or p.kind <> 'override') then
+      raise exception 'only_if_agrees approves a tier call the board already shows; it is not for a % %', v_dec, p.kind;
+    end if;
     v_held := to_char(p.held_on, 'YYYY-MM-DD');
     -- Every decision changes which word is newest, not only an approval: [Propose anyway] can
     -- reopen an older word beside a newer one (or a newer one beside an older), and a reject can
@@ -678,42 +689,44 @@ begin
                       where t = v_tier) then
         raise exception 'tier % is not in the active rubric''s vocabulary.tiers', coalesce(v_tier, '(none)');
       end if;
-      v_codes := coalesce(v_spec->'override'->'reason_codes', '[]'::jsonb);
-      v_code := coalesce(nullif(v_edit->>'reason_code', ''), p.reason_code,
-                         case when v_codes ? 'relationship_known' then 'relationship_known' end);
-      if v_code is null or not (v_codes ? v_code) then
-        raise exception 'reason code % is not one of the rubric''s override.reason_codes %', coalesce(v_code, '(none)'), v_codes;
-      end if;
-      v_text := btrim(case when v_edit ? 'text' then coalesce(v_edit->>'text', '') else coalesce(p.default_text, '') end);
-      if v_text = '' then
-        raise exception 'an override needs a written reason (rule 7)';
-      end if;
-      if v_edit ? 'expires_at' and jsonb_typeof(v_edit->'expires_at') <> 'null' then
-        v_exp := (v_edit->>'expires_at')::timestamptz;
-      else
-        v_days := (v_spec->'override'->>'expiry_default_days')::numeric;
-        if v_days is null or v_days <= 0 then
-          raise exception 'the active rubric names no override.expiry_default_days; set an expiry on the card';
-        end if;
-        v_exp := now() + v_days::double precision * interval '1 day';
-      end if;
-      if v_exp <= now() then
-        raise exception 'an override expires in the future, not %', v_exp;
-      end if;
       v_ctier := null; v_etier := null;
       select r.computed_tier, r.effective_tier into v_ctier, v_etier
         from public.pb_current_reads r where r.account_id = v_acct;
       if v_ctier is null then
         raise exception 'the engine refuses an override until this account has a computed tier';
       end if;
-      -- What the board shows is the effective tier (the computed one when no override is live).
+      -- What the board shows is the effective tier (the computed one when no override is live). A
+      -- call naming it agrees with the board, whichever of the two put it there: nothing is written,
+      -- so nothing below (code, reason, expiry) is asked of it. As 'agrees' it still beats an older
+      -- meeting's word, which a reject would have returned to the card.
       if lower(v_tier) = lower(coalesce(v_etier, v_ctier)) then
-        if lower(v_tier) = lower(v_ctier) then
-          raise exception 'anticipated % is already the computed tier and no live override moves the board off it; '
-                          'an override to it changes nothing', v_tier;
-        end if;
-        v_status := 'agrees';                         -- a live override already says it
+        v_status := 'agrees';
+      elsif v_agree then
+        raise exception 'anticipated % is no longer the tier the board shows (anticipated %): the book moved since this '
+                        'card was loaded; reload it and decide the tier call again', v_tier, coalesce(v_etier, v_ctier);
       else
+        v_codes := coalesce(v_spec->'override'->'reason_codes', '[]'::jsonb);
+        v_code := coalesce(nullif(v_edit->>'reason_code', ''), p.reason_code,
+                           case when v_codes ? 'relationship_known' then 'relationship_known' end);
+        if v_code is null or not (v_codes ? v_code) then
+          raise exception 'reason code % is not one of the rubric''s override.reason_codes %', coalesce(v_code, '(none)'), v_codes;
+        end if;
+        v_text := btrim(case when v_edit ? 'text' then coalesce(v_edit->>'text', '') else coalesce(p.default_text, '') end);
+        if v_text = '' then
+          raise exception 'an override needs a written reason (rule 7)';
+        end if;
+        if v_edit ? 'expires_at' and jsonb_typeof(v_edit->'expires_at') <> 'null' then
+          v_exp := (v_edit->>'expires_at')::timestamptz;
+        else
+          v_days := (v_spec->'override'->>'expiry_default_days')::numeric;
+          if v_days is null or v_days <= 0 then
+            raise exception 'the active rubric names no override.expiry_default_days; set an expiry on the card';
+          end if;
+          v_exp := now() + v_days::double precision * interval '1 day';
+        end if;
+        if v_exp <= now() then
+          raise exception 'an override expires in the future, not %', v_exp;
+        end if;
         -- Including the computed tier while a live override shows another: the team disagrees with
         -- that override, and the newer override returns the board to the engine's tier.
         insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at)
@@ -1114,7 +1127,8 @@ create trigger pb_meeting_follow_merge after update of book, merged_into on publ
 
 -- 9 · pb_dossier(uuid), rebuilt from the live body with the three §65 filters -------------------
 -- The live definition (pg_get_functiondef md5 d7066184…, prosrc md5 ab44f7fd…) is byte-identical to
--- the body 20260918100400 wrote; the three edits are marked "§65" in place. Signature, language,
+-- the body 20260918100400 wrote; the three edits are marked "§65" in place (the trace strip also
+-- covers a merged record, whose read outlives the move of its override row). Signature, language,
 -- volatility, SECURITY DEFINER, search_path and the grants (create-or-replace keeps them) unchanged.
 create or replace function public.pb_dossier(p_account_id uuid)
 returns jsonb
@@ -1149,10 +1163,18 @@ as $function$
             -- in two places: override.approver, and the one note the engine writes it into
             -- (core/engine.ts: "Override applied: A → B (code, approver)."), which keeps its tiers
             -- and its code and loses the name: "Override applied: A → B (code).".
+            -- A MERGED record is stripped whatever its register holds. pb_merge_accounts moves every
+            -- register row but a decision to the survivor and never moves a read, and pb-score scores
+            -- prospect and parked agencies only, so the merged record's last read keeps the override
+            -- it was scored under for good while the row that says where that override came from now
+            -- sits on another account. Its id was on pb_board() while it was a prospect.
             'trace', case when exists (
                        select 1 from pb_register g
                         where g.account_id = p_account_id and g.kind = 'override'
                           and g.payload->>'origin' = 'sales_meeting')
+                       or exists (
+                       select 1 from pb_accounts m
+                        where m.id = p_account_id and m.book = 'merged')
                      then jsonb_set(r.scorecard #- '{override,reason}' #- '{override,approver}', '{trace,notes}',
                             coalesce((
                               select jsonb_agg(case when n #>> '{}' like 'Override applied:%'
@@ -1389,9 +1411,11 @@ comment on function public.pb_removal(uuid) is
 -- the body 20260923211200 wrote. Three edits: the rule9 CASE gains 'sales_meeting' at 0, and two new
 -- top-level keys, counts only; every existing key is unchanged.
 --   meeting_privacy {checked, leaks}   For the 20 accounts with the newest approved proposals,
---       pb_dossier(account)::text normalised to [a-z0-9 ]. A hit is the first 40 normalised
---       characters of an approved quote, or of an origin='sales_meeting' register text (24
---       characters or more), found in that account's dossier; plus every dossier carrying the
+--       and every record merged into one of them, pb_dossier(account)::text normalised to
+--       [a-z0-9 ]. A hit is the first 40 normalised characters of an approved quote, or of an
+--       origin='sales_meeting' register text (24 characters or more), found in that account's
+--       dossier — a merged record's against its survivor's words, because a merge moves the
+--       proposals and the register rows and never the read; plus every dossier carrying the
 --       literal 'sales_meeting'. scripts/reconcile.ts check 6 FAILS on leaks > 0.
 --       NOT the pb_board() text, and 20 rather than 50 dossiers, on a measurement: CI calls this as
 --       anon, whose statement_timeout is 3 s; this function already takes 1.4–2.0 s, 50 dossiers add
@@ -1466,6 +1490,21 @@ mp_accounts as (
   order by max(p.decided_at) desc nulls last, p.account_id
   limit 20
 ),
+-- §65 · and the records merged into them, at any depth. pb_merge_accounts moves a record's register
+-- rows to the survivor and pb_meeting_follow_merge its proposals, so the merged record holds no
+-- approved proposal of its own — but it keeps its last read for good, and its dossier is still
+-- rendered by id. owner_id is the account whose words are looked for in it.
+mp_checked as (
+  with recursive chain (account_id, owner_id, depth) as (
+    select m.account_id, m.account_id, 0 from mp_accounts m
+    union all
+    select a.id, c.owner_id, c.depth + 1
+      from chain c
+      join public.pb_accounts a on a.merged_into = c.account_id and a.book = 'merged'
+     where c.depth < 5
+  )
+  select distinct account_id, owner_id from chain
+),
 mp_needles as (
   select x.account_id, left(x.t, 40) as needle
   from (
@@ -1480,8 +1519,8 @@ mp_needles as (
   where char_length(x.t) >= 24
 ),
 mp_docs as materialized (
-  select a.account_id, d.raw, btrim(regexp_replace(lower(d.raw), '[^a-z0-9]+', ' ', 'g')) as norm
-  from mp_accounts a, lateral (select public.pb_dossier(a.account_id)::text as raw) d
+  select c.account_id, c.owner_id, d.raw, btrim(regexp_replace(lower(d.raw), '[^a-z0-9]+', ' ', 'g')) as norm
+  from mp_checked c, lateral (select public.pb_dossier(c.account_id)::text as raw) d
 )
 select jsonb_build_object(
   'generated_at', now(),
@@ -1530,7 +1569,7 @@ select jsonb_build_object(
     'finished_runs_7d', (select count(*) from notes_runs where finished_at > now() - interval '7 days')),
   'meeting_privacy', jsonb_build_object(
     'checked', (select count(*) from mp_docs),
-    'leaks', (select count(*) from mp_needles n join mp_docs d on d.account_id = n.account_id
+    'leaks', (select count(*) from mp_needles n join mp_docs d on d.owner_id = n.account_id
                where position(n.needle in d.norm) > 0)
            + (select count(*) from mp_docs d where position('sales_meeting' in d.raw) > 0)),
   'meetings_work', jsonb_build_object(
@@ -1556,7 +1595,7 @@ select jsonb_build_object(
 $$;
 
 comment on function public.pb_reconcile_state() is
-  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count, whether the latest notes run did any work, whether any sales-meeting quote or register text reaches pb_dossier() for the 20 accounts with the newest approved meeting proposals (meeting_privacy; pb_board() prints no such text and is pinned by meeting_privacy_static_test.ts instead), and whether the meeting reader is keeping up and its newest run did not halt (meetings_work). Counts only — never a quote, a name or pb_runs.errors; callable by anon (DECISIONS §34, §65).';
+  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count, whether the latest notes run did any work, whether any sales-meeting quote or register text reaches pb_dossier() for the 20 accounts with the newest approved meeting proposals and the records merged into them (meeting_privacy; pb_board() prints no such text and is pinned by meeting_privacy_static_test.ts instead), and whether the meeting reader is keeping up and its newest run did not halt (meetings_work). Counts only — never a quote, a name or pb_runs.errors; callable by anon (DECISIONS §34, §65).';
 
 -- 11 · privileges ------------------------------------------------------------------------------
 -- The 20260918160352 lesson: a new function arrives executable by PUBLIC (and, here, by the project's
@@ -1656,7 +1695,11 @@ end $$;
 -- in the name, the override's tier and the note in the trace) without the quote, the approver, the
 -- meeting link or the literal 'sales_meeting'; the live canary must report it checked and clean;
 -- then one untagged register row carrying the quote — a deliberate leak — must make the canary
--- count it. A private SQLSTATE rolls all of it back; then, outside, a problem raises for real and
+-- count it. Then the account is merged into a second synthetic one, as pb_merge_accounts leaves it
+-- (its register rows, the override among them, on the survivor; book 'merged'; its read untouched,
+-- because a merge never moves a read): its dossier must still render the read without the quote or
+-- the approver, the canary must check it clean, and a deliberate leak on it must be counted against
+-- the survivor's words. A private SQLSTATE rolls all of it back; then, outside, a problem raises for real and
 -- nothing in this file applies. The pb_reads row is the one write rule 6 keeps for pb-score; it is
 -- made here only because nothing else exercises the trace strip before apply, and like everything
 -- in the block it never outlives it.
@@ -1667,6 +1710,7 @@ declare
   v_rec     text;
   v_url     text;
   v_acct    uuid;
+  v_surv    uuid;
   v_prop    uuid;
   v_spec    jsonb;
   v_doc     text;
@@ -1767,6 +1811,52 @@ begin
       v_mp := public.pb_reconcile_state() -> 'meeting_privacy';
       if coalesce((v_mp->>'leaks')::int, 0) < 1 then
         v_problem := 'pb_reconcile_state().meeting_privacy missed a deliberate leak (got '
+                     || coalesce(v_mp::text, 'null') || ')';
+      end if;
+      delete from public.pb_register
+       where account_id = v_acct and text = '"' || v_quote || '" — a deliberate, untagged leak';
+    end if;
+
+    -- The merge. What pb_merge_accounts does to the two tables the strip and the canary read (it
+    -- refuses a caller with no lane, and a migration has none): every register row but a decision
+    -- to the survivor, then the record out of the book. The trigger pb_meeting_follow_merge moves the
+    -- approved proposal. pb_reads is not touched: a merge never moves a read.
+    if v_problem is null then
+      insert into public.pb_accounts (key, name, book)
+      values ('sentinel-survivor:' || v_marker, 'Sentinel survivor ' || v_marker, 'prospect')
+      returning id into v_surv;
+      update public.pb_register set account_id = v_surv where account_id = v_acct and kind <> 'decision';
+      update public.pb_accounts set book = 'merged', merged_into = v_surv, status = 'Merged' where id = v_acct;
+
+      v_dj := public.pb_dossier(v_acct);
+      v_doc := v_dj::text;
+      if v_doc is null or v_dj #>> '{read,trace,override,tier}' is distinct from v_tier then
+        v_problem := 'pb_dossier() did not render the merged sentinel''s read, so the merged-record check proved nothing';
+      elsif exists (select 1 from public.pb_register g where g.account_id = v_acct and g.kind = 'override') then
+        v_problem := 'the sentinel merge left the override row on the merged record, so the check proved nothing';
+      elsif position(v_quote in v_doc) > 0 then
+        v_problem := 'pb_dossier() published a meeting override''s written reason from a merged record''s read';
+      elsif position(v_appr in v_doc) > 0 then
+        v_problem := 'pb_dossier() published a meeting override''s approver from a merged record''s read';
+      end if;
+    end if;
+
+    if v_problem is null then
+      v_mp := public.pb_reconcile_state() -> 'meeting_privacy';
+      if v_mp is null or coalesce((v_mp->>'checked')::int, 0) < 2 or coalesce((v_mp->>'leaks')::int, -1) <> 0 then
+        v_problem := 'pb_reconcile_state().meeting_privacy did not report the survivor and the merged record checked and '
+                     || 'clean (got ' || coalesce(v_mp::text, 'null') || ')';
+      end if;
+    end if;
+
+    if v_problem is null then
+      -- On the merged record, whose own register now holds nothing of the meeting: only the
+      -- survivor's words can find it.
+      insert into public.pb_register (kind, account_id, made_by, text)
+      values ('note', v_acct, 'sentinel@example.invalid', '"' || v_quote || '" — a deliberate leak on a merged record');
+      v_mp := public.pb_reconcile_state() -> 'meeting_privacy';
+      if coalesce((v_mp->>'leaks')::int, 0) < 1 then
+        v_problem := 'pb_reconcile_state().meeting_privacy missed a deliberate leak on a merged record (got '
                      || coalesce(v_mp::text, 'null') || ')';
       end if;
     end if;

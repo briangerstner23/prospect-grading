@@ -581,8 +581,27 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   // The page holds a row back for two of the function's book checks before it is sent
   // (meetingLiveFlags, meetingOverrules; page_pure_test pins its transcription). The SQL side:
   const ovBranch = branch("override");
-  check("pb_decide_meeting_card refuses an override to the tier the board shows when it is the computed one (the page's already_computed_tier)",
-    /if\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+then\s+if\s+lower\(v_tier\)\s*=\s*lower\(v_ctier\)\s+then\s+raise\s+exception/i.test(ovBranch));
+  // A tier call naming the tier the board shows (the page's already_computed_tier, or a live
+  // override's tier) is recorded 'agrees' and writes nothing — never refused, because the only way
+  // left to close the card was a reject, and a reject reopens an older meeting's contradicting call.
+  const agreesAt = ovBranch.search(/if\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+then\s+v_status\s*:=\s*'agrees'\s*;/i);
+  check("pb_decide_meeting_card records a tier call the board already shows as 'agrees', with no refusal in between",
+    agreesAt >= 0 && !/lower\(v_tier\)\s*=\s*lower\(v_ctier\)\s+then\s+raise/i.test(ovBranch));
+  check("…before it asks for a reason code, a written reason or an expiry (nothing is written for it)",
+    agreesAt >= 0 && agreesAt < ovBranch.search(/v_codes\s*:=/) && agreesAt < ovBranch.search(/an override needs a written reason/));
+  check("…and before the register insert, which only the other branch reaches",
+    agreesAt >= 0 && agreesAt < ovBranch.search(/insert\s+into\s+public\.pb_register/i));
+  check("only_if_agrees refuses the card when the board has moved, instead of writing an override nobody chose",
+    /elsif\s+v_agree\s+then\s+raise\s+exception/i.test(ovBranch) &&
+    /v_agree\s*:=\s*coalesce\(\(v_item->>'only_if_agrees'\)::boolean,\s*false\)/.test(decide) &&
+    /if\s+v_agree\s+and\s*\(v_dec\s*<>\s*'approve'\s+or\s+p\.kind\s*<>\s*'override'\)\s+then\s+raise/i.test(decide));
+  {
+    const sameTier = prow("s1", { kind: "override", tier: "Gold", key: null, value: null, flags: ["already_computed_tier"] });
+    const items = P.cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "owner", reasons: REASONS });
+    check("the page sends a tier call the board already shows as an approval with only_if_agrees, never a reject",
+      JSON.stringify(items) === JSON.stringify([{ id: "s1", decision: "approve", only_if_agrees: true }]), JSON.stringify(items));
+    subset("…whose keys the function reads", items.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
+  }
   check("…and any override while the account has no computed tier (no_computed_tier)", /if\s+v_ctier\s+is\s+null\s+then\s+raise\s+exception/i.test(ovBranch));
   const factBranch = branch("fact");
   check("pb_decide_meeting_card compares a person's value with the value it is SENT, edited or not (the page's meetingOverrules)",

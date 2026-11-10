@@ -15,7 +15,10 @@
  *   rubricVocabulary    the active rubric's tiers and override codes, or null
  *   progressOf / storedClusters / modelFromExtractor   what a resumed read picks up
  *   roundHeadroom       what the next round of calls is expected to take, against the budget
+ *   callDeadline        the instant a call still running is stopped: the run's ceiling, not its budget
+ *   ceilingVerdict      a meeting whose calls keep being stopped there: count the runs, set it aside
  *   failureKind         halt, skip, or out of time: what a failed call means for the meeting
+ *   callUsage           what a failed call is counted as: a reply billed, a stopped call, nothing
  *   failureNote         an extractor failure as a note that quotes NOTHING (ids and counts only)
  *   addUsage / addCounters / proposalCounts            bookkeeping
  *
@@ -284,15 +287,31 @@ export interface RegisteredMeeting {
   progress?: unknown;
 }
 
-/** How long a lease holds. A run's budget is 110 s; a lease older than this belongs to a dead run. */
+/** How long a lease holds. A run's budget is 110 s and its calls stop at 120 s; a lease older than this belongs to a dead run. */
 export const LEASE_MS = 150_000;
 
+/** What a run keeps free after its last call stops, for the writes that follow it. */
+export const WRITE_MARGIN_MS = 30_000;
+
 /**
- * The longest budget a run may ask for. Every model call is stopped at the budget (an AbortSignal),
- * so a run's last call ends by then; the rest of the lease, 30 s, is for the writes after it. The
- * lease is taken after registration, so it always ends later than the run's start + LEASE_MS.
+ * The longest budget a run may ask for: the call ceiling itself (callDeadline). The budget decides
+ * whether a ROUND of calls starts; a round never starts past it.
  */
-export const MAX_BUDGET_MS = LEASE_MS - 30_000;
+export const MAX_BUDGET_MS = LEASE_MS - WRITE_MARGIN_MS;
+
+/**
+ * When a call that has not answered is stopped (an AbortSignal): the run's start + LEASE_MS − the
+ * write margin, WHATEVER the budget. Two limits meet there. The lease is taken after the run starts
+ * and lasts LEASE_MS, so a call stopped by then never outlives it; and the API gateway closes a
+ * request at 150 s (RUNBOOK §17), so a run cannot outlive that either, and renewing the lease would
+ * buy nothing. budget_ms decides whether a round STARTS; it must not also cut short a call that
+ * started inside it, because the next run would claim the same meeting (oldest first), start the
+ * same call and stop it at the same point — a 115 s pass 1 read on a 110 s budget never finishes,
+ * and every meeting behind it waits.
+ */
+export function callDeadline(startedMs: number): number {
+  return startedMs + LEASE_MS - WRITE_MARGIN_MS;
+}
 
 /** The instant before which a lease is free. */
 export function leaseCutoff(now_ms: number): string {
@@ -567,13 +586,56 @@ export function roundHeadroom(slowestRoundMs: number, earlierPassMs = 0): number
 }
 
 /**
+ * How many runs in a row may end with a meeting's calls stopped at the ceiling, and nothing of it
+ * settled, before the meeting is set aside. Each such run costs a call's input tokens and settles
+ * nothing, and the queue is read oldest first, so without a limit one meeting holds it for good.
+ */
+export const MAX_CEILING_STOPS = 3;
+
+/** pb_meetings.counts key: the runs in a row that stopped this meeting on time, settling nothing. */
+export const CEILING_STOPS_KEY = "ceiling_stops_in_a_row";
+
+/** The streak stored on a meeting's counts; 0 when there is none, or when it is not a count. */
+export function ceilingStops(counts: unknown): number {
+  const v = isRec(counts) ? counts[CEILING_STOPS_KEY] : undefined;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+}
+
+/** counts with the streak written in (or taken out at 0). Returns `counts`. */
+export function withCeilingStops(counts: Record<string, number>, streak: number): Record<string, number> {
+  if (Number.isFinite(streak) && streak > 0) counts[CEILING_STOPS_KEY] = Math.floor(streak);
+  else delete counts[CEILING_STOPS_KEY];
+  return counts;
+}
+
+/**
+ * The streak after one run of one meeting, and whether the meeting is set aside now.
+ *
+ *   settled   what this run made final: pass 1's mentions stored, or an agency read or failed in
+ *             pass 2. Any of it, and the streak is 0 — the meeting is moving.
+ *   stopped   the run ended on time with this meeting unfinished: a call stopped at the ceiling,
+ *             or (pass 1, which keeps nothing until every window is in) a round it could not start.
+ *
+ * Neither, and the streak stands. set_aside at MAX_CEILING_STOPS: pass 1 is marked 'failed' (a
+ * person re-reads it deliberately, with a faster model if need be); in pass 2 the agencies whose
+ * calls keep stopping are recorded as failed and the meeting ends 'partial'. Either way the queue
+ * moves on, and the meeting's notes say why.
+ */
+export function ceilingVerdict(prior: number, run: { settled: number; stopped: boolean }): { streak: number; set_aside: boolean } {
+  const p = Number.isFinite(prior) && prior > 0 ? Math.floor(prior) : 0;
+  const streak = run.settled > 0 ? 0 : run.stopped ? p + 1 : p;
+  return { streak, set_aside: streak >= MAX_CEILING_STOPS };
+}
+
+/**
  * Does this failure stop the run, or only this call's agencies?
  *
  *   an API refusal       notes_sweep.classifyExtractorFailure decides, as for every channel;
  *   an unusable reply    'skip': it arrived, it was read, and retrying gives the same answer;
- *   the run's deadline   'out_of_time': the call was still running when the budget ran out and was
+ *   the run's ceiling    'out_of_time': the call was still running at callDeadline and was
  *                        stopped (ExtractorTimeoutError). Like stopping before a call, not a
- *                        failure: those agencies are left for the next run, nothing is marked;
+ *                        failure: those agencies are left for the next run, nothing is marked —
+ *                        until ceilingVerdict sets the meeting aside;
  *   anything else        'halt': a network failure says nothing about the meeting, so nothing is
  *                        marked failed and the next tick tries again.
  */
@@ -585,11 +647,24 @@ export function failureKind(e: unknown): "halt" | "skip" | "out_of_time" {
 }
 
 /**
+ * What a failed call is counted as, on the run and on the meeting. A reply that arrived unusable
+ * was billed, and says what it cost. A call stopped at the ceiling was sent and may have been
+ * billed for its input; what it cost is unknown, so it counts as one call of no known tokens —
+ * a meeting that keeps being stopped shows its calls in credits_spent instead of none. An API
+ * refusal is not billed, and nothing else is known: null.
+ */
+export function callUsage(e: unknown): ExtractorUsage | null {
+  if (e instanceof ExtractorReplyError) return e.usage;
+  if (e instanceof ExtractorTimeoutError) return { input_tokens: 0, output_tokens: 0 };
+  return null;
+}
+
+/**
  * An extractor failure as a note. Notes carry ids and counts only, so this never quotes the reply
  * (which would put the meeting's words in pb_runs) and never repeats an API error body.
  */
 export function failureNote(e: unknown): string {
-  if (e instanceof ExtractorTimeoutError) return "a call stopped at the run's budget";
+  if (e instanceof ExtractorTimeoutError) return "a call stopped at the run's ceiling";
   if (e instanceof ExtractorApiError) return `the extractor API answered ${e.status}`;
   if (e instanceof ExtractorReplyError) {
     return `an unusable reply (${e.reason}, stop_reason ${e.stop_reason ?? "?"}, ${e.text_chars} chars)`;

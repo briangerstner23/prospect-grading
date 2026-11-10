@@ -2675,12 +2675,20 @@ second read.
 | `{recording_id, reread: true}` | read a `read`, `partial` or `failed` meeting again from pass 1 |
 
 A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
-pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. Every model
-call carries the budget as its deadline and is stopped there if it has not answered (`out_of_time`),
-and `budget_ms` is capped at 120000, so no call outlives the lease. Out of budget in pass 2, the meeting
-stays `reading` with its progress and the next call resumes it — with the model it started with — and
-re-reads nothing; out of budget in pass 1, nothing was kept, and it goes back to `waiting` (a pass 1
-that never fits the budget shows as `pass1.out_of_time` on every tick and a meeting that is never read). It ends `read`, or `partial` when an agency's reply was
+pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. The budget
+decides whether a round of calls STARTS; a call that started runs to the ceiling — the run's start +
+120 s, inside both the lease and the gateway's 150 s (§17) — and is stopped there if it has not
+answered (`out_of_time`), so no call outlives the lease and none is cut short at the budget it started
+inside (a 115 s pass 1 on the 110 s budget is read). `budget_ms` is capped at 120000. Out of budget in
+pass 2, the meeting stays `reading` with its progress and the next call resumes it — with the model it
+started with — and re-reads nothing; out of budget in pass 1, nothing was kept, and it goes back to
+`waiting`. A stopped call is counted in `credits_spent` as a call of unknown tokens. The runs in a row
+that settle nothing of a meeting are counted in its `counts.ceiling_stops_in_a_row` (a fresh pass 1
+keeps the count; a deliberate re-read starts it again), and on the third the meeting is set aside so
+it cannot hold the queue, which is read oldest first: a pass 1 that never fits is marked `failed`
+(`pass1.set_aside`, with a note — re-read it deliberately, with a faster `model` if need be), and
+pass-2 agencies whose calls keep stopping are recorded as not read (`pass2.set_aside`) and the meeting
+ends `partial`. It ends `read`, or `partial` when an agency's reply was
 unusable, or `failed` when pass 1's was. **A failed meeting is never retried on its own**: fix the
 cause and re-read it deliberately.
 
@@ -2719,9 +2727,13 @@ The screen shows each open row against the book as it stands when the screen loa
 was written: a row placed through "Who is this?" was written with no snapshot at all, and any row's
 can be stale. So the book's value on a fact's key, a person's value it would overrule, and the engine
 and board tiers for a tier call are read again, and the decide function's own refusals are kept off
-the card before it is sent. A tier call naming the engine's tier with no override live (the board
-already says it; the function refuses it) is never pre-ticked, is flagged "already the engine's tier",
-and A rejects it with the rest. A fact edited on its card is checked against a person's value as
+the card before it is sent. A tier call naming the tier the board already shows is recorded `agrees`
+by the function and writes nothing, whether it is the engine's tier with no override live or a live
+override's. On screen the first is flagged "already the engine's tier" and carries no tick box, and A
+sends it as an approval with `only_if_agrees` — never as a reject, because a rejected newer word
+returns an older meeting's contradicting call to the card; if the board has moved since the screen
+loaded, the function refuses the card rather than write an override nobody chose. X still rejects
+it. A fact edited on its card is checked against a person's value as
 edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
 own value goes as `agrees`. Every meeting holding an open card is in the picker however old (the
 reader works a backlog oldest first), and the open proposals behind the roster's count and the
@@ -2734,7 +2746,10 @@ superseded again if a third, newer word still stands; "Propose anyway" on an old
 at once by a newer one that stands. A card on an agency promoted since it was read can be rejected,
 not approved. A merge, by any path, carries the merged record's proposals and learned names to the
 survivor (the `pb_meeting_follow_merge` trigger), where the newer word wins; a name the survivor
-already holds, even one a person forgot there, is left as it is.
+already holds, even one a person forgot there, is left as it is. The merged record keeps its last
+read for good (`pb_merge_accounts` never moves a read, and pb-score scores prospect and parked
+agencies only) while its override rows move to the survivor, so `pb_dossier()` strips the override's
+written reason and approver from every merged record's read, whatever its own register still holds.
 
 ### 33.6 · What a halt looks like, and the checks that keep running
 
@@ -2756,7 +2771,9 @@ every tick halts the same way. Fix the cause, or stop it: `select cron.unschedul
 Run notes carry recording ids, refs and counts — never a quote, a name or a title.
 
 Every CI reconcile (push, and every 6 h) reads two blocks of `pb_reconcile_state()`:
-`meeting_privacy` renders `pb_dossier()` for the 20 accounts with the newest approved proposals and
+`meeting_privacy` renders `pb_dossier()` for the 20 accounts with the newest approved proposals, and
+for every record merged into one of them (a merge moves the proposals and the register rows to the
+survivor and never the read, so a merged record is checked against the survivor's words), and
 counts any approved quote, origin-tagged register text or literal `sales_meeting` found there — any
 leak FAILS CI; `meetings_work` FAILS CI when the reader's newest finished run halted (its
 `latest_run`, the pb_runs row above — a halt releases the lease and leaves the meeting `waiting`, so

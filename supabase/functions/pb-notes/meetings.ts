@@ -43,11 +43,15 @@
  *
  * WHEN IT STOPS:
  *   · out of budget — before a round of calls whose expected time (roundHeadroom) would cross
- *     budget_ms, or at budget_ms itself: every call carries that deadline as an AbortSignal, so one
- *     still running is stopped there ('out_of_time'), never left to outlive the lease. In pass 2 the
- *     meeting stays 'reading' with its progress written and its lease left to lapse (LEASE_MS), so
- *     the next tick resumes it where it stopped and re-reads nothing; in pass 1 nothing was stored,
- *     so the lease is released and the meeting goes back to 'waiting'. Not a failure either way.
+ *     budget_ms. A round that started inside the budget runs to the call ceiling (callDeadline: the
+ *     run's start + 120 s, inside both the lease and the gateway's 150 s), where a call still running
+ *     is stopped ('out_of_time') rather than left to outlive the lease. In pass 2 the meeting stays
+ *     'reading' with its progress written and its lease left to lapse (LEASE_MS), so the next tick
+ *     resumes it where it stopped and re-reads nothing; in pass 1 nothing was stored, so the lease is
+ *     released and the meeting goes back to 'waiting'. Not a failure — but the runs in a row that
+ *     settle nothing of a meeting are counted (ceiling_stops_in_a_row), and at MAX_CEILING_STOPS
+ *     the meeting is set aside (pass 1: 'failed'; pass 2: those agencies not read, 'partial'), so a
+ *     meeting too long for one call cannot hold the queue, which is read oldest first.
  *   · halt — the API refused (classifyExtractorFailure) or the call failed without an answer. The
  *     lease is released, the meeting goes back to 'waiting' with whatever progress it had, and the
  *     run is 'failed' (or 'partial' if it wrote first). Nothing is marked read that was not read.
@@ -97,12 +101,16 @@ import type {
   SnapshotRemoval,
   VerifiedClaim,
 } from "../_shared/ingest/meeting_claims.ts";
-import { callExtractor, ExtractorReplyError } from "./extractor.ts";
+import { callExtractor } from "./extractor.ts";
 import type { ExtractorResult } from "./extractor.ts";
 import {
   addCounters,
   addUsage,
   appendNotes,
+  callDeadline,
+  callUsage,
+  ceilingStops,
+  ceilingVerdict,
   CLAIMABLE_STATUSES,
   emptyUsage,
   failureKind,
@@ -112,6 +120,7 @@ import {
   INBOX_LIGHT_SELECT,
   inboxCandidates,
   leaseCutoff,
+  MAX_CEILING_STOPS,
   meetingPeople,
   mentionCounts,
   modelFromExtractor,
@@ -124,6 +133,7 @@ import {
   roundHeadroom,
   rubricVocabulary,
   storedClusters,
+  withCeilingStops,
 } from "./meetings_pure.ts";
 import type { InboxLightRow, MeetingOptions, MeetingProgress, MeetingUsage, RegisteredMeeting, RegistrationPlan } from "./meetings_pure.ts";
 
@@ -165,9 +175,9 @@ function bump(c: Record<string, number>, k: string, by = 1): void {
 type CallOutcome = { ok: true; r: ExtractorResult } | { ok: false; e: unknown };
 
 /**
- * One model call, stopped at `deadline` (the run's start + budget_ms) if it has not answered by
- * then: a call that outlived the budget would outlive the lease too, and what it read would be
- * thrown away by the guarded write that found the lease gone.
+ * One model call, stopped at `deadline` (callDeadline: the run's ceiling, not its budget) if it has
+ * not answered by then: a call that outlived the ceiling would outlive the lease too, and what it
+ * read would be thrown away by the guarded write that found the lease gone.
  */
 async function tryCall(apiKey: string, model: string, system: string, user: string, deadline: number): Promise<CallOutcome> {
   try {
@@ -178,9 +188,12 @@ async function tryCall(apiKey: string, model: string, system: string, user: stri
   }
 }
 
-/** What a call cost, counted on the run and on the meeting. An API refusal is not billed. */
+/**
+ * What a call cost, counted on the run and on the meeting (callUsage): a reply's tokens; a call
+ * stopped at the ceiling as one call of unknown tokens; an API refusal, which is not billed, not at all.
+ */
 function charge(run: RunState, meeting: { usage: MeetingUsage }, o: CallOutcome): void {
-  const used = o.ok ? o.r.usage : o.e instanceof ExtractorReplyError ? o.e.usage : null;
+  const used = o.ok ? o.r.usage : callUsage(o.e);
   if (used === null) return;
   run.usage = addUsage(run.usage, used, 1);
   meeting.usage = addUsage(meeting.usage, used, 1);
@@ -520,9 +533,17 @@ async function readMeeting(
   const rid = String(m.recording_id);
   const dry = o.dry_run;
   const outOfTime = (need: number) => Date.now() - ctx.started + need > o.budget_ms;
-  /* Every call stops here at the latest; MAX_BUDGET_MS keeps it inside the lease. */
-  const deadline = ctx.started + o.budget_ms;
+  /* Every call stops here at the latest, inside the lease and the gateway. The budget only decides
+     whether a round starts: cutting a started call short at the budget would stop the same call at
+     the same point on every run (callDeadline). */
+  const deadline = callDeadline(ctx.started);
   const budgetS = Math.round(o.budget_ms / 1000);
+  const ceilingS = Math.round((deadline - ctx.started) / 1000);
+  /* The runs in a row that settled nothing of this meeting, carried across fresh pass-1 attempts in
+     its counts; a deliberate re-read starts it again, and a dry run (a measurement) never sets one aside. */
+  const priorStops = o.reread || dry ? 0 : ceilingStops(m.counts);
+  let stops = priorStops;
+  let settledHere = 0;
 
   /* What this run adds to the meeting. A resumed read adds to what is stored; a fresh one or a
      re-read starts its counts again (a re-read's claim already cleared them). */
@@ -550,7 +571,7 @@ async function readMeeting(
     return true;
   };
   const bookkeeping = (): Rec => ({
-    counts: addCounters({ ...baseCounts }, here),
+    counts: withCeilingStops(addCounters({ ...baseCounts }, here), stops),
     usage: spend.usage,
     notes: appendNotes(m.notes, meetingNotes),
   });
@@ -669,10 +690,26 @@ async function readMeeting(
     }
     if (outOfTime1) {
       /* Nothing of pass 1 is kept, so there is nothing to resume: the lease is released and the
-         next run starts the meeting again. Not a failure, and nothing is marked. */
+         next run starts the meeting again. Not a failure — until it has happened MAX_CEILING_STOPS
+         runs in a row: then the meeting is set aside, because the next run would claim it first and
+         stop at the same point, and every meeting behind it would wait. */
       run.stopped_early = true;
       run.counters["stopped_on_time"] = 1;
-      run.notes.push(`${rid}: pass 1 did not finish inside the ${budgetS}s budget; ${rid} goes back to waiting and is read from the start next run.`);
+      const v = ceilingVerdict(priorStops, { settled: 0, stopped: true });
+      stops = v.streak;
+      if (v.set_aside) {
+        bump(here, "pass1.set_aside");
+        meetingNotes.push(
+          `pass 1 did not finish inside a run on ${stops} runs in a row (a call is stopped at ${ceilingS}s); set aside as ` +
+          "failed so the queue moves on. Re-read it deliberately (reread: true), with a faster model if need be.",
+        );
+        run.notes.push(`${rid}: pass 1 stopped on time on ${stops} runs in a row; marked failed so the meetings behind it are read.`);
+        return await finishWith({ status: "failed", read_started_at: null, extractor });
+      }
+      run.notes.push(
+        `${rid}: pass 1 did not finish inside the run (a ${budgetS}s budget, calls stopped at ${ceilingS}s); ${rid} goes back ` +
+        `to waiting and is read from the start next run (${stops} of ${MAX_CEILING_STOPS} runs in a row before it is set aside).`,
+      );
       return await finishWith({ status: "waiting", read_started_at: null });
     }
     if (failed !== null) {
@@ -688,6 +725,8 @@ async function readMeeting(
     clusters = clusterMentions(mentions.map((mm) => resolveMention(mm, index)));
     addCounters(here, mentionCounts(clusters));
     progress = { done_refs: [], failed_refs: [] };
+    settledHere++;
+    stops = ceilingVerdict(priorStops, { settled: settledHere, stopped: false }).streak;
 
     const stored = await guarded({
       ...bookkeeping(),
@@ -746,6 +785,8 @@ async function readMeeting(
   let next = 0;
   let stoppedOnTime = false;
   let interrupted = false;
+  /* The agencies of the round whose calls were stopped at the ceiling, if one was. */
+  const stoppedRefs: string[] = [];
   const t2 = Date.now();
   const stopOnTime = (left: number) => {
     stoppedOnTime = true;
@@ -787,6 +828,7 @@ async function readMeeting(
         if (kind === "out_of_time") {
           /* Neither done nor failed: the next run reads these agencies again. */
           timedOut++;
+          stoppedRefs.push(...refs);
           bump(here, "pass2.batch_out_of_time");
           continue;
         }
@@ -860,6 +902,8 @@ async function readMeeting(
       done_refs: [...progress.done_refs, ...doneNow],
       failed_refs: [...progress.failed_refs, ...failedNow],
     };
+    settledHere += doneNow.length + failedNow.length;
+    if (settledHere > 0) stops = 0;
     if (!(await guarded({ ...bookkeeping(), progress }))) { interrupted = true; break; }
     slowest = Math.max(slowest, Date.now() - tr);
     if (haltedHere) break;
@@ -869,6 +913,31 @@ async function readMeeting(
     }
   }
   here["ms.pass2"] = Date.now() - t2;
+
+  /* The streak, and a meeting whose pass-2 calls keep being stopped at the ceiling with nothing
+     settled: those agencies are recorded as not read (as an unusable reply's are) so the meeting can
+     finish 'partial' instead of being claimed first, and stopped again, by every run. */
+  if (!interrupted) {
+    const v = ceilingVerdict(priorStops, { settled: settledHere, stopped: stoppedOnTime && run.halted === null });
+    stops = v.streak;
+    if (stoppedOnTime && run.halted === null && v.set_aside) {
+      const victims = stoppedRefs.length > 0 ? [...stoppedRefs] : (plan.batches[next]?.items.map((it) => it.ref) ?? []);
+      if (victims.length > 0) {
+        progress = { done_refs: progress.done_refs, failed_refs: [...progress.failed_refs, ...victims] };
+        bump(here, "pass2.set_aside", victims.length);
+        meetingNotes.push(
+          `${victims.join(", ")}: stopped on time on ${stops} runs in a row (a call is stopped at ${ceilingS}s); those agencies ` +
+          "were not read. Re-read the meeting deliberately to try them again.",
+        );
+        run.notes.push(`${rid} (${victims.join(", ")}): stopped on time on ${stops} runs in a row; recorded as not read so the meeting can finish.`);
+        stops = 0;
+        const left = new Set([...progress.done_refs, ...progress.failed_refs]);
+        if (plan.batches.every((b) => b.items.every((it) => left.has(it.ref)))) stoppedOnTime = false;
+      }
+    }
+    /* The resumed run's streak is written now, whatever else this run wrote. */
+    if (stoppedOnTime && !(await guarded({ ...bookkeeping(), progress }))) interrupted = true;
+  }
   report.agencies_read = progress.done_refs.length;
   report.agencies_failed = progress.failed_refs.length;
   const settled = new Set([...progress.done_refs, ...progress.failed_refs]);
@@ -888,7 +957,8 @@ async function readMeeting(
 
   const status = progress.failed_refs.length > 0 ? "partial" : "read";
   report.read = true;
-  const r = await finishWith({ status, read_at: new Date().toISOString(), read_started_at: null });
+  /* progress too: agencies set aside after the last round are in it and nowhere else yet. */
+  const r = await finishWith({ status, read_at: new Date().toISOString(), read_started_at: null, progress });
   return { ...r, proposals: dry ? dryRows : null };
 }
 

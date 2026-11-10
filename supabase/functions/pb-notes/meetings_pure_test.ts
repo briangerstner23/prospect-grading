@@ -20,6 +20,11 @@ import {
   addCounters,
   addUsage,
   appendNotes,
+  callDeadline,
+  callUsage,
+  CEILING_STOPS_KEY,
+  ceilingStops,
+  ceilingVerdict,
   CLAIMABLE_STATUSES,
   DEFAULT_BUDGET_MS,
   emptyUsage,
@@ -33,6 +38,7 @@ import {
   LEASE_MS,
   leaseCutoff,
   MAX_BUDGET_MS,
+  MAX_CEILING_STOPS,
   MAX_CONCURRENCY,
   meetingPeople,
   meetingRoute,
@@ -47,6 +53,8 @@ import {
   roundHeadroom,
   rubricVocabulary,
   storedClusters,
+  withCeilingStops,
+  WRITE_MARGIN_MS,
 } from "./meetings_pure.ts";
 import type { InboxLightRow, NewRecording, RegisteredMeeting } from "./meetings_pure.ts";
 import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError, parseReplyJson, replyText, usageOf } from "./extractor.ts";
@@ -126,6 +134,13 @@ eq("route: a non-array sources is the notes sweep (as before)", meetingRoute("sa
   eq("budget: the cap is 120 s", MAX_BUDGET_MS, 120_000);
   check("budget: the longest run leaves 30 s of its lease for the writes after its last call", MAX_BUDGET_MS + 30_000 <= LEASE_MS);
   check("budget: the default is under the cap", DEFAULT_BUDGET_MS <= MAX_BUDGET_MS);
+  /* The call ceiling: from the run's start, whatever the budget, and inside the lease and the 150 s gateway. */
+  eq("ceiling: 120 s from the run's start", callDeadline(1_000_000) - 1_000_000, 120_000);
+  check("ceiling: the lease (taken after the start) outlives it by the write margin", callDeadline(0) + WRITE_MARGIN_MS <= LEASE_MS);
+  check("ceiling: the gateway's 150 s outlives it by the write margin", callDeadline(0) + WRITE_MARGIN_MS <= 150_000);
+  check("ceiling: a call started inside the default budget may run past it (the defect: a 115 s pass 1 on a 110 s budget)",
+    callDeadline(0) > DEFAULT_BUDGET_MS && 3_000 + 115_000 < callDeadline(0));
+  eq("ceiling: the budget cap is the ceiling itself", MAX_BUDGET_MS, callDeadline(0));
 }
 {
   eq("headroom: before any measurement, the first guess", roundHeadroom(0), FIRST_CALL_GUESS_MS);
@@ -435,8 +450,13 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   eq("failure: a 400 about this request skips", failureKind(new ExtractorApiError(400, "messages: too long")), "skip");
   eq("failure: an unusable reply skips", failureKind(new ExtractorReplyError("no JSON", "no_json", "end_turn", 10, { input_tokens: 1, output_tokens: 1 })), "skip");
   eq("failure: a network error halts (it says nothing about the meeting)", failureKind(new TypeError("error sending request")), "halt");
-  eq("failure: a call stopped at the run's deadline is out of time, not a halt and not a skip", failureKind(new ExtractorTimeoutError()), "out_of_time");
-  eq("failure: the timeout note says only that", failureNote(new ExtractorTimeoutError()), "a call stopped at the run's budget");
+  eq("failure: a call stopped at the run's ceiling is out of time, not a halt and not a skip", failureKind(new ExtractorTimeoutError()), "out_of_time");
+  eq("failure: the timeout note says only that", failureNote(new ExtractorTimeoutError()), "a call stopped at the run's ceiling");
+  /* What a failed call is counted as (credits_spent): a stopped call was sent, so it is a call. */
+  eq("usage: an unusable reply counts what it was billed", callUsage(new ExtractorReplyError("x", "no_json", "end_turn", 1, { input_tokens: 9, output_tokens: 2 })), { input_tokens: 9, output_tokens: 2 });
+  eq("usage: a call stopped at the ceiling counts as a call of unknown tokens", addUsage(emptyUsage(), callUsage(new ExtractorTimeoutError())), { calls: 1, input_tokens: 0, output_tokens: 0 });
+  eq("usage: an API refusal is not billed", callUsage(new ExtractorApiError(529, "{}")), null);
+  eq("usage: a network failure is not counted", callUsage(new TypeError("error sending request")), null);
   check("failure: the timeout is an Error the callers can tell apart", new ExtractorTimeoutError() instanceof Error && !(new ExtractorTimeoutError() instanceof ExtractorApiError));
   const notes = [
     failureNote(new ExtractorApiError(400, `{"error":"${SENTINEL}"}`)),
@@ -447,6 +467,36 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   check("failure: a note never quotes the reply, the API body or the message", notes.every((n) => !n.includes("Quillfeather") && !n.includes("forty")), JSON.stringify(notes));
   eq("failure: the API note says the status", notes[0], "the extractor API answered 400");
   eq("failure: the reply note says why in counts", notes[1], "an unusable reply (no_json, stop_reason max_tokens, 4100 chars)");
+}
+
+/* ------------------------------------------------------------------ *
+ * 5a · a meeting whose calls keep stopping at the ceiling
+ * ------------------------------------------------------------------ */
+
+{
+  eq("streak: three runs in a row", MAX_CEILING_STOPS, 3);
+  eq("streak: none stored is 0", [ceilingStops(null), ceilingStops({}), ceilingStops({ [CEILING_STOPS_KEY]: "2" }), ceilingStops({ [CEILING_STOPS_KEY]: -1 })], [0, 0, 0, 0]);
+  eq("streak: a stored count", ceilingStops({ [CEILING_STOPS_KEY]: 2, lines: 400 }), 2);
+  eq("streak: written into the counts", withCeilingStops({ lines: 400 }, 2), { lines: 400, [CEILING_STOPS_KEY]: 2 });
+  eq("streak: at 0 it leaves the counts", withCeilingStops({ lines: 400, [CEILING_STOPS_KEY]: 2 }, 0), { lines: 400 });
+  eq("verdict: a stop that settled nothing adds one", ceilingVerdict(0, { settled: 0, stopped: true }), { streak: 1, set_aside: false });
+  eq("verdict: …and at the limit sets the meeting aside", ceilingVerdict(MAX_CEILING_STOPS - 1, { settled: 0, stopped: true }), { streak: MAX_CEILING_STOPS, set_aside: true });
+  eq("verdict: anything settled resets it, even on a run that then stopped", ceilingVerdict(2, { settled: 1, stopped: true }), { streak: 0, set_aside: false });
+  eq("verdict: a run that neither stopped nor settled leaves it standing", ceilingVerdict(2, { settled: 0, stopped: false }), { streak: 2, set_aside: false });
+  eq("verdict: nonsense prior is 0", ceilingVerdict(Number.NaN, { settled: 0, stopped: true }), { streak: 1, set_aside: false });
+  {
+    // The defect, run as the reader runs it: a pass 1 too long for one call. Each run claims the
+    // same (oldest) meeting, stops, and stores the streak in counts, which a fresh pass 1 rebuilds
+    // from nothing but this key. By the limit it is failed and the queue moves on.
+    let counts: Record<string, number> = {};
+    const statuses: string[] = [];
+    for (let run = 0; run < 6 && statuses[statuses.length - 1] !== "failed"; run++) {
+      const v = ceilingVerdict(ceilingStops(counts), { settled: 0, stopped: true });
+      counts = withCeilingStops({ lines: 4000, "pass1.out_of_time": 1 }, v.streak);
+      statuses.push(v.set_aside ? "failed" : "waiting");
+    }
+    eq("a pass 1 that never fits is set aside on the third run, not claimed first for good", statuses, ["waiting", "waiting", "failed"]);
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -539,8 +589,9 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   check("every write to a claimed meeting is guarded by the lease", /\.eq\("recording_id", rid\)\.eq\("read_started_at", lease\)/.test(mc));
   check("a halt sends the meeting back to waiting and releases the lease", (mc.match(/status: "waiting", read_started_at: null/g) ?? []).length >= 2);
 
-  /* The deadline: every call stops at the run's budget, which MAX_BUDGET_MS keeps inside the lease. */
-  check("the deadline is the run's start plus its budget", /const deadline = ctx\.started \+ o\.budget_ms;/.test(mc));
+  /* The deadline: every call stops at the run's ceiling (callDeadline), inside the lease and the
+     gateway — not at the budget, which only decides whether a round starts. */
+  check("the deadline is the run's ceiling, not its budget", /const deadline = callDeadline\(ctx\.started\);/.test(mc) && !/deadline = ctx\.started \+ o\.budget_ms/.test(mc));
   const calls = mc.match(/tryCall\(ctx\.apiKey,[^\n]*/g) ?? [];
   check("every model call carries the deadline (pass 1 and pass 2)", calls.length === 2 && calls.every((c) => /, deadline\)/.test(c)), JSON.stringify(calls));
   check("tryCall turns the deadline into a signal on the call", /AbortSignal\.timeout\(Math\.max\(1, deadline - Date\.now\(\)\)\)/.test(mc) &&
@@ -550,8 +601,25 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   check("pass 1 checks the budget before every round after the first", /if \(i > 0 && outOfTime\(roundHeadroom\(slowest1\)\)\)/.test(mc));
   check("pass 2's first round reserves pass 1's own time", /outOfTime\(roundHeadroom\(slowest, here\["ms\.pass1"\] \?\? 0\)\)/.test(mc));
   check("a call stopped at the deadline is out of time in both passes, never a failed agency", (mc.match(/kind === "out_of_time"/g) ?? []).length === 2);
-  check("pass 1 out of time sends the meeting back to waiting, the run not halted", /if \(outOfTime1\) \{[\s\S]{0,400}?status: "waiting", read_started_at: null/.test(mc) &&
-    !/if \(outOfTime1\) \{[\s\S]{0,400}?run\.halted =/.test(mc));
+  const oot1 = /if \(outOfTime1\) \{[\s\S]*?\n    \}\n/.exec(mc)?.[0] ?? "";
+  check("pass 1 out of time sends the meeting back to waiting, the run not halted", /status: "waiting", read_started_at: null/.test(oot1) &&
+    !/run\.halted =/.test(oot1), oot1.slice(0, 120));
+
+  /* A meeting whose calls keep stopping at the ceiling cannot hold the queue (it is read oldest first). */
+  check("the streak is read from the meeting's counts; a deliberate re-read starts it again and a dry run ignores it",
+    /const priorStops = o\.reread \|\| dry \? 0 : ceilingStops\(m\.counts\);/.test(mc));
+  check("every write of the meeting's counts carries the streak", /counts: withCeilingStops\(addCounters\(\{ \.\.\.baseCounts \}, here\), stops\)/.test(mc));
+  check("pass 1 out of time asks ceilingVerdict, and set aside it is failed (not waiting)",
+    /if \(outOfTime1\) \{[\s\S]{0,900}?ceilingVerdict\(priorStops, \{ settled: 0, stopped: true \}\)[\s\S]{0,900}?if \(v\.set_aside\) \{[\s\S]{0,700}?status: "failed", read_started_at: null/.test(mc));
+  check("pass 1 stored resets the streak", /settledHere\+\+;\s*stops = ceilingVerdict\(priorStops, \{ settled: settledHere, stopped: false \}\)\.streak;/.test(mc));
+  check("pass 2 counts what it settled, and the stopped batches' agencies", /settledHere \+= doneNow\.length \+ failedNow\.length;/.test(mc) && /stoppedRefs\.push\(\.\.\.refs\);/.test(mc));
+  check("pass 2 set aside records those agencies as failed, and the meeting may then finish",
+    /if \(stoppedOnTime && run\.halted === null && v\.set_aside\) \{[\s\S]{0,900}?failed_refs: \[\.\.\.progress\.failed_refs, \.\.\.victims\]/.test(mc) &&
+    /left\.has\(it\.ref\)\)\)\) stoppedOnTime = false;/.test(mc));
+  check("…and the close writes progress, so agencies set aside after the last round are kept",
+    /finishWith\(\{ status, read_at: new Date\(\)\.toISOString\(\), read_started_at: null, progress \}\)/.test(mc));
+  check("a resumed read still stopped writes its streak", /if \(stoppedOnTime && !\(await guarded\(\{ \.\.\.bookkeeping\(\), progress \}\)\)\) interrupted = true;/.test(mc));
+  check("charge counts a stopped call through callUsage", /const used = o\.ok \? o\.r\.usage : callUsage\(o\.e\);/.test(mc));
 
   /* Registration sees whole meetings, so a retry can finish what a failed relabel left. */
   check("registration loads the days the registered rows were held on, not only the new ones'", /heldDates\(\[\.\.\.found\.candidates, \.\.\.byId\.map/.test(mc));

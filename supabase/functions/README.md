@@ -136,7 +136,10 @@ the nightly body names no sources, so the nightly sweep never runs it. Each call
 It writes `pb_meetings`, `pb_meeting_proposals`, that watermark row and `pb_runs` — nothing else;
 a proposal reaches `pb_facts` / `pb_register` only through `pb_decide_meeting_card` under a
 signed-in person. Out of budget, the meeting stays `reading` with its progress and the next call
-resumes it (with the model it started with). An API refusal or a dropped call **halts**: the
+resumes it (with the model it started with). The budget decides whether a round of calls starts; a
+started call runs to the ceiling (the run's start + 120 s, inside the lease and the gateway) and is
+stopped there. Three runs in a row that settle nothing of a meeting set it aside — pass 1 `failed`,
+or those pass-2 agencies not read and the meeting `partial` — so it cannot hold the queue. An API refusal or a dropped call **halts**: the
 meeting goes back to `waiting` with what it had, the lease is released, the run is `failed`.
 
 | Body | Does |

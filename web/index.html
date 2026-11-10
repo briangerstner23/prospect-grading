@@ -762,8 +762,10 @@ const MEETING_PERSON_SOURCES = ["rater", "sales_meeting"];
  * they are not in MEETING_BLOCKING_FLAGS, which mirrors meeting_claims), and each keeps a row from
  * starting ticked. already_computed_tier: a tier call naming the engine's own tier with no override
  * live — the reader would have written it as 'agrees', but it went out 'proposed' before the book
- * moved, and pb_decide_meeting_card refuses the whole card for it ("an override to it changes
- * nothing"). A status is the database's to set, so the screen holds it back instead.
+ * moved. It is not the person's to tick: A sends it as an approval with only_if_agrees, which
+ * pb_decide_meeting_card records as 'agrees' and writes nothing for — and refuses the card if the
+ * board has moved since. Never as a reject: a rejected newer word returns an older meeting's
+ * contradicting call to the card (pb_meeting_supersede), and a status is the database's to set.
  */
 const MEETING_SCREEN_FLAGS = ["already_computed_tier"];
 
@@ -1085,7 +1087,7 @@ function meetingRowWords(row, ctx) {
       const lapses = c.liveOverrideUntil ? ` until ${dayMonthWords(c.liveOverrideUntil)}` : "";
       s += ` · the board shows ${tierWords(shown)} by a live override${lapses}; approving ends it`;
     }
-    if ((row.flags ?? []).includes("already_computed_tier")) s += " · the board already shows it, so approving changes nothing";
+    if ((row.flags ?? []).includes("already_computed_tier")) s += " · the board already shows it; approving the card records that the team agrees and writes nothing";
     return s;
   }
   if (row.kind === "removal") {
@@ -1127,7 +1129,7 @@ function meetingFlagWords(flag) {
     case "conflicts_with_person": return "a person recorded something else";
     case "no_computed_tier": return "no computed tier yet — the engine refuses an override until there is one";
     case "contradicts_live_override": return "the engine's own tier, while a live override shows another";
-    case "already_computed_tier": return "already the engine's tier, with no override live — approving it changes nothing";
+    case "already_computed_tier": return "already the engine's tier, with no override live — recorded as agreeing with the board";
     case "upgrades_removal": return "off the board only as unqualified; the team said do not contact";
     default: return String(flag ?? "").replace(/_/g, " ");
   }
@@ -1220,7 +1222,10 @@ function cleanMeetingEdit(kind, e) {
  * a tier call or a removal is not theirs (rules 7, 7a), so A leaves those rows waiting for the owner
  * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true,
  * because the person ticked a box that says so — judged on the value it SENDS, edited or not
- * (meetingOverrules), since that is the value pb_decide_meeting_card compares.
+ * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call the board
+ * already shows (already_computed_tier) is neither ticked nor rejected: A approves it with
+ * only_if_agrees and no edit, so it lands 'agrees', writes nothing, and keeps beating an older
+ * meeting's word; X still rejects it with the rest, because there the person said so.
  */
 function cardItems(rows, choice, opts) {
   const o = opts && typeof opts === "object" ? opts : {};
@@ -1242,6 +1247,7 @@ function cardItems(rows, choice, opts) {
     }
     if (o.mode === "removal") continue;
     if (r.kind === "override" && !owner) continue;
+    if (r.kind === "override" && (r.flags ?? []).includes("already_computed_tier")) { items.push({ id: r.id, decision: "approve", only_if_agrees: true }); continue; }
     if (c.ticked !== true) { items.push({ id: r.id, decision: "reject" }); continue; }
     const item = { id: r.id, decision: "approve" };
     const edit = cleanMeetingEdit(r.kind, c.edit);
@@ -1265,11 +1271,12 @@ function cardProblems(rows, choice, lane) {
       else if (!e.reason_code) out.push("The removal needs a reason code.");
       if (!(typeof e.text === "string" && e.text.trim())) out.push("The removal needs a written reason.");
     }
-    if (r.kind === "override" && lane === "owner" && c.ticked === true) {
+    // A tier call the board already shows is sent with only_if_agrees whatever its tick, and writes
+    // nothing, so the reason and code a written override needs are not asked of it.
+    if (r.kind === "override" && lane === "owner" && c.ticked === true && !(r.flags ?? []).includes("already_computed_tier")) {
       if (!(typeof e.text === "string" && e.text.trim())) out.push("The tier call needs a written reason (rule 7).");
       if (!e.reason_code) out.push("The tier call needs a reason code.");
       if ((r.flags ?? []).includes("no_computed_tier")) out.push("The tier call cannot apply yet: the engine has no computed tier for this agency. Untick it.");
-      if ((r.flags ?? []).includes("already_computed_tier")) out.push(`The tier call names anticipated ${r.tier}, which the engine already computes with no override live: approving it changes nothing. Untick it.`);
     }
     if (r.kind === "fact" && c.ticked === true && e.invalid === true) out.push(`${r.key}: that value does not fit the key.`);
   }
@@ -3588,13 +3595,17 @@ function meetingRow(r, card) {
   };
   refresh();
 
-  const tickable = r.kind === "fact" || r.kind === "read" || (r.kind === "override" && owner);
+  // A tier call the board already shows is not the person's to tick (cardItems sends it as agreeing).
+  const agreesNow = r.kind === "override" && (r.flags ?? []).includes("already_computed_tier");
+  const tickable = r.kind === "fact" || r.kind === "read" || (r.kind === "override" && owner && !agreesNow);
   let tickEl;
   if (tickable) {
     box = h("input", { type: "checkbox", checked: c.ticked === true, "aria-label": conflict ? "Overrule the person's value" : "Approve this row" });
     box.addEventListener("change", () => { c.ticked = box.checked; });
     S.ticks.set(r.id, box);
     tickEl = h("label", { class: "check" }, box, overruleWord);
+  } else if (agreesNow && owner) {
+    tickEl = chip("the board already shows it", "c-info");
   } else {
     tickEl = chip(r.kind === "removal" ? (owner ? "never pre-ticked — its own button" : "the owner's decision") : "the owner's decision", r.kind === "removal" ? "c-bad" : "c-info");
   }
@@ -3633,6 +3644,9 @@ function rowControls(r, c, refresh, card) {
   const owner = meetingOwner();
   if (r.kind === "override") {
     if (!owner) return h("div", { class: "sub" }, "Approving a tier call is the owner's (rule 7). Approving this card leaves it waiting for the owner; Reject card rejects it.");
+    if ((r.flags ?? []).includes("already_computed_tier")) {
+      return h("div", { class: "sub" }, "The board already shows this tier. Approving the card records that the team agrees — no override is written, and an older meeting's different call stays closed. If the board has moved since this screen loaded, the card is refused; reload it. Reject card rejects it.");
+    }
     const d = overrideDefaults(r, state.rubric, todayIso());
     const codes = d.codes.length ? d.codes : reasonCodes();
     const code = h("select", { "aria-label": "Reason code" }, ...codes.map((x) => option(x, x, x === c.edit.reason_code)));

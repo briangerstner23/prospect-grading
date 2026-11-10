@@ -546,7 +546,8 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     eq("…and ticked on purpose, it goes with overrule", cardItems([live], { p: { ticked: true } }, { lane: "owner" }), [{ id: "p", decision: "approve", overrule: true }]);
 
     /* A tier call naming the engine's own tier with no override live: the reader would have written
-       it 'agrees', pb_decide_meeting_card refuses it ("changes nothing"), so the screen holds it back. */
+       it 'agrees', and pb_decide_meeting_card now records it so (nothing written). The screen never
+       asks the person to tick it and never rejects it: a reject would reopen an older meeting's call. */
     eq("meetingLiveFlags: the computed tier with no override live → already_computed_tier",
       meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }), ["already_computed_tier"]);
     eq("meetingLiveFlags: …an effective tier not set is the computed one",
@@ -557,16 +558,17 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Silver", effective_tier: "Gold" } }), []);
     {
       // pb_decide_meeting_card's override branch, transcribed: no computed tier → refused; the tier the
-      // board shows AND the computed one → refused (changes nothing); the board's tier alone → agrees;
-      // the computed tier alone → an override that ends the live one. The flags say the same.
+      // board shows → agrees, whether the engine or a live override put it there (already_computed_tier
+      // marks the first, so the screen sends it with only_if_agrees); the computed tier alone → an
+      // override that ends the live one. The flags say the same.
       let mismatches = 0, cases = 0;
       for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", null]) {
         cases++;
         const shown = eff ?? comp;
-        const refusedSame = comp !== null && t.toLowerCase() === String(shown).toLowerCase() && t.toLowerCase() === comp.toLowerCase();
+        const agreesSame = comp !== null && t.toLowerCase() === String(shown).toLowerCase() && t.toLowerCase() === comp.toLowerCase();
         const endsLive = comp !== null && t.toLowerCase() === comp.toLowerCase() && t.toLowerCase() !== String(shown).toLowerCase();
         const f = meetingLiveFlags(ov(t), { read: comp === null && eff === null ? null : { computed_tier: comp, effective_tier: eff } });
-        if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== refusedSame || f.includes("contradicts_live_override") !== endsLive) {
+        if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== agreesSame || f.includes("contradicts_live_override") !== endsLive) {
           mismatches++;
           console.error(`      tier ${t}, computed ${comp}, effective ${eff}: ${safeJson(f)}`);
         }
@@ -576,11 +578,26 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     const sameTier = { ...prow("s1", { kind: "override", key: null, value: null, tier: "Gold" }), flags: meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }) };
     eq("meetingStartsTicked: a tier call the board already shows never starts ticked", meetingStartsTicked(sameTier), false);
     eq("…though the reader's own rule would tick it (the flag is the screen's, not the reader's)", meetingDefaultTick(sameTier), true);
-    includes("cardProblems: ticked anyway, the screen refuses it before the database does",
-      cardProblems([sameTier], { s1: { ticked: true, edit: { text: "x", reason_code: "other" } } }, "owner").join(" "), "changes nothing");
-    eq("cardItems: left unticked, A rejects it with the rest of the card",
-      cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "s1", decision: "reject" }]);
+    eq("cardProblems: nothing is asked of it, ticked or not (it writes nothing)",
+      [cardProblems([sameTier], { s1: { ticked: true, edit: { text: "", reason_code: null } } }, "owner"), cardProblems([sameTier], { s1: { ticked: false } }, "owner")], [[], []]);
+    eq("cardItems (A, owner): never a reject — an approval that must still agree, with no edit",
+      cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "s1", decision: "approve", only_if_agrees: true }]);
+    eq("cardItems (A, owner): …ticked from an earlier load, the same",
+      cardItems([sameTier], { s1: { ticked: true, edit: { reason_code: "other", text: "x", expires_on: "2027-01-08" } } }, { mode: "approve", lane: "owner" }),
+      [{ id: "s1", decision: "approve", only_if_agrees: true }]);
+    eq("cardItems (A, rater): left for the owner, like any tier call", cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "rater" }), []);
+    eq("cardItems (X): the person rejects the card, so it rejects", cardItems([sameTier], { s1: { ticked: false } }, { mode: "reject", lane: "owner" }), [{ id: "s1", decision: "reject" }]);
+    {
+      // The defect this closes: meeting 1 said Silver, meeting 2 said Gold (superseding it), and the
+      // engine has since computed Gold. Deciding meeting 2's card must not send its Gold call as a reject.
+      const newer = { ...prow("n2", { kind: "override", key: null, value: null, tier: "Gold", recording_id: "rec-2" }), flags: meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }) };
+      const fact = prow("n2f", { recording_id: "rec-2" });
+      const sent = cardItems([newer, fact], { n2: { ticked: false }, n2f: { ticked: false } }, { mode: "approve", lane: "owner" });
+      check("a newer meeting's call that agrees with the board is never rejected by A (an older call would reopen)",
+        !sent.some((i: { id: string; decision: string }) => i.id === "n2" && i.decision === "reject") && sent.some((i: { id: string; decision: string }) => i.id === "n2f" && i.decision === "reject"), safeJson(sent));
+    }
     includes("meetingRowWords: the tier call says the board already shows it", meetingRowWords(sameTier, { tiers: TIERS }), "the board already shows it");
+    includes("meetingRowWords: …and that approving writes nothing", meetingRowWords(sameTier, { tiers: TIERS }), "writes nothing");
     check("meetingFlagWords names already_computed_tier in words", !meetingFlagWords("already_computed_tier").includes("_"));
     eq("the screen's own flags are never the reader's", MEETING_SCREEN_FLAGS.filter((f: string) => BLOCKING_FLAGS.includes(f as never)), []);
 

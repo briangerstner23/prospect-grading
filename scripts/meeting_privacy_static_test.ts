@@ -91,7 +91,17 @@ function newest(re: RegExp, end: RegExp): { file: string; body: string } {
   check("pb_dossier() is still SECURITY DEFINER with a fixed search_path",
     /security\s+definer/i.test(d.body) && /set\s+search_path\s*=\s*public/i.test(d.body));
   check("the trace strip is conditional on a meeting-origin override",
-    /when\s+exists\s*\(\s*select\s+1\s+from\s+pb_register\s+g[\s\S]{0,200}g\.kind\s*=\s*'override'[\s\S]{0,120}'sales_meeting'\s*\)\s*then\s+jsonb_set\(\s*r\.scorecard\s+#-/i.test(d.body));
+    /when\s+exists\s*\(\s*select\s+1\s+from\s+pb_register\s+g[\s\S]{0,200}g\.kind\s*=\s*'override'[\s\S]{0,120}'sales_meeting'\s*\)\s*(?:or\s+exists\s*\([^()]*\)\s*)?then\s+jsonb_set\(\s*r\.scorecard\s+#-/i.test(d.body));
+  // A merged record keeps its last read for good (pb_merge_accounts never moves a read; pb-score
+  // scores prospect and parked only) while its override row moves to the survivor, so the
+  // account-local test above finds nothing for it. A merged record is stripped whatever it holds.
+  check("…or on the account being a merged record, whose read outlives the move of its override row",
+    /'sales_meeting'\s*\)\s*or\s+exists\s*\(\s*select\s+1\s+from\s+pb_accounts\s+(\w+)\s+where\s+\1\.id\s*=\s*p_account_id\s+and\s+\1\.book\s*=\s*'merged'\s*\)\s*then\s+jsonb_set\(/i.test(d.body));
+  const mergeSrc = code(readFileSync(join(migDir, "20260909120300_prospect_book_fixes.sql"), "utf8"));
+  check("pb_merge_accounts still moves register rows and never a read (the case the merged-record strip covers)",
+    /update\s+pb_register\s+set\s+account_id\s*=\s*p_target/i.test(mergeSrc) && !/update\s+(?:public\.)?pb_reads\b/i.test(mergeSrc) &&
+    !files.some((f) => /create\s+or\s+replace\s+function\s+public\.pb_merge_accounts\b/i.test(code(text.get(f) ?? "")) && f > "20260909120300_prospect_book_fixes.sql"),
+    "pb_merge_accounts was redefined after 20260909120300: re-check whether it now moves reads");
   // The engine writes the approver a second time, into trace.notes (core/engine.ts). The strip
   // rewrites that note in place, under the same condition, and the rewrite does what it says on
   // the engine's own sentence: the tiers and the code stay, the name goes.
@@ -160,6 +170,14 @@ function newest(re: RegExp, end: RegExp): { file: string; body: string } {
     ml !== "" && lr !== "" && !/\berrors\b/.test(ml) && !/\berrors\b/.test(lr));
   check("the canary returns counts only (no quote column leaves it)",
     !/'meeting_privacy'[\s\S]{0,400}'(quote|needle|text)'\s*,/.test(r.body));
+  // A merge moves the approved proposals and the register rows to the survivor and leaves the read,
+  // so the merged record never appears among the accounts holding approvals; it is checked as theirs.
+  const mc = /mp_checked\s+as\s*\(([\s\S]*?)\n\)\s*,/.exec(r.body)?.[1] ?? "";
+  check("the canary also renders the records merged into the accounts it checks",
+    /with\s+recursive\b/i.test(mc) && /a\.merged_into\s*=\s*c\.account_id\s+and\s+a\.book\s*=\s*'merged'/i.test(mc) &&
+    /from\s+mp_checked\s+c\s*,\s*lateral\s*\(\s*select\s+public\.pb_dossier\(c\.account_id\)/i.test(r.body), mc);
+  check("…and looks for the survivor's words in a merged record's dossier",
+    /join\s+mp_docs\s+d\s+on\s+d\.owner_id\s*=\s*n\.account_id/i.test(r.body));
 }
 
 /* ------------------------------------------------------------------ *
@@ -289,6 +307,17 @@ check("the sales-meeting migrations are on disk", meetingFiles.length >= 2, meet
   check("…and the dossier must render that read, and fail on the quote or the approver",
     /'\{read,trace,override,tier\}'/.test(rolledBack) && /position\(v_quote\s+in\s+v_doc\)\s*>\s*0/.test(rolledBack) &&
     /position\(v_appr\s+in\s+v_doc\)\s*>\s*0/.test(rolledBack));
+  // …and again once the account is merged away, its override row on the survivor and its read left.
+  const afterMerge = rolledBack.slice(rolledBack.search(/update\s+public\.pb_accounts\s+set\s+book\s*=\s*'merged'/i));
+  check("the sentinel merges the account (register to the survivor, book merged) and leaves its read",
+    /update\s+public\.pb_register\s+set\s+account_id\s*=\s*v_surv\s+where\s+account_id\s*=\s*v_acct\s+and\s+kind\s*<>\s*'decision'/i.test(rolledBack) &&
+    /update\s+public\.pb_accounts\s+set\s+book\s*=\s*'merged'\s*,\s*merged_into\s*=\s*v_surv/i.test(rolledBack) &&
+    !/(?:update|delete\s+from)\s+public\.pb_reads\b/i.test(rolledBack));
+  check("…then renders the merged record and fails on the quote or the approver",
+    /v_dj\s*:=\s*public\.pb_dossier\(v_acct\)/.test(afterMerge) && /'\{read,trace,override,tier\}'/.test(afterMerge) &&
+    /position\(v_quote\s+in\s+v_doc\)\s*>\s*0/.test(afterMerge) && /position\(v_appr\s+in\s+v_doc\)\s*>\s*0/.test(afterMerge));
+  check("…and asks the canary to check it clean, then to count a leak on it",
+    /'checked'\)::int,\s*0\)\s*<\s*2/.test(afterMerge) && /a deliberate leak on a merged record/.test(afterMerge));
 
   // The SQL copy of the title patterns (used when a title rule is forgotten) is MEETING_TITLE_PATTERNS.
   const sqlPatterns = /v_pattern\s+constant\s+text\[\]\s*:=\s*array\[([^\]]*)\]/i.exec(a)?.[1] ?? "";
