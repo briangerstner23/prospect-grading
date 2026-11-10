@@ -15,7 +15,9 @@
  *   · a format the table checks (quote_at, speaker, lengths, option count) that the core does not
  *     produce, and the schedule's body against the options pb-notes parses;
  *   · a path that changes which proposal is the newest word — a decision of any kind, a placement,
- *     a dismissal, a merge — without re-deriving supersession (section 6).
+ *     a dismissal, a merge — without re-deriving supersession (section 6);
+ *   · a meetings_work key scripts/reconcile.ts reads that pb_reconcile_state() never returns, or one
+ *     it returns that the reconcile never reads (section 7).
  *
  * Every one of those is a mistake the database would report only at the first real write — as a
  * refused batch, a refused card, or as nothing at all. The objects are read from the NEWEST
@@ -696,6 +698,28 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   const trig = migs.map((m) => m.sql).join("\n");
   check("pb_meeting_follow_merge fires after a row of pb_accounts becomes merged",
     /create\s+trigger\s+pb_meeting_follow_merge\s+after\s+update\s+of\s+book\s*,\s*merged_into\s+on\s+public\.pb_accounts\s+for\s+each\s+row\s+when\s*\(\s*new\.book\s*=\s*'merged'\s+and\s+new\.merged_into\s+is\s+not\s+null/i.test(trig));
+}
+
+/* ------------------------------------------------------------------ *
+ * 7 · the reconcile reads the keys pb_reconcile_state returns
+ * ------------------------------------------------------------------ */
+{
+  // scripts/reconcile.ts check 7 reads meetings_work through num(), which turns a key the function
+  // never returns into 0: a halt check reading a misspelt key would pass forever, in silence — the
+  // failure a halted reader exists to raise. So the interfaces and the jsonb must name the same keys.
+  const rs = sqlFunction("pb_reconcile_state").body;
+  const at = rs.search(/'meetings_work'\s*,\s*jsonb_build_object\s*\(/);
+  const mwArgs = at >= 0 ? topLevel(balanced(rs, rs.indexOf("(", rs.indexOf("jsonb_build_object", at)))) : [];
+  const mwKeys = mwArgs.filter((_, i) => i % 2 === 0).map((k) => /^'([^']+)'$/.exec(k)?.[1] ?? k);
+  const lrValue = mwKeys.indexOf("latest_run") >= 0 ? mwArgs[mwKeys.indexOf("latest_run") * 2 + 1] ?? "" : "";
+  check("the newest pb_reconcile_state builds meetings_work, with a latest_run", mwKeys.length >= 5 && lrValue !== "", JSON.stringify(mwKeys));
+  const reconcileTs = readFileSync(join(root, "scripts/reconcile.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const ifaceKeys = (name: string): string[] => {
+    const m = new RegExp(`export\\s+interface\\s+${name}\\s*\\{`).exec(reconcileTs);
+    return m ? [...balanced(reconcileTs, m.index + m[0].length - 1).matchAll(/([a-z_][a-z0-9_]*)\??\s*:/g)].map((x) => x[1]) : [];
+  };
+  sameSet("reconcile.ts MeetingsWork names exactly the keys meetings_work returns", ifaceKeys("MeetingsWork"), mwKeys);
+  sameSet("…and MeetingRun exactly those of meetings_work.latest_run", ifaceKeys("MeetingRun"), builtKeys(lrValue));
 }
 
 /* ------------------------------------------------------------------ *

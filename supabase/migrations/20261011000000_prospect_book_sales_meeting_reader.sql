@@ -1399,7 +1399,12 @@ comment on function public.pb_removal(uuid) is
 --       red for the wrong reason every six hours. pb_board() prints no register, fact or proposal
 --       text (name, tiers, labels, flags, engagement), which meeting_privacy_static_test.ts pins
 --       on its newest definition, and scripts/meeting_privacy_check.sql reads it as anon.
---   meetings_work {selected_7d, read_7d, failed_7d, stale_reading, oldest_open_days}   check 7 warns.
+--   meetings_work {selected_7d, read_7d, failed_7d, stale_reading, oldest_open_days, latest_run}
+--       check 7 warns on the counts, and FAILS when latest_run (the newest finished pb_runs row with
+--       source 'sales_meeting': status, finished_at and two counts, never its notes) halted. A halt
+--       puts the meeting back to 'waiting' with its lease released, so no count here moves while
+--       every tick halts the same way; only the run row says so — as notes_work.latest does for
+--       check 5. latest_run is null before the first meeting run.
 create or replace function public.pb_reconcile_state() returns jsonb
 language sql stable security definer set search_path = public, supabase_migrations as
 $$
@@ -1442,6 +1447,14 @@ notes_num as (
 ),
 notes_productive as (
   select max(finished_at) as at from notes_runs where written > 0
+),
+-- §65 · the meeting reader's newest finished run (meetings.ts: kind 'ingest', its own source).
+meeting_latest as (
+  select r.status, r.finished_at, r.counts
+  from public.pb_runs r
+  where r.kind = 'ingest' and r.source = 'sales_meeting' and r.finished_at is not null
+  order by r.finished_at desc
+  limit 1
 ),
 -- §65 · meeting_privacy: the accounts whose newest approvals are freshest, the words those
 -- approvals put on record, and those accounts' public dossiers, all normalised to [a-z0-9 ].
@@ -1532,12 +1545,18 @@ select jsonb_build_object(
                        where m.status = 'reading'
                          and (m.read_started_at is null or m.read_started_at < now() - interval '3 hours')),
     'oldest_open_days', (select round((extract(epoch from (now() - min(p.created_at))) / 86400)::numeric, 1)
-                          from public.pb_meeting_proposals p where p.status = 'proposed'))
+                          from public.pb_meeting_proposals p where p.status = 'proposed'),
+    'latest_run', (select jsonb_build_object(
+        'status', l.status,
+        'finished_at', l.finished_at,
+        'halted', case when jsonb_typeof(l.counts->'halted') = 'number' then (l.counts->>'halted')::numeric end,
+        'wrote',  case when jsonb_typeof(l.counts->'wrote') = 'number' then (l.counts->>'wrote')::numeric end)
+      from meeting_latest l))
 );
 $$;
 
 comment on function public.pb_reconcile_state() is
-  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count, whether the latest notes run did any work, whether any sales-meeting quote or register text reaches pb_dossier() for the 20 accounts with the newest approved meeting proposals (meeting_privacy; pb_board() prints no such text and is pinned by meeting_privacy_static_test.ts instead), and whether the meeting reader is keeping up (meetings_work). Counts only — never a quote, a name or pb_runs.errors; callable by anon (DECISIONS §34, §65).';
+  'Declared-vs-running facts for scripts/reconcile.ts: active rubric, applied migration names, source liveness (external deliveries only), rule-9 mismatch count, whether the latest notes run did any work, whether any sales-meeting quote or register text reaches pb_dossier() for the 20 accounts with the newest approved meeting proposals (meeting_privacy; pb_board() prints no such text and is pinned by meeting_privacy_static_test.ts instead), and whether the meeting reader is keeping up and its newest run did not halt (meetings_work). Counts only — never a quote, a name or pb_runs.errors; callable by anon (DECISIONS §34, §65).';
 
 -- 11 · privileges ------------------------------------------------------------------------------
 -- The 20260918160352 lesson: a new function arrives executable by PUBLIC (and, here, by the project's

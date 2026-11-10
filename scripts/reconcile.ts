@@ -29,9 +29,13 @@
  *      the literal 'sales_meeting' it finds there. Any leak fails: what the team says about a named
  *      agency is signed-in only, and anything published cannot be taken back (§61). An older
  *      pb_reconcile_state() without the block warns that the check could not run.
- *   7. The meeting reader keeps up (warnings only): a failed meeting this week, a lease stuck
- *      'reading', sales meetings selected this week but none read, or an open card older than
- *      three days — proposals never expire on a timer, so the reconcile is what notices.
+ *   7. The meeting reader keeps up. Its newest run HALTED fails, as check 5 does for notes: a halt
+ *      sends the meeting back to 'waiting' with its lease released, so none of the counts below
+ *      moves while every three-minute tick halts the same way, and only the run row says so. The
+ *      rest warn: a failed meeting this week, a lease stuck 'reading', sales meetings selected this
+ *      week but none read, or an open card older than three days — proposals never expire on a
+ *      timer, so the reconcile is what notices. A meetings_work without `latest_run` warns that
+ *      the halt check could not run; a null one is a reader that has not run yet.
  *
  * Runs from CI with no secrets: the URL and publishable key are the page's own
  * (web/index.html), and the rpc returns nothing that is not already readable. `--state <file>`
@@ -78,7 +82,11 @@ export interface MeetingPrivacy { checked: number; leaks: number }
 export interface MeetingsWork {
   selected_7d: number; read_7d: number; failed_7d: number; stale_reading: number;
   oldest_open_days: number | null;
+  /** The newest finished pb_runs row with source 'sales_meeting' — status, time and two counts,
+   *  never its notes. Null before the first meeting run; absent from a function that predates it. */
+  latest_run?: MeetingRun | null;
 }
+export interface MeetingRun { status: string; finished_at: string | null; halted: number | null; wrote: number | null }
 export interface NotesWork {
   latest: {
     status: string; started_at: string | null; finished_at: string | null;
@@ -222,13 +230,19 @@ export function evaluate(
   if (!mw || typeof mw !== "object") {
     warnings.push("meetings_work is missing from the state — pb_reconcile_state() predates the sales-meeting reader (DECISIONS §65), so whether meetings are being read could not be checked");
   } else {
-    const before = warnings.length;
+    const before = warnings.length + failures.length;
+    const lr = mw.latest_run;
+    if (lr === undefined) {
+      warnings.push("meetings_work.latest_run is missing from the state — pb_reconcile_state() predates it, so whether the newest meeting run halted could not be checked");
+    } else if (lr && num(lr.halted) > 0) {
+      failures.push(`meeting run halted (${lr.status}, finished ${lr.finished_at ?? "?"}): a model call was refused or went unanswered — ${num(lr.wrote)} row(s) written before it stopped. The meeting went back to 'waiting', so every pb-meetings tick halts the same way until the cause is fixed. Check the extractor's API key and credit (RUNBOOK §33.6)`);
+    }
     if (num(mw.failed_7d) > 0) warnings.push(`meetings_work: ${num(mw.failed_7d)} sales meeting(s) failed to read in the last 7 days — see pb_runs with source 'sales_meeting'`);
     if (num(mw.stale_reading) > 0) warnings.push(`meetings_work: ${num(mw.stale_reading)} meeting(s) stuck 'reading' with a lease over three hours old — is the pb-meetings schedule running?`);
     if (num(mw.selected_7d) > 0 && num(mw.read_7d) === 0) warnings.push(`meetings_work: ${num(mw.selected_7d)} sales meeting(s) selected in the last 7 days and none read`);
     const open = typeof mw.oldest_open_days === "number" ? mw.oldest_open_days : null;
     if (open !== null && open > MEETING_CARD_WARN_DAYS) warnings.push(`meetings_work: the oldest open meeting card has waited ${open.toFixed(1)} days (limit ${MEETING_CARD_WARN_DAYS}) — proposals never expire on a timer; review them in index.html#meetings or dismiss the meeting`);
-    if (warnings.length === before) summary.push(`meetings: ${num(mw.selected_7d)} selected and ${num(mw.read_7d)} read in 7 days; oldest open card ${open === null ? "none" : `${open.toFixed(1)} days`}`);
+    if (warnings.length + failures.length === before) summary.push(`meetings: ${num(mw.selected_7d)} selected and ${num(mw.read_7d)} read in 7 days; oldest open card ${open === null ? "none" : `${open.toFixed(1)} days`}; newest run ${lr ? `${lr.status}, finished ${lr.finished_at ?? "?"}` : "none yet"}`);
   }
 
   return { failures, warnings, summary };

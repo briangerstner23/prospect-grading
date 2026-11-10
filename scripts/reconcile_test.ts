@@ -60,7 +60,7 @@ const green = (): State => ({
     finished_runs_7d: 7,
   },
   meeting_privacy: { checked: 0, leaks: 0 },
-  meetings_work: { selected_7d: 0, read_7d: 0, failed_7d: 0, stale_reading: 0, oldest_open_days: null },
+  meetings_work: { selected_7d: 0, read_7d: 0, failed_7d: 0, stale_reading: 0, oldest_open_days: null, latest_run: null },
 });
 
 {
@@ -222,28 +222,28 @@ const green = (): State => ({
   check("rule9_mismatches 0 with sales_meeting rows present passes", !v.failures.some((f) => f.startsWith("rule 9")) && v.summary.includes("rule 9: view and function agree on every key"));
 }
 {
-  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 4 };
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 4, latest_run: null };
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("meetings_work.oldest_open_days 4 warns", v.warnings.some((w) => w.includes("oldest open meeting card has waited 4.0 days")));
   check("…and is never a failure", !v.failures.some((f) => f.startsWith("meetings")));
 }
 {
-  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 3 };
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 3, latest_run: null };
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("an open card of exactly 3 days does not warn", !v.warnings.some((w) => w.startsWith("meetings_work")) && v.summary.some((x) => x.startsWith("meetings: 6 selected and 5 read")));
 }
 {
-  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 1, stale_reading: 0, oldest_open_days: 1 };
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 1, stale_reading: 0, oldest_open_days: 1, latest_run: null };
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("meetings_work.failed_7d 1 warns", v.warnings.some((w) => w.includes("1 sales meeting(s) failed")));
 }
 {
-  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 2, oldest_open_days: 1 };
+  const s = green(); s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 2, oldest_open_days: 1, latest_run: null };
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("meetings_work.stale_reading 2 warns", v.warnings.some((w) => w.includes("2 meeting(s) stuck 'reading'")));
 }
 {
-  const s = green(); s.meetings_work = { selected_7d: 4, read_7d: 0, failed_7d: 0, stale_reading: 0, oldest_open_days: null };
+  const s = green(); s.meetings_work = { selected_7d: 4, read_7d: 0, failed_7d: 0, stale_reading: 0, oldest_open_days: null, latest_run: null };
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("selected this week and none read warns", v.warnings.some((w) => w.includes("4 sales meeting(s) selected in the last 7 days and none read")));
 }
@@ -251,6 +251,53 @@ const green = (): State => ({
   const s = green(); delete s.meetings_work;
   const v = evaluate(s, ledger, disk, FP, NOW);
   check("meetings_work missing (old function) warns, does not fail", v.warnings.some((w) => w.startsWith("meetings_work is missing")) && !v.failures.some((f) => f.startsWith("meetings")));
+}
+/* The newest meeting run halted. A halt sends the meeting back to 'waiting' with its lease released,
+   so failed_7d, stale_reading and oldest_open_days stay where they were and, while anything was read
+   this week, 'selected but none read' stays silent too: the counts below are those of a healthy week
+   on purpose. Only the run row says the reader stopped, as notes_work.latest does for check 5. */
+{
+  const s = green();
+  s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
+    latest_run: { status: "failed", finished_at: day(0.01), halted: 1, wrote: 0 } };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a halted 'failed' meeting run fails", v.failures.some((f) => f.startsWith("meeting run halted (failed")), v.failures.join(" | "));
+  check("…though no meeting count moved (the counts alone would have said nothing)", !v.warnings.some((w) => w.startsWith("meetings_work")));
+  check("…and the 'keeps up' summary is not printed over it", !v.summary.some((x) => x.startsWith("meetings:")));
+}
+{
+  const s = green();
+  s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
+    latest_run: { status: "partial", finished_at: day(0.01), halted: 1, wrote: 4 } };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a halted 'partial' meeting run fails even though it wrote first", v.failures.some((f) => f.startsWith("meeting run halted (partial") && f.includes("4 row(s) written")), v.failures.join(" | "));
+}
+{
+  const s = green();
+  s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
+    latest_run: { status: "success", finished_at: day(0.01), halted: 0, wrote: 12 } };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a newest meeting run that did not halt passes", !v.failures.some((f) => f.startsWith("meeting")) && !v.warnings.some((w) => w.startsWith("meetings_work")));
+  check("…and the summary names it", v.summary.some((x) => x.startsWith("meetings: 6 selected and 5 read") && x.includes("newest run success")));
+}
+{
+  // A crash closes the run 'failed' with the counters it had and no halted key: not a halt.
+  const s = green();
+  s.meetings_work = { selected_7d: 6, read_7d: 5, failed_7d: 0, stale_reading: 0, oldest_open_days: 1,
+    latest_run: { status: "failed", finished_at: day(0.01), halted: null, wrote: null } };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a newest meeting run with no halted count is not a halt", !v.failures.some((f) => f.startsWith("meeting run halted")));
+}
+{
+  const v = evaluate(green(), ledger, disk, FP, NOW);
+  check("latest_run null (the reader has not run yet) neither fails nor warns", !v.failures.some((f) => f.startsWith("meeting")) && !v.warnings.some((w) => w.startsWith("meetings_work")) && v.summary.some((x) => x.includes("newest run none yet")));
+}
+{
+  // meetings_work from a function that predates latest_run: the halt check could not run.
+  const s = green(); delete s.meetings_work!.latest_run;
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("meetings_work without latest_run (older function) warns that the halt check could not run", v.warnings.some((w) => w.startsWith("meetings_work.latest_run is missing")));
+  check("…and does not fail", !v.failures.some((f) => f.startsWith("meeting")));
 }
 
 console.log(`reconcile_test: ${passed} passed, ${failures.length} failed`);

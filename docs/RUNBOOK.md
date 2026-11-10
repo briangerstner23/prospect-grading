@@ -2758,9 +2758,11 @@ Run notes carry recording ids, refs and counts — never a quote, a name or a ti
 Every CI reconcile (push, and every 6 h) reads two blocks of `pb_reconcile_state()`:
 `meeting_privacy` renders `pb_dossier()` for the 20 accounts with the newest approved proposals and
 counts any approved quote, origin-tagged register text or literal `sales_meeting` found there — any
-leak FAILS CI; `meetings_work` warns on a failed meeting this week, a lease stuck over three hours,
-meetings selected but none read, and an open card older than three days (proposals never expire on a
-timer). The invariant that is never allowed to move:
+leak FAILS CI; `meetings_work` FAILS CI when the reader's newest finished run halted (its
+`latest_run`, the pb_runs row above — a halt releases the lease and leaves the meeting `waiting`, so
+no count moves while every tick halts), and warns on a failed meeting this week, a lease stuck over
+three hours, meetings selected but none read, and an open card older than three days (proposals
+never expire on a timer). The invariant that is never allowed to move:
 
 ```sql
 select count(*) from public.pb_fact_candidates where source = 'sales_meeting';   -- 0, always

@@ -147,6 +147,17 @@ function newest(re: RegExp, end: RegExp): { file: string; body: string } {
   check(`the newest pb_reconcile_state (${r.file}) carries sales_meeting in its rule9 CASE`, /when\s+'sales_meeting'\s+then\s+0\b/.test(rule9));
   check("…and the meeting_privacy canary", r.body.includes("'meeting_privacy'") && r.body.includes("public.pb_dossier("));
   check("…and meetings_work", r.body.includes("'meetings_work'") && r.body.includes("'oldest_open_days'"));
+  // Check 7's halt check reads the reader's newest finished run. This function is anon's, and a run's
+  // notes (pb_runs.errors) name recordings and refs (RUNBOOK §33.6): status, time and counts only.
+  const ml = /meeting_latest\s+as\s*\(([\s\S]*?)\n\)\s*,/.exec(r.body)?.[1] ?? "";
+  check("…whose latest_run is the meeting reader's newest finished pb_runs row",
+    /from\s+public\.pb_runs\b/i.test(ml) && /source\s*=\s*'sales_meeting'/.test(ml) &&
+    /finished_at\s+is\s+not\s+null/i.test(ml) && /order\s+by\s+r\.finished_at\s+desc\s+limit\s+1\b/i.test(ml), ml);
+  const lrAt = r.body.indexOf("'latest_run'");
+  const lr = lrAt >= 0 ? r.body.slice(lrAt, r.body.indexOf("from meeting_latest", lrAt)) : "";
+  check("…carrying the run's halted count", /l\.counts\s*->\s*'halted'/.test(lr));
+  check("…and never pb_runs.errors (a run's notes name recordings; this function is anon's)",
+    ml !== "" && lr !== "" && !/\berrors\b/.test(ml) && !/\berrors\b/.test(lr));
   check("the canary returns counts only (no quote column leaves it)",
     !/'meeting_privacy'[\s\S]{0,400}'(quote|needle|text)'\s*,/.test(r.body));
 }
