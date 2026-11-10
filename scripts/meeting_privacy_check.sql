@@ -13,8 +13,9 @@
 --      at the computed tier (on an account no live override moves), or on an account with no computed
 --      tier is refused; a removal carrying an
 --      expiry is refused by pb_register_removal_guard; a fact that disagrees with a person's value is
---      refused without overrule; a card spanning two agencies is refused; an unplaced name cannot be
---      decided.
+--      refused without overrule, judged on the value SENT (a claim that agreed, edited on the card to
+--      another value, is refused; one that disagreed, edited to the person's own, records 'agrees');
+--      a card spanning two agencies is refused; an unplaced name cannot be decided.
 --   3. Writes. A rater's fact-and-read card lands (pb_facts with source sales_meeting, no quote and no
 --      link; the waiting machine candidate on that key superseded; origin-tagged register notes). The
 --      owner's card lands the overruling fact, the override (expiry = today + the rubric's
@@ -67,7 +68,7 @@ declare
   v_lanes0  bigint;
   v_cand    uuid;
   p_fact1   uuid; p_read1 uuid; p_read2 uuid; p_over uuid; p_over_same uuid; p_rem uuid;
-  p_fact2   uuid; p_over_b uuid; p_fact_b uuid; p_unplaced uuid;
+  p_fact2   uuid; p_over_b uuid; p_fact_b uuid; p_unplaced uuid; p_fact_e uuid;
   v_old     text;      -- an older and a middle meeting, for the newest-word cases (section 4)
   v_mid     text;
   v_c       uuid;      -- a synthetic agency promoted under its open card
@@ -321,6 +322,36 @@ begin
     if sqlerrm not like '%differs from what a person recorded%' then v_fail := 'conflict refused for the wrong reason: ' || sqlerrm; end if;
   end;
   if v_fail is not null then raise exception 'HARNESS 2f: %', v_fail; end if;
+  -- The value a card SENDS is the one compared, so an edit can make a conflict (the page's
+  -- meetingOverrules sends overrule on the edited value). The row is made inside the block, so the
+  -- refusal takes it away again and it can never supersede p_fact2.
+  begin
+    insert into public.pb_meeting_proposals
+      (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, key, value, quote, line_from, line_to,
+       quote_at, speaker, mode, held_on, extractor, fingerprint, status)
+    values (v_rec, v_a, array['harness a'], 'harness a', 'resolved', 'name', 'fact', 'harness_k2', '30000'::jsonb, q[5],
+            21, 21, '00:02:50', 'S1', 'asserted', current_date, 'harness', 'h5e:' || v_marker, 'proposed')
+    returning id into p_fact_e;
+    perform public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_fact_e, 'decision', 'approve',
+              'edit', jsonb_build_object('value', 45000))));
+    v_fail := 'a claim that agreed with a person, edited to another value, was approved without overrule';
+  exception when others then
+    if sqlerrm not like '%differs from what a person recorded%' then v_fail := 'edited conflict refused for the wrong reason: ' || sqlerrm; end if;
+  end;
+  if v_fail is not null then raise exception 'HARNESS 2f2: %', v_fail; end if;
+  -- …and can end one: p_fact2 edited to the person's own value needs no overrule and writes nothing.
+  -- Rolled back by a sentinel, so 3f still decides p_fact2 as written.
+  begin
+    v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_fact2, 'decision', 'approve',
+             'edit', jsonb_build_object('value', 30000))));
+    if (v_r->>'agrees')::int <> 1 or (v_r->>'facts')::int <> 0 then
+      v_fail := 'a conflicting claim edited to the person''s own value returned ' || v_r::text;
+    end if;
+    raise exception 'harness sentinel 2f3';
+  exception when others then
+    if sqlerrm <> 'harness sentinel 2f3' then v_fail := 'a claim edited to the person''s own value was refused: ' || sqlerrm; end if;
+  end;
+  if v_fail is not null then raise exception 'HARNESS 2f3: %', v_fail; end if;
   begin
     perform public.pb_decide_meeting_card(jsonb_build_array(
       jsonb_build_object('id', p_fact1, 'decision', 'approve'),

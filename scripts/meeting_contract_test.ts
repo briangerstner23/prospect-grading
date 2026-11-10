@@ -576,6 +576,18 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   check("a removal's edit never carries expires_at (rule 7a), though the guard would refuse it anyway",
     !sent.some((i: { id: string; edit?: Record<string, unknown> }) => kindOf(i.id) === "removal" && i.edit && "expires_at" in i.edit));
 
+  // The page holds a row back for two of the function's book checks before it is sent
+  // (meetingLiveFlags, meetingOverrules; page_pure_test pins its transcription). The SQL side:
+  const ovBranch = branch("override");
+  check("pb_decide_meeting_card refuses an override to the tier the board shows when it is the computed one (the page's already_computed_tier)",
+    /if\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+then\s+if\s+lower\(v_tier\)\s*=\s*lower\(v_ctier\)\s+then\s+raise\s+exception/i.test(ovBranch));
+  check("…and any override while the account has no computed tier (no_computed_tier)", /if\s+v_ctier\s+is\s+null\s+then\s+raise\s+exception/i.test(ovBranch));
+  const factBranch = branch("fact");
+  check("pb_decide_meeting_card compares a person's value with the value it is SENT, edited or not (the page's meetingOverrules)",
+    /v_value\s*:=\s*case\s+when\s+v_edit\s*\?\s*'value'\s+then\s+v_edit->'value'\s+else\s+p\.value\s+end/i.test(factBranch) &&
+    /else\s+v_cur_val\s*=\s*v_value\s+end/i.test(factBranch) && /elsif\s+not\s+v_overrule\s+then\s+raise\s+exception/i.test(factBranch));
+  check("…and the page judges its overrule on that value too", String(P.cardItems).includes('meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)'));
+
   // What the page reads back.
   const decideReturns = builtKeys(decide.slice(decide.lastIndexOf("return jsonb_build_object")));
   const decidedWords = String(P.decidedWords);

@@ -2590,7 +2590,8 @@ account and meeting, and one live prospect read as the subject — nothing survi
 absence of an exception and three NOTICE lines. It proves every lane refusal (a rater approving a
 tier call or a removal, a viewer, a non-WLIQ address), every rule refusal (no written reason, an
 unknown code, an override at the computed tier or with no computed tier, a removal with an expiry, a
-fact that overrules a person without the tick, a card over two agencies, an unplaced name), what the
+fact that overrules a person without the tick — judged on the value sent, edited or not — a card over
+two agencies, an unplaced name), what the
 writes look like, and that `anon` gets the dossier and the board without a word of it. Run it again
 after any change to `pb_dossier()`, `pb_board()` or the six meeting functions.
 
@@ -2713,6 +2714,18 @@ the quote or the meeting's title: pb_register is read by every signed-in lane, t
 so the row names the meeting's date and the line and points at the proposal; the prefilled written
 reason is the same, and a person who wants the words in it types them. That typed reason is why
 `pb_removed()` and `pb_removal()` answer a WLIQ address only, as pb_register's own policy does.
+
+The screen shows each open row against the book as it stands when the screen loads, not as the row
+was written: a row placed through "Who is this?" was written with no snapshot at all, and any row's
+can be stale. So the book's value on a fact's key, a person's value it would overrule, and the engine
+and board tiers for a tier call are read again, and the decide function's own refusals are kept off
+the card before it is sent. A tier call naming the engine's tier with no override live (the board
+already says it; the function refuses it) is never pre-ticked, is flagged "already the engine's tier",
+and A rejects it with the rest. A fact edited on its card is checked against a person's value as
+edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
+own value goes as `agrees`. Every meeting holding an open card is in the picker however old (the
+reader works a backlog oldest first), and the open proposals behind the roster's count and the
+picker are read a page at a time with an exact count, so PostgREST's max-rows cannot cut them short.
 
 Which word is newest is re-derived, never only added to (`pb_meeting_supersede`). An older claim a
 newer meeting superseded is open again once that newer row stops beating it — rejected on its card,

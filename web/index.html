@@ -757,6 +757,15 @@ const MEETING_HISTORIC_DAYS = 21;
 const MEETING_BLOCKING_FLAGS = ["shared_segment", "question", "hypothetical", "joke", "historic", "conflicts_with_person", "no_computed_tier", "contradicts_live_override"];
 /** meeting_claims.PERSON_SOURCES, mirrored: a value one of these holds as evidence is a person's. */
 const MEETING_PERSON_SOURCES = ["rater", "sales_meeting"];
+/**
+ * Flags only the SCREEN raises, from the book as it stands now. The reader never writes them (so
+ * they are not in MEETING_BLOCKING_FLAGS, which mirrors meeting_claims), and each keeps a row from
+ * starting ticked. already_computed_tier: a tier call naming the engine's own tier with no override
+ * live — the reader would have written it as 'agrees', but it went out 'proposed' before the book
+ * moved, and pb_decide_meeting_card refuses the whole card for it ("an override to it changes
+ * nothing"). A status is the database's to set, so the screen holds it back instead.
+ */
+const MEETING_SCREEN_FLAGS = ["already_computed_tier"];
 
 /**
  * keysFor('sales_meeting'): the only keys a meeting fact may carry and the only values each may
@@ -837,7 +846,10 @@ function meetingSameValue(a, b) {
  * overrule, a tier call with no computed tier). `live` is { read, facts }: the account's
  * pb_current_reads row (null when it has none) and its pb_current_facts rows. Either left undefined
  * keeps the stored flags it would have recomputed. The meeting's own flags (shared_segment,
- * historic, …) and upgrades_removal (the screen holds no removals) are kept as written.
+ * historic, …) and upgrades_removal (the screen holds no removals) are kept as written. A tier call
+ * naming the engine's tier is contradicts_live_override under a live override that shows another,
+ * and the screen's own already_computed_tier with none (MEETING_SCREEN_FLAGS): the same two
+ * branches pb_decide_meeting_card takes, one of which it refuses.
  */
 function meetingLiveFlags(row, live) {
   const stored = Array.isArray(row?.flags) ? row.flags.slice() : [];
@@ -845,20 +857,61 @@ function meetingLiveFlags(row, live) {
   let out = stored;
   if (row.kind === "fact" && Array.isArray(live.facts)) {
     out = out.filter((f) => f !== "conflicts_with_person");
-    const held = live.facts.find((f) => f && f.account_id === row.account_id && f.key === row.key);
-    if (held && held.evidence_label === "evidence" && MEETING_PERSON_SOURCES.includes(held.source) && !meetingSameValue(held.value, row.value)) {
-      out.push("conflicts_with_person");
-    }
+    const person = meetingPersonHeld(row, live.facts);
+    if (person && !meetingSameValue(person.value, row.value)) out.push("conflicts_with_person");
   }
   if (row.kind === "override" && live.read !== undefined) {
-    out = out.filter((f) => f !== "no_computed_tier" && f !== "contradicts_live_override");
+    out = out.filter((f) => f !== "no_computed_tier" && f !== "contradicts_live_override" && f !== "already_computed_tier");
     const comp = live.read?.computed_tier ?? null;
     if (!comp) out.push("no_computed_tier");
     const shown = live.read?.effective_tier ?? comp;
     const t = String(row.tier ?? "").toLowerCase();
-    if (comp && t && t === String(comp).toLowerCase() && t !== String(shown ?? "").toLowerCase()) out.push("contradicts_live_override");
+    if (comp && t && t === String(comp).toLowerCase()) {
+      out.push(t === String(shown ?? "").toLowerCase() ? "already_computed_tier" : "contradicts_live_override");
+    }
   }
   return [...new Set(out)].sort();
+}
+
+/**
+ * The value a PERSON holds on a fact row's key now — the one pb_decide_meeting_card will not replace
+ * without overrule — as { value, source }; null when no person holds one; undefined when the screen
+ * has not loaded the book's facts, so it cannot say.
+ */
+function meetingPersonHeld(row, facts) {
+  if (!row || row.kind !== "fact" || typeof row.account_id !== "string" || !row.account_id || !Array.isArray(facts)) return undefined;
+  const held = facts.find((f) => f && f.account_id === row.account_id && f.key === row.key);
+  return held && held.evidence_label === "evidence" && MEETING_PERSON_SOURCES.includes(held.source) ? { value: held.value, source: held.source } : null;
+}
+
+/**
+ * An open placed row as the screen shows it: flags re-derived (meetingLiveFlags) and, for a fact,
+ * the book's value as it stands now. A row nobody had placed was written with no snapshot at all
+ * ("book: nothing on record" whatever the book holds), and any snapshot can be stale. person_held
+ * (meetingPersonHeld) stays on the row so an edit on the card can be checked against it.
+ */
+function meetingLiveRow(row, live) {
+  if (!row || row.status !== "proposed" || typeof row.account_id !== "string" || !row.account_id) return row;
+  const out = { ...row, flags: meetingLiveFlags(row, live) };
+  if (row.kind === "fact" && live && Array.isArray(live.facts)) {
+    const held = live.facts.find((f) => f && f.account_id === row.account_id && f.key === row.key) ?? null;
+    out.current_value = held ? held.value ?? null : null;
+    out.current_source = held ? held.source ?? null : null;
+    out.person_held = meetingPersonHeld(row, live.facts);
+  }
+  return out;
+}
+
+/**
+ * Would approving this fact with `value` replace a person's different value? pb_decide_meeting_card
+ * compares the value it is SENT, so an edit on the card can make a conflict or end one; the row's
+ * conflicts_with_person flag is about the value the meeting said. `value` undefined means the row's
+ * own. Without person_held (the book's facts did not load) the flag is all the screen knows.
+ */
+function meetingOverrules(row, value) {
+  if (!row || row.kind !== "fact") return false;
+  if (row.person_held === undefined) return (row.flags ?? []).includes("conflicts_with_person");
+  return row.person_held !== null && !meetingSameValue(row.person_held.value, value === undefined ? row.value : value);
 }
 
 /**
@@ -895,10 +948,12 @@ function meetingDefaultTick(row) {
  * NOW: to the row as it stands (a name a person has since placed) and to its flags as
  * meetingLiveFlags re-derived them (a person who recorded a value since, a tier the engine has since
  * computed). The stored default_selected was right when it was written and can be stale; a row that
- * would now overrule a person is never ticked for you. Never a removal, never anything not proposed.
+ * would now overrule a person is never ticked for you, nor one the screen holds back
+ * (MEETING_SCREEN_FLAGS). Never a removal, never anything not proposed.
  */
 function meetingStartsTicked(row) {
   if (!row || row.status !== "proposed" || row.kind === "removal") return false;
+  if ((row.flags ?? []).some((f) => MEETING_SCREEN_FLAGS.includes(f))) return false;
   return meetingDefaultTick(row);
 }
 
@@ -1005,7 +1060,8 @@ function meetingValueWords(v) {
  * The change a row proposes, in plain words — the line a person reads before the quote. Every tier
  * is printed with "anticipated" (rule 10). `ctx` carries what the screen knows that the row does
  * not: the live engine tier, the expiry and value the person set, the disposition and code they
- * chose, and the removal vocabulary.
+ * chose, the removal vocabulary, and whether the value as edited would overrule a person
+ * (`overrules`, from meetingOverrules; absent, the row's own flag decides).
  *
  *   'Tier → anticipated Silver (engine: anticipated Gold) until 8 Jan 2027'
  *   'Remove — do not contact · they asked us to stop · never expires'
@@ -1029,6 +1085,7 @@ function meetingRowWords(row, ctx) {
       const lapses = c.liveOverrideUntil ? ` until ${dayMonthWords(c.liveOverrideUntil)}` : "";
       s += ` · the board shows ${tierWords(shown)} by a live override${lapses}; approving ends it`;
     }
+    if ((row.flags ?? []).includes("already_computed_tier")) s += " · the board already shows it, so approving changes nothing";
     return s;
   }
   if (row.kind === "removal") {
@@ -1051,7 +1108,8 @@ function meetingRowWords(row, ctx) {
     const held = row.current_value === null || row.current_value === undefined
       ? "book: nothing on record"
       : `book: ${meetingValueWords(row.current_value)}${row.current_source ? " from " + row.current_source : ""}`;
-    const person = (row.flags ?? []).includes("conflicts_with_person") ? " — a person recorded that; approving overrules them" : "";
+    const overrules = typeof c.overrules === "boolean" ? c.overrules : (row.flags ?? []).includes("conflicts_with_person");
+    const person = overrules ? " — a person recorded that; approving overrules them" : "";
     return `${said} · ${held}${person}`;
   }
   if (row.kind === "read") return `Read · ${meetingTopicWords(row.topic)}`;
@@ -1069,6 +1127,7 @@ function meetingFlagWords(flag) {
     case "conflicts_with_person": return "a person recorded something else";
     case "no_computed_tier": return "no computed tier yet — the engine refuses an override until there is one";
     case "contradicts_live_override": return "the engine's own tier, while a live override shows another";
+    case "already_computed_tier": return "already the engine's tier, with no override live — approving it changes nothing";
     case "upgrades_removal": return "off the board only as unqualified; the team said do not contact";
     default: return String(flag ?? "").replace(/_/g, " ");
   }
@@ -1160,7 +1219,8 @@ function cleanMeetingEdit(kind, e) {
  * a suggestion, never a choice — and its edit never carries expires_at. On the rater lane, approving
  * a tier call or a removal is not theirs (rules 7, 7a), so A leaves those rows waiting for the owner
  * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true,
- * because the person ticked a box that says so.
+ * because the person ticked a box that says so — judged on the value it SENDS, edited or not
+ * (meetingOverrules), since that is the value pb_decide_meeting_card compares.
  */
 function cardItems(rows, choice, opts) {
   const o = opts && typeof opts === "object" ? opts : {};
@@ -1184,8 +1244,8 @@ function cardItems(rows, choice, opts) {
     if (r.kind === "override" && !owner) continue;
     if (c.ticked !== true) { items.push({ id: r.id, decision: "reject" }); continue; }
     const item = { id: r.id, decision: "approve" };
-    if (r.kind === "fact" && (r.flags ?? []).includes("conflicts_with_person")) item.overrule = true;
     const edit = cleanMeetingEdit(r.kind, c.edit);
+    if (r.kind === "fact" && meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)) item.overrule = true;
     if (edit) item.edit = edit;
     items.push(item);
   }
@@ -1209,6 +1269,7 @@ function cardProblems(rows, choice, lane) {
       if (!(typeof e.text === "string" && e.text.trim())) out.push("The tier call needs a written reason (rule 7).");
       if (!e.reason_code) out.push("The tier call needs a reason code.");
       if ((r.flags ?? []).includes("no_computed_tier")) out.push("The tier call cannot apply yet: the engine has no computed tier for this agency. Untick it.");
+      if ((r.flags ?? []).includes("already_computed_tier")) out.push(`The tier call names anticipated ${r.tier}, which the engine already computes with no override live: approving it changes nothing. Untick it.`);
     }
     if (r.kind === "fact" && c.ticked === true && e.invalid === true) out.push(`${r.key}: that value does not fit the key.`);
   }
@@ -1313,6 +1374,49 @@ function pickMeeting(meetings, byRecording) {
   const open = byRecording && typeof byRecording === "object" ? byRecording : {};
   const withOpen = list.find((m) => (open[m.recording_id] ?? 0) > 0);
   return (withOpen ?? list[0])?.recording_id ?? null;
+}
+
+/**
+ * The meetings that hold open cards but are not in the newest-read list: their ids, to fetch. That
+ * list holds only the newest few, and the reader works a backlog OLDEST first, so after go-live most
+ * open cards sit on meetings it never reaches — counted on the roster, openable from nowhere.
+ */
+function meetingsMissing(list, byRecording) {
+  const open = byRecording && typeof byRecording === "object" ? byRecording : {};
+  const have = new Set((Array.isArray(list) ? list : []).filter((m) => m && typeof m.recording_id === "string").map((m) => m.recording_id));
+  return Object.keys(open).filter((rid) => (open[rid] ?? 0) > 0 && !have.has(rid)).sort();
+}
+
+/** The picker's meetings: the newest read ones plus every one fetched for its open cards, each once, newest first (an undated one last). */
+function meetingPickList(newest, extra) {
+  const seen = new Map();
+  for (const m of [...(Array.isArray(newest) ? newest : []), ...(Array.isArray(extra) ? extra : [])]) {
+    if (m && typeof m.recording_id === "string" && !seen.has(m.recording_id)) seen.set(m.recording_id, m);
+  }
+  const t = (m) => { const x = Date.parse(m.held_at ?? ""); return Number.isFinite(x) ? x : -Infinity; };
+  return [...seen.values()].sort((a, b) => t(b) - t(a) || (a.recording_id < b.recording_id ? -1 : a.recording_id > b.recording_id ? 1 : 0));
+}
+
+/**
+ * Every row a query matches, a page at a time. PostgREST answers at most the project's max-rows
+ * (1000 on Supabase unless someone changed it) whatever .limit() asks for, and says nothing when it
+ * cuts, so a bare .limit(5000) undercounts without a word. `page(from, to)` runs the query for one
+ * range — with { count: "exact" }, ordered on a unique column so pages do not overlap — and the loop
+ * goes on until it holds the count the database reported or a page comes back empty, so a max-rows
+ * smaller than `size` still reads everything. No network of its own: it awaits what it is given.
+ * Returns { data, error } like the query; an error on any page is the answer.
+ */
+async function pagedRows(page, size) {
+  const step = Number.isInteger(size) && size > 0 ? size : 1000;
+  const out = [];
+  for (let n = 0; n < 1000; n++) {
+    const { data, error, count } = await page(out.length, out.length + step - 1);
+    if (error) return { data: null, error };
+    const got = Array.isArray(data) ? data : [];
+    out.push(...got);
+    if (!got.length || (typeof count === "number" ? out.length >= count : got.length < step)) break;
+  }
+  return { data: out, error: null };
 }
 
 /** 'HH:MM:SS' → seconds; null when it is not a clock. */
@@ -1546,9 +1650,14 @@ async function loadMeetingQueue() {
   state.meetingOpen = [];
   if (!state.db || !state.session || !canReview()) return;
   try {
-    const { data, error } = await state.db.from("pb_meeting_proposals").select("recording_id,account_id,said_key").eq("status", "proposed").limit(5000);
+    const { data, error } = await openMeetingProposals(state.db);
     if (!error) state.meetingOpen = data ?? [];
   } catch (_) { /* no reader yet: nothing waiting */ }
+}
+
+/** Every open proposal's (meeting, agency or name), all pages of it: the roster's count and the review's picker both rest on it. */
+function openMeetingProposals(db) {
+  return pagedRows((from, to) => db.from("pb_meeting_proposals").select("recording_id,account_id,said_key", { count: "exact" }).eq("status", "proposed").order("id").range(from, to));
 }
 
 async function loadBook() {
@@ -3034,7 +3143,7 @@ function basisChipFor(m) {
   return chip(BASIS_WORDS[m] ?? String(m), m === "person" || m === "learned" ? "c-good" : m === "name" || m === "alias" ? "c-info" : "c-warn");
 }
 function flagChipFor(f) {
-  const tone = ["conflicts_with_person", "no_computed_tier", "contradicts_live_override", "upgrades_removal"].includes(f) ? "c-bad"
+  const tone = ["conflicts_with_person", "no_computed_tier", "contradicts_live_override", "already_computed_tier", "upgrades_removal"].includes(f) ? "c-bad"
     : f === "shared_segment" || f === "historic" ? "c-warn" : "c-info";
   return chip(meetingFlagWords(f), tone);
 }
@@ -3081,7 +3190,7 @@ async function openMeetings(rid) {
     db.from("pb_meetings").select(MEETING_LIST_COLS).in("status", ["waiting", "reading", "failed", "skipped"]).gte("held_at", since).order("held_at", { ascending: false }).limit(200),
     db.from("pb_meeting_title_rules").select("title_norm,read,set_at").order("title_norm"),
     db.from("pb_removal_reasons").select("disposition,code,label,allows_review_date,sort,active").eq("active", true).order("disposition").order("sort"),
-    db.from("pb_meeting_proposals").select("recording_id,account_id,said_key").eq("status", "proposed").limit(5000),
+    openMeetingProposals(db),
   ]);
   if (window.location.hash !== startHash) return; // the reader moved on
   if (list.error) {
@@ -3092,7 +3201,14 @@ async function openMeetings(rid) {
   }
   if (!open.error) state.meetingOpen = open.data ?? [];
   const waiting = meetingsWaiting(state.meetingOpen);
-  const chosen = rid ?? pickMeeting(list.data ?? [], waiting.byRecording);
+  // Every meeting with an open card is in the picker, however old: what the roster counts, this screen reaches.
+  const missing = meetingsMissing(list.data ?? [], waiting.byRecording);
+  const chunks = [];
+  for (let i = 0; i < missing.length; i += 100) chunks.push(missing.slice(i, i + 100));
+  const more = await Promise.all(chunks.map((ids) => db.from("pb_meetings").select(MEETING_LIST_COLS).in("recording_id", ids)));
+  if (window.location.hash !== startHash) return;
+  const meetings = meetingPickList(list.data ?? [], more.flatMap((x) => (x.error ? [] : x.data ?? [])));
+  const chosen = rid ?? pickMeeting(meetings, waiting.byRecording);
   let meeting = null, rows = [], err = null;
   if (chosen) {
     const [m, p] = await Promise.all([
@@ -3113,19 +3229,16 @@ async function openMeetings(rid) {
       if (window.location.hash !== startHash) return;
       facts = f.error ? undefined : (f.data ?? []);
     }
-    rows = rows.map((r) => r.status !== "proposed" || !r.account_id ? r : {
-      ...r,
-      flags: meetingLiveFlags(r, {
-        read: state.reads.has(r.account_id) ? state.reads.get(r.account_id) : (state.reads.size ? null : undefined),
-        facts: facts ? facts.filter((x) => x.account_id === r.account_id) : undefined,
-      }),
-    });
+    rows = rows.map((r) => r.status !== "proposed" || !r.account_id ? r : meetingLiveRow(r, {
+      read: state.reads.has(r.account_id) ? state.reads.get(r.account_id) : (state.reads.size ? null : undefined),
+      facts: facts ? facts.filter((x) => x.account_id === r.account_id) : undefined,
+    }));
     // A bare #meetings names the meeting it opened, so a reload or a shared link lands on the same one.
     if (!rid && meeting) history.replaceState(null, "", window.location.pathname + window.location.search + meetingHash(chosen));
   }
   state.mtg = {
     rid: meeting ? chosen : null, meeting, rows, err,
-    list: list.data ?? [], notRead: notRead.error ? [] : (notRead.data ?? []),
+    list: meetings, notRead: notRead.error ? [] : (notRead.data ?? []),
     rules: rules.error ? [] : (rules.data ?? []), reasons: reasons.error ? [] : (reasons.data ?? []), waiting,
     choice: keep ? keep.choice : {}, done: keep ? keep.done : new Map(), later: keep ? keep.later : new Set(),
     msgs: keep ? keep.msgs : new Map(), focus: keep ? keep.focus : null, notReadOpen: keep ? keep.notReadOpen : false,
@@ -3191,7 +3304,7 @@ function meetingHeader() {
   const msg = h("div", { class: "notice hidden" });
 
   const known = S.list.some((x) => x.recording_id === m.recording_id) ? S.list : [m, ...S.list];
-  const picker = h("select", { "aria-label": "Choose a read meeting" },
+  const picker = h("select", { "aria-label": "Choose a meeting" },
     ...known.map((x) => option(x.recording_id, `${fmtDate(x.held_at)} · ${scrubAddresses(x.title ?? "(untitled)")} · ${S.waiting.byRecording[x.recording_id] ?? 0} open`, x.recording_id === m.recording_id)));
   picker.addEventListener("change", () => { window.location.hash = meetingHash(picker.value); });
   const nextOpen = known.find((x) => x.recording_id !== m.recording_id && (S.waiting.byRecording[x.recording_id] ?? 0) > 0);
@@ -3433,11 +3546,34 @@ function meetingRow(r, card) {
   const S = state.mtg;
   const owner = meetingOwner();
   const c = choiceFor(r);
-  const conflict = r.kind === "fact" && (r.flags ?? []).includes("conflicts_with_person");
+  // Judged on the value the card would SEND (meetingOverrules): an edit can make a conflict with a
+  // person's value, or end one, and the label, the chip and the words follow it.
+  const overrulesNow = () => r.kind === "fact" && meetingOverrules(r, c.edit.changed ? c.edit.value : undefined);
+  let conflict = overrulesNow();
   const live = card.account_id ? state.reads.get(card.account_id) ?? null : null;
   const what = h("span", { class: "what" });
+  const overruleWord = h("span", null, conflict ? "overrule" : "");
+  const conflictChip = flagChipFor("conflicts_with_person");
+  const flagsShown = (r.flags ?? []).filter((f) => !(r.kind === "fact" && f === "conflicts_with_person"));
+  const chipsEl = h("div", { class: "chips" }, ...flagsShown.map(flagChipFor), r.kind === "fact" ? conflictChip : null);
+  let box = null, el = null;
+  const paint = () => {
+    show(conflictChip, conflict);
+    show(chipsEl, flagsShown.length > 0 || conflict);
+    overruleWord.textContent = conflict ? "overrule" : "";
+    if (box) box.setAttribute("aria-label", conflict ? "Overrule the person's value" : "Approve this row");
+    if (el) el.classList.toggle("conflict", conflict);
+  };
   const refresh = () => {
+    const now = overrulesNow();
+    if (now !== conflict) {
+      conflict = now;
+      // An edit that now replaces a person's value is never left ticked for you: tick overrule on purpose.
+      if (now && c.ticked === true) { c.ticked = false; if (box) box.checked = false; }
+      paint();
+    }
     what.textContent = meetingRowWords(r, {
+      overrules: r.kind === "fact" ? conflict : undefined,
       tiers: tierOrder(),
       engineTier: live ? (live.computed_tier ?? live.scorecard?.fit?.computed_tier ?? null) : undefined,
       effectiveTier: live ? (live.effective_tier ?? live.scorecard?.effective_tier ?? null) : undefined,
@@ -3455,10 +3591,10 @@ function meetingRow(r, card) {
   const tickable = r.kind === "fact" || r.kind === "read" || (r.kind === "override" && owner);
   let tickEl;
   if (tickable) {
-    const box = h("input", { type: "checkbox", checked: c.ticked === true, "aria-label": conflict ? "Overrule the person's value" : "Approve this row" });
+    box = h("input", { type: "checkbox", checked: c.ticked === true, "aria-label": conflict ? "Overrule the person's value" : "Approve this row" });
     box.addEventListener("change", () => { c.ticked = box.checked; });
     S.ticks.set(r.id, box);
-    tickEl = h("label", { class: "check" }, box, conflict ? "overrule" : null);
+    tickEl = h("label", { class: "check" }, box, overruleWord);
   } else {
     tickEl = chip(r.kind === "removal" ? (owner ? "never pre-ticked — its own button" : "the owner's decision") : "the owner's decision", r.kind === "removal" ? "c-bad" : "c-info");
   }
@@ -3467,15 +3603,16 @@ function meetingRow(r, card) {
   const ctx = contextLines(r.context, S.meeting?.speakers);
   const ctxEl = ctx.length ? h("details", null, h("summary", null, "context"),
     h("div", { class: "ctx" }, ...ctx.map((l) => h("div", { class: l.n >= r.line_from && l.n <= r.line_to ? "hit" : null }, `[${l.at}] ${l.who}: ${l.text}`)))) : null;
-  const el = h("div", { class: `mrow k-${r.kind}` + (conflict ? " conflict" : ""), "data-row": r.id, tabindex: "0" },
+  el = h("div", { class: `mrow k-${r.kind}` + (conflict ? " conflict" : ""), "data-row": r.id, tabindex: "0" },
     h("div", { class: "top" }, tickEl, what),
     h("blockquote", { class: "q" }, "“", scrubAddresses(r.quote), "”"),
     h("div", { class: "sub inline" },
       at ? h("a", { href: at, target: "_blank", rel: "noopener noreferrer" }, `▶ ${r.quote_at}`) : `▶ ${r.quote_at}`,
       h("span", null, speakerName(r.speaker)),
       ctxEl),
-    (r.flags ?? []).length ? h("div", { class: "chips" }, ...(r.flags ?? []).map(flagChipFor)) : null,
+    chipsEl,
     rowControls(r, c, refresh, card));
+  paint();
   S.rowEls.set(r.id, el);
   return el;
 }

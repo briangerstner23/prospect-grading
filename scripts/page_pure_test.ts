@@ -37,7 +37,7 @@ function sliceBlock(html: string): string {
 }
 
 const block = sliceBlock(page);
-const declared = [...block.matchAll(/^(?:function\s+([A-Za-z_$][\w$]*)|const\s+([A-Za-z_$][\w$]*)\s*=)/gm)].map((m) => m[1] ?? m[2]);
+const declared = [...block.matchAll(/^(?:(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|const\s+([A-Za-z_$][\w$]*)\s*=)/gm)].map((m) => m[1] ?? m[2]);
 if (!declared.length) throw new Error("page_pure: no declarations found inside the pure block");
 
 // deno-lint-ignore no-explicit-any
@@ -82,6 +82,7 @@ const {
   removalPair, removalEdit, cardItems, cardProblems, shortcutAction, decidedWords, meetingCounts, meetingCountWords,
   meetingsWaiting, pickMeeting, clockSecondsOf, fathomAt, meetingLengthWords, contextLines,
   MEETING_PERSON_SOURCES, meetingDefaultText, meetingSameValue, meetingLiveFlags, readTierWords,
+  MEETING_SCREEN_FLAGS, meetingPersonHeld, meetingLiveRow, meetingOverrules, meetingsMissing, meetingPickList, pagedRows,
 } = helpers;
 
 function run(): void {
@@ -543,6 +544,75 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     const live = { ...placed, flags: meetingLiveFlags(placed, { facts: [person(25)] }) };
     eq("a placed row that would overrule a person starts unticked", meetingStartsTicked(live), false);
     eq("…and ticked on purpose, it goes with overrule", cardItems([live], { p: { ticked: true } }, { lane: "owner" }), [{ id: "p", decision: "approve", overrule: true }]);
+
+    /* A tier call naming the engine's own tier with no override live: the reader would have written
+       it 'agrees', pb_decide_meeting_card refuses it ("changes nothing"), so the screen holds it back. */
+    eq("meetingLiveFlags: the computed tier with no override live → already_computed_tier",
+      meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }), ["already_computed_tier"]);
+    eq("meetingLiveFlags: …an effective tier not set is the computed one",
+      meetingLiveFlags(ov("gold"), { read: { computed_tier: "Gold", effective_tier: null } }), ["already_computed_tier"]);
+    eq("meetingLiveFlags: an override lapsed since the read turns contradicts_live_override into already_computed_tier",
+      meetingLiveFlags(ov("Silver", { flags: ["contradicts_live_override"] }), { read: { computed_tier: "Silver", effective_tier: "Silver" } }), ["already_computed_tier"]);
+    eq("meetingLiveFlags: a live override that already says it is no flag (the function records 'agrees')",
+      meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Silver", effective_tier: "Gold" } }), []);
+    {
+      // pb_decide_meeting_card's override branch, transcribed: no computed tier → refused; the tier the
+      // board shows AND the computed one → refused (changes nothing); the board's tier alone → agrees;
+      // the computed tier alone → an override that ends the live one. The flags say the same.
+      let mismatches = 0, cases = 0;
+      for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", null]) {
+        cases++;
+        const shown = eff ?? comp;
+        const refusedSame = comp !== null && t.toLowerCase() === String(shown).toLowerCase() && t.toLowerCase() === comp.toLowerCase();
+        const endsLive = comp !== null && t.toLowerCase() === comp.toLowerCase() && t.toLowerCase() !== String(shown).toLowerCase();
+        const f = meetingLiveFlags(ov(t), { read: comp === null && eff === null ? null : { computed_tier: comp, effective_tier: eff } });
+        if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== refusedSame || f.includes("contradicts_live_override") !== endsLive) {
+          mismatches++;
+          console.error(`      tier ${t}, computed ${comp}, effective ${eff}: ${safeJson(f)}`);
+        }
+      }
+      eq(`meetingLiveFlags agrees with pb_decide_meeting_card's override branch (${cases} cases)`, mismatches, 0);
+    }
+    const sameTier = { ...prow("s1", { kind: "override", key: null, value: null, tier: "Gold" }), flags: meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }) };
+    eq("meetingStartsTicked: a tier call the board already shows never starts ticked", meetingStartsTicked(sameTier), false);
+    eq("…though the reader's own rule would tick it (the flag is the screen's, not the reader's)", meetingDefaultTick(sameTier), true);
+    includes("cardProblems: ticked anyway, the screen refuses it before the database does",
+      cardProblems([sameTier], { s1: { ticked: true, edit: { text: "x", reason_code: "other" } } }, "owner").join(" "), "changes nothing");
+    eq("cardItems: left unticked, A rejects it with the rest of the card",
+      cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "s1", decision: "reject" }]);
+    includes("meetingRowWords: the tier call says the board already shows it", meetingRowWords(sameTier, { tiers: TIERS }), "the board already shows it");
+    check("meetingFlagWords names already_computed_tier in words", !meetingFlagWords("already_computed_tier").includes("_"));
+    eq("the screen's own flags are never the reader's", MEETING_SCREEN_FLAGS.filter((f: string) => BLOCKING_FLAGS.includes(f as never)), []);
+
+    /* The value a card SENDS is the one pb_decide_meeting_card compares, so an edit can make a conflict or end one. */
+    eq("meetingPersonHeld: a person's value", meetingPersonHeld(prow("h1"), [person(25)]), { value: 25, source: "rater" });
+    eq("meetingPersonHeld: a machine value is nobody's", meetingPersonHeld(prow("h2"), [person(25, "website")]), null);
+    eq("meetingPersonHeld: a person's inference is not their evidence", meetingPersonHeld(prow("h3"), [{ ...person(25), evidence_label: "inferred" }]), null);
+    eq("meetingPersonHeld: nothing held", meetingPersonHeld(prow("h4"), []), null);
+    eq("meetingPersonHeld: facts not loaded → cannot say", meetingPersonHeld(prow("h5"), undefined), undefined);
+    const lr = meetingLiveRow(placed, { facts: [person(25)] });
+    eq("meetingLiveRow: a placed row shows the book's value now, not the snapshot it was written without",
+      [lr.current_value, lr.current_source, lr.person_held, lr.flags], [25, "rater", { value: 25, source: "rater" }, ["conflicts_with_person"]]);
+    const lm = meetingLiveRow(prow("lm"), { facts: [person(25, "website")] });
+    eq("meetingLiveRow: a machine value is shown and held by nobody", [lm.current_value, lm.current_source, lm.person_held], [25, "website", null]);
+    eq("meetingLiveRow: facts not loaded → the row as written", "person_held" in meetingLiveRow(prow("ln", { current_value: 9 }), {}) ? "changed" : meetingLiveRow(prow("ln", { current_value: 9 }), {}).current_value, 9);
+    eq("meetingLiveRow: a decided row is left alone", meetingLiveRow(prow("ld", { status: "approved" }), { facts: [person(25)] }).current_value, null);
+    eq("meetingLiveRow: what words it prints for a placed row", meetingRowWords(lr), "headcount 40 · book: 25 from rater — a person recorded that; approving overrules them");
+    const agreeing = meetingLiveRow(prow("ag", { value: 25, matched_on: "person" }), { facts: [person(25)] });
+    eq("meetingOverrules: the meeting's own value, which the person holds too", meetingOverrules(agreeing, undefined), false);
+    eq("meetingOverrules: …edited on the card to something else, it now overrules them", meetingOverrules(agreeing, 40), true);
+    eq("meetingOverrules: a conflicting row edited to the person's value no longer does", meetingOverrules(lr, 25), false);
+    eq("meetingOverrules: no person holds the key", meetingOverrules(lm, 99), false);
+    eq("meetingOverrules: facts not loaded → the row's flag", [meetingOverrules(prow("u1", { flags: ["conflicts_with_person"] }), 7), meetingOverrules(prow("u2"), 7)], [true, false]);
+    eq("meetingOverrules: only a fact overrules", meetingOverrules(ov("Gold"), "Gold"), false);
+    eq("cardItems: an edit that now differs from a person's value goes with overrule",
+      cardItems([agreeing], { ag: { ticked: true, edit: { value: 40, changed: true } } }, { lane: "owner" }),
+      [{ id: "ag", decision: "approve", overrule: true, edit: { value: 40 } }]);
+    eq("cardItems: an edit to the person's own value needs none (the function records 'agrees')",
+      cardItems([lr], { p: { ticked: true, edit: { value: 25, changed: true } } }, { lane: "owner" }),
+      [{ id: "p", decision: "approve", edit: { value: 25 } }]);
+    includes("meetingRowWords: the words follow the edited value's conflict", meetingRowWords(agreeing, { value: 40, overrules: true }), "approving overrules them");
+    check("meetingRowWords: …and drop it when the edit ends one", !meetingRowWords(lr, { value: 25, overrules: false }).includes("overrules"));
   }
 
   /* -- readTierWords: rule 10 on one line -- */
@@ -810,6 +880,22 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     eq("pickMeeting: the newest with open cards", pickMeeting(list, { mid: 2, old: 1 }), "mid");
     eq("pickMeeting: else the newest read", pickMeeting(list, {}), "new");
     eq("pickMeeting: none read", pickMeeting([], {}), null);
+
+    /* Every meeting with an open card is reachable, however old: the reader works a backlog oldest first. */
+    eq("meetingsMissing: open cards on meetings the newest-read list does not hold",
+      meetingsMissing(list, { mid: 2, ancient: 1, older: 3, gone: 0 }), ["ancient", "older"]);
+    eq("meetingsMissing of nothing", meetingsMissing(null, null), []);
+    const newest = [
+      { recording_id: "n2", held_at: "2026-11-02T15:00:00Z" }, { recording_id: "n1", held_at: "2026-11-01T15:00:00Z" },
+    ];
+    const extra = [
+      { recording_id: "o1", held_at: "2026-09-01T15:00:00Z" }, { recording_id: "n1", held_at: "2026-11-01T15:00:00Z" },
+      { recording_id: "undated", held_at: null }, { recording_id: "o2", held_at: "2026-10-01T15:00:00Z" },
+    ];
+    const merged = meetingPickList(newest, extra);
+    eq("meetingPickList: the union, each once, newest first, an undated one last", merged.map((m: { recording_id: string }) => m.recording_id), ["n2", "n1", "o2", "o1", "undated"]);
+    eq("pickMeeting over it: an old meeting's open cards are the ones a bare #meetings opens", pickMeeting(merged, { o1: 4 }), "o1");
+    eq("meetingPickList of nothing", meetingPickList(null, undefined), []);
   }
   eq("clockSecondsOf", clockSecondsOf("00:31:07"), 1867);
   eq("clockSecondsOf of nonsense", clockSecondsOf("soon"), null);
@@ -843,6 +929,17 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     check(`the meeting screen calls ${fn}`, page.includes(`rpc("${fn}"`));
   }
   check("the meeting screen reads pb_meetings and pb_meeting_proposals", page.includes('from("pb_meetings")') && page.includes('from("pb_meeting_proposals")'));
+  // PostgREST cuts any answer at max-rows without a word, so the open proposals are read in pages, once, for both counts.
+  const openReads = [...page.matchAll(/from\("pb_meeting_proposals"\)\.select\([^)]*\)\.eq\("status", "proposed"\)[^\n]*/g)].map((m) => m[0]);
+  check("the open proposals are read in one place, a page at a time: an exact count, a unique order, a range, never .limit()",
+    openReads.length === 1 && openReads.every((x) => x.includes('{ count: "exact" }') && x.includes('.order("id")') && x.includes(".range(from, to)") && !x.includes(".limit(")) &&
+    page.includes("return pagedRows((from, to) => db.from(\"pb_meeting_proposals\")"), openReads);
+  check("…and both the roster's count and the review's picker use it",
+    page.includes("const { data, error } = await openMeetingProposals(state.db);") && page.includes("    openMeetingProposals(db),\n"));
+  check("the picker holds every meeting with an open card, not only the newest read ones",
+    page.includes("meetingsMissing(list.data ?? [], waiting.byRecording)") && page.includes("pickMeeting(meetings, waiting.byRecording)") && page.includes("list: meetings,"));
+  check("the open rows are shown as the book stands now, and a row's overrule follows the value as edited",
+    page.includes(': meetingLiveRow(r, {') && page.includes("meetingOverrules(r, c.edit.changed ? c.edit.value : undefined)"));
   check("the #meetings routes exist", page.includes("#meetings") && /\^#meetings\(\?:=/.test(page));
   check("no select ever asks for share_url (a capability link)", !/select\([^)]*share_url/.test(page));
   check("the screen never names who decided a row (an address)", !page.includes("decided_by"));
@@ -859,8 +956,52 @@ check("page never calls insertAdjacentHTML", !page.includes("insertAdjacentHTML"
 check("page never renders wallet / headroom / winnable_share as numbers", !/\b(p|potential)\.(wallet|headroom|winnable_share)\b/.test(page) && !/inputs\.(revenue_per_head|outsourceable_share)\b/.test(page));
 }
 
+/* ---- pagedRows: every open proposal, past PostgREST's max-rows ---- */
+async function pagedChecks(): Promise<void> {
+  // A fake PostgREST: `total` rows, at most `cap` per answer whatever range is asked, the exact count.
+  const server = (total: number, cap: number, opts: { failAt?: number; noCount?: boolean } = {}) => {
+    const rows = Array.from({ length: total }, (_, i) => ({ id: i }));
+    const calls: [number, number][] = [];
+    const page = async (from: number, to: number) => {
+      calls.push([from, to]);
+      if (opts.failAt !== undefined && calls.length === opts.failAt) return { data: null, error: { message: "boom" }, count: null };
+      return { data: rows.slice(from, Math.min(to + 1, from + cap)), error: null, count: opts.noCount ? null : total };
+    };
+    return { page, calls };
+  };
+  {
+    const s = server(2500, 1000);
+    const r = await pagedRows(s.page, 1000);
+    eq("pagedRows: 2,500 rows under a 1,000-row cap all arrive", r.data.length, 2500);
+    eq("pagedRows: in order, each once", r.data.every((x: { id: number }, i: number) => x.id === i), true);
+    eq("pagedRows: three pages, and no empty fourth (the count says when it is done)", s.calls, [[0, 999], [1000, 1999], [2000, 2999]]);
+  }
+  {
+    const s = server(1200, 500);
+    const r = await pagedRows(s.page, 1000);
+    eq("pagedRows: a max-rows smaller than the page still reads everything", r.data.length, 1200);
+    eq("pagedRows: …asking again from where each short answer stopped", s.calls.map((c) => c[0]), [0, 500, 1000]);
+  }
+  {
+    const s = server(0, 1000);
+    const r = await pagedRows(s.page, 1000);
+    eq("pagedRows: nothing open is one call and an empty list", [r.data, s.calls.length, r.error], [[], 1, null]);
+  }
+  {
+    const s = server(2500, 1000, { failAt: 2 });
+    const r = await pagedRows(s.page, 1000);
+    eq("pagedRows: an error on any page is the answer, never a short list", [r.data, r.error?.message], [null, "boom"]);
+  }
+  {
+    const s = server(1500, 1000, { noCount: true });
+    const r = await pagedRows(s.page);
+    eq("pagedRows: with no count, a short page is the last (default page of 1,000)", [r.data.length, s.calls.length], [1500, 2]);
+  }
+}
+
 try {
   run();
+  await pagedChecks();
 } catch (err) {
   // A helper that throws (a ReferenceError to a page global, say) is a failure, not a crash.
   failed++;
