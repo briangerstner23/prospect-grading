@@ -760,14 +760,23 @@ const MEETING_PERSON_SOURCES = ["rater", "sales_meeting"];
 /**
  * Flags only the SCREEN raises, from the book as it stands now. The reader never writes them (so
  * they are not in MEETING_BLOCKING_FLAGS, which mirrors meeting_claims), and each keeps a row from
- * starting ticked. already_computed_tier: a tier call naming the engine's own tier with no override
- * live — the reader would have written it as 'agrees', but it went out 'proposed' before the book
- * moved. It is not the person's to tick: A sends it as an approval with only_if_agrees, which
- * pb_decide_meeting_card records as 'agrees' and writes nothing for — and refuses the card if the
- * board has moved since. Never as a reject: a rejected newer word returns an older meeting's
- * contradicting call to the card (pb_meeting_supersede), and a status is the database's to set.
+ * starting ticked. Both mark a tier call naming the tier the board SHOWS — the reader would have
+ * written it as 'agrees', but it went out 'proposed' before the book moved, or was placed through
+ * "Who is this?" with no snapshot at all:
+ *   already_computed_tier  the engine's own tier, and the board shows it;
+ *   already_override_tier  a live override's tier, the engine's being another.
+ * Neither is the person's to tick: A sends it as an approval with only_if_agrees, which
+ * pb_decide_meeting_card records as 'agrees' and writes nothing for — whichever of the two put the
+ * tier on the board — and refuses the card if the board has moved since. Never as a reject: a
+ * rejected newer word returns an older meeting's contradicting call to the card
+ * (pb_meeting_supersede), and a status is the database's to set.
  */
-const MEETING_SCREEN_FLAGS = ["already_computed_tier"];
+const MEETING_SCREEN_FLAGS = ["already_computed_tier", "already_override_tier"];
+
+/** A tier call the board already shows (a MEETING_SCREEN_FLAGS flag): the decide function records it 'agrees'. */
+function meetingBoardShows(row) {
+  return !!row && row.kind === "override" && (row.flags ?? []).some((f) => MEETING_SCREEN_FLAGS.includes(f));
+}
 
 /**
  * keysFor('sales_meeting'): the only keys a meeting fact may carry and the only values each may
@@ -849,9 +858,11 @@ function meetingSameValue(a, b) {
  * pb_current_reads row (null when it has none) and its pb_current_facts rows. Either left undefined
  * keeps the stored flags it would have recomputed. The meeting's own flags (shared_segment,
  * historic, …) and upgrades_removal (the screen holds no removals) are kept as written. A tier call
- * naming the engine's tier is contradicts_live_override under a live override that shows another,
- * and the screen's own already_computed_tier with none (MEETING_SCREEN_FLAGS): the same two
- * branches pb_decide_meeting_card takes, one of which it refuses.
+ * naming the tier the board shows takes one of the screen's own flags (MEETING_SCREEN_FLAGS):
+ * already_computed_tier when that is the engine's tier, already_override_tier when a live override
+ * put it there — pb_decide_meeting_card records both 'agrees'. One naming the engine's tier while a
+ * live override shows another is contradicts_live_override, which the function writes as an
+ * override that ends the live one. Those are its branches, in its order.
  */
 function meetingLiveFlags(row, live) {
   const stored = Array.isArray(row?.flags) ? row.flags.slice() : [];
@@ -863,13 +874,15 @@ function meetingLiveFlags(row, live) {
     if (person && !meetingSameValue(person.value, row.value)) out.push("conflicts_with_person");
   }
   if (row.kind === "override" && live.read !== undefined) {
-    out = out.filter((f) => f !== "no_computed_tier" && f !== "contradicts_live_override" && f !== "already_computed_tier");
+    out = out.filter((f) => f !== "no_computed_tier" && f !== "contradicts_live_override" && !MEETING_SCREEN_FLAGS.includes(f));
     const comp = live.read?.computed_tier ?? null;
     if (!comp) out.push("no_computed_tier");
     const shown = live.read?.effective_tier ?? comp;
     const t = String(row.tier ?? "").toLowerCase();
-    if (comp && t && t === String(comp).toLowerCase()) {
-      out.push(t === String(shown ?? "").toLowerCase() ? "already_computed_tier" : "contradicts_live_override");
+    if (comp && t) {
+      const isComp = t === String(comp).toLowerCase();
+      if (t === String(shown ?? "").toLowerCase()) out.push(isComp ? "already_computed_tier" : "already_override_tier");
+      else if (isComp) out.push("contradicts_live_override");
     }
   }
   return [...new Set(out)].sort();
@@ -902,6 +915,32 @@ function meetingLiveRow(row, live) {
     out.person_held = meetingPersonHeld(row, live.facts);
   }
   return out;
+}
+
+/**
+ * The page's reads (account_id → pb_current_reads row, as loadBook left them) with the open rows'
+ * agencies read again: `ids` the accounts asked for, `rows` what pb_current_reads answered. An
+ * account asked for that came back with no row has no read now. A new Map; the old one is not
+ * touched. The meeting screen does this every time it opens — the 06:15 score or an override on a
+ * sheet moves the board under a tab left open, and a tier call checked against the board as it was
+ * when the page loaded is refused by the decide function every time, with no way to tick it.
+ */
+function mergeReads(cache, ids, rows) {
+  const out = new Map(cache && typeof cache.entries === "function" ? cache.entries() : []);
+  for (const id of Array.isArray(ids) ? ids : []) out.delete(id);
+  for (const r of Array.isArray(rows) ? rows : []) if (r && typeof r.account_id === "string") out.set(r.account_id, r);
+  return out;
+}
+
+/**
+ * The read meetingLiveFlags checks a placed row against: the account's row, null when it has none,
+ * and undefined — keep the flags it was written with — only when the book's reads never loaded and
+ * this account's was not read again just now (`fresh`, true when it was).
+ */
+function meetingReadOf(reads, id, fresh) {
+  const known = reads && typeof reads.has === "function";
+  if (known && reads.has(id)) return reads.get(id);
+  return fresh === true || (known && reads.size > 0) ? null : undefined;
 }
 
 /**
@@ -1078,6 +1117,14 @@ function meetingRowWords(row, ctx) {
   if (row.kind === "override") {
     if (agrees) return `Tier ${tierWords(row.tier)} — team agrees with the board`;
     const engine = c.engineTier !== undefined ? c.engineTier : row.engine_tier;
+    if (meetingBoardShows(row)) {
+      // It writes nothing, so no expiry, distance or reason applies — and a live override is not renewed.
+      const byOverride = (row.flags ?? []).includes("already_override_tier");
+      const lapses = c.liveOverrideUntil ? ` until ${dayMonthWords(c.liveOverrideUntil)}` : "";
+      const how = byOverride ? ` by a live override${lapses} (engine: ${engine ? tierWords(engine) : "no anticipated tier yet"})` : "";
+      return `Tier ${tierWords(row.tier)} · the board already shows it${how}; approving the card records that the team agrees and writes nothing`
+        + (byOverride ? " — it does not renew the override" : "");
+    }
     const until = c.expiresOn ? ` until ${dayMonthWords(c.expiresOn)}` : "";
     let s = `Tier → ${tierWords(row.tier)} (engine: ${engine ? tierWords(engine) : "no anticipated tier yet"})${until}`;
     const moved = tiersMoved(row.tier, engine, c.tiers);
@@ -1087,7 +1134,6 @@ function meetingRowWords(row, ctx) {
       const lapses = c.liveOverrideUntil ? ` until ${dayMonthWords(c.liveOverrideUntil)}` : "";
       s += ` · the board shows ${tierWords(shown)} by a live override${lapses}; approving ends it`;
     }
-    if ((row.flags ?? []).includes("already_computed_tier")) s += " · the board already shows it; approving the card records that the team agrees and writes nothing";
     return s;
   }
   if (row.kind === "removal") {
@@ -1129,7 +1175,8 @@ function meetingFlagWords(flag) {
     case "conflicts_with_person": return "a person recorded something else";
     case "no_computed_tier": return "no computed tier yet — the engine refuses an override until there is one";
     case "contradicts_live_override": return "the engine's own tier, while a live override shows another";
-    case "already_computed_tier": return "already the engine's tier, with no override live — recorded as agreeing with the board";
+    case "already_computed_tier": return "already the engine's tier, and the board shows it — recorded as agreeing with the board";
+    case "already_override_tier": return "already the tier a live override shows — recorded as agreeing with the board; the override is not renewed";
     case "upgrades_removal": return "off the board only as unqualified; the team said do not contact";
     default: return String(flag ?? "").replace(/_/g, " ");
   }
@@ -1223,9 +1270,10 @@ function cleanMeetingEdit(kind, e) {
  * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true,
  * because the person ticked a box that says so — judged on the value it SENDS, edited or not
  * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call the board
- * already shows (already_computed_tier) is neither ticked nor rejected: A approves it with
- * only_if_agrees and no edit, so it lands 'agrees', writes nothing, and keeps beating an older
- * meeting's word; X still rejects it with the rest, because there the person said so.
+ * already shows (meetingBoardShows: the engine's tier or a live override's) is neither ticked nor
+ * rejected: A approves it with only_if_agrees and no edit, so it lands 'agrees', writes nothing, and
+ * keeps beating an older meeting's word; X still rejects it with the rest, because there the person
+ * said so.
  */
 function cardItems(rows, choice, opts) {
   const o = opts && typeof opts === "object" ? opts : {};
@@ -1247,7 +1295,7 @@ function cardItems(rows, choice, opts) {
     }
     if (o.mode === "removal") continue;
     if (r.kind === "override" && !owner) continue;
-    if (r.kind === "override" && (r.flags ?? []).includes("already_computed_tier")) { items.push({ id: r.id, decision: "approve", only_if_agrees: true }); continue; }
+    if (meetingBoardShows(r)) { items.push({ id: r.id, decision: "approve", only_if_agrees: true }); continue; }
     if (c.ticked !== true) { items.push({ id: r.id, decision: "reject" }); continue; }
     const item = { id: r.id, decision: "approve" };
     const edit = cleanMeetingEdit(r.kind, c.edit);
@@ -1273,7 +1321,7 @@ function cardProblems(rows, choice, lane) {
     }
     // A tier call the board already shows is sent with only_if_agrees whatever its tick, and writes
     // nothing, so the reason and code a written override needs are not asked of it.
-    if (r.kind === "override" && lane === "owner" && c.ticked === true && !(r.flags ?? []).includes("already_computed_tier")) {
+    if (r.kind === "override" && lane === "owner" && c.ticked === true && !meetingBoardShows(r)) {
       if (!(typeof e.text === "string" && e.text.trim())) out.push("The tier call needs a written reason (rule 7).");
       if (!e.reason_code) out.push("The tier call needs a reason code.");
       if ((r.flags ?? []).includes("no_computed_tier")) out.push("The tier call cannot apply yet: the engine has no computed tier for this agency. Untick it.");
@@ -3153,7 +3201,7 @@ function basisChipFor(m) {
   return chip(BASIS_WORDS[m] ?? String(m), m === "person" || m === "learned" ? "c-good" : m === "name" || m === "alias" ? "c-info" : "c-warn");
 }
 function flagChipFor(f) {
-  const tone = ["conflicts_with_person", "no_computed_tier", "contradicts_live_override", "already_computed_tier", "upgrades_removal"].includes(f) ? "c-bad"
+  const tone = ["conflicts_with_person", "no_computed_tier", "contradicts_live_override", ...MEETING_SCREEN_FLAGS, "upgrades_removal"].includes(f) ? "c-bad"
     : f === "shared_segment" || f === "historic" ? "c-warn" : "c-info";
   return chip(meetingFlagWords(f), tone);
 }
@@ -3230,17 +3278,22 @@ async function openMeetings(rid) {
     rows = p.data ?? [];
     err = m.error || p.error || null;
     // The book as it stands NOW for the open rows' agencies: a row carries snapshots of the book at
-    // read time (none at all if nobody had placed it), and the decide function re-derives them.
+    // read time (none at all if nobody had placed it), and the decide function re-derives them. Their
+    // reads too, not only their facts: loadBook's are as old as the tab, and a tier call checked
+    // against a board the nightly score has since moved is refused on every A (mergeReads).
     const factKeys = [...new Set(rows.filter((r) => r.status === "proposed" && r.kind === "fact" && r.account_id).map((r) => r.key))];
     const factAccts = [...new Set(rows.filter((r) => r.status === "proposed" && r.kind === "fact" && r.account_id).map((r) => r.account_id))];
-    let facts;
-    if (factAccts.length) {
-      const f = await db.from("pb_current_facts").select("account_id,key,value,evidence_label,source").in("account_id", factAccts).in("key", factKeys);
-      if (window.location.hash !== startHash) return;
-      facts = f.error ? undefined : (f.data ?? []);
-    }
+    const openAccts = [...new Set(rows.filter((r) => r.status === "proposed" && r.account_id).map((r) => r.account_id))];
+    const [f, rd] = await Promise.all([
+      factAccts.length ? db.from("pb_current_facts").select("account_id,key,value,evidence_label,source").in("account_id", factAccts).in("key", factKeys) : null,
+      openAccts.length ? pagedRows((from, to) => db.from("pb_current_reads").select("*", { count: "exact" }).in("account_id", openAccts).order("account_id").range(from, to)) : null,
+    ]);
+    if (window.location.hash !== startHash) return;
+    const facts = f && !f.error ? (f.data ?? []) : undefined;
+    const readsFresh = !!rd && !rd.error;
+    if (readsFresh) state.reads = mergeReads(state.reads, openAccts, rd.data ?? []);
     rows = rows.map((r) => r.status !== "proposed" || !r.account_id ? r : meetingLiveRow(r, {
-      read: state.reads.has(r.account_id) ? state.reads.get(r.account_id) : (state.reads.size ? null : undefined),
+      read: meetingReadOf(state.reads, r.account_id, readsFresh),
       facts: facts ? facts.filter((x) => x.account_id === r.account_id) : undefined,
     }));
     // A bare #meetings names the meeting it opened, so a reload or a shared link lands on the same one.
@@ -3599,7 +3652,7 @@ function meetingRow(r, card) {
   refresh();
 
   // A tier call the board already shows is not the person's to tick (cardItems sends it as agreeing).
-  const agreesNow = r.kind === "override" && (r.flags ?? []).includes("already_computed_tier");
+  const agreesNow = meetingBoardShows(r);
   const tickable = r.kind === "fact" || r.kind === "read" || (r.kind === "override" && owner && !agreesNow);
   let tickEl;
   if (tickable) {
@@ -3647,8 +3700,11 @@ function rowControls(r, c, refresh, card) {
   const owner = meetingOwner();
   if (r.kind === "override") {
     if (!owner) return h("div", { class: "sub" }, "Approving a tier call is the owner's (rule 7). Approving this card leaves it waiting for the owner; Reject card rejects it.");
-    if ((r.flags ?? []).includes("already_computed_tier")) {
-      return h("div", { class: "sub" }, "The board already shows this tier. Approving the card records that the team agrees — no override is written, and an older meeting's different call stays closed. If the board has moved since this screen loaded, the card is refused; reload it. Reject card rejects it.");
+    if (meetingBoardShows(r)) {
+      const renew = (r.flags ?? []).includes("already_override_tier")
+        ? " A live override puts this tier on the board, and approving does not renew it: to change its expiry, set a new override on the agency's sheet."
+        : "";
+      return h("div", { class: "sub" }, "The board already shows this tier. Approving the card records that the team agrees — no override is written, and an older meeting's different call stays closed." + renew + " If the board has moved since this screen loaded, the card is refused and redrawn from the book as it stands; decide it again. Reject card rejects it.");
     }
     const d = overrideDefaults(r, state.rubric, todayIso());
     const codes = d.codes.length ? d.codes : reasonCodes();
@@ -3799,7 +3855,7 @@ function neighbourCard(key) {
   return keys[i + 1] ?? keys[i - 1] ?? null;
 }
 
-/** ONE pb_decide_meeting_card call for the card. A refusal shows the database's words and writes nothing. */
+/** ONE pb_decide_meeting_card call for the card. A refusal shows the database's words, writes nothing and redraws the card from the book now. */
 async function decideCard(card, mode, only) {
   const S = state.mtg;
   const lane = meetingOwner() ? "owner" : "rater";
@@ -3818,8 +3874,12 @@ async function decideCard(card, mode, only) {
   for (const b of buttons) b.disabled = true;
   const { data, error } = await state.db.rpc("pb_decide_meeting_card", { p_items: items, p_note: null });
   if (error) {
-    sayOnCard(card, "bad", "Refused — nothing on this card was written: " + error.message, errorDetail(error));
-    for (const b of buttons) b.disabled = false;
+    // The function decided against the book as it stands, so the card is redrawn from that book
+    // (openMeetings reads it again; the ticks and edits are kept): when the board has moved since the
+    // screen loaded, "reload it" has already happened and the row shows what it is now.
+    S.msgs.set(card.key, { kind: "bad", text: "Refused — nothing on this card was written: " + error.message + " The card is redrawn from the book as it stands now.", detail: errorDetail(error) });
+    S.focus = card.key;
+    await openMeetings(S.rid);
     return;
   }
   if (only) S.msgs.set(card.key, { kind: "ok", text: decidedWords(data) });

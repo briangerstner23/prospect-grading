@@ -83,6 +83,7 @@ const {
   meetingsWaiting, pickMeeting, clockSecondsOf, fathomAt, meetingLengthWords, contextLines,
   MEETING_PERSON_SOURCES, meetingDefaultText, meetingSameValue, meetingLiveFlags, readTierWords,
   MEETING_SCREEN_FLAGS, meetingPersonHeld, meetingLiveRow, meetingOverrules, meetingsMissing, meetingPickList, pagedRows,
+  meetingBoardShows, mergeReads, meetingReadOf,
 } = helpers;
 
 function run(): void {
@@ -554,21 +555,29 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       meetingLiveFlags(ov("gold"), { read: { computed_tier: "Gold", effective_tier: null } }), ["already_computed_tier"]);
     eq("meetingLiveFlags: an override lapsed since the read turns contradicts_live_override into already_computed_tier",
       meetingLiveFlags(ov("Silver", { flags: ["contradicts_live_override"] }), { read: { computed_tier: "Silver", effective_tier: "Silver" } }), ["already_computed_tier"]);
-    eq("meetingLiveFlags: a live override that already says it is no flag (the function records 'agrees')",
-      meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Silver", effective_tier: "Gold" } }), []);
+    eq("meetingLiveFlags: a live override that already says it → already_override_tier (the function records 'agrees')",
+      meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Silver", effective_tier: "Gold" } }), ["already_override_tier"]);
+    eq("meetingLiveFlags: an override set since the read turns an ordinary call into already_override_tier",
+      meetingLiveFlags(ov("Gold", { flags: ["shared_segment"] }), { read: { computed_tier: "Bronze", effective_tier: "Gold" } }), ["already_override_tier", "shared_segment"]);
     {
       // pb_decide_meeting_card's override branch, transcribed: no computed tier → refused; the tier the
       // board shows → agrees, whether the engine or a live override put it there (already_computed_tier
-      // marks the first, so the screen sends it with only_if_agrees); the computed tier alone → an
-      // override that ends the live one. The flags say the same.
+      // marks the first, already_override_tier the second, and the screen sends both with
+      // only_if_agrees); the computed tier alone → an override that ends the live one. The flags say the
+      // same, and a screen flag is raised EXACTLY when the function would record 'agrees'.
       let mismatches = 0, cases = 0;
-      for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", null]) {
+      for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", "Bronze", null]) {
         cases++;
         const shown = eff ?? comp;
-        const agreesSame = comp !== null && t.toLowerCase() === String(shown).toLowerCase() && t.toLowerCase() === comp.toLowerCase();
+        const agrees = comp !== null && t.toLowerCase() === String(shown).toLowerCase();
+        const agreesSame = agrees && t.toLowerCase() === comp.toLowerCase();
+        const agreesOverride = agrees && t.toLowerCase() !== comp.toLowerCase();
         const endsLive = comp !== null && t.toLowerCase() === comp.toLowerCase() && t.toLowerCase() !== String(shown).toLowerCase();
         const f = meetingLiveFlags(ov(t), { read: comp === null && eff === null ? null : { computed_tier: comp, effective_tier: eff } });
-        if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== agreesSame || f.includes("contradicts_live_override") !== endsLive) {
+        const row = { ...ov(t), flags: f };
+        if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== agreesSame
+            || f.includes("already_override_tier") !== agreesOverride || f.includes("contradicts_live_override") !== endsLive
+            || meetingBoardShows(row) !== agrees) {
           mismatches++;
           console.error(`      tier ${t}, computed ${comp}, effective ${eff}: ${safeJson(f)}`);
         }
@@ -598,7 +607,62 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     }
     includes("meetingRowWords: the tier call says the board already shows it", meetingRowWords(sameTier, { tiers: TIERS }), "the board already shows it");
     includes("meetingRowWords: …and that approving writes nothing", meetingRowWords(sameTier, { tiers: TIERS }), "writes nothing");
+    check("meetingRowWords: …and prints no expiry for it (nothing is written, so nothing expires)",
+      !meetingRowWords(sameTier, { tiers: TIERS, expiresOn: "2027-02-08", engineTier: "Gold" }).includes("until"));
     check("meetingFlagWords names already_computed_tier in words", !meetingFlagWords("already_computed_tier").includes("_"));
+    {
+      /* The same, when a LIVE OVERRIDE puts the call's tier on the board and the engine computes
+         another. Meeting 1 said Silver; meeting 2 said "X and Y are Gold" (shared_segment) and
+         superseded it; the owner has since overridden X to Gold. pb_decide_meeting_card records
+         meeting 2's Gold as 'agrees' — so the screen must not send it as a reject, which would hand
+         meeting 1's Silver back to its card, pre-ticked, where A writes an override ending the Gold one. */
+      const read = { computed_tier: "Bronze", effective_tier: "Gold" };
+      const p2 = { ...prow("p2", { kind: "override", key: null, value: null, tier: "Gold", flags: ["shared_segment"], recording_id: "rec-2" }), flags: meetingLiveFlags(ov("Gold", { flags: ["shared_segment"] }), { read }) };
+      eq("meetingBoardShows: a live override's tier is one the board shows", meetingBoardShows(p2), true);
+      eq("meetingStartsTicked: it never starts ticked", meetingStartsTicked(p2), false);
+      eq("cardItems (A, owner): unticked, it is approved with only_if_agrees — never a reject",
+        cardItems([p2], { p2: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "p2", decision: "approve", only_if_agrees: true }]);
+      eq("cardItems (A, owner): …and a stale tick with an expiry sends no edit (the function would ignore it and write nothing)",
+        cardItems([p2], { p2: { ticked: true, edit: { reason_code: "other", text: "x", expires_on: "2027-02-08" } } }, { mode: "approve", lane: "owner" }),
+        [{ id: "p2", decision: "approve", only_if_agrees: true }]);
+      eq("cardProblems: no reason or code is asked of it", cardProblems([p2], { p2: { ticked: true, edit: { text: "", reason_code: null } } }, "owner"), []);
+      eq("cardItems (X): the person rejects the card, so it rejects", cardItems([p2], { p2: { ticked: false } }, { mode: "reject", lane: "owner" }), [{ id: "p2", decision: "reject" }]);
+      const w = meetingRowWords(p2, { tiers: TIERS, engineTier: "Bronze", effectiveTier: "Gold", liveOverrideUntil: "2026-12-01", expiresOn: "2027-02-08" });
+      includes("meetingRowWords: it says a live override shows it", w, "the board already shows it by a live override until 1 Dec 2026");
+      includes("meetingRowWords: …that approving writes nothing", w, "writes nothing");
+      includes("meetingRowWords: …and does not renew the override", w, "does not renew the override");
+      check("meetingRowWords: …with no new expiry and no distance warning (no override is written)", !w.includes("8 Feb 2027") && !w.includes("moves") && !w.includes("will flag"), w);
+      check("meetingFlagWords names already_override_tier in words", !meetingFlagWords("already_override_tier").includes("_"));
+      // The engine's own tier under that override is still a real override that ends it.
+      eq("meetingLiveFlags: the engine's tier under that override is still contradicts_live_override",
+        meetingLiveFlags(ov("Bronze"), { read }), ["contradicts_live_override"]);
+    }
+    {
+      /* A tab left open across the 06:15 score: loadBook read X at computed Gold, so meeting 2's Gold
+         call showed as already_computed_tier, with no tick box and no controls, and A always sent it
+         with only_if_agrees. The score then computed Silver. pb_decide_meeting_card refused the card
+         ("reload it"), and every re-open rebuilt the same flag from the same page-load reads. The
+         screen now reads the open rows' reads again each time it opens (mergeReads). */
+      const day1 = new Map<string, unknown>([["acc-q", { account_id: "acc-q", computed_tier: "Gold", effective_tier: "Gold" }], ["acc-z", { account_id: "acc-z", computed_tier: "Bronze", effective_tier: "Bronze" }]]);
+      const day2 = mergeReads(day1, ["acc-q"], [{ account_id: "acc-q", computed_tier: "Silver", effective_tier: "Silver" }]);
+      eq("mergeReads: an open row's agency takes the read just read", day2.get("acc-q"), { account_id: "acc-q", computed_tier: "Silver", effective_tier: "Silver" });
+      eq("mergeReads: every other agency keeps the read it had", day2.get("acc-z"), { account_id: "acc-z", computed_tier: "Bronze", effective_tier: "Bronze" });
+      eq("mergeReads: …in a new Map, the old one untouched", [day2 !== day1, (day1.get("acc-q") as { computed_tier: string }).computed_tier], [true, "Gold"]);
+      eq("mergeReads: an agency asked for that came back with no read has none now",
+        mergeReads(day1, ["acc-q"], []).has("acc-q"), false);
+      eq("mergeReads: nothing read, nothing asked: the reads as they were", [...mergeReads(day1, [], null).keys()], ["acc-q", "acc-z"]);
+      eq("meetingReadOf: the account's read", meetingReadOf(day2, "acc-q", true), day2.get("acc-q"));
+      eq("meetingReadOf: no read, and the book's reads are loaded → none (no_computed_tier)", meetingReadOf(day2, "acc-n", false), null);
+      eq("meetingReadOf: no read, read again just now → none, even with no book loaded", meetingReadOf(new Map(), "acc-n", true), null);
+      eq("meetingReadOf: nothing loaded and nothing read again → cannot say (the stored flags stand)", meetingReadOf(new Map(), "acc-n", false), undefined);
+      const call = ov("Gold");
+      eq("day 1: the Gold call is one the board shows", meetingLiveFlags(call, { read: meetingReadOf(day1, "acc-q", true) }), ["already_computed_tier"]);
+      const now = { ...call, flags: meetingLiveFlags(call, { read: meetingReadOf(day2, "acc-q", true) }) };
+      eq("day 2, re-opened: it is an ordinary tier call again, with a tick box and the override's controls", [now.flags, meetingBoardShows(now)], [[], false]);
+      eq("…which A sends as the person decides it, not with only_if_agrees",
+        cardItems([now], { o: { ticked: true, edit: { reason_code: "other", text: "x", expires_on: "2027-02-08" } } }, { mode: "approve", lane: "owner" }),
+        [{ id: "o", decision: "approve", edit: { reason_code: "other", expires_at: "2027-02-08T00:00:00Z", text: "x" } }]);
+    }
     eq("the screen's own flags are never the reader's", MEETING_SCREEN_FLAGS.filter((f: string) => BLOCKING_FLAGS.includes(f as never)), []);
 
     /* The value a card SENDS is the one pb_decide_meeting_card compares, so an edit can make a conflict or end one. */
@@ -959,10 +1023,30 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
   const bookLoads = [...page.matchAll(/from\("(?:pb_accounts|pb_current_reads)"\)\.select\([^\n]*/g)].map((m) => m[0])
     .filter((x) => !/\.eq\("(?:id|merged_into)", id\)/.test(x));
   check("the book's accounts and current reads are read a page at a time: an exact count, a unique order, a range, never .limit()",
-    bookLoads.length === 2 &&
+    bookLoads.length === 3 &&
     bookLoads.every((x) => x.includes('{ count: "exact" }') && /\.order\("(?:id|account_id)"\)\.range\(from, to\)\)/.test(x) && !x.includes(".limit(")) &&
-    page.includes('pagedRows((from, to) => state.db.from("pb_accounts")') && page.includes('pagedRows((from, to) => state.db.from("pb_current_reads")'), bookLoads);
+    page.includes('pagedRows((from, to) => state.db.from("pb_accounts")') && page.includes('pagedRows((from, to) => state.db.from("pb_current_reads")') &&
+    page.includes('pagedRows((from, to) => db.from("pb_current_reads").select("*", { count: "exact" }).in("account_id", openAccts)'), bookLoads);
   check("…and the roster is put back in name order once every page is in", page.includes("state.accounts = (acc.data ?? []).sort((x, y) => String(x.name"));
+  // The meeting screen checks each open row against the book NOW: its facts AND its reads, read again
+  // every time it opens, and a refused card is redrawn from them (a board moved under an open tab).
+  {
+    const fnBody = (name: string, next: string) => {
+      const at = page.indexOf(name);
+      return at < 0 ? "" : page.slice(at, page.indexOf(next, at));
+    };
+    const om = fnBody("async function openMeetings(", "\nfunction drawMeetings(");
+    const merged = om.indexOf("state.reads = mergeReads(state.reads, openAccts, ");
+    check("openMeetings reads the open rows' agencies' reads again (pb_current_reads), not only their facts",
+      om.includes('db.from("pb_current_reads")') && om.includes('db.from("pb_current_facts")') && merged >= 0);
+    check("…merges them before it re-derives a single row's flags",
+      merged >= 0 && merged < om.indexOf("meetingLiveRow(r, {") && om.includes("read: meetingReadOf(state.reads, r.account_id, readsFresh),"));
+    check("…and never checks a row against the page-load reads directly", !/read:\s*state\.reads\.(?:has|get)\(/.test(om));
+    const dc = fnBody("async function decideCard(", "\n}\n");
+    const refused = dc.slice(dc.indexOf("if (error) {"), dc.indexOf("return;", dc.indexOf("if (error) {")));
+    check("a refused card keeps the database's words and is redrawn from the book as it stands",
+      refused.includes("S.msgs.set(card.key,") && refused.includes("error.message") && refused.includes("await openMeetings(S.rid);"), refused);
+  }
   check("the picker holds every meeting with an open card, not only the newest read ones",
     page.includes("meetingsMissing(list.data ?? [], waiting.byRecording)") && page.includes("pickMeeting(meetings, waiting.byRecording)") && page.includes("list: meetings,"));
   check("the open rows are shown as the book stands now, and a row's overrule follows the value as edited",

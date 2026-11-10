@@ -596,11 +596,17 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
     /v_agree\s*:=\s*coalesce\(\(v_item->>'only_if_agrees'\)::boolean,\s*false\)/.test(decide) &&
     /if\s+v_agree\s+and\s*\(v_dec\s*<>\s*'approve'\s+or\s+p\.kind\s*<>\s*'override'\)\s+then\s+raise/i.test(decide));
   {
-    const sameTier = prow("s1", { kind: "override", tier: "Gold", key: null, value: null, flags: ["already_computed_tier"] });
-    const items = P.cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "owner", reasons: REASONS });
-    check("the page sends a tier call the board already shows as an approval with only_if_agrees, never a reject",
-      JSON.stringify(items) === JSON.stringify([{ id: "s1", decision: "approve", only_if_agrees: true }]), JSON.stringify(items));
-    subset("…whose keys the function reads", items.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
+    // Both of the function's 'agrees' cases: the engine's tier with no override live, and a live
+    // override's tier with the engine at another. The page marks them with its two screen flags.
+    check("the page has a screen flag for each of the two ways the board can show a tier call's tier",
+      JSON.stringify([...P.MEETING_SCREEN_FLAGS].sort()) === JSON.stringify(["already_computed_tier", "already_override_tier"]));
+    for (const flag of P.MEETING_SCREEN_FLAGS as string[]) {
+      const sameTier = prow("s1", { kind: "override", tier: "Gold", key: null, value: null, flags: [flag, "shared_segment"] });
+      const items = P.cardItems([sameTier], { s1: { ticked: false } }, { mode: "approve", lane: "owner", reasons: REASONS });
+      check(`the page sends a tier call the board already shows (${flag}) as an approval with only_if_agrees, never a reject`,
+        JSON.stringify(items) === JSON.stringify([{ id: "s1", decision: "approve", only_if_agrees: true }]), JSON.stringify(items));
+      subset("…whose keys the function reads", items.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
+    }
   }
   check("…and any override while the account has no computed tier (no_computed_tier)", /if\s+v_ctier\s+is\s+null\s+then\s+raise\s+exception/i.test(ovBranch));
   const factBranch = branch("fact");

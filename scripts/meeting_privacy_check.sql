@@ -30,7 +30,8 @@
 --      agency since promoted can be rejected and not approved. A merge carries the merged record's
 --      proposals and learned names to the survivor, where the newer word wins. A newer meeting's tier
 --      call that the board has since come to show, decided as the page sends it, keeps the older
---      contradicting call closed. A merged record whose read carries a meeting override keeps that
+--      contradicting call closed — whether the engine's tier or a live override's put it there, and
+--      the live override is not renewed. A merged record whose read carries a meeting override keeps that
 --      read (pb_merge_accounts never moves reads) while the override row goes to the survivor.
 --   5. As `authenticated`: a hand insert cannot pose as a meeting fact; a rater reads the proposals,
 --      a viewer reads none of them; nobody updates them directly; an address outside WLIQ reads no
@@ -80,9 +81,10 @@ declare
   v_d       uuid;      -- a synthetic agency merged into v_b
   v_e       uuid;      -- a synthetic agency whose engine tier a newer meeting named (4n)
   v_f       uuid;      -- a synthetic agency with a meeting override, merged into v_b (4o, 6g)
+  v_g       uuid;      -- a synthetic agency a live override shows at a newer meeting's tier (4p)
   v_fq      text;      -- the written reason the owner typed from the meeting for v_f's override
   p_o1 uuid; p_n1 uuid; p_o2 uuid; p_n2 uuid; p_o3 uuid; p_m3 uuid; p_c1 uuid; p_c2 uuid; p_d1 uuid; p_b1 uuid;
-  p_eo uuid; p_en uuid; p_f1 uuid;
+  p_eo uuid; p_en uuid; p_f1 uuid; p_go uuid; p_gn uuid;
   v_note    text;
   q         text[];
   v_r       jsonb;
@@ -669,6 +671,52 @@ begin
   end if;
   if exists (select 1 from public.pb_register g where g.account_id = v_e and g.kind = 'override') then
     raise exception 'HARNESS 4n: a tier call the board already shows wrote an override';
+  end if;
+
+  -- The same when a LIVE OVERRIDE puts the newer call's tier on the board and the engine computes
+  -- another. An older meeting calls v_g v_ctier; this meeting calls it v_tier, which supersedes it;
+  -- the owner has since overridden v_g to v_tier. Decided as the page sends it (approve,
+  -- only_if_agrees), the newer call records 'agrees', writes no override (the live one is not
+  -- renewed) and keeps the older call closed. Sent as a reject, the older call would have reopened
+  -- and, approved, written an override ending the live one on a word the newer meeting contradicted.
+  insert into public.pb_accounts (key, name, book)
+  values ('harness-g:' || v_marker, 'Harness account g ' || v_marker, 'prospect') returning id into v_g;
+  insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, run_at, as_of, status, effective_tier,
+                               computed_tier, reason, scorecard, scorecard_sha256)
+  values (v_g, 'harness', 'harness', clock_timestamp(), current_date, 'Overridden', v_tier, v_ctier,
+          'Overridden by the owner (relationship_known). Harness read.',
+          jsonb_build_object('trace', jsonb_build_object('tier_reasoning', 'harness', 'notes', '[]'::jsonb)), 'harness');
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
+     line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
+  values (v_old, v_g, array['harness k'], 'harness k', 'resolved', 'name', 'override', v_ctier, 'relationship_known',
+          'harness quote twenty-five ' || v_marker, 32, 32, '00:05:00', 'S1', 'asserted', current_date - 3,
+          'Tier call made in the harness meeting.', 'harness', 'h24:' || v_marker, 'proposed')
+  returning id into p_go;
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
+     line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
+  values (v_rec, v_g, array['harness k'], 'harness k', 'resolved', 'name', 'override', v_tier, 'relationship_known',
+          'harness quote twenty-six ' || v_marker, 33, 33, '00:05:10', 'S1', 'asserted', current_date,
+          'Tier call made in the harness meeting.', 'harness', 'h25:' || v_marker, 'proposed')
+  returning id into p_gn;
+  perform public.pb_meeting_supersede(v_rec);
+  if (select status || '/' || coalesce(superseded_by::text, '') from public.pb_meeting_proposals where id = p_go)
+     is distinct from 'superseded/' || p_gn then
+    raise exception 'HARNESS 4p: the newer meeting''s tier call did not supersede the older one';
+  end if;
+  v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_gn, 'decision', 'approve',
+           'only_if_agrees', true)));
+  if (v_r->>'agrees')::int <> 1 or (v_r->>'overrides')::int <> 0
+     or (select status from public.pb_meeting_proposals where id = p_gn) <> 'agrees' then
+    raise exception 'HARNESS 4p: a newer call naming a live override''s tier was not recorded as agreeing (%)', v_r;
+  end if;
+  if (select status || '/' || coalesce(superseded_by::text, '') from public.pb_meeting_proposals where id = p_go)
+     is distinct from 'superseded/' || p_gn then
+    raise exception 'HARNESS 4p: deciding the newer card reopened the older meeting''s call against the live override';
+  end if;
+  if exists (select 1 from public.pb_register g where g.account_id = v_g and g.kind = 'override') then
+    raise exception 'HARNESS 4p: a tier call a live override already shows wrote (or renewed) an override';
   end if;
 
   -- A merged record keeps its last read for good — pb_merge_accounts never moves reads, and pb-score

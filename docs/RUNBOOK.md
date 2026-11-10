@@ -2763,16 +2763,22 @@ so the row names the meeting's date and the line and points at the proposal; the
 reason is the same, and a person who wants the words in it types them. That typed reason is why
 `pb_removed()` and `pb_removal()` answer a WLIQ address only, as pb_register's own policy does.
 
-The screen shows each open row against the book as it stands when the screen loads, not as the row
-was written: a row placed through "Who is this?" was written with no snapshot at all, and any row's
-can be stale. So the book's value on a fact's key, a person's value it would overrule, and the engine
-and board tiers for a tier call are read again, and the decide function's own refusals are kept off
-the card before it is sent. A tier call naming the tier the board already shows is recorded `agrees`
-by the function and writes nothing, whether it is the engine's tier with no override live or a live
-override's. On screen the first is flagged "already the engine's tier" and carries no tick box, and A
-sends it as an approval with `only_if_agrees` — never as a reject, because a rejected newer word
-returns an older meeting's contradicting call to the card; if the board has moved since the screen
-loaded, the function refuses the card rather than write an override nobody chose. X still rejects
+The screen shows each open row against the book as it stands when the screen opens the meeting, not
+as the row was written: a row placed through "Who is this?" was written with no snapshot at all, and
+any row's can be stale. So the book's value on a fact's key, a person's value it would overrule, and
+the engine and board tiers for a tier call are read again — the open rows' facts AND their reads,
+every time the meeting is opened and after every decision, never only the reads the page loaded with,
+which are as old as the tab — and the decide function's own refusals are kept off the card before it
+is sent. A tier call naming the tier the board already shows is recorded `agrees` by the function and
+writes nothing, whether it is the engine's tier with no override live or a live override's. On screen
+both are flagged — "already the engine's tier" (`already_computed_tier`) and "already the tier a live
+override shows" (`already_override_tier`) — and carry no tick box and no override controls: nothing is
+written, so no reason, code or expiry is asked, and approving does not renew a live override (a new
+expiry is set from the agency's sheet). A sends either as an approval with `only_if_agrees` — never
+as a reject, because a rejected newer word returns an older meeting's contradicting call to the card;
+if the board has moved since the screen opened, the function refuses the card rather than write an
+override nobody chose, and the screen redraws the card from the book as it stands (any refusal does,
+keeping the ticks and edits), so the row shows what it is now. X still rejects
 it. A fact edited on its card is checked against a person's value as
 edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
 own value goes as `agrees`. Every meeting holding an open card is in the picker however old (the
