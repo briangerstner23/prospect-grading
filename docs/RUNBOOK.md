@@ -2753,8 +2753,9 @@ owner's; a removal is never pre-ticked and never expires. Facts and overrides mo
 next 06:15 score; a removal leaves the board at once.
 
 "The board already says it" (`agrees`) means what the board SHOWS: a tier call agrees only with the
-effective tier, so the engine's own tier named while a live override shows another stays open,
-flagged `contradicts_live_override` (approving it ends the override); and a live removal covers a
+effective tier, so ANY other tier named while a live override shows one — the engine's own or a third
+— stays open, flagged `contradicts_live_override` and never pre-ticked, because approving writes a
+newer override and the engine applies the newest, which ends the person's; and a live removal covers a
 meeting's removal only when it is as firm — a live `do_not_contact` covers anything, a live
 `unqualified` does not cover a do-not-contact, which stays open flagged `upgrades_removal` and, once
 approved, becomes the removal pb_removals shows (rule 7a). No register row a decision writes carries
@@ -2778,20 +2779,31 @@ expiry is set from the agency's sheet). A sends either as an approval with `only
 as a reject, because a rejected newer word returns an older meeting's contradicting call to the card;
 if the board has moved since the screen opened, the function refuses the card rather than write an
 override nobody chose, and the screen redraws the card from the book as it stands (any refusal does,
-keeping the edits), so the row shows what it is now. X still rejects
+keeping the edits), so the row shows what it is now. The board the function checks is the last
+score's read, and an override takes effect only at the next score, so it never takes a tier call as
+agreeing once pb_register has moved past that read — an override on the agency written, or lapsed,
+since the score began: an `only_if_agrees` approval is then refused with words saying the tier
+changes at the 06:15 UTC score (the whole card waits until after it — press Later), and a call a
+person ticked is written as an override, which the board then shows whatever the register held. The
+reader does not make that check: it never names pb_register (DECISIONS §65), so a meeting read in that window
+can still write a tier call `agrees` against the stale read with nobody asked — an open item for the
+owner, not a rule. X still rejects
 it. A tick survives a redraw only while the question its box asks is unchanged (`meetingTick`): when
-the redraw moves it — a person recorded a value on the key, the board moved under a tier call, a flag
-came or went — a box nobody touched starts as a fresh screen would start it, and a box the person
-ticked stays ticked only where that fresh start is ticked too; an untick the person made always
-stands. So a tier call that showed as the board's own tier and no longer does is ticked exactly as a
-reload would tick it, never rejected on a box no one could see, and a fact ticked before a person
+the redraw moves it — a person recorded a value on the key, the board moved under a tier call (its
+engine or shown tier changed, or a flag came or went) — a box nobody touched starts as a fresh screen
+would start it, and a box the person ticked is ticked exactly where that fresh start is ticked,
+however often the screen unticked or hid it in between (the person's own answer is kept apart from
+the drawn tick); an untick the person made always stands. So a tier call that showed as the board's
+own tier and no longer does is ticked exactly as a reload would tick it, never rejected on a box no
+one could see, and a fact ticked before a person
 recorded another value comes back unticked, labelled "overrule": `overrule` is only ever sent for a
 box a person ticked themselves with that conflict on the row. The refusal's words stay on the card
 even when the redraw finds it decided by somebody else meanwhile (a one-line card), or go to the top
 of the screen when the card is gone; they are shown on that draw and never kept for a later one. A
 fact edited on its card is checked against a person's value as
 edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
-own value goes as `agrees`. Every meeting holding an open card is in the picker however old (the
+own value goes as `agrees`. A card takes one decision at a time: a second A or X (or a held key)
+while the first is still in flight does nothing. Every meeting holding an open card is in the picker however old (the
 reader works a backlog oldest first), and the open proposals behind the roster's count and the
 picker are read a page at a time with an exact count, so PostgREST's max-rows cannot cut them short —
 as are the book's accounts and current reads the screen's checks rest on, since both now outnumber

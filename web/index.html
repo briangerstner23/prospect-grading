@@ -860,9 +860,10 @@ function meetingSameValue(a, b) {
  * historic, …) and upgrades_removal (the screen holds no removals) are kept as written. A tier call
  * naming the tier the board shows takes one of the screen's own flags (MEETING_SCREEN_FLAGS):
  * already_computed_tier when that is the engine's tier, already_override_tier when a live override
- * put it there — pb_decide_meeting_card records both 'agrees'. One naming the engine's tier while a
- * live override shows another is contradicts_live_override, which the function writes as an
- * override that ends the live one. Those are its branches, in its order.
+ * put it there — pb_decide_meeting_card records both 'agrees'. One naming ANY other tier while a
+ * live override shows one — the engine's own, or a third — is contradicts_live_override: the
+ * function writes it as a newer override, which ends the live one (the engine applies the newest),
+ * so it never starts ticked and its words say so. Those are its branches, in its order.
  */
 function meetingLiveFlags(row, live) {
   const stored = Array.isArray(row?.flags) ? row.flags.slice() : [];
@@ -881,8 +882,9 @@ function meetingLiveFlags(row, live) {
     const t = String(row.tier ?? "").toLowerCase();
     if (comp && t) {
       const isComp = t === String(comp).toLowerCase();
+      const byOverride = String(shown ?? "").toLowerCase() !== String(comp).toLowerCase();
       if (t === String(shown ?? "").toLowerCase()) out.push(isComp ? "already_computed_tier" : "already_override_tier");
-      else if (isComp) out.push("contradicts_live_override");
+      else if (byOverride) out.push("contradicts_live_override");
     }
   }
   return [...new Set(out)].sort();
@@ -903,11 +905,17 @@ function meetingPersonHeld(row, facts) {
  * An open placed row as the screen shows it: flags re-derived (meetingLiveFlags) and, for a fact,
  * the book's value as it stands now. A row nobody had placed was written with no snapshot at all
  * ("book: nothing on record" whatever the book holds), and any snapshot can be stale. person_held
- * (meetingPersonHeld) stays on the row so an edit on the card can be checked against it.
+ * (meetingPersonHeld) stays on the row so an edit on the card can be checked against it. A tier
+ * call takes the board's tiers as they stand now (engine_tier, effective_tier), which its tick's
+ * basis reads: a board that moves under a ticked tier call asks the box a new question.
  */
 function meetingLiveRow(row, live) {
   if (!row || row.status !== "proposed" || typeof row.account_id !== "string" || !row.account_id) return row;
   const out = { ...row, flags: meetingLiveFlags(row, live) };
+  if (row.kind === "override" && live && typeof live === "object" && live.read !== undefined) {
+    out.engine_tier = live.read?.computed_tier ?? null;
+    out.effective_tier = live.read?.effective_tier ?? null;
+  }
   if (row.kind === "fact" && live && Array.isArray(live.facts)) {
     const held = live.facts.find((f) => f && f.account_id === row.account_id && f.key === row.key) ?? null;
     out.current_value = held ? held.value ?? null : null;
@@ -1009,9 +1017,11 @@ function meetingSentValue(row, c) {
 
 /**
  * What a row's tick MEANS, as one string: where the row sits and how it was placed, its flags as the
- * screen re-derived them, the person's value on a fact's key, and whether the value the card would
- * send overrules it. Two draws that give the same string ask the same question of the box; null when
- * the row cannot be put into words, which never matches anything.
+ * screen re-derived them, the person's value on a fact's key, whether the value the card would send
+ * overrules it, and — for a tier call — the engine's tier and the tier the board shows (meetingLiveRow
+ * sets both from the book now), since the words on the row name them. Two draws that give the same
+ * string ask the same question of the box; null when the row cannot be put into words, which never
+ * matches anything.
  */
 function meetingTickBasis(row, c) {
   if (!row || typeof row !== "object") return null;
@@ -1022,6 +1032,7 @@ function meetingTickBasis(row, c) {
       (Array.isArray(row.flags) ? row.flags.map(String) : []).sort(),
       held === undefined ? "unknown" : held === null ? null : [held.value ?? null, held.source ?? null],
       meetingOverrules(row, meetingSentValue(row, c)),
+      row.kind === "override" ? [row.engine_tier ?? null, row.effective_tier ?? null] : null,
     ]);
   } catch {
     return null;
@@ -1030,22 +1041,25 @@ function meetingTickBasis(row, c) {
 
 /**
  * The tick a row is drawn with, judged again whenever what the tick means has moved. `c` is the
- * screen's working choice for the row: { ticked, touched, basis, edit } — touched once the person set
- * the box themselves, basis the meetingTickBasis its tick was last set under. While the basis holds
- * the tick is kept as it is, so a refusal on other grounds keeps the person's ticks. Once it moves —
- * a person recorded a value on the key since, the board moved under a tier call, a flag came or went —
- * the old tick no longer answers the question the box now asks: a box nobody touched takes the tick a
- * fresh screen would give it (meetingStartsTicked, and never one that overrules a person), and a box
- * the person ticked stays ticked only where that fresh tick would be ticked too. An untick the person
- * made always stands. So a tick that would overrule a person, or end a live override, is only ever one
- * a person made with those words on the row. Returns { ticked, basis }; the caller keeps both.
+ * screen's working choice for the row: { ticked, touched, mine, basis, edit } — ticked the box as
+ * drawn; touched once the person set the box themselves, and mine what they last set it to (only the
+ * box's change handler writes either, so a false the SCREEN drew is never taken for the person's
+ * untick); basis the meetingTickBasis its tick was last set under. While the basis holds the tick is
+ * kept as it is, so a refusal on other grounds keeps the person's ticks. Once it moves — a person
+ * recorded a value on the key since, the board moved under a tier call, a flag came or went — the old
+ * tick no longer answers the question the box now asks: a box nobody touched takes the tick a fresh
+ * screen would give it (meetingStartsTicked, and never one that overrules a person), and a box the
+ * person ticked is ticked exactly where that fresh tick would be ticked too — however often the screen
+ * unticked or hid it in between. An untick the person made always stands. So a tick that would
+ * overrule a person, or end a live override, is only ever one a person made with those words on the
+ * row. Returns { ticked, basis }; the caller keeps both, and never writes `mine`.
  */
 function meetingTick(row, c) {
   const prev = c && typeof c === "object" ? c : {};
   const basis = meetingTickBasis(row, prev);
   if (basis !== null && prev.basis === basis) return { ticked: prev.ticked === true, basis };
   const fresh = meetingStartsTicked(row) && !meetingOverrules(row, meetingSentValue(row, prev));
-  return { ticked: prev.touched === true ? prev.ticked === true && fresh : fresh, basis };
+  return { ticked: prev.touched === true ? prev.mine === true && fresh : fresh, basis };
 }
 
 /**
@@ -1246,7 +1260,7 @@ function meetingFlagWords(flag) {
     case "historic": return `said more than ${MEETING_HISTORIC_DAYS} days before it was read`;
     case "conflicts_with_person": return "a person recorded something else";
     case "no_computed_tier": return "no computed tier yet — the engine refuses an override until there is one";
-    case "contradicts_live_override": return "the engine's own tier, while a live override shows another";
+    case "contradicts_live_override": return "a live override shows another tier — approving ends it";
     case "already_computed_tier": return "already the engine's tier, and the board shows it — recorded as agreeing with the board";
     case "already_override_tier": return "already the tier a live override shows — recorded as agreeing with the board; the override is not renewed";
     case "upgrades_removal": return "off the board only as unqualified; the team said do not contact";
@@ -1335,11 +1349,12 @@ function cleanMeetingEdit(kind, e) {
  *   mode 'reject'  (X)   every open row rejects;
  *   mode 'removal'       the removal alone, from its own [Remove now] button.
  *
- * `choice` is { [id]: { ticked, touched, chosen, edit } } as the screen holds it (touched: the person
- * set the box themselves; meetingTick keeps a tick honest across redraws). A removal is approved only
- * when the owner CHOSE it here — clicked a disposition or [Remove now]; a pair the model proposed is
- * a suggestion, never a choice — and its edit never carries expires_at. On the rater lane, approving
- * a tier call or a removal is not theirs (rules 7, 7a), so A leaves those rows waiting for the owner
+ * `choice` is { [id]: { ticked, touched, mine, chosen, edit } } as the screen holds it (touched: the
+ * person set the box themselves, mine: to what; meetingTick keeps a tick honest across redraws). A
+ * removal is approved only when the owner CHOSE it here — clicked a disposition or [Remove now]; a
+ * pair the model proposed is a suggestion, never a choice — and its edit never carries expires_at.
+ * On the rater lane, approving a tier call or a removal is not theirs (rules 7, 7a), so A leaves those
+ * rows waiting for the owner
  * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true
  * only because the person ticked a box that says so (touched) — judged on the value it SENDS, edited or not
  * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call the board
@@ -1408,11 +1423,18 @@ function cardProblems(rows, choice, lane) {
 
 /**
  * A key press on the review screen → what it means, or null to leave the browser alone. `ev` is
- * { key, zone: 'strip' | 'card' | 'page', typing, mod, onButton, onControl }. Typing in a field and
- * any modifier always mean nothing. There is no meeting-wide approve-all: A acts on one card.
+ * { key, zone: 'strip' | 'card' | 'page', typing, mod, onButton, onControl, repeat }. Typing in a
+ * field and any modifier always mean nothing. There is no meeting-wide approve-all: A acts on one
+ * card. A held key repeats only J and K: a repeated A or X would send the card again while the first
+ * press is still in flight, and a repeated Space would flip the box back and forth.
  */
 function shortcutAction(ev) {
   const e = ev && typeof ev === "object" ? ev : {};
+  const act = shortcutKeyAction(e);
+  return e.repeat === true && act !== "next" && act !== "prev" ? null : act;
+}
+
+function shortcutKeyAction(e) {
   if (e.typing || e.mod) return null;
   const k = typeof e.key === "string" ? e.key : "";
   const low = k.length === 1 ? k.toLowerCase() : k;
@@ -3290,7 +3312,7 @@ const quoted = (said) => (said ?? []).map((s) => `“${scrubAddresses(s)}”`).j
 function choiceFor(r) {
   const S = state.mtg;
   if (!S.choice[r.id]) {
-    const c = { ticked: false, touched: false, basis: null, chosen: false, edit: {} };
+    const c = { ticked: false, touched: false, mine: false, basis: null, chosen: false, edit: {} };
     if (r.kind === "override") {
       const d = overrideDefaults(r, state.rubric, todayIso());
       c.edit = { reason_code: d.reason_code ?? (reasonCodes().includes(MEETING_DEFAULT_OVERRIDE_CODE) ? MEETING_DEFAULT_OVERRIDE_CODE : null), expires_on: d.expires_on, text: d.text };
@@ -3385,6 +3407,7 @@ async function openMeetings(rid) {
     list: meetings, notRead: notRead.error ? [] : (notRead.data ?? []),
     rules: rules.error ? [] : (rules.data ?? []), reasons: reasons.error ? [] : (reasons.data ?? []), waiting,
     choice: keep ? keep.choice : {}, done: keep ? keep.done : new Map(), later: keep ? keep.later : new Set(),
+    deciding: keep ? keep.deciding : new Set(),
     msgs: keep ? keep.msgs : new Map(), focus: keep ? keep.focus : null, notReadOpen: keep ? keep.notReadOpen : false,
     cards: [], unplaced: [], els: new Map(), rowEls: new Map(), ticks: new Map(), msgEls: new Map(),
   };
@@ -3748,7 +3771,7 @@ function meetingRow(r, card) {
   let tickEl;
   if (tickable) {
     box = h("input", { type: "checkbox", checked: c.ticked === true, "aria-label": conflict ? "Overrule the person's value" : "Approve this row" });
-    box.addEventListener("change", () => { c.ticked = box.checked; c.touched = true; c.basis = meetingTickBasis(r, c); });
+    box.addEventListener("change", () => { c.ticked = box.checked; c.mine = box.checked; c.touched = true; c.basis = meetingTickBasis(r, c); });
     S.ticks.set(r.id, box);
     tickEl = h("label", { class: "check" }, box, overruleWord);
   } else if (agreesNow && owner) {
@@ -3946,9 +3969,15 @@ function neighbourCard(key) {
   return keys[i + 1] ?? keys[i - 1] ?? null;
 }
 
-/** ONE pb_decide_meeting_card call for the card. A refusal shows the database's words, writes nothing and redraws the card from the book now. */
+/**
+ * ONE pb_decide_meeting_card call for the card. A refusal shows the database's words, writes nothing
+ * and redraws the card from the book now. One decision per card at a time: a second A or X while the
+ * first is still in flight (the buttons are disabled, the keys are not) does nothing, or its refusal
+ * ("only an open proposal is decided") would land on the card the first press just decided.
+ */
 async function decideCard(card, mode, only) {
   const S = state.mtg;
+  if (S.deciding.has(card.key)) return;
   const lane = meetingOwner() ? "owner" : "rater";
   const scope = only ? card.open.filter((r) => r.id === only) : card.open;
   for (const r of scope) choiceFor(r);
@@ -3963,27 +3992,33 @@ async function decideCard(card, mode, only) {
   }
   const buttons = [...(S.els.get(card.key)?.querySelectorAll("button") ?? [])];
   for (const b of buttons) b.disabled = true;
-  const { data, error } = await state.db.rpc("pb_decide_meeting_card", { p_items: items, p_note: null });
-  if (error) {
-    // The function decided against the book as it stands, so the card is redrawn from that book
-    // (openMeetings reads it again; the edits are kept, and each tick is judged again by meetingTick, so
-    // a box whose question moved is never answered by the old tick): when the board has moved since the
-    // screen loaded, "reload it" has already happened and the row shows what it is now. The words are
-    // shown on that draw wherever the card lands, decided by somebody else meanwhile included.
-    S.msgs.set(card.key, { kind: "bad", text: "Refused — nothing on this card was written: " + error.message + " The card is redrawn from the book as it stands now.", detail: errorDetail(error) });
-    S.focus = card.key;
+  // Held until the redraw is in: the Set is the one every kept state shares (openMeetings).
+  S.deciding.add(card.key);
+  try {
+    const { data, error } = await state.db.rpc("pb_decide_meeting_card", { p_items: items, p_note: null });
+    if (error) {
+      // The function decided against the book as it stands, so the card is redrawn from that book
+      // (openMeetings reads it again; the edits are kept, and each tick is judged again by meetingTick, so
+      // a box whose question moved is never answered by the old tick): when the board has moved since the
+      // screen loaded, "reload it" has already happened and the row shows what it is now. The words are
+      // shown on that draw wherever the card lands, decided by somebody else meanwhile included.
+      S.msgs.set(card.key, { kind: "bad", text: "Refused — nothing on this card was written: " + error.message + " The card is redrawn from the book as it stands now.", detail: errorDetail(error) });
+      S.focus = card.key;
+      await openMeetings(S.rid);
+      return;
+    }
+    if (only) S.msgs.set(card.key, { kind: "ok", text: decidedWords(data) });
+    else {
+      S.done.set(card.key, decidedWords(data));
+      S.focus = neighbourCard(card.key);
+    }
+    S.later.delete(card.key);
+    const { data: cands, error: candErr } = await state.db.from("pb_fact_candidates").select("account_id,conflicts").eq("status", "proposed");
+    if (!candErr) setPending(cands ?? []); // approving a fact closes the machine claims on its key
     await openMeetings(S.rid);
-    return;
+  } finally {
+    S.deciding.delete(card.key);
   }
-  if (only) S.msgs.set(card.key, { kind: "ok", text: decidedWords(data) });
-  else {
-    S.done.set(card.key, decidedWords(data));
-    S.focus = neighbourCard(card.key);
-  }
-  S.later.delete(card.key);
-  const { data: cands, error: candErr } = await state.db.from("pb_fact_candidates").select("account_id,conflicts").eq("status", "proposed");
-  if (!candErr) setPending(cands ?? []); // approving a fact closes the machine claims on its key
-  await openMeetings(S.rid);
 }
 
 /** [Wrong agency]: every name on this card goes back to 'Who is this?'. Nothing is written to the book. */
@@ -4090,7 +4125,7 @@ document.addEventListener("keydown", (e) => {
   const onButton = tag === "BUTTON" || tag === "A" || tag === "SUMMARY";
   const onControl = onButton || type === "checkbox" || type === "radio";
   const zone = t && t.closest("[data-strip-chip]") ? "strip" : t && t.closest("[data-card]") ? "card" : "page";
-  const act = shortcutAction({ key: e.key, zone, typing, mod: e.ctrlKey || e.metaKey || e.altKey, onButton, onControl });
+  const act = shortcutAction({ key: e.key, zone, typing, mod: e.ctrlKey || e.metaKey || e.altKey, onButton, onControl, repeat: e.repeat });
   if (act && runMeetingShortcut(act, t)) e.preventDefault();
 });
 

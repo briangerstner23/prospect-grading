@@ -381,6 +381,13 @@ check("the sales-meeting migrations are on disk", meetingFiles.length >= 2, meet
   if (existsSync(harness)) {
     const h = code(readFileSync(harness, "utf8")).trim();
     check("the operator harness runs inside begin … rollback", /^begin;/i.test(h) && /rollback;$/i.test(h) && !/\bcommit\b/i.test(h));
+    // A tier call is never taken as agreeing with a read pb_register has moved past: 4q (an override
+    // written since the score) and 4r (one lapsed since) each send it as the page does and expect the
+    // function's own refusal, and 4p's live override is a real register row written before the score.
+    check("the harness refuses only_if_agrees against a read the register moved past (4q written since, 4r lapsed since)",
+      /HARNESS 4q/.test(h) && /HARNESS 4r/.test(h) &&
+      (h.match(/sqlerrm not like '%since the board was last scored%'/g) ?? []).length === 2 &&
+      /insert into public\.pb_register \(kind, account_id, made_by, reason_code, text, payload, expires_at, created_at\)\s*values \('override', v_g,/.test(h));
   }
 }
 

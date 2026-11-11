@@ -565,7 +565,8 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       // pb_decide_meeting_card's override branch, transcribed: no computed tier → refused; the tier the
       // board shows → agrees, whether the engine or a live override put it there (already_computed_tier
       // marks the first, already_override_tier the second, and the screen sends both with
-      // only_if_agrees); the computed tier alone → an override that ends the live one. The flags say the
+      // only_if_agrees); any other tier while a live override shows one — the engine's own or a third —
+      // → a newer override, which ends the live one (the engine applies the newest). The flags say the
       // same, and a screen flag is raised EXACTLY when the function would record 'agrees'.
       let mismatches = 0, cases = 0;
       for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", "Bronze", null]) {
@@ -574,7 +575,8 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
         const agrees = comp !== null && t.toLowerCase() === String(shown).toLowerCase();
         const agreesSame = agrees && t.toLowerCase() === comp.toLowerCase();
         const agreesOverride = agrees && t.toLowerCase() !== comp.toLowerCase();
-        const endsLive = comp !== null && t.toLowerCase() === comp.toLowerCase() && t.toLowerCase() !== String(shown).toLowerCase();
+        const byOverride = comp !== null && String(shown).toLowerCase() !== comp.toLowerCase();
+        const endsLive = byOverride && t.toLowerCase() !== String(shown).toLowerCase();
         const f = meetingLiveFlags(ov(t), { read: comp === null && eff === null ? null : { computed_tier: comp, effective_tier: eff } });
         const row = { ...ov(t), flags: f };
         if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== agreesSame
@@ -640,6 +642,39 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
         meetingLiveFlags(ov("Bronze"), { read }), ["contradicts_live_override"]);
     }
     {
+      /* A THIRD tier under a live override — neither the engine's nor the override's. Meeting M, held
+         ten days ago, says X is Silver; the engine computes Gold; the owner has since overridden X to
+         Bronze. Approving writes a newer Silver override, and the engine applies the newest: one A
+         would replace the owner's override on an older word. So the row is flagged, never pre-ticked,
+         and its words say what approving does. */
+      const third = ov("Silver");
+      const read = { computed_tier: "Gold", effective_tier: "Bronze" };
+      const live = meetingLiveRow(third, { read });
+      eq("meetingLiveFlags: a third tier under a live override → contradicts_live_override", live.flags, ["contradicts_live_override"]);
+      eq("meetingStartsTicked: …never pre-ticked", meetingStartsTicked(live), false);
+      eq("meetingTick: …and a fresh screen draws it unticked", meetingTick(live, { touched: false, edit: {} }).ticked, false);
+      const w = meetingRowWords(live, { tiers: TIERS, engineTier: "Gold", effectiveTier: "Bronze", liveOverrideUntil: "2026-12-01" });
+      includes("meetingRowWords: …and says the live override ends", w, "the board shows anticipated Bronze by a live override until 1 Dec 2026; approving ends it");
+      eq("cardItems (A, owner): unticked, it is rejected — never an override nobody chose",
+        cardItems([live], { o: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "o", decision: "reject" }]);
+      // Ticked while no override was live; then a sheet override to Bronze lands before the next draw.
+      const before = meetingLiveRow(third, { read: { computed_tier: "Gold", effective_tier: "Gold" } });
+      const untouched = { touched: false, edit: {}, ...meetingTick(before, { touched: false, edit: {} }) };
+      eq("redraw: with no override live it is an ordinary call, ticked", [before.flags, untouched.ticked], [[], true]);
+      const mine = { ...untouched, ticked: true, mine: true, touched: true, basis: meetingTickBasis(before, untouched) };
+      check("meetingTickBasis: an override landing under a tier call moves its basis", meetingTickBasis(before, untouched) !== meetingTickBasis(live, untouched));
+      eq("redraw: the override lands — the kept tick is dropped, touched or not", [meetingTick(live, untouched).ticked, meetingTick(live, mine).ticked], [false, false]);
+      // Ticked on purpose with those words on the row, it holds while the board holds…
+      const meant = { ...mine, ticked: true, mine: true, basis: meetingTickBasis(live, mine) };
+      eq("redraw: a tick the person made with the override's words on the row holds while the board holds",
+        meetingTick(meetingLiveRow(third, { read: { ...read } }), meant).ticked, true);
+      // …and not once the board moves under it (another override, another lapse date's tier).
+      eq("redraw: …but not once another override shows another tier: that is a new question",
+        meetingTick(meetingLiveRow(third, { read: { computed_tier: "Gold", effective_tier: "Platinum" } }), meant).ticked, false);
+      // The reader's own rule (ingest/meeting_claims.ts) is the same: the row is written flagged.
+      eq("meetingDefaultTick: the flag is a blocking one, as the reader writes it", meetingDefaultTick(live), false);
+    }
+    {
       /* A tab left open across the 06:15 score: loadBook read X at computed Gold, so meeting 2's Gold
          call showed as already_computed_tier, with no tick box and no controls, and A always sent it
          with only_if_agrees. The score then computed Silver. pb_decide_meeting_card refused the card
@@ -676,8 +711,41 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       check("…and never as a reject the person did not choose (a rejected newer call reopens an older meeting's)",
         !sent.some((i: { decision: string }) => i.decision === "reject"), sent);
       // A box the person unticked on purpose stays unticked through the same move.
-      const unticked = { ...redrawn, ticked: false, touched: true, basis: meetingTickBasis(now, redrawn) };
+      const unticked = { ...redrawn, ticked: false, mine: false, touched: true, basis: meetingTickBasis(now, redrawn) };
       eq("…a tier call the person unticked stays unticked", meetingTick(now, unticked).ticked, false);
+    }
+    {
+      /* A box the PERSON ticked, which the screen then unticked or hid, comes back ticked when the
+         question returns to one they answered yes. Day 1: the engine computes Silver, the owner ticks
+         the meeting's Gold call themselves. Day 2: the engine computes Gold — the board shows it, the
+         box is replaced by a chip and the screen holds the row unticked. Day 3: the engine is back at
+         Silver. A fresh screen would tick it; the person never unticked it; so it is ticked, and A sends
+         the person's approval — not a reject, which would return an older meeting's call to its card. */
+      const call = ov("Gold");
+      const edit = { reason_code: "other", text: "x", expires_on: "2027-02-08" };
+      const d1 = meetingLiveRow(call, { read: { computed_tier: "Silver", effective_tier: "Silver" } });
+      const c0 = { touched: false, mine: false, edit, ...meetingTick(d1, { touched: false, edit }) };
+      // The change handler, twice (off, on): ticked, touched, and the person's own answer is yes.
+      const c1 = { ...c0, ticked: true, mine: true, touched: true, basis: meetingTickBasis(d1, c0) };
+      const d2 = meetingLiveRow(call, { read: { computed_tier: "Gold", effective_tier: "Gold" } });
+      const c2 = { ...c1, ...meetingTick(d2, c1) };
+      eq("day 2: the board shows the call — no box, held unticked, and A sends it with only_if_agrees",
+        [d2.flags, c2.ticked, c2.mine, cardItems([d2], { o: c2 }, { mode: "approve", lane: "owner" })],
+        [["already_computed_tier"], false, true, [{ id: "o", decision: "approve", only_if_agrees: true }]]);
+      const d3 = meetingLiveRow(call, { read: { computed_tier: "Silver", effective_tier: "Silver" } });
+      const c3 = { ...c2, ...meetingTick(d3, c2) };
+      eq("day 3: back to an ordinary call — the person's tick is back, as a reload would draw it", [c3.ticked, meetingStartsTicked(d3)], [true, true]);
+      eq("…and A sends the person's approval, never a reject they did not choose",
+        cardItems([d3], { o: c3 }, { mode: "approve", lane: "owner" }),
+        [{ id: "o", decision: "approve", edit: { reason_code: "other", expires_at: "2027-02-08T00:00:00Z", text: "x" } }]);
+      // A box the person unticked stays unticked through the same three days.
+      const u1 = { ...c0, ticked: false, mine: false, touched: true, basis: meetingTickBasis(d1, c0) };
+      const u2 = { ...u1, ...meetingTick(d2, u1) };
+      eq("…an untick the person made stands through the same three days", meetingTick(d3, u2).ticked, false);
+      // The same through a live override that comes and goes (already_override_tier).
+      const v2 = meetingLiveRow(call, { read: { computed_tier: "Silver", effective_tier: "Gold" } });
+      const k2 = { ...c1, ...meetingTick(v2, c1) };
+      eq("…and through a live override that showed the call and lapsed", [v2.flags, k2.ticked, meetingTick(d1, k2).ticked], [["already_override_tier"], false, true]);
     }
     {
       /* A tick carried across a redraw that changed what it means. The owner opens the meeting while
@@ -698,16 +766,24 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       check("redraw: …so the next A sends no overrule:true", !after.some((i: { overrule?: boolean }) => i.overrule === true), after);
       eq("redraw: …it rejects the meeting's value and the rater's stands", after, [{ id: "k1", decision: "reject" }]);
       // The same when the PERSON ticked the box before the conflict was there.
-      const t1 = { ...c1, ticked: true, touched: true, basis: meetingTickBasis(d1, c1) };
+      const t1 = { ...c1, ticked: true, mine: true, touched: true, basis: meetingTickBasis(d1, c1) };
       eq("redraw: a box the person ticked before the conflict is unticked too", meetingTick(d2, t1).ticked, false);
       // Ticked on purpose under the conflict (the change handler records the basis), it holds across a redraw that moved nothing.
-      const p2 = { ...c2, ticked: true, touched: true, basis: meetingTickBasis(d2, c2) };
+      const p2 = { ...c2, ticked: true, mine: true, touched: true, basis: meetingTickBasis(d2, c2) };
       const p3 = { ...p2, ...meetingTick(meetingLiveRow(row, { facts: [person(25)] }), p2) };
       eq("redraw: a tick the person made against the rater's value survives a redraw that changed nothing", p3.ticked, true);
       eq("redraw: …and goes with overrule", cardItems([d2], { k1: p3 }, { mode: "approve", lane: "owner" }), [{ id: "k1", decision: "approve", overrule: true }]);
       eq("redraw: …but not one made against a value the person has since changed", meetingTick(meetingLiveRow(row, { facts: [person(30)] }), p3).ticked, false);
+      // A rater records 30 (the screen unticks the overrule), then the meeting's own 40: no conflict is
+      // left, a fresh screen would tick it, and the person ticked it — so it is ticked, never rejected.
+      const p4 = { ...p3, ...meetingTick(meetingLiveRow(row, { facts: [person(30)] }), p3) };
+      const d40 = meetingLiveRow(row, { facts: [person(40)] });
+      const p5 = { ...p4, ...meetingTick(d40, p4) };
+      eq("redraw: a fact the person ticked, unticked by the screen under another value, is ticked again once the value agrees",
+        [p4.ticked, p5.ticked, meetingStartsTicked(d40)], [false, true, true]);
+      eq("redraw: …and A approves it (the function records it 'agrees'), not a reject", cardItems([d40], { k1: p5 }, { mode: "approve", lane: "owner" }), [{ id: "k1", decision: "approve" }]);
       // An untick the person made always stands; a redraw that moved nothing keeps every tick as it was.
-      const u1 = { ...c1, ticked: false, touched: true, basis: meetingTickBasis(d1, c1) };
+      const u1 = { ...c1, ticked: false, mine: false, touched: true, basis: meetingTickBasis(d1, c1) };
       eq("redraw: an untick the person made stands whatever moves", meetingTick(meetingLiveRow(row, { facts: [person(40)] }), u1).ticked, false);
       eq("redraw: a redraw that moved nothing keeps the tick and its basis", meetingTick(meetingLiveRow(row, { facts: [] }), c1), { ticked: true, basis: c1.basis });
       eq("redraw: an untouched row whose conflict has gone takes the fresh tick", meetingTick(meetingLiveRow(row, { facts: [person(40)] }), c2).ticked, true);
@@ -725,7 +801,7 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       eq("redraw: an ordinary tier call starts ticked", [o1.flags, oc.ticked], [[], true]);
       const o2 = { ...callRow, flags: meetingLiveFlags(callRow, { read: { computed_tier: "Silver", effective_tier: "Gold" } }) };
       eq("redraw: …the book moves under it to contradicts_live_override, and the kept tick is dropped",
-        [o2.flags, meetingTick(o2, oc).ticked, meetingTick(o2, { ...oc, touched: true }).ticked], [["contradicts_live_override"], false, false]);
+        [o2.flags, meetingTick(o2, oc).ticked, meetingTick(o2, { ...oc, touched: true, mine: true }).ticked], [["contradicts_live_override"], false, false]);
     }
     {
       /* A refusal's words on a card that is decided by the time the screen redraws it: the rater decided
@@ -1005,6 +1081,13 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     eq("shortcutAction: Enter confirms the pre-focused option", shortcutAction({ key: "Enter", zone: "strip" }), "confirm");
     eq("shortcutAction: Enter on a button is the button's own", shortcutAction({ key: "Enter", zone: "strip", onButton: true }), null);
     eq("shortcutAction: A in the strip approves nothing", shortcutAction({ key: "a", zone: "strip" }), null);
+    // A held key: one decision, one toggle, one pick per press — a repeated A would send the card again
+    // while the first press is still in flight. J and K keep walking.
+    eq("shortcutAction: a held A, X, Space, R, W or L does nothing more",
+      ["a", "x", " ", "r", "w", "l"].map((k) => card(k, { repeat: true })), [null, null, null, null, null, null]);
+    eq("shortcutAction: …nor a held pick, N or Enter in the strip",
+      ["3", "n", "Enter"].map((key) => shortcutAction({ key, zone: "strip", repeat: true })), [null, null, null]);
+    eq("shortcutAction: a held J or K keeps walking the cards", [card("j", { repeat: true }), card("k", { repeat: true }), shortcutAction({ key: "j", zone: "strip", repeat: true })], ["next", "prev", "next"]);
     const actions = new Set<string>();
     for (const zone of ["card", "page", "strip"]) for (let c = 32; c < 127; c++) { const a = shortcutAction({ key: String.fromCharCode(c), zone }); if (a) actions.add(a.startsWith("pick:") ? "pick" : a); }
     eq("shortcutAction: the whole vocabulary — no approve-all among it", [...actions].sort(), ["approve", "later", "next", "not_in_book", "pick", "prev", "reject", "removal", "toggle", "wrong"]);
@@ -1141,9 +1224,26 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     check("choiceFor judges the kept tick again against the row as drawn (meetingTick), never returns it as cached",
       cf.includes("Object.assign(c, meetingTick(r, c));") && !cf.includes("ticked: meetingStartsTicked(r)"), cf);
     const mr = fnBody("function meetingRow(", "\n/** Rebuild one row in place");
-    check("the box's change handler marks the tick the person's and records what it answered",
-      mr.includes('box.addEventListener("change", () => { c.ticked = box.checked; c.touched = true; c.basis = meetingTickBasis(r, c); });'), mr);
-    check("an edit that moves the conflict records the tick's new basis", mr.includes("c.basis = meetingTickBasis(r, c);"));
+    check("the box's change handler marks the tick the person's, keeps their own answer apart (mine) and records what it answered",
+      mr.includes('box.addEventListener("change", () => { c.ticked = box.checked; c.mine = box.checked; c.touched = true; c.basis = meetingTickBasis(r, c); });'), mr);
+    check("…and nothing else on the page writes the person's own answer", (page.match(/\bc\.mine\s*=/g) ?? []).length === 1 && !/\bmine\s*:(?!\s*false\b)/.test(page.slice(page.indexOf("@pure-end"))));
+    // The refresh closure itself — the change handler carries the same line, so a search of the whole
+    // row would pass with refresh's own line gone.
+    const rfAt = mr.indexOf("const refresh = () => {");
+    const rf = rfAt < 0 ? "" : mr.slice(rfAt, mr.indexOf("\n  refresh();", rfAt));
+    check("an edit that moves the conflict records the tick's new basis (inside refresh, not only in the change handler)",
+      rf.length > 0 && rf.includes("c.basis = meetingTickBasis(r, c);") && !rf.includes("addEventListener"), rf);
+    // One decision per card at a time: the buttons are disabled while it is in flight, the keys are not.
+    const dcGuard = dc.slice(0, dc.indexOf("const lane"));
+    check("decideCard does nothing while a decision on the same card is still in flight",
+      dcGuard.includes("if (S.deciding.has(card.key)) return;"), dcGuard);
+    const addAt = dc.indexOf("S.deciding.add(card.key);"), rpcAt = dc.indexOf('rpc("pb_decide_meeting_card"');
+    const finAt = dc.indexOf("} finally {");
+    check("…holds the card from before the call until its redraw is in, whatever the call answers",
+      addAt >= 0 && addAt < rpcAt && dc.slice(addAt, rpcAt).includes("try {") && finAt > dc.lastIndexOf("await openMeetings(S.rid);") &&
+      dc.slice(finAt).includes("S.deciding.delete(card.key);"), dc.slice(Math.max(0, addAt - 40), addAt + 200));
+    check("…in the Set every kept state shares", om.includes("deciding: keep ? keep.deciding : new Set(),"));
+    check("the keydown handler tells shortcutAction a held key repeats", page.includes("onButton, onControl, repeat: e.repeat });"));
   }
   check("the picker holds every meeting with an open card, not only the newest read ones",
     page.includes("meetingsMissing(list.data ?? [], waiting.byRecording)") && page.includes("pickMeeting(meetings, waiting.byRecording)") && page.includes("list: meetings,"));

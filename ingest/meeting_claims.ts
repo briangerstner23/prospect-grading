@@ -761,8 +761,9 @@ export function claimDiscriminator(r: { kind: string; key: string | null; topic:
  *   flags     the verifier's, plus 'historic' (held more than HISTORIC_DAYS before as_of),
  *             'conflicts_with_person' (a fact that disagrees with a person's value),
  *             'no_computed_tier' (a tier call the engine would refuse), 'contradicts_live_override'
- *             (the team's tier is the computed one while a live override shows another: the team
- *             disagrees with the override, which is not agreeing with the board) and
+ *             (a live override shows its tier and the team named another, the computed one or a
+ *             third: approving writes a newer override that ends the person's, which is not
+ *             agreeing with the board and is never ticked by default) and
  *             'upgrades_removal' (a do-not-contact said of an agency the board holds off only as
  *             unqualified);
  *   display   current_value / current_source, engine_tier / effective_tier — snapshots only;
@@ -821,9 +822,11 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
       const shown = (read?.effective_tier ?? read?.computed_tier ?? "").toLowerCase();
       if (t !== "" && t === shown) {
         if (status === "proposed") status = "agrees";
-      } else if (t !== "" && t === comp) {
-        // The team named the engine's tier while a live override shows another: they disagree
-        // with the override. The owner sees it, and approving it ends the override (rule 7).
+      } else if (t !== "" && comp !== "" && shown !== comp) {
+        // A live override puts its tier on the board and the team named another — the engine's
+        // own, or a third. Approving writes a newer override, and the newest live one is the one
+        // the engine applies, so approving ENDS the person's override (rule 7): the owner sees it
+        // and ticks it on purpose, never by default.
         flags.add("contradicts_live_override");
       }
       if (!read || !read.computed_tier) flags.add("no_computed_tier");

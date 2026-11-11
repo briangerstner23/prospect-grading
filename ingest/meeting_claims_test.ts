@@ -305,8 +305,16 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
   eq("the computed tier with no live override → agrees", [noOv.status, noOv.flags], ["agrees", []]);
   const [noEff] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: null }] });
   eq("no effective tier recorded → the computed one is what the board shows", noEff.status, "agrees");
-  const [c] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })]);
-  eq("a different tier is proposed, with the default reason code", [c.kind, c.status, c.reason_code, c.default_selected], ["override", "proposed", DEFAULT_OVERRIDE_CODE, true]);
+  const [c] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: "Silver" }] });
+  eq("a different tier with no override live is proposed, pre-ticked, with the default reason code",
+    [c.kind, c.status, c.flags, c.reason_code, c.default_selected], ["override", "proposed", [], DEFAULT_OVERRIDE_CODE, true]);
+  // A third tier under a live override: approving writes a newer override, which ends the person's.
+  // Pre-ticked, one A would replace their override on a word the card never put to them.
+  const [third] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })]);
+  eq("a third tier (neither the engine's nor the override's) under a live override → contradicts_live_override, not pre-ticked",
+    [third.status, third.flags, third.default_selected], ["proposed", ["contradicts_live_override"], false]);
+  const [pinned] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: null }] });
+  eq("no effective tier recorded → no override is on the board, so a different tier is an ordinary call", [pinned.flags, pinned.default_selected], [[], true]);
   eq("the model's code is kept when the rubric lists it", rows([vc({ type: "tier_call", tier: "Platinum", key: null, code: "timing_known" })])[0].reason_code, "timing_known");
   eq("no relationship_known in the rubric → 'other'", rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { overrideCodes: ["data_wrong", "other"] })[0].reason_code, "other");
   eq("default_text names the meeting's date and the line, never the quote or the title (pb_register is viewer-readable)",

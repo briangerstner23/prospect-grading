@@ -584,9 +584,24 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   // A tier call naming the tier the board shows (the page's already_computed_tier, or a live
   // override's tier) is recorded 'agrees' and writes nothing — never refused, because the only way
   // left to close the card was a reject, and a reject reopens an older meeting's contradicting call.
-  const agreesAt = ovBranch.search(/if\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+then\s+v_status\s*:=\s*'agrees'\s*;/i);
+  const agreesAt = ovBranch.search(/if\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+and\s+not\s+v_moved\s+then\s+v_status\s*:=\s*'agrees'\s*;/i);
   check("pb_decide_meeting_card records a tier call the board already shows as 'agrees', with no refusal in between",
     agreesAt >= 0 && !/lower\(v_tier\)\s*=\s*lower\(v_ctier\)\s+then\s+raise/i.test(ovBranch));
+  // …but the board's tier is the last score's read, and the engine applies the register's newest live
+  // override at the NEXT score. An override written since that score began, or lapsed since, means the
+  // read cannot say what the board will show: an 'agrees' then would close the newest word while the
+  // board moves somewhere else (harness 4q, 4r).
+  const movedAt = ovBranch.search(/v_moved\s*:=\s*exists\s*\(/i);
+  check("…never against a read pb_register has moved past: the read's score start is where the register is compared",
+    /left\s+join\s+public\.pb_runs\s+x\s+on\s+x\.id\s*=\s*r\.run_id/i.test(ovBranch) && /coalesce\(x\.started_at,\s*r\.run_at\)\s+into\s+v_ctier,\s*v_etier,\s*v_seen/i.test(ovBranch));
+  check("…an override naming a tier written since it, or lapsed since it, moves the board",
+    movedAt >= 0 && movedAt < agreesAt &&
+    /v_moved\s*:=\s*exists\s*\(\s*select\s+1\s+from\s+public\.pb_register\s+g\s+where\s+g\.account_id\s*=\s*v_acct\s+and\s+g\.kind\s*=\s*'override'\s+and\s+g\.payload->'tier'\s+is\s+not\s+null\s+and\s+jsonb_typeof\(g\.payload->'tier'\)\s*<>\s*'null'\s+and\s+\(g\.created_at\s*>\s*v_seen\s+or\s+\(g\.expires_at\s*>=\s*v_seen\s+and\s+g\.expires_at\s*<\s*now\(\)\)\)\)\s*;/i.test(ovBranch),
+    ovBranch.slice(Math.max(0, movedAt), movedAt + 400));
+  check("…where only_if_agrees refuses until the next score (and a ticked call falls through to the override write)",
+    /elsif\s+v_agree\s+and\s+v_moved\s+then\s+raise\s+exception\s+'an override on this agency was written or has lapsed since the board was last scored/i.test(ovBranch) &&
+    ovBranch.search(/elsif\s+v_agree\s+and\s+v_moved\s+then/i) < ovBranch.search(/elsif\s+v_agree\s+then/i) &&
+    ovBranch.search(/elsif\s+v_agree\s+then/i) < ovBranch.search(/insert\s+into\s+public\.pb_register/i));
   check("…before it asks for a reason code, a written reason or an expiry (nothing is written for it)",
     agreesAt >= 0 && agreesAt < ovBranch.search(/v_codes\s*:=/) && agreesAt < ovBranch.search(/an override needs a written reason/));
   check("…and before the register insert, which only the other branch reaches",

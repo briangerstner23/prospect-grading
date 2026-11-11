@@ -462,6 +462,9 @@ end $$;
 -- an older meeting's contradicting call (pb_meeting_supersede). only_if_agrees is how the page sends
 -- such a row it never asked the person to tick: approve it only while it still agrees, and refuse
 -- the card if the board has moved since it was loaded, rather than write an override nobody chose.
+-- The board's tier is the last score's read, so it is never taken as agreeing once pb_register has
+-- moved past that read (an override written, or lapsed, since the score began): only_if_agrees then
+-- refuses until the next score, and a call a person ticked is written as an override.
 -- 1–20 items, every one locked FOR UPDATE, all on ONE placed account, whose book must be prospect
 -- or parked for an approval. 'approve' and 'reject' take a 'proposed' row; 'propose' is [Propose
 -- anyway] and takes a 'not_proposed' row (a question, joke or hypothetical) back to 'proposed',
@@ -503,6 +506,8 @@ declare
   v_tier     text;
   v_ctier    text;
   v_etier    text;
+  v_seen     timestamptz;
+  v_moved    boolean;
   v_code     text;
   v_text     text;
   v_exp      timestamptz;
@@ -689,18 +694,36 @@ begin
                       where t = v_tier) then
         raise exception 'tier % is not in the active rubric''s vocabulary.tiers', coalesce(v_tier, '(none)');
       end if;
-      v_ctier := null; v_etier := null;
-      select r.computed_tier, r.effective_tier into v_ctier, v_etier
-        from public.pb_current_reads r where r.account_id = v_acct;
+      v_ctier := null; v_etier := null; v_seen := null;
+      select r.computed_tier, r.effective_tier, coalesce(x.started_at, r.run_at) into v_ctier, v_etier, v_seen
+        from public.pb_current_reads r
+        left join public.pb_runs x on x.id = r.run_id
+       where r.account_id = v_acct;
       if v_ctier is null then
         raise exception 'the engine refuses an override until this account has a computed tier';
       end if;
+      -- The read is the last score's, and that score read pb_register when its run began (v_seen).
+      -- An override written since, or one that has lapsed since, moves the board at the NEXT score
+      -- (the engine applies the newest live override naming a tier), and the read cannot say where
+      -- to. Every override writer sets the expires_at column (both pages and this function).
+      v_moved := exists (
+        select 1 from public.pb_register g
+         where g.account_id = v_acct and g.kind = 'override'
+           and g.payload->'tier' is not null and jsonb_typeof(g.payload->'tier') <> 'null'
+           and (g.created_at > v_seen or (g.expires_at >= v_seen and g.expires_at < now())));
       -- What the board shows is the effective tier (the computed one when no override is live). A
       -- call naming it agrees with the board, whichever of the two put it there: nothing is written,
       -- so nothing below (code, reason, expiry) is asked of it. As 'agrees' it still beats an older
-      -- meeting's word, which a reject would have returned to the card.
-      if lower(v_tier) = lower(coalesce(v_etier, v_ctier)) then
+      -- meeting's word, which a reject would have returned to the card. Never against a read the
+      -- register has moved past: that 'agrees' would close the newest word while the next score moves
+      -- the board somewhere else. A call a person ticked is written as an override instead (the board
+      -- then shows it whatever the register held), and one sent only_if_agrees waits for the score.
+      if lower(v_tier) = lower(coalesce(v_etier, v_ctier)) and not v_moved then
         v_status := 'agrees';
+      elsif v_agree and v_moved then
+        raise exception 'an override on this agency was written or has lapsed since the board was last scored, so the tier '
+                        'it shows changes at the next score (06:15 UTC) and anticipated % cannot be checked against it '
+                        'yet; decide this card after that score', v_tier;
       elsif v_agree then
         raise exception 'anticipated % is no longer the tier the board shows (anticipated %): the book moved since this '
                         'card was loaded; reload it and decide the tier call again', v_tier, coalesce(v_etier, v_ctier);
@@ -727,8 +750,8 @@ begin
         if v_exp <= now() then
           raise exception 'an override expires in the future, not %', v_exp;
         end if;
-        -- Including the computed tier while a live override shows another: the team disagrees with
-        -- that override, and the newer override returns the board to the engine's tier.
+        -- Including any tier but the one a live override shows — the engine's own or a third: the
+        -- team disagrees with that override, and the newer override ends it (the newest applies).
         insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at)
         values ('override', v_acct, v_me, v_code, v_text,
                 jsonb_build_object('tier', v_tier, 'reason_code', v_code, 'expires_at', v_exp,

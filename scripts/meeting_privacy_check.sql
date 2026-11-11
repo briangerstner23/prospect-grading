@@ -82,9 +82,11 @@ declare
   v_e       uuid;      -- a synthetic agency whose engine tier a newer meeting named (4n)
   v_f       uuid;      -- a synthetic agency with a meeting override, merged into v_b (4o, 6g)
   v_g       uuid;      -- a synthetic agency a live override shows at a newer meeting's tier (4p)
+  v_h       uuid;      -- a synthetic agency overridden after its read was scored (4q)
+  v_i       uuid;      -- a synthetic agency whose override lapsed after its read was scored (4r)
   v_fq      text;      -- the written reason the owner typed from the meeting for v_f's override
   p_o1 uuid; p_n1 uuid; p_o2 uuid; p_n2 uuid; p_o3 uuid; p_m3 uuid; p_c1 uuid; p_c2 uuid; p_d1 uuid; p_b1 uuid;
-  p_eo uuid; p_en uuid; p_f1 uuid; p_go uuid; p_gn uuid;
+  p_eo uuid; p_en uuid; p_f1 uuid; p_go uuid; p_gn uuid; p_h1 uuid; p_i1 uuid;
   v_note    text;
   q         text[];
   v_r       jsonb;
@@ -103,6 +105,13 @@ begin
    where a.book = 'prospect' and r.computed_tier is not null
      -- no live override moves the board off the computed tier, so an override TO it changes nothing
      and lower(coalesce(r.effective_tier, r.computed_tier)) = lower(r.computed_tier)
+     -- and no override written or lapsed since its read's score began: the decide function takes
+     -- nothing as agreeing with a read the register has moved past (2c relies on it agreeing)
+     and not exists (select 1 from public.pb_register g
+                      where g.account_id = r.account_id and g.kind = 'override'
+                        and (g.created_at > coalesce((select x.started_at from public.pb_runs x where x.id = r.run_id), r.run_at)
+                             or (g.expires_at >= coalesce((select x.started_at from public.pb_runs x where x.id = r.run_id), r.run_at)
+                                 and g.expires_at < now())))
      and not exists (select 1 from public.pb_removals x where x.account_id = r.account_id)
      and r.account_id in (select b.account_id from public.pb_board() b)
    order by r.account_id
@@ -681,6 +690,12 @@ begin
   -- and, approved, written an override ending the live one on a word the newer meeting contradicted.
   insert into public.pb_accounts (key, name, book)
   values ('harness-g:' || v_marker, 'Harness account g ' || v_marker, 'prospect') returning id into v_g;
+  -- The override itself, in the register where the engine reads it, written a day before the read
+  -- was scored: the read is settled, so the function may take it as what the board shows.
+  insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at, created_at)
+  values ('override', v_g, v_owner, 'relationship_known', 'harness override written before the score',
+          jsonb_build_object('tier', v_tier, 'reason_code', 'relationship_known', 'expires_at', now() + interval '30 days'),
+          now() + interval '30 days', now() - interval '1 day');
   insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, run_at, as_of, status, effective_tier,
                                computed_tier, reason, scorecard, scorecard_sha256)
   values (v_g, 'harness', 'harness', clock_timestamp(), current_date, 'Overridden', v_tier, v_ctier,
@@ -715,8 +730,92 @@ begin
      is distinct from 'superseded/' || p_gn then
     raise exception 'HARNESS 4p: deciding the newer card reopened the older meeting''s call against the live override';
   end if;
-  if exists (select 1 from public.pb_register g where g.account_id = v_g and g.kind = 'override') then
+  if (select count(*) from public.pb_register g where g.account_id = v_g and g.kind = 'override') <> 1
+     or exists (select 1 from public.pb_register g where g.payload->>'proposal_id' = p_gn::text) then
     raise exception 'HARNESS 4p: a tier call a live override already shows wrote (or renewed) an override';
+  end if;
+
+  -- The read the board shows is the last score's; an override written SINCE moves the board at the
+  -- next one. v_h was scored an hour ago at v_ctier with no override; the owner has since overridden
+  -- it to v_tier (from another meeting's card, or the sheet). This meeting's call names v_ctier — what
+  -- the read still says. Sent as the page sends a call the board shows (only_if_agrees), the card is
+  -- refused until the score, never recorded 'agrees': at 06:15 the board shows v_tier, and an 'agrees'
+  -- would have closed the newest word for good. Ticked by a person, it is written as an override.
+  insert into public.pb_accounts (key, name, book)
+  values ('harness-h:' || v_marker, 'Harness account h ' || v_marker, 'prospect') returning id into v_h;
+  insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, run_at, as_of, status, effective_tier,
+                               computed_tier, reason, scorecard, scorecard_sha256)
+  values (v_h, 'harness', 'harness', now() - interval '1 hour', current_date, 'Ranked', v_ctier, v_ctier, 'Harness read.',
+          jsonb_build_object('trace', jsonb_build_object('tier_reasoning', 'harness', 'notes', '[]'::jsonb)), 'harness');
+  insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at)
+  values ('override', v_h, v_owner, 'relationship_known', 'harness override written after the score',
+          jsonb_build_object('tier', v_tier, 'reason_code', 'relationship_known', 'expires_at', now() + interval '30 days'),
+          now() + interval '30 days');
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
+     line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
+  values (v_rec, v_h, array['harness l'], 'harness l', 'resolved', 'name', 'override', v_ctier, 'relationship_known',
+          'harness quote twenty-seven ' || v_marker, 34, 34, '00:05:20', 'S1', 'asserted', current_date,
+          'Tier call made in the harness meeting.', 'harness', 'h26:' || v_marker, 'proposed')
+  returning id into p_h1;
+  v_fail := null;
+  begin
+    v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_h1, 'decision', 'approve',
+             'only_if_agrees', true)));
+    v_fail := 'a call naming the stale read''s tier was decided (' || v_r::text || ') after an override was written since the score';
+  exception when others then
+    if sqlerrm not like '%since the board was last scored%' then
+      v_fail := 'a call against a read the register moved past was refused for the wrong reason: ' || sqlerrm;
+    end if;
+  end;
+  if v_fail is not null then raise exception 'HARNESS 4q: %', v_fail; end if;
+  if (select status from public.pb_meeting_proposals where id = p_h1) <> 'proposed'
+     or exists (select 1 from public.pb_register g where g.payload->>'proposal_id' = p_h1::text) then
+    raise exception 'HARNESS 4q: the refused call did not stay open, or wrote a register row';
+  end if;
+  v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_h1, 'decision', 'approve')));
+  if (v_r->>'overrides')::int <> 1 or (v_r->>'agrees')::int <> 0
+     or (select status from public.pb_meeting_proposals where id = p_h1) <> 'approved'
+     or not exists (select 1 from public.pb_register g where g.account_id = v_h and g.kind = 'override'
+                     and g.payload->>'proposal_id' = p_h1::text and g.payload->>'tier' = v_ctier) then
+    raise exception 'HARNESS 4q: a ticked call against a read the register moved past was not written as an override (%)', v_r;
+  end if;
+
+  -- The same when the override LAPSED since the score: v_i's read shows v_tier by an override that
+  -- expired an hour ago. The next score drops the board to v_ctier, so this meeting's v_tier call is
+  -- not 'agrees' — recorded so, the team's reaffirmed call would be lost at 06:15.
+  insert into public.pb_accounts (key, name, book)
+  values ('harness-i:' || v_marker, 'Harness account i ' || v_marker, 'prospect') returning id into v_i;
+  insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at, created_at)
+  values ('override', v_i, v_owner, 'relationship_known', 'harness override that lapsed after the score',
+          jsonb_build_object('tier', v_tier, 'reason_code', 'relationship_known', 'expires_at', now() - interval '1 hour'),
+          now() - interval '1 hour', now() - interval '10 days');
+  insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, run_at, as_of, status, effective_tier,
+                               computed_tier, reason, scorecard, scorecard_sha256)
+  values (v_i, 'harness', 'harness', now() - interval '2 hours', current_date, 'Overridden', v_tier, v_ctier,
+          'Overridden by the owner (relationship_known). Harness read.',
+          jsonb_build_object('trace', jsonb_build_object('tier_reasoning', 'harness', 'notes', '[]'::jsonb)), 'harness');
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
+     line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
+  values (v_rec, v_i, array['harness m'], 'harness m', 'resolved', 'name', 'override', v_tier, 'relationship_known',
+          'harness quote twenty-eight ' || v_marker, 35, 35, '00:05:30', 'S1', 'asserted', current_date,
+          'Tier call made in the harness meeting.', 'harness', 'h27:' || v_marker, 'proposed')
+  returning id into p_i1;
+  v_fail := null;
+  begin
+    v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_i1, 'decision', 'approve',
+             'only_if_agrees', true)));
+    v_fail := 'a call naming a lapsed override''s tier was decided (' || v_r::text || ')';
+  exception when others then
+    if sqlerrm not like '%since the board was last scored%' then
+      v_fail := 'a call against a lapsed override was refused for the wrong reason: ' || sqlerrm;
+    end if;
+  end;
+  if v_fail is not null then raise exception 'HARNESS 4r: %', v_fail; end if;
+  if (select status from public.pb_meeting_proposals where id = p_i1) <> 'proposed'
+     or exists (select 1 from public.pb_register g where g.payload->>'proposal_id' = p_i1::text) then
+    raise exception 'HARNESS 4r: the refused call did not stay open, or wrote a register row';
   end if;
 
   -- A merged record keeps its last read for good — pb_merge_accounts never moves reads, and pb-score
