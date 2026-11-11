@@ -2778,8 +2778,18 @@ expiry is set from the agency's sheet). A sends either as an approval with `only
 as a reject, because a rejected newer word returns an older meeting's contradicting call to the card;
 if the board has moved since the screen opened, the function refuses the card rather than write an
 override nobody chose, and the screen redraws the card from the book as it stands (any refusal does,
-keeping the ticks and edits), so the row shows what it is now. X still rejects
-it. A fact edited on its card is checked against a person's value as
+keeping the edits), so the row shows what it is now. X still rejects
+it. A tick survives a redraw only while the question its box asks is unchanged (`meetingTick`): when
+the redraw moves it — a person recorded a value on the key, the board moved under a tier call, a flag
+came or went — a box nobody touched starts as a fresh screen would start it, and a box the person
+ticked stays ticked only where that fresh start is ticked too; an untick the person made always
+stands. So a tier call that showed as the board's own tier and no longer does is ticked exactly as a
+reload would tick it, never rejected on a box no one could see, and a fact ticked before a person
+recorded another value comes back unticked, labelled "overrule": `overrule` is only ever sent for a
+box a person ticked themselves with that conflict on the row. The refusal's words stay on the card
+even when the redraw finds it decided by somebody else meanwhile (a one-line card), or go to the top
+of the screen when the card is gone; they are shown on that draw and never kept for a later one. A
+fact edited on its card is checked against a person's value as
 edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
 own value goes as `agrees`. Every meeting holding an open card is in the picker however old (the
 reader works a backlog oldest first), and the open proposals behind the roster's count and the

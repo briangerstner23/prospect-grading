@@ -999,6 +999,78 @@ function meetingStartsTicked(row) {
 }
 
 /**
+ * The value a fact row's card would SEND — the person's edit once they changed it, else undefined
+ * (the row's own). cleanMeetingEdit sends exactly this, and pb_decide_meeting_card compares it.
+ */
+function meetingSentValue(row, c) {
+  const e = c && typeof c === "object" && c.edit && typeof c.edit === "object" ? c.edit : null;
+  return !!row && row.kind === "fact" && e && e.changed === true && e.value !== undefined ? e.value : undefined;
+}
+
+/**
+ * What a row's tick MEANS, as one string: where the row sits and how it was placed, its flags as the
+ * screen re-derived them, the person's value on a fact's key, and whether the value the card would
+ * send overrules it. Two draws that give the same string ask the same question of the box; null when
+ * the row cannot be put into words, which never matches anything.
+ */
+function meetingTickBasis(row, c) {
+  if (!row || typeof row !== "object") return null;
+  const held = row.person_held;
+  try {
+    return JSON.stringify([
+      row.status ?? null, row.kind ?? null, row.mode ?? null, row.account_id ?? null, row.mention_state ?? null, row.matched_on ?? null,
+      (Array.isArray(row.flags) ? row.flags.map(String) : []).sort(),
+      held === undefined ? "unknown" : held === null ? null : [held.value ?? null, held.source ?? null],
+      meetingOverrules(row, meetingSentValue(row, c)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The tick a row is drawn with, judged again whenever what the tick means has moved. `c` is the
+ * screen's working choice for the row: { ticked, touched, basis, edit } — touched once the person set
+ * the box themselves, basis the meetingTickBasis its tick was last set under. While the basis holds
+ * the tick is kept as it is, so a refusal on other grounds keeps the person's ticks. Once it moves —
+ * a person recorded a value on the key since, the board moved under a tier call, a flag came or went —
+ * the old tick no longer answers the question the box now asks: a box nobody touched takes the tick a
+ * fresh screen would give it (meetingStartsTicked, and never one that overrules a person), and a box
+ * the person ticked stays ticked only where that fresh tick would be ticked too. An untick the person
+ * made always stands. So a tick that would overrule a person, or end a live override, is only ever one
+ * a person made with those words on the row. Returns { ticked, basis }; the caller keeps both.
+ */
+function meetingTick(row, c) {
+  const prev = c && typeof c === "object" ? c : {};
+  const basis = meetingTickBasis(row, prev);
+  if (basis !== null && prev.basis === basis) return { ticked: prev.ticked === true, basis };
+  const fresh = meetingStartsTicked(row) && !meetingOverrules(row, meetingSentValue(row, prev));
+  return { ticked: prev.touched === true ? prev.ticked === true && fresh : fresh, basis };
+}
+
+/**
+ * Where the words saved for a card — a refusal, or what a one-row decision did — are shown on this
+ * draw. `saved` is the screen's Map of card key → { kind, text, detail }; `cards` the cards the draw
+ * shows. A card that is drawn shows its own, open (in its footer) or decided (on its one line): a card
+ * somebody else decided while this screen held it is drawn decided, and the refusal of this person's
+ * press must still be on it, or the closed card reads as their own decision landing. Words for a card
+ * the draw does not show at all go to the top of the screen. Every entry is shown once, on this draw:
+ * kept for a later one, it would describe a press that is over on a card that has moved on.
+ */
+function placeCardNotices(saved, cards) {
+  const drawn = new Set((Array.isArray(cards) ? cards : []).map((c) => (c && typeof c.key === "string" ? c.key : null)).filter(Boolean));
+  const onCard = new Map(), top = [];
+  if (saved && typeof saved.entries === "function") {
+    for (const [key, m] of saved.entries()) {
+      if (!m || typeof m !== "object") continue;
+      if (drawn.has(key)) onCard.set(key, m);
+      else top.push(m);
+    }
+  }
+  return { onCard, top };
+}
+
+/**
  * pb_meeting_proposals rows → agency cards in DISCUSSION ORDER (the first line any row cites, the
  * order the room remembers), plus the rows nobody has placed yet, grouped by said_key — one
  * 'Who is this?' chip per name, however many claims hang off it. On each card the rows sit in the
@@ -1263,12 +1335,13 @@ function cleanMeetingEdit(kind, e) {
  *   mode 'reject'  (X)   every open row rejects;
  *   mode 'removal'       the removal alone, from its own [Remove now] button.
  *
- * `choice` is { [id]: { ticked, chosen, edit } } as the screen holds it. A removal is approved only
+ * `choice` is { [id]: { ticked, touched, chosen, edit } } as the screen holds it (touched: the person
+ * set the box themselves; meetingTick keeps a tick honest across redraws). A removal is approved only
  * when the owner CHOSE it here — clicked a disposition or [Remove now]; a pair the model proposed is
  * a suggestion, never a choice — and its edit never carries expires_at. On the rater lane, approving
  * a tier call or a removal is not theirs (rules 7, 7a), so A leaves those rows waiting for the owner
- * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true,
- * because the person ticked a box that says so — judged on the value it SENDS, edited or not
+ * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true
+ * only because the person ticked a box that says so (touched) — judged on the value it SENDS, edited or not
  * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call the board
  * already shows (meetingBoardShows: the engine's tier or a live override's) is neither ticked nor
  * rejected: A approves it with only_if_agrees and no edit, so it lands 'agrees', writes nothing, and
@@ -1299,7 +1372,9 @@ function cardItems(rows, choice, opts) {
     if (c.ticked !== true) { items.push({ id: r.id, decision: "reject" }); continue; }
     const item = { id: r.id, decision: "approve" };
     const edit = cleanMeetingEdit(r.kind, c.edit);
-    if (r.kind === "fact" && meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)) item.overrule = true;
+    // Only a box a person set sends overrule: a tick the screen gave (meetingTick never gives one that
+    // overrules) goes without it, and the function refuses rather than replace the person's value.
+    if (r.kind === "fact" && c.touched === true && meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)) item.overrule = true;
     if (edit) item.edit = edit;
     items.push(item);
   }
@@ -3207,11 +3282,15 @@ function flagChipFor(f) {
 }
 const quoted = (said) => (said ?? []).map((s) => `“${scrubAddresses(s)}”`).join(" / ");
 
-/** One row's working choice: ticked, chosen (a removal only) and the edits. Kept by proposal id across reloads. */
+/**
+ * One row's working choice: ticked, touched, chosen (a removal only) and the edits. Kept by proposal
+ * id across reloads — the edits as they are, the tick judged again against the row as it is drawn now
+ * (meetingTick): a redraw that changed what the box means never carries the old tick over to it.
+ */
 function choiceFor(r) {
   const S = state.mtg;
   if (!S.choice[r.id]) {
-    const c = { ticked: meetingStartsTicked(r), chosen: false, edit: {} };
+    const c = { ticked: false, touched: false, basis: null, chosen: false, edit: {} };
     if (r.kind === "override") {
       const d = overrideDefaults(r, state.rubric, todayIso());
       c.edit = { reason_code: d.reason_code ?? (reasonCodes().includes(MEETING_DEFAULT_OVERRIDE_CODE) ? MEETING_DEFAULT_OVERRIDE_CODE : null), expires_on: d.expires_on, text: d.text };
@@ -3226,7 +3305,9 @@ function choiceFor(r) {
     }
     S.choice[r.id] = c;
   }
-  return S.choice[r.id];
+  const c = S.choice[r.id];
+  Object.assign(c, meetingTick(r, c));
+  return c;
 }
 
 async function openMeetings(rid) {
@@ -3319,6 +3400,13 @@ function drawMeetings(fresh) {
     state.flash = null;
   }
   S.els = new Map(); S.rowEls = new Map(); S.ticks = new Map(); S.msgEls = new Map();
+  // The words saved for cards are shown on THIS draw — on the card, open or decided, or here at the
+  // top when the card is not drawn — and never kept for a later one (placeCardNotices).
+  const grouped = S.meeting ? groupMeetingCards(S.rows) : { cards: [], unplaced: [] };
+  const notes = placeCardNotices(S.msgs, grouped.cards);
+  S.msgs.clear(); // the same Map every kept state shares, so a press still in flight saves into it
+  S.notes = notes.onCard;
+  for (const m of notes.top) parts.push(h("div", { class: "notice " + m.kind, role: "status" }, m.text, m.detail ? h("pre", null, m.detail) : null));
   if (!S.meeting) {
     parts.push(h("header", { class: "sheet-head" },
       h("div", { class: "eyebrow" }, "Sales meeting review"),
@@ -3330,7 +3418,7 @@ function drawMeetings(fresh) {
     el.replaceChildren(...parts);
     return;
   }
-  const { cards, unplaced } = groupMeetingCards(S.rows);
+  const { cards, unplaced } = grouped;
   S.cards = cards;
   S.unplaced = unplaced;
   S.rankById = new Map(orderAccounts(state.accounts, state.reads).map((a, i) => [a.id, i + 1]));
@@ -3598,8 +3686,10 @@ function doneCard(card, nameEl) {
     n("superseded") ? `${n("superseded")} replaced by a newer meeting` : null,
     card.agrees.length ? `${card.agrees.length} the board already says` : null,
   ].filter(Boolean).join(" · ") || "nothing to decide").replace(/^./, (x) => x.toUpperCase());
+  const saved = S.notes?.get(card.key);
   const el = h("div", { class: "mcard", "data-card": card.key, tabindex: "-1" },
     h("div", { class: "mdone" }, nameEl, h("span", { class: "sub" }, summary)),
+    saved ? h("div", { class: "notice " + saved.kind, role: "status" }, saved.text, saved.detail ? h("pre", null, saved.detail) : null) : null,
     card.unsaid.length ? h("details", { class: "mline" }, h("summary", null, `Said, not decided (${card.unsaid.length})`), ...card.unsaid.map(unsaidRow)) : null);
   S.els.set(card.key, el);
   return el;
@@ -3611,7 +3701,7 @@ function meetingRow(r, card) {
   const c = choiceFor(r);
   // Judged on the value the card would SEND (meetingOverrules): an edit can make a conflict with a
   // person's value, or end one, and the label, the chip and the words follow it.
-  const overrulesNow = () => r.kind === "fact" && meetingOverrules(r, c.edit.changed ? c.edit.value : undefined);
+  const overrulesNow = () => r.kind === "fact" && meetingOverrules(r, meetingSentValue(r, c));
   let conflict = overrulesNow();
   const live = card.account_id ? state.reads.get(card.account_id) ?? null : null;
   const what = h("span", { class: "what" });
@@ -3633,6 +3723,7 @@ function meetingRow(r, card) {
       conflict = now;
       // An edit that now replaces a person's value is never left ticked for you: tick overrule on purpose.
       if (now && c.ticked === true) { c.ticked = false; if (box) box.checked = false; }
+      c.basis = meetingTickBasis(r, c); // the tick as it now stands answers the box's new question
       paint();
     }
     what.textContent = meetingRowWords(r, {
@@ -3657,7 +3748,7 @@ function meetingRow(r, card) {
   let tickEl;
   if (tickable) {
     box = h("input", { type: "checkbox", checked: c.ticked === true, "aria-label": conflict ? "Overrule the person's value" : "Approve this row" });
-    box.addEventListener("change", () => { c.ticked = box.checked; });
+    box.addEventListener("change", () => { c.ticked = box.checked; c.touched = true; c.basis = meetingTickBasis(r, c); });
     S.ticks.set(r.id, box);
     tickEl = h("label", { class: "check" }, box, overruleWord);
   } else if (agreesNow && owner) {
@@ -3826,8 +3917,8 @@ function cardFooter(card) {
   const S = state.mtg;
   const msgEl = h("div", { class: "notice hidden", role: "status" });
   S.msgEls.set(card.key, msgEl);
-  const saved = S.msgs.get(card.key);
-  if (saved) { setNotice(msgEl, saved.kind, saved.text, saved.detail); S.msgs.delete(card.key); }
+  const saved = S.notes?.get(card.key);
+  if (saved) setNotice(msgEl, saved.kind, saved.text, saved.detail);
   const approve = h("button", { type: "button", class: "primary" }, "Approve ticked · reject the rest (A)");
   approve.addEventListener("click", () => decideCard(card, "approve"));
   const reject = h("button", { type: "button", class: "danger" }, "Reject card (X)");
@@ -3875,8 +3966,10 @@ async function decideCard(card, mode, only) {
   const { data, error } = await state.db.rpc("pb_decide_meeting_card", { p_items: items, p_note: null });
   if (error) {
     // The function decided against the book as it stands, so the card is redrawn from that book
-    // (openMeetings reads it again; the ticks and edits are kept): when the board has moved since the
-    // screen loaded, "reload it" has already happened and the row shows what it is now.
+    // (openMeetings reads it again; the edits are kept, and each tick is judged again by meetingTick, so
+    // a box whose question moved is never answered by the old tick): when the board has moved since the
+    // screen loaded, "reload it" has already happened and the row shows what it is now. The words are
+    // shown on that draw wherever the card lands, decided by somebody else meanwhile included.
     S.msgs.set(card.key, { kind: "bad", text: "Refused — nothing on this card was written: " + error.message + " The card is redrawn from the book as it stands now.", detail: errorDetail(error) });
     S.focus = card.key;
     await openMeetings(S.rid);
