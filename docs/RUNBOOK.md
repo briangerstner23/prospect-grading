@@ -2564,9 +2564,11 @@ keeps whole in `pb_webhook_inbox`, and writes **proposals** — `pb_meeting_prop
 lanes only. Nothing reaches `pb_facts` or `pb_register` until somebody approves a card in
 `index.html#meetings`; nothing is ever parked in `pb_fact_candidates`.
 
-**Status: built, not running.** Migration A (`…_prospect_book_sales_meeting_reader.sql`) and migration
-B (`…_prospect_book_sales_meeting_cron.sql`) are drafts carrying drafting stamps, and pb-notes v17 has
-no `sales_meeting` route. The order below is the order things happen in; do not skip ahead.
+**Status: migration A applied, nothing read yet.** Migration A applied 12 Nov 2026 as
+`20261112233107_prospect_book_sales_meeting_reader.sql` (steps 1–2 done: byte-identical by md5, both
+grants queries empty, the harness raised nothing). Migration B (`…_prospect_book_sales_meeting_cron.sql`)
+is still a draft carrying its drafting stamp, and pb-notes v17 has no `sales_meeting` route. The order
+below is the order things happen in; do not skip ahead.
 
 | Step | What | Done when |
 |---|---|---|

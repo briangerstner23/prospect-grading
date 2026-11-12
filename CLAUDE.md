@@ -195,9 +195,15 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             13 Oct to 9 Nov and every notes run halted; the owner replaced it 10 Nov 00:40 UTC. The
             same time-boxed pb-notes-catchup (pipedrive_note + fathom_call, every 3 min), removing
             itself at 2026-11-10 05:00 UTC. Applied 10 Nov; byte-identical to its statement (md5).
-            THE SALES-MEETING READER (DECISIONS §65) — two DRAFTS, NOT APPLIED; each carries a
-            drafting stamp and is re-filed under its applied version, byte-identical by md5, in the
-            sitting that applies it (RUNBOOK §28.6, §33): 20261011000000 sales meeting reader
+            20261107160848 private source intake pilot · 182103 reconcile metadata index · 183135
+            candidate attachment audit: applied 7 Nov from branch codex/private-source-intake-pilot-
+            20261107 (the prospect_intake schema and one pb_reads index) and filed 10 Nov, each
+            byte-identical to its statement (md5).
+            THE SALES-MEETING READER (DECISIONS §65), migration A APPLIED 12 Nov 2026 as
+            20261112233107 (byte-identical to its statement, md5 7bf2d183…; section 0, the sentinel,
+            both grants queries and scripts/meeting_privacy_check.sql all passed), migration B still a
+            DRAFT with its drafting stamp, re-filed under its applied version in the sitting that
+            applies it (RUNBOOK §28.6, §33): 20261112233107 sales meeting reader
             (pb_meetings · pb_meeting_title_rules · pb_meeting_proposals · pb_meeting_aliases, all
             owner/rater read-only · pb_facts.meeting_proposal_id + pb_facts_meeting_origin_check and a
             trigger that refuses the source to every API role · the 'sales_meeting' cursor ·
@@ -207,7 +213,7 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             pb_decide_meeting_card, pb_assign_meeting_mention, pb_meeting_include,
             pb_meeting_title_rule, pb_dismiss_meeting, pb_meeting_supersede (service role) · section 0
             refuses to run if pb_dossier / pb_reconcile_state moved since they were read (prosrc md5),
-            and a sentinel that a leaking version cannot pass) · 20261011000100 sales meeting cron
+            and a sentinel that a leaking version cannot pass) · 20261011000100 sales meeting cron (DRAFT)
             (pb-meetings, every 3 min outside 05:00–06:59 UTC, posting only when there is work —
             applied LAST, after pb-notes carries the channel).
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
@@ -368,7 +374,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
    precedence** (`rater = sales_meeting > fathom_call > pipedrive_note > website > notion_master >
    apollo > pipedrive > anything else`; added 15 Sep 2026, `sales_meeting` tied at the top since
    DECISIONS §65 — a meeting fact exists only once a person approved it on its card, and in the view
-   only once migration 20261011000000 is applied), then newest written, then newest observed. The
+   since migration 20261112233107, applied 12 Nov 2026), then newest written, then newest observed. The
    view is what pb-score reads and the function is what the pure path reads; they must not drift —
    and they did, for two days, because the view changed in a migration that had no file
    (DECISIONS §33). The order is stated a THIRD time, in the rule9 CTE of `pb_reconcile_state()`,
@@ -432,9 +438,12 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   valid payload, including one that is not the bundle: a v7 deployed from a placeholder string
   took pb-score down on 16 Sep, and only fetching the function back and diffing it proved v8
   was right. The pinned-commit entrypoint (RUNBOOK §3) removes the hazard; the check stays.
-- Deployed versions as of **10 Oct 2026**: **pb-score v14** (commit `d14223c`, the grid engine —
-  deployed as a one-line entrypoint pinned to that commit's raw GitHub URL, so the deployed
-  function IS the commit; RUNBOOK §3; §52), **pb-notes v17** (10 Oct, pinned to the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
+- Deployed versions as of **11 Nov 2026**: **pb-score v15** (commit `0040e9c`, 11 Nov: the CPU-time
+  fix — the listing written only where it moved, one call per patch, after the snapshots; the
+  rubric fingerprinted once per run; a run row it cannot close answers 500. v14 was `d14223c`, the
+  grid engine, killed by the CPU ceiling on 11 of 18 nights from 24 Oct — RUNBOOK §15. Deployed as
+  a one-line entrypoint pinned to the commit's raw GitHub URL, so the deployed function IS the
+  commit; RUNBOOK §3; §52), **pb-notes v17** (10 Oct, pinned to the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
   entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v3** (10 Oct, pinned to the §64 merge commit: the create race is a note,
   not an error), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
   **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in
@@ -528,7 +537,7 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   about named companies (who is price-sensitive, whose owner is retiring) rather than facts.
   Opening them to `anon` is the owner's call, not a default. The four sales-meeting tables
   (`pb_meetings`, `pb_meeting_title_rules`, `pb_meeting_proposals`, `pb_meeting_aliases`;
-  DECISIONS §65, migration 20261011000000, a draft until applied) are narrower still: `authenticated`
+  DECISIONS §65, migration 20261112233107, applied 12 Nov 2026) are narrower still: `authenticated`
   SELECT, `anon` nothing, and a policy that lets only the **owner and rater lanes** read a row
   (`pb_is_wliq() and pb_role() in ('owner','rater')`), because they hold what the team said about
   named agencies, quotes included. Nobody writes them over PostgREST — pb-notes (service role) and
