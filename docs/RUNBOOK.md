@@ -2722,7 +2722,8 @@ second read.
 | `{recording_id, reread: true}` | read a `read`, `partial` or `failed` meeting again from pass 1 |
 
 A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
-pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. The budget
+pass 1 — past 40,000 rendered characters in overlapping windows of at most that, side by side (12 Nov
+2026: a 93-minute meeting sent as one call never answered inside the ceiling) — resolves the names in code, then pass 2 four agencies to a call inside the budget. The budget
 decides whether a round of calls STARTS; a call that started runs to the ceiling — the run's start +
 120 s, inside both the lease and the gateway's 150 s (§17) — and is stopped there if it has not
 answered (`out_of_time`), so no call outlives the lease and none is cut short at the budget it started

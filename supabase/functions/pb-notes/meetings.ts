@@ -18,7 +18,7 @@
  *                 (groupRecording) → pb_meetings 'waiting' | 'skipped' | 'duplicate'. No model call.
  *   2. CLAIM      the oldest waiting meeting, or one whose reader died, under an atomic lease:
  *                 an update that matches only while read_started_at is free.
- *   3. PASS 1     one call over the numbered transcript (two windows past 160k characters): which
+ *   3. PASS 1     one call over the numbered transcript (windows of PASS1_WINDOW_CHARS, ~40k, side by side past that): which
  *                 companies were discussed, in the words as said, on which lines. verifySegments
  *                 keeps a name only on a line it was cited for.
  *   4. RESOLVE    in code, never by the model: buildRosterIndex / resolveMention / clusterMentions.

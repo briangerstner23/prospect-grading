@@ -18,6 +18,7 @@ import {
   MEETING_SOURCE,
   MEETING_TITLE_PATTERNS,
   normTitle,
+  PASS1_WINDOW_CHARS,
   quoteInLines,
   renderLines,
   selectMeeting,
@@ -323,6 +324,27 @@ const many: TranscriptLine[] = Array.from({ length: 300 }, (_, i) => ({
   }
   check("each window renders within the cap, never splitting a line", fits);
   check("consecutive windows overlap by 40 lines", overlaps, JSON.stringify(w));
+}
+
+{
+  // The DEFAULT cap, at the size that could not be read on 12 Nov 2026: a 93-minute meeting of 878
+  // lines went to pass 1 as one call and was stopped at the ceiling every time. Under the default it
+  // must split into windows small enough to answer well inside the run (each at most the cap), and
+  // few enough to go in one round of six.
+  const long: TranscriptLine[] = Array.from({ length: 878 }, (_, i) => ({
+    n: i + 1, at: clockText(i * 6), seconds: i * 6, speaker: `S${(i % 5) + 1}`,
+    text: `Line ${i + 1}: we went through the agency's pipeline, the open quote and what they asked for on the last call.`,
+  }));
+  const chars = renderLines(long).length;
+  const w = windowsFor(long);
+  check("the 12 Nov shape is longer than one default window", chars > PASS1_WINDOW_CHARS, String(chars));
+  check("…and splits into several windows under the default cap", w.length > 1, JSON.stringify(w));
+  check("…few enough for one round of six", w.length <= 6, JSON.stringify(w));
+  check("…each rendering within the default cap",
+    w.every((r) => renderLines(long.filter((l) => l.n >= r.from && l.n <= r.to)).length <= PASS1_WINDOW_CHARS));
+  eq("…covering the meeting from first line to last", [w[0].from, w[w.length - 1].to], [1, 878]);
+  check("the default cap keeps a call near half a minute at ~100 output tokens a second (≤ 40,000 characters)",
+    PASS1_WINDOW_CHARS <= 40000, String(PASS1_WINDOW_CHARS));
 }
 
 {
