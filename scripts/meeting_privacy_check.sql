@@ -16,7 +16,8 @@
 --      expiry is refused by pb_register_removal_guard; a fact that disagrees with a person's value is
 --      refused without overrule, judged on the value SENT (a claim that agreed, edited on the card to
 --      another value, is refused; one that disagreed, edited to the person's own, records 'agrees');
---      a card spanning two agencies is refused; an unplaced name cannot be decided.
+--      overrule replaces only the person's value the card showed (replaces_value): naming another, or
+--      none, is refused (2f4); a card spanning two agencies is refused; an unplaced name cannot be decided.
 --   3. Writes. A rater's fact-and-read card lands (pb_facts with source sales_meeting, no quote and no
 --      link; the waiting machine candidate on that key superseded; origin-tagged register notes). The
 --      owner's card lands the overruling fact, the override (expiry = today + the rubric's
@@ -35,7 +36,10 @@
 --      past — an override written since the engine's clock for that score (4q, ticked or not, overrule
 --      or not; 4u, written while the score graded), one lapsed since (4r), or a record merged in since
 --      (4t). A call that would end a live override the read shows — one pinning the computed tier
---      included — is refused without overrule and written with it (4s). A merged record whose read
+--      included — is refused without overrule and written with it (4s). overrule ends only the override
+--      the card showed (ends_override_tier, ends_override_set_at): one written before the read's score
+--      but after the card was drawn — which v_moved cannot see — is not ended by a tick naming the old
+--      one, the right tier at another set_at, or none, and is by a tick naming it (4v). A merged record whose read
 --      carries a meeting override keeps that read (pb_merge_accounts never moves reads) while the
 --      override row goes to the survivor.
 --   5. As `authenticated`: a hand insert cannot pose as a meeting fact; a rater reads the proposals,
@@ -94,9 +98,13 @@ declare
   v_m       uuid;      -- that merged record (4t)
   v_l       uuid;      -- a synthetic agency overridden between its score's clock and its run row (4u)
   v_tier3   text;      -- a tier that is neither the computed one nor v_tier (4q)
+  v_q       uuid;      -- a synthetic agency whose live override changed after its card was drawn (4v)
+  v_qold    text;      -- the set_at of the override that card showed (4v)
+  v_qset    text;      -- the set_at of the override its read applies now (4v)
   v_fq      text;      -- the written reason the owner typed from the meeting for v_f's override
   p_o1 uuid; p_n1 uuid; p_o2 uuid; p_n2 uuid; p_o3 uuid; p_m3 uuid; p_c1 uuid; p_c2 uuid; p_d1 uuid; p_b1 uuid;
   p_eo uuid; p_en uuid; p_f1 uuid; p_go uuid; p_gn uuid; p_h1 uuid; p_i1 uuid; p_h2 uuid; p_j1 uuid; p_k1 uuid; p_l1 uuid;
+  p_q1 uuid;
   v_item    jsonb;
   v_note    text;
   q         text[];
@@ -417,6 +425,23 @@ begin
     if sqlerrm <> 'harness sentinel 2f3' then v_fail := 'a claim edited to the person''s own value was refused: ' || sqlerrm; end if;
   end;
   if v_fail is not null then raise exception 'HARNESS 2f3: %', v_fail; end if;
+  -- overrule replaces the person's value the card SHOWED, which the page sends (replaces_value). A tab
+  -- drawn while that value was 25000 — a rater has since recorded the 30000 standing now — names
+  -- 25000, and the function, reading 30000, refuses rather than replace a value never put to the
+  -- person; naming none is refused too. 3f names 30000, as a fresh card shows it, and writes it.
+  foreach v_item in array array[
+      jsonb_build_object('id', p_fact2, 'decision', 'approve', 'overrule', true, 'replaces_value', 25000),
+      jsonb_build_object('id', p_fact2, 'decision', 'approve', 'overrule', true)] loop
+    begin
+      v_r := public.pb_decide_meeting_card(jsonb_build_array(v_item));
+      v_fail := 'an overrule replaced a person''s value the card never showed (' || v_item::text || ' → ' || v_r::text || ')';
+    exception when others then
+      if sqlerrm not like '%not the value this card showed%' then
+        v_fail := 'an overrule naming another value was refused for the wrong reason: ' || sqlerrm;
+      end if;
+    end;
+    if v_fail is not null then raise exception 'HARNESS 2f4: %', v_fail; end if;
+  end loop;
   begin
     perform public.pb_decide_meeting_card(jsonb_build_array(
       jsonb_build_object('id', p_fact1, 'decision', 'approve'),
@@ -460,7 +485,7 @@ begin
 
   perform set_config('request.jwt.claims', jsonb_build_object('email', v_owner, 'role', 'authenticated')::text, true);
   v_r := public.pb_decide_meeting_card(jsonb_build_array(
-           jsonb_build_object('id', p_fact2, 'decision', 'approve', 'overrule', true),
+           jsonb_build_object('id', p_fact2, 'decision', 'approve', 'overrule', true, 'replaces_value', 30000),
            jsonb_build_object('id', p_over, 'decision', 'approve'),
            jsonb_build_object('id', p_rem, 'decision', 'approve'),
            jsonb_build_object('id', p_read2, 'decision', 'approve')), 'harness');
@@ -903,7 +928,8 @@ begin
      or (select count(*) from public.pb_register g where g.account_id = v_j and g.kind = 'override') <> 1 then
     raise exception 'HARNESS 4s: the refused call did not stay open, or wrote a register row';
   end if;
-  v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_j1, 'decision', 'approve', 'overrule', true)));
+  v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_j1, 'decision', 'approve', 'overrule', true,
+           'ends_override_tier', v_ctier)));
   if (v_r->>'overrides')::int <> 1
      or not exists (select 1 from public.pb_register g where g.account_id = v_j and g.kind = 'override'
                      and g.payload->>'proposal_id' = p_j1::text and g.payload->>'tier' = v_tier) then
@@ -984,6 +1010,68 @@ begin
     end if;
   end;
   if v_fail is not null then raise exception 'HARNESS 4u: %', v_fail; end if;
+
+  -- overrule NAMES the override it ends. v_q's card was drawn while an override to v_tier, set three
+  -- days ago, was live. Another, to v_tier3, set two days ago — written on the sheet after the card was
+  -- drawn, or brought by a merge — is what the read applies now; both precede the read's score, so
+  -- v_moved sees nothing. The tab never redrew. A person's tick sent naming the override the card
+  -- showed, the live tier at the old set_at, or nothing at all is refused; named as the read shows it
+  -- now (a fresh card), it is written.
+  insert into public.pb_accounts (key, name, book)
+  values ('harness-q:' || v_marker, 'Harness account q ' || v_marker, 'prospect') returning id into v_q;
+  insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at, created_at)
+  values ('override', v_q, v_owner, 'relationship_known', 'harness override the card showed',
+          jsonb_build_object('tier', v_tier, 'reason_code', 'relationship_known', 'expires_at', now() + interval '30 days'),
+          now() + interval '30 days', now() - interval '3 days')
+  returning created_at::text into v_qold;
+  insert into public.pb_register (kind, account_id, made_by, reason_code, text, payload, expires_at, created_at)
+  values ('override', v_q, v_owner, 'relationship_known', 'harness override written after the card was drawn',
+          jsonb_build_object('tier', v_tier3, 'reason_code', 'relationship_known', 'expires_at', now() + interval '60 days'),
+          now() + interval '60 days', now() - interval '2 days')
+  returning created_at::text into v_qset;
+  insert into public.pb_reads (account_id, rubric_version, rubric_fingerprint, run_at, as_of, status, effective_tier,
+                               computed_tier, reason, scorecard, scorecard_sha256)
+  values (v_q, 'harness', 'harness', clock_timestamp(), current_date, 'Overridden', v_tier3, v_ctier,
+          'Overridden by the owner (relationship_known). Harness read.',
+          jsonb_build_object(
+            'override', jsonb_build_object('tier', v_tier3, 'reason_code', 'relationship_known', 'approver', v_owner,
+                                           'set_at', v_qset, 'expires_at', now() + interval '60 days'),
+            'trace', jsonb_build_object('tier_reasoning', 'harness', 'notes', '[]'::jsonb)), 'harness');
+  insert into public.pb_meeting_proposals
+    (recording_id, account_id, said_as, said_key, mention_state, matched_on, kind, tier, reason_code, quote, line_from,
+     line_to, quote_at, speaker, mode, held_on, default_text, extractor, fingerprint, status)
+  values (v_rec, v_q, array['harness q'], 'harness q', 'resolved', 'name', 'override', v_ctier, 'relationship_known',
+          'harness quote thirty-three ' || v_marker, 40, 40, '00:06:20', 'S1', 'asserted', current_date,
+          'Tier call made in the harness meeting.', 'harness', 'h32:' || v_marker, 'proposed')
+  returning id into p_q1;
+  v_fail := null;
+  foreach v_item in array array[
+      jsonb_build_object('id', p_q1, 'decision', 'approve', 'overrule', true,
+                         'ends_override_tier', v_tier, 'ends_override_set_at', v_qold),
+      jsonb_build_object('id', p_q1, 'decision', 'approve', 'overrule', true,
+                         'ends_override_tier', v_tier3, 'ends_override_set_at', v_qold),
+      jsonb_build_object('id', p_q1, 'decision', 'approve', 'overrule', true)] loop
+    begin
+      v_r := public.pb_decide_meeting_card(jsonb_build_array(v_item));
+      v_fail := 'a tick ending the override its card showed ended another (' || v_item::text || ' → ' || v_r::text || ')';
+    exception when others then
+      if sqlerrm not like '%not the one this card showed%' then
+        v_fail := 'a tick naming another override was refused for the wrong reason: ' || sqlerrm;
+      end if;
+    end;
+    if v_fail is not null then raise exception 'HARNESS 4v: %', v_fail; end if;
+  end loop;
+  if (select status from public.pb_meeting_proposals where id = p_q1) <> 'proposed'
+     or (select count(*) from public.pb_register g where g.account_id = v_q and g.kind = 'override') <> 2 then
+    raise exception 'HARNESS 4v: a refused call did not stay open, or wrote a register row';
+  end if;
+  v_r := public.pb_decide_meeting_card(jsonb_build_array(jsonb_build_object('id', p_q1, 'decision', 'approve', 'overrule', true,
+           'ends_override_tier', v_tier3, 'ends_override_set_at', v_qset)));
+  if (v_r->>'overrides')::int <> 1
+     or not exists (select 1 from public.pb_register g where g.account_id = v_q and g.kind = 'override'
+                     and g.payload->>'proposal_id' = p_q1::text and g.payload->>'tier' = v_ctier) then
+    raise exception 'HARNESS 4v: a tick naming the override the read shows was not written (%)', v_r;
+  end if;
 
   -- A merged record keeps its last read for good — pb_merge_accounts never moves reads, and pb-score
   -- scores prospect and parked agencies only — while its register rows, the meeting override among

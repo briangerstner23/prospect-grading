@@ -398,7 +398,22 @@ check("the sales-meeting migrations are on disk", meetingFiles.length >= 2, meet
     check("the harness refuses a call ending a live override at the computed tier without overrule, and writes it with (4s)",
       /HARNESS 4s/.test(h) && /sqlerrm not like '%a live override shows%'/.test(h) &&
       /'override', jsonb_build_object\('tier', v_ctier, 'reason_code', 'relationship_known', 'approver', v_owner\)/.test(h) &&
-      /jsonb_build_object\('id', p_j1, 'decision', 'approve', 'overrule', true\)/.test(h));
+      /jsonb_build_object\('id', p_j1, 'decision', 'approve', 'overrule', true,\s*'ends_override_tier', v_ctier\)/.test(h));
+    // overrule names what it ends or replaces, as the card showed it. A tab drawn before another
+    // override went live (written or merged in before the read's score, which v_moved cannot see) ends
+    // only the one it names (4v); a fact's overrule replaces only the person's value it names (2f4).
+    check("the harness refuses a tick ending an override its card never showed, and writes one naming the live override (4v)",
+      /HARNESS 4v/.test(h) && (h.match(/sqlerrm not like '%not the one this card showed%'/g) ?? []).length === 1 &&
+      /'ends_override_tier', v_tier, 'ends_override_set_at', v_qold\)/.test(h) &&
+      /'ends_override_tier', v_tier3, 'ends_override_set_at', v_qold\)/.test(h) &&
+      /jsonb_build_object\('id', p_q1, 'decision', 'approve', 'overrule', true\)\]/.test(h) &&
+      /'ends_override_tier', v_tier3, 'ends_override_set_at', v_qset\)/.test(h) &&
+      /'set_at', v_qset/.test(h));
+    check("the harness refuses an overrule replacing a person's value its card never showed, and 3f names the one standing (2f4)",
+      /HARNESS 2f4/.test(h) && /sqlerrm not like '%not the value this card showed%'/.test(h) &&
+      /jsonb_build_object\('id', p_fact2, 'decision', 'approve', 'overrule', true, 'replaces_value', 25000\)/.test(h) &&
+      /jsonb_build_object\('id', p_fact2, 'decision', 'approve', 'overrule', true\)\]/.test(h) &&
+      /jsonb_build_object\('id', p_fact2, 'decision', 'approve', 'overrule', true, 'replaces_value', 30000\)/.test(h));
     // The subject account is chosen as the decide function would judge it: no live override in its
     // scorecard, and nothing written, lapsed or merged in since the earliest of its run, its read and
     // its engine clock — else 2c would be refused and 3f would need overrule.

@@ -2631,10 +2631,12 @@ absence of an exception and three NOTICE lines. It proves every lane refusal (a 
 tier call or a removal, a viewer, a non-WLIQ address), every rule refusal (no written reason, an
 unknown code, an override with no computed tier, a removal with an expiry, a fact that overrules a
 person without the tick — judged on the value sent, edited or not — a tier call that ends a live
-override without the tick, one pinning the computed tier included, any tier call once the register has
-moved past the read — an override written, lapsed or merged in since the engine's clock — a card over
-two agencies, an unplaced name), that a call at the tier the board shows records `agrees`, what the
-writes look like, and that `anon` gets the dossier and the board without a word of it. Run it again
+override without the tick, one pinning the computed tier included, a tick that names another override
+or another person's value than the one standing now — one the card never showed — any tier call once
+the register has moved past the read — an override written, lapsed or merged in since the engine's
+clock — a card over two agencies, an unplaced name), that a call at the tier the board shows records
+`agrees`, what the writes look like, and that `anon` gets the dossier and the board without a word of
+it. Run it again
 after any change to `pb_dossier()`, `pb_board()` or the six meeting functions.
 
 ### 33.3 · Registering
@@ -2702,7 +2704,8 @@ discussions, or that the reach is too short for how this team talks); `meeting.m
 placeholder or one of our own names must be `refused`, never a card); `meeting.pass2.quote_verified`
 against `meeting.pass2.other_agency_lines` and `outside_segment` (a quote from another agency's lines
 is the wrong-company class, §60, and is dropped); `meeting.proposals.proposed / not_proposed /
-agrees` and `meeting.proposals.pre_ticked`; `usage`, and `meeting.ms.pass1` / `meeting.ms.pass2` for time. Then check 20 proposals against the
+agrees` (facts and removals only: the reader never records a tier call `agrees`, §33.5) and
+`meeting.proposals.pre_ticked`; `usage`, and `meeting.ms.pass1` / `meeting.ms.pass2` for time. Then check 20 proposals against the
 transcript for the wrong agency, the wrong field, and decided versus merely floated. Proceed when 2 or
 fewer of 20 are wrong. Otherwise tighten the prompt and bump `MEETING_PROMPT_VERSION` (`meeting@v2`)
 before anything is written — every fingerprint carries the extractor id, so a new version is a clean
@@ -2763,7 +2766,15 @@ computed tier counts — an owner pinning the engine's tier, or the engine catch
 — though it leaves the two tiers equal; the reader takes it (`override_tier`), the screen reads it off
 the scorecard, and the decide function asks the same of the read. Such a call is written only with
 `overrule`, which the screen sends only for a box a person ticked with "approving ends it" on the row;
-sent without it, the function refuses the card. And a live removal covers a
+sent without it, the function refuses the card. `overrule` names what it ends, as `only_if_agrees`
+names the tier it agrees with: the screen sends the live override the row showed
+(`ends_override_tier`, and `ends_override_set_at` — the read's `scorecard.override.set_at`, its
+register row's time) and, for a fact, the person's value the row showed (`replaces_value`). The
+function reads the override and the value standing NOW and refuses the card when either is another
+— a tab left open across the 06:15 score shows the override it loaded with, while one written on the
+sheet or carried in by a merge the evening before is already in the new read, where the register
+check below cannot see it. The redraw then shows the override or value that stands, and the box,
+whose question moved, comes back unticked. And a live removal covers a
 meeting's removal only when it is as firm — a live `do_not_contact` covers anything, a live
 `unqualified` does not cover a do-not-contact, which stays open flagged `upgrades_removal` and, once
 approved, becomes the removal pb_removals shows (rule 7a). No register row a decision writes carries
@@ -2796,12 +2807,16 @@ the run's start comes after it grades every account): every approval of the tier
 or ticked, with `overrule` or without, is refused with words saying the tier changes at the 06:15 UTC
 score, and the whole card waits until after it — press Later. The screen shows the read, so it cannot
 have shown an override written since; a tick on that row, the screen's or a person's, never ends one.
-The reader does not make that check: it never names pb_register (DECISIONS §65), so a meeting read in that window
-can still write a tier call `agrees` against the stale read with nobody asked — an open item for the
-owner, not a rule. X still rejects
-it. A tick survives a redraw only while the question its box asks is unchanged (`meetingTick`): when
+The reader cannot make that check — it never names pb_register (DECISIONS §65) — so it never records a
+tier call `agrees` itself: a call naming the tier the read shows is written `proposed`, not pre-ticked,
+and reaches the card like any other, where the screen flags it and A sends it `only_if_agrees`. The
+function records it `agrees` or, once the register has moved, refuses the card until the score; on
+the rater lane it waits for the owner like any tier call. A removal or a fact can still be `agrees`
+from the reader, because pb_removals and pb_current_facts are read as they stand, not through a score.
+A tick survives a redraw only while the question its box asks is unchanged (`meetingTick`): when
 the redraw moves it — a person recorded a value on the key, the board moved under a tier call (its
-engine or shown tier changed, or a flag came or went) — a box nobody touched starts as a fresh screen
+engine or shown tier changed, the live override showing it is another, or a flag came or went) — a
+box nobody touched starts as a fresh screen
 would start it, and a box the person ticked is ticked exactly where that fresh start is ticked,
 however often the screen unticked or hid it in between (the person's own answer is kept apart from
 the drawn tick); an untick the person made always stands. So a tier call that showed as the board's

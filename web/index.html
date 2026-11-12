@@ -760,9 +760,9 @@ const MEETING_PERSON_SOURCES = ["rater", "sales_meeting"];
 /**
  * Flags only the SCREEN raises, from the book as it stands now. The reader never writes them (so
  * they are not in MEETING_BLOCKING_FLAGS, which mirrors meeting_claims), and each keeps a row from
- * starting ticked. Both mark a tier call naming the tier the board SHOWS — the reader would have
- * written it as 'agrees', but it went out 'proposed' before the book moved, or was placed through
- * "Who is this?" with no snapshot at all:
+ * starting ticked. Both mark a tier call naming the tier the board SHOWS — the reader writes every
+ * tier call 'proposed' (its read may be behind pb_register, which it never reads), and a call can come
+ * to name the board's tier after it was read, or be placed through "Who is this?" with no snapshot:
  *   already_computed_tier  the engine's own tier, and the board shows it;
  *   already_override_tier  a live override's tier, the engine's being another.
  * Neither is the person's to tick: A sends it as an approval with only_if_agrees, which
@@ -900,12 +900,32 @@ function meetingLiveFlags(row, live) {
  * override does. pb_decide_meeting_card asks the same of the read.
  */
 function meetingLiveOverride(read) {
-  if (!read || typeof read !== "object") return false;
+  return meetingLiveOverrideTier(read) !== null;
+}
+
+/**
+ * The tier of the live override a pb_current_reads row shows, or null when it shows none —
+ * pb_decide_meeting_card's v_otier, mirrored: the applied override's tier (scorecard.override.tier),
+ * else an effective tier off the computed one.
+ */
+function meetingLiveOverrideTier(read) {
+  if (!read || typeof read !== "object") return null;
   const ov = read.scorecard && typeof read.scorecard === "object" ? read.scorecard.override : null;
-  if (ov && typeof ov === "object" && typeof ov.tier === "string" && ov.tier.trim() !== "") return true;
+  if (ov && typeof ov === "object" && typeof ov.tier === "string" && ov.tier.trim() !== "") return ov.tier.trim();
   const comp = String(read.computed_tier ?? "").toLowerCase();
   const eff = String(read.effective_tier ?? "").toLowerCase();
-  return comp !== "" && eff !== "" && eff !== comp;
+  return comp !== "" && eff !== "" && eff !== comp ? read.effective_tier : null;
+}
+
+/**
+ * When that override was set — scorecard.override.set_at, its register row's created_at, as the
+ * engine copied it — or null when the read does not say. pb_decide_meeting_card's v_oset, mirrored.
+ * With the tier it names WHICH override a row showed, which a tick ending it sends.
+ */
+function meetingLiveOverrideSetAt(read) {
+  const ov = read && typeof read === "object" && read.scorecard && typeof read.scorecard === "object" ? read.scorecard.override : null;
+  const at = ov && typeof ov === "object" ? ov.set_at : null;
+  return at === null || at === undefined || at === "" ? null : String(at);
 }
 
 /**
@@ -924,8 +944,10 @@ function meetingPersonHeld(row, facts) {
  * the book's value as it stands now. A row nobody had placed was written with no snapshot at all
  * ("book: nothing on record" whatever the book holds), and any snapshot can be stale. person_held
  * (meetingPersonHeld) stays on the row so an edit on the card can be checked against it. A tier
- * call takes the board's tiers as they stand now (engine_tier, effective_tier), which its tick's
- * basis reads: a board that moves under a ticked tier call asks the box a new question.
+ * call takes the board's tiers as they stand now (engine_tier, effective_tier) and the live override
+ * the read shows (live_override_tier, live_override_set_at: which one, so a tick ending it can name
+ * it), which its tick's basis reads: a board that moves under a ticked tier call asks the box a new
+ * question.
  */
 function meetingLiveRow(row, live) {
   if (!row || row.status !== "proposed" || typeof row.account_id !== "string" || !row.account_id) return row;
@@ -933,6 +955,8 @@ function meetingLiveRow(row, live) {
   if (row.kind === "override" && live && typeof live === "object" && live.read !== undefined) {
     out.engine_tier = live.read?.computed_tier ?? null;
     out.effective_tier = live.read?.effective_tier ?? null;
+    out.live_override_tier = meetingLiveOverrideTier(live.read);
+    out.live_override_set_at = meetingLiveOverrideSetAt(live.read);
   }
   if (row.kind === "fact" && live && Array.isArray(live.facts)) {
     const held = live.facts.find((f) => f && f.account_id === row.account_id && f.key === row.key) ?? null;
@@ -1036,8 +1060,9 @@ function meetingSentValue(row, c) {
 /**
  * What a row's tick MEANS, as one string: where the row sits and how it was placed, its flags as the
  * screen re-derived them, the person's value on a fact's key, whether the value the card would send
- * overrules it, and — for a tier call — the engine's tier and the tier the board shows (meetingLiveRow
- * sets both from the book now), since the words on the row name them. Two draws that give the same
+ * overrules it, and — for a tier call — the engine's tier, the tier the board shows and the live
+ * override that shows it (meetingLiveRow sets all three from the book now), since the words on the row
+ * name them: an override replaced by another at the same tier is a new question. Two draws that give the same
  * string ask the same question of the box; null when the row cannot be put into words, which never
  * matches anything.
  */
@@ -1050,7 +1075,7 @@ function meetingTickBasis(row, c) {
       (Array.isArray(row.flags) ? row.flags.map(String) : []).sort(),
       held === undefined ? "unknown" : held === null ? null : [held.value ?? null, held.source ?? null],
       meetingOverrules(row, meetingSentValue(row, c)),
-      row.kind === "override" ? [row.engine_tier ?? null, row.effective_tier ?? null] : null,
+      row.kind === "override" ? [row.engine_tier ?? null, row.effective_tier ?? null, row.live_override_tier ?? null, row.live_override_set_at ?? null] : null,
     ]);
   } catch {
     return null;
@@ -1375,9 +1400,11 @@ function cleanMeetingEdit(kind, e) {
  * rows waiting for the owner
  * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true
  * only because the person ticked a box that says so (touched) — judged on the value it SENDS, edited or not
- * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call that would
- * end a live override (contradicts_live_override, its words on the row) goes with overrule:true on the
- * same terms, and pb_decide_meeting_card refuses one sent without it. A tier call the board
+ * (meetingOverrules), since that is the value pb_decide_meeting_card compares — and with the person's
+ * value the row showed (replaces_value). A tier call that would end a live override
+ * (contradicts_live_override, its words on the row) goes with overrule:true on the same terms, naming
+ * the override the row showed (ends_override_tier, ends_override_set_at), and pb_decide_meeting_card
+ * refuses one sent without it, or naming another. A tier call the board
  * already shows (meetingBoardShows: the engine's tier or a live override's) is neither ticked nor
  * rejected: A approves it with only_if_agrees and no edit, so it lands 'agrees', writes nothing, and
  * keeps beating an older meeting's word; X still rejects it with the rest, because there the person
@@ -1409,10 +1436,25 @@ function cardItems(rows, choice, opts) {
     const edit = cleanMeetingEdit(r.kind, c.edit);
     // Only a box a person set sends overrule: a tick the screen gave (meetingTick never gives one that
     // overrules) goes without it, and the function refuses rather than replace the person's value.
-    if (r.kind === "fact" && c.touched === true && meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)) item.overrule = true;
+    // It names the value the row showed them (replaces_value), and the function refuses to replace any
+    // other — one a person recorded after this screen loaded.
+    if (r.kind === "fact" && c.touched === true && meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)) {
+      item.overrule = true;
+      const shown = r.person_held ? r.person_held.value : r.current_value;
+      if (shown !== undefined && shown !== null) item.replaces_value = shown;
+    }
     // The same for a tier call that ends a live override: never pre-ticked (meetingTick), so a tick
-    // here with the flag on the row is the person's, made with "approving ends it" in front of them.
-    if (r.kind === "override" && c.touched === true && (r.flags ?? []).includes("contradicts_live_override")) item.overrule = true;
+    // here with the flag on the row is the person's, made with "approving ends it" in front of them —
+    // about the override the row showed, which it names (meetingLiveRow, from the read the screen drew).
+    // A tab left open across a score can show one override while another is live; the function refuses
+    // to end any but the one named, and a row with no read behind it names none and is refused.
+    if (r.kind === "override" && c.touched === true && (r.flags ?? []).includes("contradicts_live_override")) {
+      item.overrule = true;
+      if (r.live_override_tier !== undefined) {
+        item.ends_override_tier = r.live_override_tier;
+        item.ends_override_set_at = r.live_override_set_at ?? null;
+      }
+    }
     if (edit) item.edit = edit;
     items.push(item);
   }

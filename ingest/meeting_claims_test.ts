@@ -299,13 +299,18 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
 }
 {
   const [a, b] = rows([vc({ type: "tier_call", tier: "Gold", key: null }), vc({ type: "tier_call", tier: "Silver", key: null, ref: "A1" })]);
-  eq("a tier equal to the effective tier (the one the board shows) → agrees", a.status, "agrees");
+  // A call naming what the read shows is NOT recorded 'agrees' by the reader: the read is the last
+  // score's, and an override written or lapsed (or a record merged in) since then moves the board at
+  // the next one — pb_register, which the reader never reads. It goes on the card, never pre-ticked,
+  // and pb_decide_meeting_card records 'agrees' or refuses it until the score.
+  eq("a tier equal to the effective tier (the one the read shows) → proposed for the decide function, not pre-ticked",
+    [a.status, a.flags, a.default_selected], ["proposed", [], false]);
   eq("the computed tier under a live override → proposed, flagged contradicts_live_override, not pre-ticked",
     [b.status, b.flags, b.default_selected], ["proposed", ["contradicts_live_override"], false]);
   const [noOv] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: "Silver" }] });
-  eq("the computed tier with no live override → agrees", [noOv.status, noOv.flags], ["agrees", []]);
+  eq("the computed tier with no live override → proposed, not pre-ticked", [noOv.status, noOv.flags, noOv.default_selected], ["proposed", [], false]);
   const [noEff] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: null }] });
-  eq("no effective tier recorded → the computed one is what the board shows", noEff.status, "agrees");
+  eq("no effective tier recorded → the computed one is what the board shows (not pre-ticked)", [noEff.status, noEff.default_selected], ["proposed", false]);
   const [c] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: "Silver" }] });
   eq("a different tier with no override live is proposed, pre-ticked, with the default reason code",
     [c.kind, c.status, c.flags, c.reason_code, c.default_selected], ["override", "proposed", [], DEFAULT_OVERRIDE_CODE, true]);
@@ -324,7 +329,7 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
   eq("a third tier under an override AT the computed tier → contradicts_live_override, not pre-ticked",
     [ends.status, ends.flags, ends.default_selected], ["proposed", ["contradicts_live_override"], false]);
   const [same] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [atComp] });
-  eq("…the tier it pins (the board's) → agrees", [same.status, same.flags], ["agrees", []]);
+  eq("…the tier it pins (the board's) → proposed, not pre-ticked", [same.status, same.flags, same.default_selected], ["proposed", [], false]);
   const [none] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [{ ...atComp, override_tier: null }] });
   eq("…and with no override applied, the same call is an ordinary one, pre-ticked", [none.flags, none.default_selected], [[], true]);
   check("liveOverrideIn: an applied override, or (with none recorded) an effective tier off the computed one",

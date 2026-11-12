@@ -774,10 +774,15 @@ export function liveOverrideIn(read: SnapshotRead | null | undefined): boolean {
 /**
  * Verified claims → pb_meeting_proposals rows. For each claim of a readable cluster:
  *
- *   status    'not_proposed' for a hypothetical, question or joke; 'agrees' when the board already
- *             says it — a tier equal to the EFFECTIVE tier (the one the board shows), a removal the
- *             live removal covers (removalCovers), a fact equal to the value a PERSON holds; else
- *             'proposed';
+ *   status    'not_proposed' for a hypothetical, question or joke; 'agrees' when the book already
+ *             says it — a removal the live removal covers (removalCovers), a fact equal to the value
+ *             a PERSON holds; else 'proposed'. Never 'agrees' for a tier call: what the board shows
+ *             is the last score's read, and an override written or lapsed, or a record merged in,
+ *             since then moves it at the next score — which the reader, reading no pb_register, cannot
+ *             see. A call naming the tier the read shows is proposed, never pre-ticked; the screen
+ *             sends it only_if_agrees, and pb_decide_meeting_card records 'agrees' or refuses it until
+ *             the score. pb_removals and pb_current_facts are read as they stand, not through a
+ *             score, so a removal or a fact can still say 'agrees';
  *   flags     the verifier's, plus 'historic' (held more than HISTORIC_DAYS before as_of),
  *             'conflicts_with_person' (a fact that disagrees with a person's value),
  *             'no_computed_tier' (a tier call the engine would refuse), 'contradicts_live_override'
@@ -788,7 +793,8 @@ export function liveOverrideIn(read: SnapshotRead | null | undefined): boolean {
  *             'upgrades_removal' (a do-not-contact said of an agency the board holds off only as
  *             unqualified);
  *   display   current_value / current_source, engine_tier / effective_tier — snapshots only;
- *   defaults  default_selected (defaultSelected), default_text (defaultText), and an override's
+ *   defaults  default_selected (defaultSelected; never a tier call naming the tier the read shows),
+ *             default_text (defaultText), and an override's
  *             reason_code: the model's if the rubric lists it, else DEFAULT_OVERRIDE_CODE;
  *   identity  a fingerprint over (source, recording, extractor, WHO, kind, key), where WHO is the
  *             account for a resolved cluster and the said_key only for a cluster nobody has placed —
@@ -821,6 +827,7 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
     if (historic) flags.add("historic");
 
     let status: ProposalStatus = UNDECIDED_MODES.includes(c.mode) ? "not_proposed" : "proposed";
+    let boardShowed = false;
     let current_value: unknown = null;
     let current_source: string | null = null;
     let conflicts = false;
@@ -845,7 +852,9 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
       // leaves the two tiers equal (an owner pinning the engine's tier, or the engine catching up).
       const live = liveOverrideIn(read);
       if (t !== "" && t === shown) {
-        if (status === "proposed") status = "agrees";
+        // What the read shows — but the read may be behind pb_register, so it is left for the decide
+        // function to call 'agrees' (or refuse), and it is not a tick for anyone: nothing to write.
+        boardShowed = true;
       } else if (t !== "" && comp !== "" && live) {
         // A live override puts its tier on the board and the team named another — the engine's
         // own, or a third. Approving writes a newer override, and the newest live one is the one
@@ -903,7 +912,7 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
         account !== null ? `acct:${account}` : `said:${cl.said_key}`, kind, discriminator]),
       status,
     };
-    row.default_selected = defaultSelected(row);
+    row.default_selected = !boardShowed && defaultSelected(row);
     row.default_text = defaultText(row, { held_on });
     rows.push(row);
   }

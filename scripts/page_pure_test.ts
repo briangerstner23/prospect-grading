@@ -84,7 +84,7 @@ const {
   MEETING_PERSON_SOURCES, meetingDefaultText, meetingSameValue, meetingLiveFlags, readTierWords,
   MEETING_SCREEN_FLAGS, meetingPersonHeld, meetingLiveRow, meetingOverrules, meetingsMissing, meetingPickList, pagedRows,
   meetingBoardShows, mergeReads, meetingReadOf, meetingSentValue, meetingTickBasis, meetingTick, placeCardNotices,
-  meetingLiveOverride,
+  meetingLiveOverride, meetingLiveOverrideTier, meetingLiveOverrideSetAt,
 } = helpers;
 
 function run(): void {
@@ -549,8 +549,9 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     eq("…but a tick no person set never sends overrule (the function refuses instead of replacing their value)",
       cardItems([live], { p: { ticked: true } }, { lane: "owner" }), [{ id: "p", decision: "approve" }]);
 
-    /* A tier call naming the engine's own tier with no override live: the reader would have written
-       it 'agrees', and pb_decide_meeting_card now records it so (nothing written). The screen never
+    /* A tier call naming the engine's own tier with no override live: the reader writes it 'proposed'
+       (its read may be behind pb_register), and pb_decide_meeting_card records it 'agrees' (nothing
+       written) or refuses it until the score. The screen never
        asks the person to tick it and never rejects it: a reject would reopen an older meeting's call. */
     eq("meetingLiveFlags: the computed tier with no override live → already_computed_tier",
       meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }), ["already_computed_tier"]);
@@ -624,6 +625,37 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
         cardItems([third], { o: { ticked: true, edit } }, { mode: "approve", lane: "owner" }),
         [{ id: "o", decision: "approve", edit: { reason_code: "other", expires_at: "2027-01-08T00:00:00Z", text: "x" } }]);
       eq("cardItems: …unticked, it is rejected as before", cardItems([third], { o: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "o", decision: "reject" }]);
+      /* overrule names WHICH override the row showed, as only_if_agrees names the tier it agrees with.
+         The owner opens the card on day 1: a live override shows Gold, set 1 Nov. Overnight another
+         override — Platinum, or Gold again with a later expiry — is written or merged in, and the 06:15
+         score applies it. The tab never redrew; the owner ticks "approving ends it" and presses A. The
+         item still names the day-1 override, so pb_decide_meeting_card, which reads the new one off
+         the read, refuses rather than end an override the card never showed. */
+      const setRead = { ...pinnedRead, scorecard: { override: { ...pinnedRead.scorecard.override, set_at: "2026-11-01T09:00:00+00:00" } } };
+      eq("meetingLiveOverrideTier: the applied override's tier", meetingLiveOverrideTier(setRead), "Gold");
+      eq("meetingLiveOverrideTier: …else an effective tier off the computed one, else none",
+        [meetingLiveOverrideTier({ computed_tier: "Gold", effective_tier: "Silver" }), meetingLiveOverrideTier({ computed_tier: "Gold", effective_tier: "gold" }),
+         meetingLiveOverrideTier({ computed_tier: "Gold", effective_tier: "Gold", scorecard: { override: { tier: " Silver " } } }), meetingLiveOverrideTier(null)],
+        ["Silver", null, "Silver", null]);
+      eq("meetingLiveOverrideSetAt: the applied override's set_at, else none",
+        [meetingLiveOverrideSetAt(setRead), meetingLiveOverrideSetAt(pinnedRead), meetingLiveOverrideSetAt({ scorecard: { override: null } }), meetingLiveOverrideSetAt(null)],
+        ["2026-11-01T09:00:00+00:00", null, null, null]);
+      const shown = meetingLiveRow(ov("Bronze"), { read: setRead });
+      eq("meetingLiveRow: a tier call carries the live override the read shows", [shown.flags, shown.live_override_tier, shown.live_override_set_at],
+        [["contradicts_live_override"], "Gold", "2026-11-01T09:00:00+00:00"]);
+      eq("cardItems: a person's tick ending it names the override the row showed",
+        cardItems([shown], { o: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner" }),
+        [{ id: "o", decision: "approve", overrule: true, ends_override_tier: "Gold", ends_override_set_at: "2026-11-01T09:00:00+00:00",
+           edit: { reason_code: "other", expires_at: "2027-01-08T00:00:00Z", text: "x" } }]);
+      eq("cardItems: …one with no set_at on the read names its tier and no time",
+        cardItems([meetingLiveRow(ov("Bronze"), { read: pinnedRead })], { o: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner" })
+          .map((i: Row) => [i.ends_override_tier, i.ends_override_set_at]), [["Gold", null]]);
+      // The basis: an override replaced by another at the SAME tier is a new question for the box.
+      const later = meetingLiveRow(ov("Bronze"), { read: { ...setRead, scorecard: { override: { ...setRead.scorecard.override, set_at: "2026-11-11T18:00:00+00:00", expires_at: "2027-03-01T00:00:00Z" } } } });
+      const tickedOnShown = { ticked: true, touched: true, mine: true, edit, basis: meetingTickBasis(shown, { edit }) };
+      check("meetingTickBasis: another override at the same tier moves the basis", meetingTickBasis(shown, { edit }) !== meetingTickBasis(later, { edit }));
+      eq("meetingTick: …so the person's tick ending the old one is not carried onto the new one", meetingTick(later, tickedOnShown).ticked, false);
+      eq("meetingTick: …and a redraw that moved nothing keeps it", meetingTick(meetingLiveRow(ov("Bronze"), { read: setRead }), tickedOnShown).ticked, true);
       const plain = { ...ov("Bronze"), flags: meetingLiveFlags(ov("Bronze"), { read: { computed_tier: "Gold", effective_tier: "Gold", scorecard: { override: null } } }) };
       eq("cardItems: an ordinary tier call (no live override) never sends overrule, ticked by a person or not",
         [cardItems([plain], { o: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner" })[0].overrule,
@@ -813,7 +845,17 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       const p2 = { ...c2, ticked: true, mine: true, touched: true, basis: meetingTickBasis(d2, c2) };
       const p3 = { ...p2, ...meetingTick(meetingLiveRow(row, { facts: [person(25)] }), p2) };
       eq("redraw: a tick the person made against the rater's value survives a redraw that changed nothing", p3.ticked, true);
-      eq("redraw: …and goes with overrule", cardItems([d2], { k1: p3 }, { mode: "approve", lane: "owner" }), [{ id: "k1", decision: "approve", overrule: true }]);
+      eq("redraw: …and goes with overrule, naming the person's value the row showed", cardItems([d2], { k1: p3 }, { mode: "approve", lane: "owner" }), [{ id: "k1", decision: "approve", overrule: true, replaces_value: 25 }]);
+      /* A tab left open: the row showed the rater's 25 and the person ticked overrule against it; a
+         rater has since recorded 30, which this screen never drew. The item still names 25 — what the
+         person overruled — so pb_decide_meeting_card, which reads 30, refuses it instead of replacing a
+         value nobody put to them. With no value on the row (the facts never loaded and the row was
+         written with no snapshot), it names none, and the function refuses that too. */
+      eq("cardItems: overrule names the value the row SHOWED, not whatever the book holds when A is pressed",
+        cardItems([d2], { k1: p3 }, { mode: "approve", lane: "owner" })[0].replaces_value, 25);
+      eq("cardItems: …facts not loaded, the snapshot the row's words printed",
+        cardItems([prow("s9", { flags: ["conflicts_with_person"], current_value: 25, current_source: "rater" })], { s9: { ticked: true, touched: true } }, { lane: "owner" }),
+        [{ id: "s9", decision: "approve", overrule: true, replaces_value: 25 }]);
       eq("redraw: …but not one made against a value the person has since changed", meetingTick(meetingLiveRow(row, { facts: [person(30)] }), p3).ticked, false);
       // A rater records 30 (the screen unticks the overrule), then the meeting's own 40: no conflict is
       // left, a fresh screen would tick it, and the person ticked it — so it is ticked, never rejected.
@@ -885,7 +927,7 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
     eq("meetingOverrules: only a fact overrules", meetingOverrules(ov("Gold"), "Gold"), false);
     eq("cardItems: an edit that now differs from a person's value goes with overrule",
       cardItems([agreeing], { ag: { ticked: true, touched: true, edit: { value: 40, changed: true } } }, { lane: "owner" }),
-      [{ id: "ag", decision: "approve", overrule: true, edit: { value: 40 } }]);
+      [{ id: "ag", decision: "approve", overrule: true, replaces_value: 25, edit: { value: 40 } }]);
     eq("cardItems: an edit to the person's own value needs none (the function records 'agrees')",
       cardItems([lr], { p: { ticked: true, edit: { value: 25, changed: true } } }, { lane: "owner" }),
       [{ id: "p", decision: "approve", edit: { value: 25 } }]);

@@ -448,6 +448,13 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   sameSet("…and it emits every kind the table allows", values("kind"), pChecks.kind ?? []);
   subset("every status proposalRows emits is in the table's check", values("status"), pChecks.status ?? []);
   sameSet("…which are exactly the three a reader writes (proposed, not_proposed, agrees)", values("status"), ["proposed", "not_proposed", "agrees"]);
+  // …but never 'agrees' for a tier call. The reader's snapshot is the last score's read, and it cannot
+  // see pb_register move past it (an override written or lapsed, a record merged in): an 'agrees' it
+  // wrote would close the newest word against a board the next score moves, with nobody asked. The
+  // call goes on the card, and pb_decide_meeting_card records 'agrees' or refuses it (v_moved).
+  check("proposalRows never records a tier call 'agrees' (the read above shows Gold, and the claims name it)",
+    rows.some((r) => r.kind === "override" && r.account_id !== null && r.tier === "Gold") &&
+    !rows.some((r) => r.kind === "override" && r.status === "agrees"));
   subset("every mode is in the table's check", values("mode"), pChecks.mode ?? []);
   subset("every topic is in the table's check", values("topic"), pChecks.topic ?? []);
   subset("every confidence is in the table's check", values("confidence"), pChecks.confidence ?? []);
@@ -597,7 +604,7 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   const movedAt = ovBranch.search(/v_moved\s*:=\s*exists\s*\(/i);
   check("…never against a read pb_register has moved past: the earliest of the run's start and the read's write is compared",
     /left\s+join\s+public\.pb_runs\s+x\s+on\s+x\.id\s*=\s*r\.run_id/i.test(ovBranch) &&
-    /least\(x\.started_at,\s*r\.run_at\),\s*r\.scorecard->>'as_of'\s+into\s+v_ctier,\s*v_etier,\s*v_otier,\s*v_seen,\s*v_asof/i.test(ovBranch));
+    /least\(x\.started_at,\s*r\.run_at\),\s*r\.scorecard->>'as_of',\s*nullif\(r\.scorecard->'override'->>'set_at',\s*''\)\s+into\s+v_ctier,\s*v_etier,\s*v_otier,\s*v_seen,\s*v_asof,\s*v_oset/i.test(ovBranch));
   check("…and the engine's own clock (scorecard.as_of, fixed before pb-score reads pb_register) when it is earlier, without failing on one that will not cast",
     /begin\s+v_seen\s*:=\s*least\(v_seen,\s*v_asof::timestamptz\)\s*;\s*exception\s+when\s+others\s+then\s+null\s*;\s*end\s*;/i.test(ovBranch) &&
     ovBranch.search(/v_seen\s*:=\s*least\(v_seen/i) < movedAt);
@@ -643,6 +650,39 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
       byPerson.length === 1 && byPerson[0].overrule === true && byScreen.length === 1 && byScreen[0].overrule === undefined,
       JSON.stringify([byPerson, byScreen]));
     subset("…and overrule is a key the function reads", byPerson.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
+
+    // overrule names WHAT it ends, as only_if_agrees names the tier it agrees with. The page names the
+    // live override the row showed, from the read it drew (meetingLiveRow); the function reads the
+    // override live NOW off the current read (v_otier, v_oset) and refuses any other — a tab left open
+    // across a score shows one override while another, written or merged in before that score, is
+    // live, and v_moved (which looks only past the current read) cannot see it (harness 4v).
+    const setAt = "2026-11-01T09:00:00+00:00";
+    const read = { computed_tier: "Silver", effective_tier: "Gold", scorecard: { override: { tier: "Gold", reason_code: "other", set_at: setAt } } };
+    const live = P.meetingLiveRow(prow("e2", { kind: "override", tier: "Bronze", key: null, value: null }), { read });
+    const named = P.cardItems([live], { e2: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner", reasons: REASONS });
+    check("the page names the live override a person's tick ends: its tier and set_at, as the read it drew applied it",
+      named.length === 1 && named[0].overrule === true && named[0].ends_override_tier === "Gold" && named[0].ends_override_set_at === setAt,
+      JSON.stringify(named));
+    subset("…in keys the function reads", named.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
+    check("…the same instant the function reads off the scorecard (v_oset is scorecard.override.set_at)",
+      /nullif\(r\.scorecard->'override'->>'set_at',\s*''\)/.test(ovBranch) && String(P.meetingLiveOverrideSetAt).includes("ov.set_at"));
+    const namedAt = ovBranch.search(/elsif\s+v_overrule\s+and\s*\(\s*lower\(nullif\(btrim\(v_item->>'ends_override_tier'\),\s*''\)\)\s+is\s+distinct\s+from\s+lower\(btrim\(v_otier\)\)\s+or\s+nullif\(v_item->>'ends_override_set_at',\s*''\)\s+is\s+distinct\s+from\s+v_oset\s*\)\s+then\s+raise\s+exception/i);
+    check("pb_decide_meeting_card refuses an overrule naming another override than the one live now (or none), after the overrule check and before the write",
+      namedAt > endsAt && namedAt < ovBranch.search(/insert\s+into\s+public\.pb_register/i) && namedAt > ovBranch.search(/if\s+v_moved\s+then/i));
+    // The page's v_otier, across the same 36 reads: the tier it names is the tier the function compares.
+    let tierDisagree = 0;
+    for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", "Bronze", null]) for (const ov of ["Gold", "Silver", null]) {
+      const page = P.meetingLiveOverrideTier({ computed_tier: comp, effective_tier: eff, scorecard: { override: ov === null ? null : { tier: ov } } });
+      const sql = ov !== null ? ov : comp !== null && eff !== null && eff.toLowerCase() !== comp.toLowerCase() ? eff : null;
+      if (page !== sql) tierDisagree++;
+    }
+    check("the page and pb_decide_meeting_card agree on the live override's tier a tick names (36 cases)", tierDisagree === 0, String(tierDisagree));
+    // The fact branch the same way: overrule names the person's value the row showed.
+    const fact = P.meetingLiveRow(prow("f9", {}), { facts: [{ account_id: "acc-1", key: "headcount", value: 25, evidence_label: "evidence", source: "rater" }] });
+    const over = P.cardItems([fact], { f9: { ticked: true, touched: true, mine: true, edit: {} } }, { mode: "approve", lane: "owner", reasons: REASONS });
+    check("the page names the person's value a tick overrules (replaces_value)",
+      over.length === 1 && over[0].overrule === true && over[0].replaces_value === 25, JSON.stringify(over));
+    subset("…in a key the function reads", over.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
   }
   check("only_if_agrees refuses the card when the board has moved, instead of writing an override nobody chose",
     /elsif\s+v_agree\s+then\s+raise\s+exception/i.test(ovBranch) &&
@@ -667,6 +707,12 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
     /v_value\s*:=\s*case\s+when\s+v_edit\s*\?\s*'value'\s+then\s+v_edit->'value'\s+else\s+p\.value\s+end/i.test(factBranch) &&
     /else\s+v_cur_val\s*=\s*v_value\s+end/i.test(factBranch) && /elsif\s+not\s+v_overrule\s+then\s+raise\s+exception/i.test(factBranch));
   check("…and the page judges its overrule on that value too", String(P.cardItems).includes('meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)'));
+  {
+    const notOverrule = factBranch.search(/elsif\s+not\s+v_overrule\s+then\s+raise\s+exception/i);
+    const notShown = factBranch.search(/elsif\s+\(v_item->'replaces_value'\)\s+is\s+distinct\s+from\s+v_cur_val\s+then\s+raise\s+exception/i);
+    check("pb_decide_meeting_card refuses an overrule naming another person's value than the one standing now, before the fact is written (harness 2f4)",
+      notShown > notOverrule && notOverrule >= 0 && notShown < factBranch.search(/insert\s+into\s+public\.pb_facts/i));
+  }
 
   // What the page reads back.
   const decideReturns = builtKeys(decide.slice(decide.lastIndexOf("return jsonb_build_object")));

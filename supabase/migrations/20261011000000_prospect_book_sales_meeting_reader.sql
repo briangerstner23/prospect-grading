@@ -455,17 +455,24 @@ end $$;
 
 -- pb_decide_meeting_card: one atomic call per agency card. Items are
 --   [{id, decision: 'approve'|'reject'|'propose', overrule?: bool, only_if_agrees?: bool,
+--     ends_override_tier?: text, ends_override_set_at?: text, replaces_value?: jsonb,
 --     edit?: {value?, tier?, reason_code?, text?, expires_at?, disposition?, review_on?}}]
 -- A tier call naming the tier the board already shows — the engine's own with no override live, or
--- a live override's — is recorded 'agrees' and writes nothing, as the reader would have written it:
--- refusing it left a reject as the only way to close the card, and a reject is exactly what returns
--- an older meeting's contradicting call (pb_meeting_supersede). only_if_agrees is how the page sends
+-- a live override's — is recorded 'agrees' and writes nothing: refusing it left a reject as the only
+-- way to close the card, and a reject is exactly what returns an older meeting's contradicting call
+-- (pb_meeting_supersede). The reader never records a tier call 'agrees' itself (it cannot see
+-- pb_register move past the read), so every one reaches a card. only_if_agrees is how the page sends
 -- such a row it never asked the person to tick: approve it only while it still agrees, and refuse
 -- the card if the board has moved since it was loaded, rather than write an override nobody chose.
 -- A tier call naming any other tier while the read shows a live override (scorecard.override: one at
 -- the computed tier is live too) ends that override, so it is written only with overrule — which the
 -- page sends only for a box a person ticked with "approving ends it" on the row — as a fact that
--- overrules a person is. The board's tier is the last score's read, so NO tier call is decided once
+-- overrules a person is. overrule names what it ends, as only_if_agrees names what it agrees with:
+-- the live override the row showed (ends_override_tier, ends_override_set_at — the read's
+-- scorecard.override.set_at, its register row's created_at) and the person's value the row showed
+-- (replaces_value). A tab left open across a score can show one override while another is live, and
+-- the tick was never about that one: any other is refused. The board's tier is the last score's
+-- read, so NO tier call is decided once
 -- pb_register has moved past that read — an override written or lapsed, or a record merged in, since
 -- the engine's clock for that score: the card cannot show what the next score will put on the board,
 -- so whatever was ticked, the card waits until after it.
@@ -511,6 +518,7 @@ declare
   v_ctier    text;
   v_etier    text;
   v_otier    text;
+  v_oset     text;
   v_seen     timestamptz;
   v_asof     text;
   v_moved    boolean;
@@ -662,6 +670,12 @@ begin
         elsif not v_overrule then
           raise exception '% differs from what a person recorded (% from %); tick overrule to replace it on purpose',
             p.key, v_cur_val, v_cur_src;
+        elsif (v_item->'replaces_value') is distinct from v_cur_val then
+          -- overrule replaces the value the person SAW on the row (the page sends it), never whichever a
+          -- person has recorded since the screen loaded: that one was never put to them.
+          raise exception '% now holds % from %, not the value this card showed and the tick overrules (%): the book '
+                          'moved since this card was loaded; reload it and decide again',
+            p.key, v_cur_val, v_cur_src, coalesce((v_item->'replaces_value')::text, 'none named');
         end if;
       end if;
       if v_status = 'approved' then
@@ -700,16 +714,18 @@ begin
                       where t = v_tier) then
         raise exception 'tier % is not in the active rubric''s vocabulary.tiers', coalesce(v_tier, '(none)');
       end if;
-      v_ctier := null; v_etier := null; v_otier := null; v_seen := null; v_asof := null;
+      v_ctier := null; v_etier := null; v_otier := null; v_oset := null; v_seen := null; v_asof := null;
       -- v_otier: the tier of the override the read shows live — the one the engine APPLIED
       -- (scorecard.override), which may be AT the computed tier and then leaves the two tiers equal;
       -- for a read with no scorecard override, an effective tier off the computed one, which only an
-      -- override makes (meeting_claims.liveOverrideIn and the page's meetingLiveOverride, mirrored).
+      -- override makes (meeting_claims.liveOverrideIn and the page's meetingLiveOverrideTier, mirrored).
+      -- v_oset: that override's set_at (its register row's created_at), which the page names with
+      -- v_otier when a person's tick ends it.
       select r.computed_tier, r.effective_tier,
              coalesce(nullif(btrim(r.scorecard->'override'->>'tier'), ''),
                       case when lower(r.effective_tier) <> lower(r.computed_tier) then r.effective_tier end),
-             least(x.started_at, r.run_at), r.scorecard->>'as_of'
-        into v_ctier, v_etier, v_otier, v_seen, v_asof
+             least(x.started_at, r.run_at), r.scorecard->>'as_of', nullif(r.scorecard->'override'->>'set_at', '')
+        into v_ctier, v_etier, v_otier, v_seen, v_asof, v_oset
         from public.pb_current_reads r
         left join public.pb_runs x on x.id = r.run_id
        where r.account_id = v_acct;
@@ -765,6 +781,18 @@ begin
         -- ticked with those words on the row says so, never a tick the screen drew (rule 7).
         raise exception 'a live override shows anticipated % on this agency; approving anticipated % writes a newer override '
                         'that ends it, so it is written only when a person ticks it on purpose (overrule)', v_otier, v_tier;
+      elsif v_overrule
+            and (lower(nullif(btrim(v_item->>'ends_override_tier'), '')) is distinct from lower(btrim(v_otier))
+                 or nullif(v_item->>'ends_override_set_at', '') is distinct from v_oset) then
+        -- …and the tick ends the override the row SHOWED, named by the page from the read it drew (its
+        -- tier and its set_at), never whichever is live now. An override written or merged in after the
+        -- screen loaded and before this read's score is already in this read, so v_moved cannot see it:
+        -- a tab left open across that score still shows the old one, or none (rule 7).
+        raise exception 'the board''s live override on this agency is now % — not the one this card showed and the tick '
+                        'ends (%): the book moved since this card was loaded; reload it and decide the tier call again',
+          coalesce('anticipated ' || v_otier || coalesce(', set ' || v_oset, ''), 'none'),
+          coalesce('anticipated ' || nullif(btrim(v_item->>'ends_override_tier'), '')
+                   || coalesce(', set ' || nullif(v_item->>'ends_override_set_at', ''), ''), 'none named');
       else
         v_codes := coalesce(v_spec->'override'->'reason_codes', '[]'::jsonb);
         v_code := coalesce(nullif(v_edit->>'reason_code', ''), p.reason_code,
