@@ -11,9 +11,13 @@
  * resolveFeatures → grade. Then, unless preview:
  *   - insert pb_reads (scorecard_sha256 over JSON.stringify(scorecard))
  *   - upsert pb_potential_snapshots, one per ranked account per day per estimator (DECISIONS §36)
- *   - update pb_accounts.status / effective_tier / cell (listing columns)
- *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors}
- * A per-account failure is collected into errors and the run continues.
+ *   - update pb_accounts.status / effective_tier / cell (listing columns) where they changed,
+ *     one call per patch (listingUpdates; RUNBOOK §15, 10 Nov 2026)
+ *   - write pb_runs with counts {scored, parked, unclassified, overridden, ranked, errors,
+ *     snapshots, listing_updated}
+ * A per-account failure is collected into errors and the run continues. The answer is decided
+ * after the run row is finished (scoreAnswer): if that last write fails, the response says so
+ * with a 500, rather than ok: true over a row left at running.
  *
  * ?preview=1 scores under the named (draft) rubric, writes NOTHING — no reads, no run — and
  * returns {diff: [{account_id, name, from_tier, to_tier, from_status, to_status, from_rank,
@@ -41,19 +45,22 @@ import {
   buildSnapshotRow,
   diffEntry,
   groupBy,
-  listingPatch,
+  listingUpdates,
   rankDiff,
+  scoreAnswer,
   scorecardJson,
   tallyScorecards,
+  toListing,
   toResolveAccount,
 } from "../_shared/score_pure.ts";
-import type { CurrentRead, DiffEntry } from "../_shared/score_pure.ts";
-import { grade } from "../_shared/core/engine.ts";
+import type { CurrentRead, DiffEntry, Listing } from "../_shared/score_pure.ts";
+import { fingerprint, grade } from "../_shared/core/engine.ts";
 import { resolveFeatures } from "../_shared/ingest/resolve_features.ts";
 import type { DealRow, EngagementRow, FactRow, RegisterRow, SignalRow } from "../_shared/ingest/resolve_features.ts";
 import type { ProspectScorecard } from "../_shared/core/prospect_types.ts";
 
-const ACCOUNT_COLS = "id,key,name,relationship_type,roster_source,roster_certified,lineage,book";
+// status / effective_tier / cell are read back so the listing write can skip what has not moved.
+const ACCOUNT_COLS = "id,key,name,relationship_type,roster_source,roster_certified,lineage,book,status,effective_tier,cell";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -184,6 +191,9 @@ Deno.serve(async (req: Request) => {
   const cards: ProspectScorecard[] = [];
   const errors: Array<{ account_id: string; name: string; error: string }> = [];
   const notes: string[] = [];
+  // Hashed once for the whole book, not once per account inside grade() (RUNBOOK §15): the same
+  // value grade() would compute, from the same object, for a fraction of the CPU.
+  const rubricFingerprint = fingerprint(rubric.spec);
   for (const a of accounts) {
     const id = String(a.id);
     try {
@@ -197,7 +207,7 @@ Deno.serve(async (req: Request) => {
         as_of: asOf,
         rubric: rubric.spec,
       });
-      const sc = grade(resolved.features, rubric.spec, { override: resolved.override, confidence_override: resolved.confidence_override });
+      const sc = grade(resolved.features, rubric.spec, { override: resolved.override, confidence_override: resolved.confidence_override, rubric_fingerprint: rubricFingerprint });
       cards.push(sc);
       for (const n of resolved.notes) notes.push(`${sc.name}: ${n}`);
     } catch (e) {
@@ -235,19 +245,18 @@ Deno.serve(async (req: Request) => {
   }
   const writeErrors: string[] = [];
   let snapshotsWritten = 0;
+  let listingUpdated = 0;
   try {
     const readRows: Rec[] = [];
     for (const sc of cards) readRows.push(buildReadRow(sc, runId, await sha256Hex(scorecardJson(sc))));
     const ins = await insertBatches(db, "pb_reads", readRows);
     writeErrors.push(...ins.errors);
 
-    for (const sc of cards) {
-      const { error } = await db.from("pb_accounts").update(listingPatch(sc)).eq("id", sc.account_id);
-      if (error) writeErrors.push(`pb_accounts ${sc.account_id}: ${error.message}`);
-    }
-
     // The calibration loop starts here (R4): what the book claimed today, kept so it can be
     // scored against actuals later. A re-run the same day replaces the day's row, never doubles it.
+    // Written before the listing: on ten of the eleven killed nights (RUNBOOK §15) the kill came in
+    // the old per-account listing loop and no snapshot landed. The order alone is no guarantee —
+    // on 29 Oct the kill came inside this upsert — the small listing step below is what protects it.
     const snapRows: Rec[] = [];
     for (const sc of cards) {
       const row = buildSnapshotRow(sc, rubric.spec, runId);
@@ -257,26 +266,42 @@ Deno.serve(async (req: Request) => {
     writeErrors.push(...snaps.errors);
     snapshotsWritten = snaps.wrote;
     notes.push(`potential snapshots: ${snaps.wrote} written for ${snapRows.length} ranked of ${cards.length} scored`);
+
+    // Only the accounts whose listing moved, one call per patch — never one call per account.
+    const listingNow = new Map<string, Listing>();
+    for (const a of accounts) listingNow.set(String(a.id), toListing(a));
+    const updates = listingUpdates(cards, listingNow);
+    for (const u of updates) {
+      const { error } = await db.from("pb_accounts").update(u.patch).in("id", u.ids);
+      if (error) writeErrors.push(`pb_accounts listing (${u.ids.length} accounts): ${error.message}`);
+      else listingUpdated += u.ids.length;
+    }
+    notes.push(`listing: ${listingUpdated} of ${cards.length} accounts changed, written in ${updates.length} call(s)`);
   } catch (e) {
     writeErrors.push(errorMessage(e));
   }
 
   const allErrors: unknown[] = [...errors, ...writeErrors.map((m) => ({ error: m }))];
   const status = runStatus(cards.length, allErrors.length);
+  // snapshots and listing_updated go into counts, not only notes: the response truncates notes
+  // past 200 and pb_runs is the record. The response carries them too, for the night pb_runs can't.
+  const runCounts = { ...counts, snapshots: snapshotsWritten, listing_updated: listingUpdated };
+  let finishError: string | null = null;
   try {
-    // snapshots goes into counts, not only notes: the response truncates notes past 200 and pb_runs is the record.
-    await finishRun(db, runId, status, { ...counts, snapshots: snapshotsWritten, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
+    await finishRun(db, runId, status, { ...runCounts, errors: allErrors.length, rubric_version: rubric.version, as_of: asOf }, allErrors);
   } catch (e) {
-    writeErrors.push(errorMessage(e));
+    finishError = errorMessage(e);
   }
+  // Decided after finishRun, so a run row that could not be closed is a 500, never ok: true.
+  const answer = scoreAnswer(cards.length, allErrors, finishError);
   return json({
-    ok: allErrors.length === 0,
+    ok: answer.ok,
     run_id: runId,
-    status,
+    status: answer.status,
     rubric_version: rubric.version,
     as_of: asOf,
-    counts,
-    errors: allErrors,
+    counts: runCounts,
+    errors: answer.errors,
     notes: notes.length > 200 ? [...notes.slice(0, 200), `… ${notes.length - 200} more`] : notes,
-  }, allErrors.length === 0 ? 200 : 500);
+  }, answer.http);
 });

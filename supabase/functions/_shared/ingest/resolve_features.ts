@@ -450,9 +450,17 @@ function labelRank(label: unknown): number {
  * contractors — against the nine accounts where a headcount was stated on a recorded call it is
  * exact twice, within 25% four times of seven, and 4x high once. A team page is a claim the
  * agency makes about itself.
+ *
+ * `sales_meeting` ranks 0, TIED with `rater` (owner, 10 Oct 2026 — DECISIONS §65: "what we say in
+ * the meeting has high value as it is our judgement from the research"). A sales_meeting fact exists
+ * only once a person approved it on its card (pb_decide_meeting_card writes it, with
+ * pb_facts.meeting_proposal_id), so it is a person's entry like a rater's. Inside the tie the newest
+ * written wins; the card refuses to overrule a person's value without an explicit overrule. The
+ * same line is stated in the pb_current_facts view and in pb_reconcile_state()'s rule9 CTE;
+ * resolve_features_test.ts pins all three together.
  */
 const SOURCE_RANK: Readonly<Record<string, number>> = {
-  rater: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6,
+  rater: 0, sales_meeting: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6,
 };
 function sourceRank(source: unknown): number {
   return typeof source === "string" && source in SOURCE_RANK ? SOURCE_RANK[source] : 7;
@@ -460,9 +468,10 @@ function sourceRank(source: unknown): number {
 
 /**
  * Winning row per key, in the same order as the pb_current_facts view: evidence outranks
- * inferred outranks unknown, THEN SOURCE PRECEDENCE (a person, then a call, then a note, then the
- * agency's own site, then the seed, then Apollo, then Pipedrive's fields, then anything else),
- * then newest written, then newest observed.
+ * inferred outranks unknown, THEN SOURCE PRECEDENCE (a person — a rater's entry or an approved
+ * sales-meeting claim, tied — then a call, then a note, then the agency's own site, then the seed,
+ * then Apollo, then Pipedrive's fields, then anything else), then newest written, then newest
+ * observed.
  *
  * The source tier was added to the view on 15 Sep 2026 (migration
  * prospect_book_fact_source_precedence, applied without a file and transcribed on 17 Sep —

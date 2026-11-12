@@ -35,8 +35,14 @@
  * Costs one model call per unread record with real prose in it. A re-run costs nothing: the
  * watermark skips them, and the fingerprint would refuse them anyway.
  *
- * Fathom TRANSCRIPTS are deliberately not read — see record_sources.ts. A transcript is speech;
- * quoting it verbatim would put half-finished sentences in the book as evidence.
+ * Fathom TRANSCRIPTS are deliberately not read here — see record_sources.ts. A transcript is
+ * speech; quoting it verbatim would put half-finished sentences in the book as evidence.
+ *
+ * THE ONE EXCEPTION IS ITS OWN CHANNEL. `{ sources: ["sales_meeting"] }`, and only that, runs
+ * meetings.ts instead of the sweep: the team's internal sales meeting, read from the transcript
+ * pb_webhook_inbox already holds, into pb_meeting_proposals for a person to decide (DECISIONS
+ * §65). It shares only the model call (extractor.ts) with the sweep. Naming it beside another
+ * channel is a 400, and the nightly body names no sources, so the nightly run is unchanged.
  *
  * Deploy with verify_jwt = false: the bearer is our own token, which pg_cron sends.
  */
@@ -54,6 +60,7 @@ import {
   isPastCursor,
   timeKey,
   promptVersionFor,
+  MEETING_SOURCES,
   MIN_NOTE_CHARS,
   minCharsFor,
   oneRecordingPerMeeting,
@@ -65,6 +72,9 @@ import { mapPipedriveNotes } from "../_shared/ingest/written_record.ts";
 import type { ExistingFact, NoteExtraction, WrittenRecord } from "../_shared/ingest/written_record.ts";
 import { attributeAll, gmailBodyText, gmailToRecord, isChatter, stripQuotedReply, websiteReadToRecord } from "../_shared/ingest/record_sources.ts";
 import type { GmailMessage } from "../_shared/ingest/record_sources.ts";
+import { callExtractor, ExtractorApiError } from "./extractor.ts";
+import { runMeetings } from "./meetings.ts";
+import { meetingRoute } from "./meetings_pure.ts";
 
 /** Domains that are us. Anyone at one of these does not attribute a record to an account. */
 const OUR_DOMAINS = ["whitelabeliq.com"];
@@ -92,7 +102,11 @@ interface Body {
   max_notes?: unknown;
   since?: unknown;
   dry_run?: unknown;
-  /** Which channels to sweep. Default: every one that has a credential. */
+  /**
+   * Which channels to sweep. Default: every one that has a credential. `["sales_meeting"]` alone
+   * runs the meeting reader instead (meetings.ts, which reads its own keys from this body);
+   * naming it beside any other channel is a 400.
+   */
   sources?: unknown;
   /** Read with this model for one run, to compare it against the standing one. */
   model?: unknown;
@@ -124,18 +138,6 @@ const EMPTY: Pulled = { records: [], notes: [], counters: {} };
 interface Cursor {
   at: string | null;
   id: string | null;
-}
-
-/**
- * The API refused the call (no credit, bad key, rate limit, overload, server error). Unlike an
- * unusable reply, this says nothing about the record — so the record must not be marked read.
- */
-class ExtractorApiError extends Error {
-  status: number;
-  constructor(status: number, body: string) {
-    super(`extractor returned ${status}: ${body.slice(0, 200)}`);
-    this.status = status;
-  }
 }
 
 /**
@@ -443,59 +445,14 @@ async function gmailAccessToken(refresh: string, clientId: string, clientSecret:
   return token;
 }
 
-/** One record, one model call. Returns whatever came back; verifyClaims decides what it is worth. */
+/**
+ * One record, one model call. Returns whatever came back; verifyClaims decides what it is worth.
+ * The call itself — the request, the API refusal, the JSON salvage — is extractor.ts's, shared
+ * with the sales-meeting reader so the two can never read a reply differently.
+ */
 async function readRecord(apiKey: string, model: string, planned: PlannedNote): Promise<unknown> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      // The current models think before they answer, and thinking is billed and counted inside
-      // max_tokens. At 1500 the budget was spent before any text block arrived, so every
-      // response parsed as "no claims array" — an empty answer that looked like an honest
-      // "the note says nothing". Leave room for both.
-      max_tokens: 16000,
-      // No `temperature`: sampling parameters are removed on the current models and a request
-      // carrying one is rejected with a 400. Determinism comes from the prompt and the
-      // validator, not from a sampling knob.
-      system: extractionPrompt(planned.note.source),
-      messages: [{ role: "user", content: `<record>\n${planned.text}\n</record>` }],
-    }),
-  });
-  if (!res.ok) throw new ExtractorApiError(res.status, await res.text());
-  const body = await res.json();
-  const text = Array.isArray(body?.content)
-    ? body.content.map((b: Rec) => (b?.type === "text" ? String(b.text ?? "") : "")).join("")
-    : "";
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) {
-    // Say WHY there was no JSON. "No claims array" is indistinguishable from an honest empty
-    // read, and that ambiguity cost a whole run to diagnose: stop_reason "max_tokens" means
-    // the budget was spent, not that the record said nothing.
-    throw new Error(
-      `no JSON in the reply (stop_reason ${String(body?.stop_reason ?? "?")}, ` +
-      `${text.length} chars of text): ${text.slice(0, 160)}`,
-    );
-  }
-  const body_text = text.slice(start, end + 1);
-  const parsed = safeJsonParse(body_text);
-  if (parsed.ok) return parsed.value;
-
-  /* A reply cut off mid-array is still worth its complete entries. Close the array after the
-     last entry that finished and keep those; the guards downstream judge each one exactly as
-     they would have. Salvaging beats discarding a record's whole reading over its last claim —
-     but say so, because the claims past the cut are lost and that is recall, silently gone. */
-  const lastWhole = body_text.lastIndexOf("},");
-  if (lastWhole > 0) {
-    const repaired = safeJsonParse(body_text.slice(0, lastWhole + 1) + "]}");
-    if (repaired.ok) return repaired.value;
-  }
-  throw new Error(`reply was not JSON (${parsed.error}): ${text.slice(0, 160)}`);
+  const r = await callExtractor(apiKey, model, extractionPrompt(planned.note.source), `<record>\n${planned.text}\n</record>`);
+  return r.value;
 }
 
 /* ------------------------------------------------------------------ *
@@ -517,6 +474,18 @@ Deno.serve(async (req: Request) => {
     if (!parsed.ok) return json({ ok: false, error: `body is not JSON: ${parsed.error}` }, 400);
     if (isRec(parsed.value)) body = parsed.value as Body;
   }
+
+  /* The sales-meeting reader is a channel of its own, reached ONLY by naming it alone
+     (DECISIONS §65). The nightly body names no sources, so the nightly sweep can never run it;
+     naming it beside any other channel is refused rather than half-honoured. */
+  const route = meetingRoute(body.sources);
+  if (route === "mixed") {
+    return json({
+      ok: false,
+      error: `sources: ${MEETING_SOURCES.join(", ")} runs alone — name it on its own, or leave it out for the notes sweep`,
+    }, 400);
+  }
+  if (route === "meetings") return await runMeetings(db, body as Rec, { defaultModel: DEFAULT_MODEL });
 
   const apiKey = await getSecret(db, "PB_ANTHROPIC_API_KEY");
   if (apiKey === null) {
@@ -587,6 +556,8 @@ Deno.serve(async (req: Request) => {
 
     const channels: { source: string; pull: () => Promise<Pulled> }[] = [];
     const consider = (source: string, secret: string | null, secretName: string, pull: () => Promise<Pulled>) => {
+      // The sales meeting is never a notes channel: it is read by meetings.ts, behind its own route.
+      if (MEETING_SOURCES.includes(source)) return;
       if (wanted && !wanted.includes(source)) return;
       if (secret === null) {
         notes.push(`${source}: ${secretName} is not in Vault, so this channel was not swept.`);

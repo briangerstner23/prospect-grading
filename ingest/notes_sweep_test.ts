@@ -33,8 +33,12 @@ import {
   quoteIsInNote,
   touchedAt,
   verifyClaims,
+  coerceClaimValue,
+  keyShapeLines,
+  MEETING_PROMPT_VERSION,
+  MEETING_SOURCES,
 } from "./notes_sweep.ts";
-import type { PlannedNote, SweepPlanInput } from "./notes_sweep.ts";
+import type { ClaimShape, PlannedNote, SweepPlanInput } from "./notes_sweep.ts";
 import { noteFingerprint } from "./written_record.ts";
 import type { PipedriveNote } from "./written_record.ts";
 
@@ -745,6 +749,77 @@ const climbPlanned = planSweep({
     }],
   });
   eq("a value the book cannot hold is refused before it can erase one", r.extraction.claims.length, 0);
+}
+
+/* ------------------------------------------------------------------ *
+ * 8 · the sales-meeting channel is additive (DECISIONS §65)
+ *
+ * The meeting reader reads the same key table and the same coercion as every other channel, and
+ * carries its own prompt version so that nothing else is re-read. The refactor that let it print
+ * the key lines (keyShapeLines) must not move a byte of the existing prompts: every fingerprint in
+ * the book is built from the extractor id, and a prompt that silently changed under an unchanged
+ * version would mix two readings under one name. So the two prompts are pinned by hash, taken
+ * from the code BEFORE the refactor.
+ * ------------------------------------------------------------------ */
+
+{
+  eq("the meeting channel is one source", MEETING_SOURCES, ["sales_meeting"]);
+  eq("promptVersionFor('sales_meeting') is meeting@v1", promptVersionFor("sales_meeting"), "meeting@v1");
+  eq("MEETING_PROMPT_VERSION is that string", MEETING_PROMPT_VERSION, "meeting@v1");
+  eq("PROMPT_VERSION is still notes@v4", PROMPT_VERSION, "notes@v4");
+  eq("SITE_PROMPT_VERSION is still site@v1", SITE_PROMPT_VERSION, "site@v1");
+  eq("a note and a call still read under notes@v4", [promptVersionFor("pipedrive_note"), promptVersionFor("fathom_call"), promptVersionFor(undefined)], ["notes@v4", "notes@v4", "notes@v4"]);
+  eq("a website still reads under site@v1", promptVersionFor("website"), "site@v1");
+  eq("the meeting extractor id", extractorId("m", promptVersionFor("sales_meeting")), "meeting@v1+m");
+
+  const all = Object.keys(EXTRACTABLE);
+  eq("keysFor('sales_meeting') has all 16 EXTRACTABLE keys", [Object.keys(keysFor("sales_meeting")).length, Object.keys(keysFor("sales_meeting"))], [16, all]);
+
+  // FNV-1a of the prompt text, measured on main before keyShapeLines existed (10 Oct 2026).
+  eq("extractionPrompt() is byte-identical to before the keyShapeLines refactor",
+    [noteFingerprint([extractionPrompt()]), extractionPrompt().length], ["6efeecbf", 3601]);
+  eq("extractionPrompt('website') is byte-identical too",
+    [noteFingerprint([extractionPrompt("website")]), extractionPrompt("website").length], ["6001a389", 4346]);
+  check("extractionPrompt prints keyShapeLines verbatim", extractionPrompt().includes(`Keys and the values they may take:\n${keyShapeLines().join("\n")}\n`));
+  eq("keyShapeLines is one line per key, in keysFor order", keyShapeLines("website").map((l) => l.trim().split(":")[0]), Object.keys(EXTRACTABLE_SITE));
+  eq("keyShapeLines('sales_meeting') offers every key", keyShapeLines("sales_meeting").length, 16);
+  eq("a shape in words", keyShapeLines()[0], "  is_agency: true or false");
+
+  /* The coercion verifyClaims used before it was exported, copied verbatim on the day of the
+     refactor. coerceClaimValue must agree with it on every shape and every awkward value. */
+  function oldCoerce(shape: ClaimShape, v: unknown): unknown {
+    if (v === null) return undefined; // unknown is never evidence; say nothing instead
+    if (shape.kind === "boolean") return typeof v === "boolean" ? v : undefined;
+    if (shape.kind === "enum") return typeof v === "string" && shape.values.includes(v) ? v : undefined;
+    if (shape.kind === "enum_list") {
+      if (!Array.isArray(v) || v.length === 0 || v.length > shape.max) return undefined;
+      const out: string[] = [];
+      for (const item of v) {
+        if (typeof item !== "string" || !shape.values.includes(item)) return undefined;
+        if (!out.includes(item)) out.push(item);
+      }
+      return out;
+    }
+    if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
+    const n = Math.round(v);
+    return n >= shape.min && n <= shape.max ? n : undefined;
+  }
+  const VALUES: unknown[] = [
+    null, undefined, true, false, "true", 0, 1, 14, 14.4, 14.6, -1, 5001, 100001, NaN, Infinity, "14",
+    "present", "absent", "buys_real_projects", "PRESENT", "", [], ["Champion identified"],
+    ["Champion identified", "Champion identified"], ["Champion identified", "Seemed keen"],
+    ["2nd person engaged", "Champion identified", "Structural break", "Future-state language", "Strategy question asked", "2nd person engaged"],
+    {}, { value: 1 },
+  ];
+  let same = 0, cases = 0;
+  for (const shape of Object.values(EXTRACTABLE)) {
+    for (const v of VALUES) {
+      cases++;
+      if (JSON.stringify(coerceClaimValue(shape, v)) === JSON.stringify(oldCoerce(shape, v)) &&
+          (coerceClaimValue(shape, v) === undefined) === (oldCoerce(shape, v) === undefined)) same++;
+    }
+  }
+  eq("coerceClaimValue matches the old coerce on every shape", same, cases);
 }
 
 const total = passed + failures.length;

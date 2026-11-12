@@ -13,7 +13,8 @@ import { dirname, join } from "node:path";
 
 import { grade } from "./core/engine.ts";
 import type { ProspectFeatures, ProspectScorecard } from "./core/prospect_types.ts";
-import { buildSnapshotRow, compareKey, diffEntry, rankDiff } from "./score_pure.ts";
+import { buildSnapshotRow, compareKey, diffEntry, listingPatch, listingUpdates, rankDiff, scoreAnswer, toListing } from "./score_pure.ts";
+import type { Listing } from "./score_pure.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const load = (p: string) => JSON.parse(readFileSync(join(here, p), "utf8"));
@@ -116,6 +117,132 @@ check("same card, same row", JSON.stringify(buildSnapshotRow(ranked[0], rubric, 
   check("diffEntry: the same position is not an order change", dSame.order_changed === false, JSON.stringify(dSame));
   const dLegacy = diffEntry(cards[2], current.get("c")!);
   check("diffEntry: without ranks the old shape still works, with nulls", dLegacy.from_rank === null && dLegacy.to_rank === null && dLegacy.order_changed === false);
+}
+
+/* ---- 5 · the listing write: only what moved, one call per patch (pb-score, 10 Nov 2026) ---- */
+{
+  // Real scorecards from the golden fixtures, re-keyed so ids are ours to order.
+  const all = golden.map((g, i) => ({ ...cardOf(g.id), account_id: `acct-${String(i).padStart(3, "0")}` }));
+  const asListing = (sc: ProspectScorecard): Listing => ({ status: sc.status, effective_tier: sc.effective_tier, cell: sc.cell });
+
+  // Nothing moved: no call at all — the old loop made one per account.
+  const same = new Map(all.map((sc) => [sc.account_id, asListing(sc)] as [string, Listing]));
+  check("listingUpdates: a night where nothing moved makes no call", listingUpdates(all, same).length === 0);
+
+  // Everything is new (no row read back): every account is written, each exactly once.
+  const fresh = listingUpdates(all, new Map());
+  const freshIds = fresh.flatMap((u) => u.ids);
+  check("listingUpdates: an account with no current listing is always written, once",
+    freshIds.length === all.length && new Set(freshIds).size === all.length, JSON.stringify(freshIds));
+  const distinctPatches = new Set(all.map((sc) => JSON.stringify(listingPatch(sc)))).size;
+  check("listingUpdates: one call per distinct patch when every group fits", fresh.length === distinctPatches, `${fresh.length} calls for ${distinctPatches} patches`);
+  check("listingUpdates: every call sets exactly what listingPatch says for each of its ids",
+    fresh.every((u) => u.ids.every((id) => JSON.stringify(listingPatch(all.find((sc) => sc.account_id === id)!)) === JSON.stringify(u.patch))));
+
+  // One account moved tier, one moved cell, one moved status; the rest stand.
+  const moved = new Map(same);
+  moved.set(all[0].account_id, { ...asListing(all[0]), effective_tier: all[0].effective_tier === "Gold" ? "Silver" : "Gold" });
+  moved.set(all[1].account_id, { ...asListing(all[1]), cell: "some-other-cell" });
+  moved.set(all[2].account_id, { ...asListing(all[2]), status: all[2].status === "Parked" ? "Ranked" : "Parked" });
+  const few = listingUpdates(all, moved);
+  const fewIds = few.flatMap((u) => u.ids).sort();
+  check("listingUpdates: only the three that moved are written, whichever column moved",
+    JSON.stringify(fewIds) === JSON.stringify([all[0], all[1], all[2]].map((sc) => sc.account_id).sort()), JSON.stringify(fewIds));
+
+  // A null on one side and a value on the other is a change; null on both is not.
+  const nullTier = all.find((sc) => sc.effective_tier === null);
+  if (nullTier) {
+    const m = new Map(same);
+    m.set(nullTier.account_id, { ...asListing(nullTier), effective_tier: "Bronze" });
+    check("listingUpdates: a tier the scorecard clears to null is written", listingUpdates(all, m).some((u) => u.ids.includes(nullTier.account_id) && u.patch.effective_tier === null));
+  } else check("listingUpdates: the fixtures carry an account with no tier (needed by the null case)", false);
+
+  // The URL bound: no call carries more than `size` ids, and splitting loses nothing.
+  const big = Array.from({ length: 250 }, (_, i) => ({ ...all[0], account_id: `bulk-${String(i).padStart(3, "0")}` }));
+  const chunks = listingUpdates(big, new Map(), 100);
+  check("listingUpdates: 250 accounts on one patch are three calls of at most 100",
+    chunks.length === 3 && chunks.every((u) => u.ids.length <= 100) && chunks.flatMap((u) => u.ids).length === 250, chunks.map((u) => u.ids.length).join(","));
+
+  // Deterministic: the same inputs make the same calls in the same order, whatever the card order.
+  const a1 = JSON.stringify(listingUpdates(all, moved));
+  const a2 = JSON.stringify(listingUpdates([...all].reverse(), moved));
+  check("listingUpdates: deterministic, independent of card order", a1 === a2);
+
+  // A scorecard listed twice (a replayed account) is still one id in one call.
+  const dup = listingUpdates([all[0], all[0]], new Map());
+  check("listingUpdates: a repeated account is written once", dup.length === 1 && dup[0].ids.length === 1);
+
+  let threw = false;
+  try { listingUpdates(all, new Map(), 0); } catch { threw = true; }
+  check("listingUpdates: a non-positive size is refused, never an endless loop", threw);
+
+  // toListing reads the row the way the comparison needs: blanks and absent columns are null.
+  check("toListing: absent and blank columns are null", JSON.stringify(toListing({ status: "Ranked", effective_tier: "  ", cell: undefined })) === JSON.stringify({ status: "Ranked", effective_tier: null, cell: null }));
+
+  // A kill that cut last night's listing write off is repaired tonight: the comparison is against
+  // the row as stored, so a row still holding an older listing is written even when tonight's
+  // scorecard matches last night's read exactly (10 Nov kept 149 rows from 8 Nov this way).
+  const stale = new Map(same);
+  const older: Listing = { status: all[3].status === "Parked" ? "Ranked" : "Parked", effective_tier: "Bronze", cell: "an-older-cell" };
+  stale.set(all[3].account_id, older);
+  const repair = listingUpdates(all, stale);
+  check("listingUpdates: a row a kill left on an older listing is written the next night, and only it",
+    repair.length === 1 && JSON.stringify(repair[0].ids) === JSON.stringify([all[3].account_id])
+      && JSON.stringify(repair[0].patch) === JSON.stringify(listingPatch(all[3])), JSON.stringify(repair));
+}
+
+/* ---- 6 · the answer is decided after the run row is finished (pb-score, 10 Nov 2026) ---- */
+{
+  const accountErr = { account_id: "acct-1", name: "fixture-1", error: "boom" };
+
+  const clean = scoreAnswer(1078, [], null);
+  check("scoreAnswer: a clean run that closed its row answers ok, success, 200",
+    clean.ok && clean.status === "success" && clean.http === 200 && clean.errors.length === 0, JSON.stringify(clean));
+
+  // The defect: finishRun threw, and the answer still said ok: true, 'success', 200.
+  const unclosed = scoreAnswer(1078, [], "pb_runs update: upstream timed out");
+  check("scoreAnswer: a run row that could not be closed is never ok, never a 200",
+    !unclosed.ok && unclosed.http === 500, JSON.stringify(unclosed));
+  check("scoreAnswer: …and its status is no longer 'success' (the reads landed, so partial)", unclosed.status === "partial", unclosed.status);
+  check("scoreAnswer: …and the finish error is in the answer's errors, saying the row is left at running",
+    unclosed.errors.length === 1 && JSON.stringify(unclosed.errors[0]).includes("pb_runs update: upstream timed out")
+      && JSON.stringify(unclosed.errors[0]).includes("left at running"), JSON.stringify(unclosed.errors));
+
+  const nothing = scoreAnswer(0, [], "pb_runs update: upstream timed out");
+  check("scoreAnswer: nothing scored and the row not closed is 'failed'", nothing.status === "failed" && nothing.http === 500, JSON.stringify(nothing));
+
+  const given = [accountErr];
+  const both = scoreAnswer(1077, given, "pb_runs update: 502");
+  check("scoreAnswer: account errors and the finish error are both reported, in that order",
+    both.errors.length === 2 && both.errors[0] === accountErr && both.status === "partial" && both.http === 500, JSON.stringify(both));
+  check("scoreAnswer: the caller's error list is not modified", given.length === 1);
+
+  const partial = scoreAnswer(1077, [accountErr], null);
+  check("scoreAnswer: an account error with the row closed is partial and a 500, as before",
+    !partial.ok && partial.status === "partial" && partial.http === 500 && partial.errors.length === 1, JSON.stringify(partial));
+}
+
+/* ---- 7 · pb-score hashes the rubric once and hands it to grade() (pb-score, 10 Nov 2026) ----
+ *
+ * engine_test pins that grade() uses a well-formed rubric_fingerprint it is given. This pins the
+ * other half: that pb-score still gives it one, computed once before the account loop, from the very
+ * rubric it grades with. Without it every account re-hashes the whole rubric (about 680 ms of CPU over
+ * the book against the ~2 s ceiling, RUNBOOK §15), and the labels stay right, so nothing else notices.
+ * index.ts imports jsr: and cannot run under Node, so this reads its text.
+ */
+{
+  const src = readFileSync(join(here, "../pb-score/index.ts"), "utf8");
+  const hashAt = src.search(/const\s+rubricFingerprint\s*=\s*fingerprint\(\s*rubric\.spec\s*\)/);
+  const loopAt = src.search(/for\s*\(\s*const\s+a\s+of\s+accounts\s*\)/);
+  check("pb-score: fingerprint(rubric.spec) is computed once, before the account loop",
+    hashAt >= 0 && loopAt >= 0 && hashAt < loopAt, `hash at ${hashAt}, loop at ${loopAt}`);
+  const gradeCalls = [...src.matchAll(/\bgrade\(\s*resolved\.features\s*,\s*rubric\.spec\s*,\s*\{([^}]*)\}\s*\)/g)];
+  check("pb-score: there is exactly one grade() call over the resolved features", gradeCalls.length === 1, String(gradeCalls.length));
+  check("pb-score: that call passes rubric_fingerprint: rubricFingerprint",
+    gradeCalls.length === 1 && /\brubric_fingerprint\s*:\s*rubricFingerprint\b/.test(gradeCalls[0][1]), gradeCalls[0]?.[1] ?? "");
+  check("pb-score: fingerprint and grade come from the same engine copy",
+    /import\s*\{[^}]*\bfingerprint\b[^}]*\bgrade\b[^}]*\}\s*from\s*"\.\.\/_shared\/core\/engine\.ts"/.test(src)
+      || /import\s*\{[^}]*\bgrade\b[^}]*\bfingerprint\b[^}]*\}\s*from\s*"\.\.\/_shared\/core\/engine\.ts"/.test(src));
 }
 
 console.log(`score_pure_test: ${passed} passed, ${failures.length} failed`);

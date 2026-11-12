@@ -44,8 +44,8 @@ or diverges — and whether each divergence is a recorded tuning or an accident.
 
 | R | Asked for | State | What is missing |
 |---|---|---|---|
-| R1 | One record per agency; identity keys; deterministic match; merge queue; grade carried at promotion | **partial** | 993 candidates, 80 with a proposed match, none reviewed since 13 Sep. Promotion confirmer unruled (PRO-18) |
-| R2 | Signals with provenance/weight/lifespan; six connectors; nightly recompute; expire, never delete | **partial** | `email` channel has no credential; **Fathom has never delivered** (see RECON) |
+| R1 | One record per agency; identity keys; deterministic match; merge queue; grade carried at promotion | **partial** | 1,761 candidates, 265 with a proposed match, none reviewed since 13 Sep (re-verified 9 Nov). Promotion confirmer unruled (PRO-18) |
+| R2 | Signals with provenance/weight/lifespan; six connectors; nightly recompute; expire, never delete | **partial** | `email` channel has no credential. Fathom delivers since the 17 Sep repair (proof closed 9 Nov, see RECON) |
 | R3 | Four reads separately, **gates first**, never summed, no bare numbers | **partial** | Only `service_shape` and `economics` park. `broker_character` is `flag` (PRO-2r-a unruled); **`geography` is `off`** with no ruling |
 | R4 | Wallet/winnable/headroom with editable anchors; climb evidence; **P10/P50/P90 frozen at first SOW, scored at 6/12/24 months, hit-rate, error, Brier** | **accumulating since 17 Sep; scoring pass absent** | pb-score writes one snapshot per ranked account per night (band edges as p10/p90; p50 and the probabilities null — no estimator yet). The freeze is a selection at `first_invoice_at` (DECISIONS §36). Nothing scores against actuals yet |
 | R5 | Fathom extraction; seven quote-backed fields; `not discussed`; rep confirms before write | **divergent** | Quote verification is *stronger* than asked. Extracted set is Dimension A + climb signals, not the seven fields; high-confidence facts write without a human step. **And the extractor's climb vocabulary does not match the active rubric's** |
@@ -159,9 +159,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R1-queue-mostly-unmatched",
       "r": "R1",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "select count(*), count(*) filter (where confidence is not null) from pb_identity_candidates;",
-      "claim": "993 candidates, only 80 carry a proposed match; 913 are unmatched with null confidence. Nothing reviewed since 13 Sep. Phase 1's 'duplicates sit in the merge queue with a proposed match' is PARTIAL."
+      "claim": "Re-verified 9 Nov 2026: 1,761 candidates, 265 carry a proposed match (confidence not null), 1,496 are unmatched with null confidence; 42 merged, 1,719 still proposed. Nothing reviewed since 13 Sep (max reviewed_at). On 17 Sep: 993 candidates, 80 with a match. Phase 1's 'duplicates sit in the merge queue with a proposed match' is PARTIAL."
     },
     {
       "id": "R2-signals-lifespan-column",
@@ -195,9 +195,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R2-email-channel-dark",
       "r": "R2",
       "mode": "manual",
-      "verified_on": "2026-09-16",
+      "verified_on": "2026-11-09",
       "reverify": "select name from vault.secrets where name like 'PB_GMAIL%';",
-      "claim": "The email channel has no credential in Vault and is skipped every night."
+      "claim": "Re-verified 9 Nov 2026: still no PB_GMAIL% secret in Vault. The email channel has no credential and is skipped every night."
     },
     {
       "id": "R3-gate-order",
@@ -327,9 +327,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R4-snapshots-empty",
       "r": "R4",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "select taken_at, estimator, count(*) from pb_potential_snapshots group by 1, 2 order by 1 desc limit 5;",
-      "claim": "1,196 rows on 2026-09-17 — 598 under year1_band_edges@0.1.4 (02:43) and 598 under @0.1.5 (18:02), one per ranked account per estimator. NOT a double-write: the unique key includes the estimator and the estimator names the rubric, so two rubrics in one day leave two parallel claims (DECISIONS §40). One row per account per day is `distinct on (account_id, taken_at) order by created_at desc`. All carry p10/p90, none p50; all sit in the two ICP prior bands because no ranked account has a quote. Before 17 Sep: zero rows, ever."
+      "claim": "Re-verified 9 Nov 2026: 28,514 rows; since 0.1.7 one estimator a day (year1_band_edges@0.1.7, 604 rows a night). GAP SEEN WHILE RE-VERIFYING: no rows for 2-6 Nov and 200 on 29 Oct — the pb-score runs of those days are still 'running' in pb_runs (never finished), an operational issue for RUNBOOK §15, not a ledger change. On 17 Sep: 1,196 rows — 598 under year1_band_edges@0.1.4 (02:43) and 598 under @0.1.5 (18:02), one per ranked account per estimator. NOT a double-write: the unique key includes the estimator and the estimator names the rubric, so two rubrics in one day leave two parallel claims (DECISIONS §40). One row per account per day is `distinct on (account_id, taken_at) order by created_at desc`. All carry p10/p90, none p50. Before 17 Sep: zero rows, ever."
     },
     {
       "id": "R5-quote-check-present",
@@ -375,9 +375,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R6-stage-exit-unenforced",
       "r": "R6",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "grep -rn stage_exit core/ supabase/functions/ — is anything enforced, or only noted?",
-      "claim": "Stage-exit criteria exist as a note in the rubric (and in the 0.3 draft) but nothing enforces them in Pipedrive or the app."
+      "claim": "Re-verified 9 Nov 2026: `stage_exit` appears only in rubric JSON files (core/rubric.prospect.v*.json); no .ts under core/ or supabase/functions/ reads it. Stage-exit criteria are a note in the rubric (and in the 0.3 draft); nothing enforces them in Pipedrive or the app."
     },
     {
       "id": "R7-no-plays",
@@ -436,25 +436,25 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R8-no-raters",
       "r": "R8",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "select role, count(*) from pb_members group by 1;",
-      "claim": "2 owners, 0 raters. Research decision 4 unanswered."
+      "claim": "Re-verified 9 Nov 2026: 2 owners, 0 raters. Research decision 4 unanswered."
     },
     {
       "id": "R8-page-never-written",
       "r": "R8",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "select kind, count(*) from pb_register group by 1; select count(*) from pb_promotions; select count(*) from pb_signals where source='manual';",
-      "claim": "As of 18 Sep 2026 the register carries decision, note and 9 OVERRIDE rows — the owner used the lane on 17 Sep, so the 17 Sep claim that every write lane was unused no longer holds. Still 0 promotions and 0 manual signals. Kinds `removal` and `reinstatement` exist from 18 Sep (DECISIONS §50) and have no rows yet."
+      "claim": "Re-verified 9 Nov 2026: the register carries 783 note, 46 decision and 9 override rows; still 0 `removal` and 0 `reinstatement` rows (kinds exist since 18 Sep, DECISIONS §50), 0 promotions and 0 manual signals. The owner used the override lane on 17 Sep, so the 17 Sep claim that every write lane was unused no longer holds."
     },
     {
       "id": "R8-no-writeback",
       "r": "R8",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "grep -rn 'api.pipedrive.com' supabase/functions ingest — every call is a read?",
-      "claim": "Tier and reasons are not written back to Pipedrive; the integration is inbound only."
+      "claim": "Re-verified 9 Nov 2026: the one api.pipedrive.com call in supabase/functions and ingest (pb-notes, GET /v1/notes) is a read. Tier and reasons are not written back to Pipedrive; the integration is inbound only."
     },
     {
       "id": "R9-fixtures-count",
@@ -499,9 +499,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "R9-rituals-absent",
       "r": "R9",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "Is there any acceptance-rate KPI, quarterly lift report, or recorded Blind Test?",
-      "claim": "None of the three measurement rituals run."
+      "claim": "Re-verified 9 Nov 2026: pb-monthly-lift stores a lift snapshot on the 1st (10 rows on 1 Oct, 10 on 1 Nov; DECISIONS §52, §62), but nothing records anyone reading it, there is no acceptance-rate KPI and no recorded Blind Test. A stored snapshot is not a ritual; none of the three rituals runs."
     },
     {
       "id": "R10-notes-budget",
@@ -531,9 +531,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "DNB-composite-table-exists",
       "r": "DNB",
       "mode": "manual",
-      "verified_on": "2026-09-18",
+      "verified_on": "2026-11-09",
       "reverify": "select to_regclass('public.pb_chase_scores'); -- must be null",
-      "claim": "CLOSED 18 Sep (owner decision D4, DECISIONS §52): pb_chase_scores — 146 rows of a summed −18..123 built on 16 Sep with no file, no test and no decision entry — is dropped by migration 20260918130000. pb_chase_weights and pb_chase_board stay; the page reads no score from either."
+      "claim": "CLOSED 18 Sep (owner decision D4, DECISIONS §52): pb_chase_scores — 146 rows of a summed −18..123 built on 16 Sep with no file, no test and no decision entry — is dropped by migration 20260918130000. Re-verified 9 Nov 2026: to_regclass is null. pb_chase_weights and pb_chase_board stay; the page reads no score from either."
     },
     {
       "id": "DNB-composite-dropped-in-file",
@@ -631,25 +631,25 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "RECON-migrations-filed",
       "r": "RECON",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "node --experimental-strip-types scripts/reconcile.ts — the migrations line must read 0 unfiled. Also: git fetch --all, then confirm no origin/* branch holds commits this tree does not (git merge-base --is-ancestor).",
-      "claim": "Every applied migration has a file (0 unfiled). Until 17 Sep this row said 29 had none: that was measured against ONE branch while 24 of the files sat on another, which is the blind spot DECISIONS §39 records. The last 10 were filed verbatim from the database. Five files on disk name versions that never ran (superseded drafts from the same session) and carry a SUPERSEDED header."
+      "claim": "Re-verified 9 Nov 2026: NOT 0 unfiled. Three prospect_book migrations applied 7 Nov (20261107160848, 20261107182103, 20261107183135) have no file on main or on the sales-meeting branch (reconcile on main: 119 applied, 3 unfiled), and neither has a fourth applied the same day under another prefix (20261107172403). All four are filed on origin/codex/private-source-intake-pilot-20261107, which holds 4 commits main does not; the gap closes when that branch merges, and must not be closed by transcribing them a second time here. Older unmerged branches (baseline-v0.1.0 and four claude/* branches from 13-18 Sep) are as before. History: until 17 Sep this row said 29 had none, measured against ONE branch while 24 of the files sat on another (DECISIONS §39)."
     },
     {
       "id": "RECON-fathom-proof-pending",
       "r": "RECON",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "select headers->>'user-agent', verified, count(*), max(received_at) from pb_webhook_inbox where source='fathom' group by 1,2; -- passes when a non-pg_net agent appears with verified=true",
-      "claim": "Repair item 1 executed 17 Sep: webhook NYMFoCciM4MNbUi3 created via REST (201), receiver 200, secret verified, 12-17 Sep back-filled (7 external calls). PROOF STILL PENDING: no pb_webhook_inbox row has ever carried a Fathom user agent. This row closes only when one does. Until then treat Fathom as unproven, not as fixed."
+      "claim": "CLOSED, re-verified 9 Nov 2026: Fathom delivers. 377 verified rows carry Fathom's webhook sender's user agent (a Svix sender), the newest 6 Nov; the 998 pg_net rows are the back-fill (to 17 Sep); 12 unverified rows came from a python client (to 4 Nov). History: the webhook was created via REST on 17 Sep (201), receiver 200, secret verified, 12-17 Sep back-filled; until a non-pg_net agent appeared with verified=true this row held Fathom as unproven."
     },
     {
       "id": "RECON-register-unread",
       "r": "RECON",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "has any session read the Grading Register directly?",
-      "claim": "The Grading Register (PRO-0..PRO-18) is a Claude artifact, not a file. No session in this repo has read it directly; every PRO-number claim in docs/ is second-hand via DECISIONS.md."
+      "claim": "Re-verified 9 Nov 2026: unchanged. The Grading Register (PRO-0..PRO-18) is a Claude artifact, not a file; DECISIONS.md records no direct read of it after 17 Sep, and the session that re-verified this row did not read it either. Every PRO-number claim in docs/ is second-hand via DECISIONS.md."
     },
     {
       "id": "STD-standards-doc-present",
@@ -693,13 +693,13 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "RECON-rule9-source-tier-in-function",
       "r": "RECON",
       "mode": "auto",
-      "claim": "latestFactPerKey carries the view's source-precedence tier (rater > fathom_call > pipedrive_note > website > notion_master > apollo > pipedrive). Added 17 Sep after two days of drift.",
+      "claim": "latestFactPerKey carries the view's source-precedence tier (rater = sales_meeting > fathom_call > pipedrive_note > website > notion_master > apollo > pipedrive). Added 17 Sep after two days of drift; sales_meeting joined rater at 0 on 10 Oct (DECISIONS §65), in the view, in pb_reconcile_state()'s rule9 CTE and here in one change set — resolve_features_test.ts pins all three against the newest migrations.",
       "probe": {
         "kind": "count_matches",
         "paths": [
           "ingest/resolve_features.ts"
         ],
-        "pattern": "rater: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6",
+        "pattern": "rater: 0, sales_meeting: 0, fathom_call: 1, pipedrive_note: 2, website: 3, notion_master: 4, apollo: 5, pipedrive: 6",
         "equals": 1
       }
     },
@@ -707,17 +707,17 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "RECON-rule9-view-matches-function",
       "r": "RECON",
       "mode": "manual",
-      "verified_on": "2026-09-17",
-      "reverify": "with recency_only as (select distinct on (account_id,key) id,account_id,key from pb_facts order by account_id,key, case evidence_label when 'evidence' then 0 when 'inferred' then 1 else 2 end, case source when 'rater' then 0 when 'fathom_call' then 1 when 'pipedrive_note' then 2 when 'website' then 3 when 'notion_master' then 4 when 'apollo' then 5 when 'pipedrive' then 6 else 7 end, created_at desc, observed_at desc nulls last) select count(*) filter (where v.id<>r.id) from pb_current_facts v join recency_only r using (account_id,key); -- must be 0",
-      "claim": "The live pb_current_facts view and latestFactPerKey now resolve every key identically. Before the fix: 50 of 6,983 keys across 19 accounts differed, 24 with a different value. The 16 Sep 'closed' verdict on rule 9 had compared the function to the FILED 11 Sep view, not the LIVE 15 Sep one."
+      "verified_on": "2026-11-09",
+      "reverify": "with recency_only as (select distinct on (account_id,key) id,account_id,key from pb_facts order by account_id,key, case evidence_label when 'evidence' then 0 when 'inferred' then 1 else 2 end, case source when 'rater' then 0 when 'sales_meeting' then 0 when 'fathom_call' then 1 when 'pipedrive_note' then 2 when 'website' then 3 when 'notion_master' then 4 when 'apollo' then 5 when 'pipedrive' then 6 else 7 end, created_at desc, observed_at desc nulls last) select count(*) filter (where v.id<>r.id) from pb_current_facts v join recency_only r using (account_id,key); -- must be 0. Also: pb_reconcile_state()->>'rule9_mismatches' must be 0, and pg_get_viewdef('public.pb_current_facts') must carry WHEN 'sales_meeting' THEN 0",
+      "claim": "Re-verified 9 Nov 2026, BEFORE the sales-meeting reader's migration: 0 of 7,800 keys differ between the live pb_current_facts view and the reverify query (which already carries sales_meeting at 0; the live view has no sales_meeting row to order), and pb_reconcile_state()->>'rule9_mismatches' is 0. The live view does NOT yet carry WHEN 'sales_meeting' THEN 0 — migration 20261011000000 is a draft. Re-run and bump verified_on once it applies. History: before the 17 Sep fix 50 of 6,983 keys across 19 accounts differed, 24 with a different value; the 16 Sep 'closed' verdict had compared the function to the FILED 11 Sep view, not the LIVE 15 Sep one."
     },
     {
       "id": "RECON-pb-score-bundle-behind-source",
       "r": "RECON",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "get_edge_function pb-score → its index.ts is one import pinned to a full commit sha; that sha must be >= the last commit touching core/, ingest/ or supabase/functions/ (git log -1 --format=%H -- core ingest supabase/functions). If it is older, redeploy per RUNBOOK §3 (pinned-commit entrypoint).",
-      "claim": "CLOSED 17 Sep: pb-score v9 (c467352), v10 (94d8fbc), then v11 (5d6254a, runFlagRules for rubric 0.1.5) — each a pinned-commit entrypoint (RUNBOOK §3) — the deployed function IS the committed source, so SOURCE_RANK (§33) and buildSnapshotRow (§36) are in it by construction. Proved by preview (200; 829 scored, 598 ranked, 224 unclassified, 7 parked, 0 changed against current reads) and then a real run. v8 (16 Sep) had been behind source by the rule-9 fix; production reads were unaffected because pb-score consumes the already-resolved view. The other four functions are unchanged since 14 Sep."
+      "claim": "Re-verified 9 Nov 2026: pb-score v14 is one import pinned to d14223c (verify_jwt false). main's last commit touching core/, ingest/ or supabase/functions/ is newer (10 Oct), but its diff from d14223c over pb-score's import closure (core/, _shared/core, _shared/ingest/resolve_features.ts, _shared/score_pure.ts, pb-score/index.ts) is comments only (§50 → §52 citations), so the deployed function is the committed behaviour. pb-score reads the resolved pb_current_facts view, so the sales-meeting branch's sales_meeting rank in resolve_features reaches it through migration 20261011000000, not a redeploy. History: CLOSED 17 Sep with v9-v11, each a pinned-commit entrypoint (RUNBOOK §3)."
     },
     {
       "id": "RECON-reconcile-script-present",
@@ -761,9 +761,9 @@ predictor you found" — and it was never proposed as one nor rejected. It deser
       "id": "RECON-ci-green",
       "r": "RECON",
       "mode": "manual",
-      "verified_on": "2026-09-17",
+      "verified_on": "2026-11-09",
       "reverify": "GitHub → Actions → 'Prospect Book CI' on the latest push: test and reconcile both green? deploy skipped-with-notice until the secret exists.",
-      "claim": "Run #1 (17 Sep, commit e89c1ed) green: 'Repo agrees with itself' passed, 'Record agrees with the running system' reached pb_reconcile_state over HTTPS from GitHub's runner with the anon key and reported 0 failures, 2 warnings (29 held migrations; Fathom proof pending). The deploy job was skipped: this branch is not the repository's default branch, and SUPABASE_ACCESS_TOKEN is not set. CAVEAT found 17 Sep 07:10 UTC: the 6-hourly SCHEDULED reconcile has never fired — GitHub runs `schedule` triggers only from the workflow file on the repository's DEFAULT branch, which is claude/new-session-8qkstx and carries no ci.yml. Until the owner makes this branch the default (or merges it there), the reconcile runs on push only. Owner decision 5 in docs/REPAIR-PLAN.md."
+      "claim": "Re-verified 9 Nov 2026: the scheduled run now fires from main (every 6-8 h) and is RED. 'Repo agrees with itself' failed on this ledger's expired manual claims (the re-verification of 9 Nov answers that). 'Record agrees with the running system' fails three ways: the three 7 Nov migrations unfiled on main (see RECON-migrations-filed), the notes channel's newest external evidence 28 days old, and the latest notes run halted by an extractor refusal (the live API key is rejected — an operator fix). Deploy is a manual job since 2 Oct (DECISIONS §63). History: run #1 (17 Sep, e89c1ed) was green with 2 warnings."
     }
   ],
   "reconcile": {

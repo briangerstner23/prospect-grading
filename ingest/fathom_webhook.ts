@@ -23,7 +23,10 @@
  *   attach           the first external domain that matches a known account HIGH (identity.ts);
  *                    every other external domain becomes a pb_identity_candidates row.
  *   external=false   internal-only calls (and calls with no identifiable external attendee) are
- *                    skipped — counted in pb_runs, never a pb_calls row.
+ *                    skipped — counted in pb_runs, never a pb_calls row. Still true for an internal
+ *                    SALES MEETING, on purpose (DECISIONS §65): its delivery stays in
+ *                    pb_webhook_inbox, and ingest/meeting_transcript.ts reads it from there with
+ *                    this parser's own "internal only" test. fathom_webhook_test pins it.
  *
  * The seven quote-backed fields plus the potential questions (R5) are the `CallFields` schema
  * below. This module defines the shape and leaves `fields: null`, `extraction_status:

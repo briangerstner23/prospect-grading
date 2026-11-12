@@ -1420,7 +1420,10 @@ export function grade(features: ProspectFeatures, rubric: Rubric, options: Grade
     account_id: f.account_id,
     name: f.name,
     rubric_version: version,
-    rubric_fingerprint: fingerprint(rubric),
+    // A caller grading a whole book passes the fingerprint it computed once (GradeOptions).
+    rubric_fingerprint: typeof options.rubric_fingerprint === "string" && /^[0-9a-f]{8}$/.test(options.rubric_fingerprint)
+      ? options.rubric_fingerprint
+      : fingerprint(rubric),
     as_of: asOf,
     anticipated: true,
     validation,

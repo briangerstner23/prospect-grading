@@ -11,6 +11,8 @@
 import type { ProspectScorecard } from "./core/prospect_types.ts";
 import type { Rec } from "./helpers.ts";
 import { isoDate, toStr } from "./helpers.ts";
+import { runStatus } from "./log.ts";
+import type { RunStatus } from "./log.ts";
 
 /** Rows keyed by one column (account_id). Rows without the column are dropped. */
 export function groupBy<T extends object>(rows: readonly T[], column: string): Map<string, T[]> {
@@ -135,6 +137,99 @@ export function buildSnapshotRow(sc: ProspectScorecard, rubric: unknown, runId: 
 /** The listing columns pb-score refreshes on pb_accounts after each read. */
 export function listingPatch(sc: ProspectScorecard): { status: string; effective_tier: string | null; cell: string | null } {
   return { status: sc.status, effective_tier: sc.effective_tier, cell: sc.cell };
+}
+
+/** The listing columns as a pb_accounts row holds them before tonight's write. */
+export interface Listing {
+  status: string | null;
+  effective_tier: string | null;
+  cell: string | null;
+}
+
+/** One `update pb_accounts set <patch> where id in (<ids>)`. */
+export interface ListingUpdate {
+  patch: { status: string; effective_tier: string | null; cell: string | null };
+  ids: string[];
+}
+
+/**
+ * The listing writes tonight's scorecards need, in as few calls as possible.
+ *
+ * Until 10 Nov 2026 pb-score sent one `update … where id = …` per scored account, every night,
+ * whether or not anything had changed: up to 1,078 round trips after the reads were written. Each
+ * one costs the worker CPU to build and parse, and an edge function has a CPU-time ceiling, not
+ * only a wall clock; the kill lands wherever the run's TOTAL crosses it, not in any one step. On
+ * 11 of 18 nights from 24 Oct the gateway answered 546 "CPU Time exceeded". On ten of them it came
+ * part-way through that loop (858 of 1,078 on 10 Nov), so the rest of the listing, the day's
+ * potential snapshots and the run row's finish never landed. On 29 Oct the loop finished all 973
+ * and the kill came inside the snapshot upsert that followed it, after 200 of 604 rows. All eleven
+ * left a `running` row and a watchdog row behind. What protects the run now is the smaller total
+ * (a handful of calls where there were a thousand); writing the snapshots first only helps beside it.
+ *
+ * So: an account whose row already shows the scorecard's listing is left alone, and the rest are
+ * grouped by the patch they take — every account moving to the same status, tier and cell is one
+ * call — with at most `size` ids to a call so the `in (…)` list keeps the URL short (the same
+ * bound selectIn uses). An account missing from `current` (no row read back) is always written.
+ * The order is fixed (by patch, then id) so the same inputs make the same calls. `current` is the
+ * row as STORED, never the last read, so a listing write a kill cut off is repaired the next night.
+ */
+export function listingUpdates(
+  cards: readonly ProspectScorecard[],
+  current: ReadonlyMap<string, Listing>,
+  size = 100,
+): ListingUpdate[] {
+  if (!Number.isInteger(size) || size < 1) throw new Error(`listingUpdates: size must be a positive integer, got ${size}`);
+  const groups = new Map<string, ListingUpdate>();
+  for (const sc of cards) {
+    const patch = listingPatch(sc);
+    const now = current.get(sc.account_id);
+    if (now && now.status === patch.status && now.effective_tier === patch.effective_tier && now.cell === patch.cell) continue;
+    const key = JSON.stringify([patch.status, patch.effective_tier, patch.cell]);
+    const g = groups.get(key);
+    if (g) g.ids.push(sc.account_id);
+    else groups.set(key, { patch, ids: [sc.account_id] });
+  }
+  const out: ListingUpdate[] = [];
+  for (const key of [...groups.keys()].sort()) {
+    const g = groups.get(key)!;
+    const ids = [...new Set(g.ids)].sort();
+    for (let i = 0; i < ids.length; i += size) out.push({ patch: g.patch, ids: ids.slice(i, i + size) });
+  }
+  return out;
+}
+
+/** A pb_accounts row's listing columns, as `listingUpdates` compares them. */
+export function toListing(row: Rec): Listing {
+  return { status: toStr(row.status), effective_tier: toStr(row.effective_tier), cell: toStr(row.cell) };
+}
+
+/** What pb-score answers once it has tried to finish its run row. */
+export interface ScoreAnswer {
+  ok: boolean;
+  status: RunStatus;
+  errors: unknown[];
+  http: 200 | 500;
+}
+
+/**
+ * pb-score's answer, decided AFTER finishRun, so a failure to close the run row is in it.
+ *
+ * The run's status is computed before finishRun and is what pb_runs is asked to record; that does
+ * not change here. But if the PATCH to pb_runs itself fails (a transient PostgREST or gateway
+ * error, the kind that took both nightly jobs out on 12 Sep 2026, RUNBOOK §15), the row stays at
+ * `running` with no counts. From 13 Sep to 10 Nov 2026 the response was built from an error list
+ * copied before that call, so such a night still answered ok: true, status 'success', HTTP 200,
+ * and pg_net (and the 07:00 watchdog that reads it) recorded a success. Now the finish error joins
+ * the errors, the answer's status is recomputed over all of them, and anything but a clean run is a
+ * 500. `finishError` is the message finishRun threw, or null when it returned. The input list is
+ * not modified.
+ */
+export function scoreAnswer(scored: number, errors: readonly unknown[], finishError: string | null): ScoreAnswer {
+  const all: unknown[] = [...errors];
+  if (finishError !== null) {
+    all.push({ error: `${finishError} — the pb_runs row is left at running; this response is the only record of the run's counts and errors` });
+  }
+  return { ok: all.length === 0, status: runStatus(scored, all.length), errors: all, http: all.length === 0 ? 200 : 500 };
 }
 
 export interface CurrentRead {

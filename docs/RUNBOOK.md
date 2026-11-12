@@ -773,6 +773,46 @@ Two things about that query, both of which cost an hour to learn:
 > a tier flip, and the trace is what turns that into a diagnosis (`icp_derivation` went "stated"
 > → "none" while the fact sat in `pb_current_facts` the whole time).
 
+> **24 Oct – 10 Nov 2026 — the score ran out of CPU after writing the reads, on 11 of 18 nights**
+> (24, 25, 26 and 29 Oct; 2, 3, 4, 5, 6, 9 and 10 Nov). Each left a pb-score row at `running` and a
+> watchdog row saying "the function answered 546".
+> The function log says `CPU Time exceeded` at about 31 s: an edge function has a CPU-time
+> ceiling as well as a wall clock (Supabase documents 2 s of CPU per request; time spent waiting
+> on I/O does not count), and the kill lands wherever the run's total crosses it, not in any one
+> step. The reads had landed within three seconds of the run starting, so the board was current:
+> 960 a night on 24–26 Oct, 973 on 29 Oct, 1,063 to 1,078 in November, as the book grew. pb-score
+> then sent one `update pb_accounts … where id = …` per account, every account every night whether
+> or not anything had changed, and only after that upserted the potential snapshots, 200 rows to a
+> batch. On ten of the eleven nights the kill came inside that listing loop and no snapshot was
+> written. On 10 Nov it came at 858 of 1,078, so about 220 accounts kept an older listing: 71 as
+> 9 Nov left them (that night died at 929) and 149 as 8 Nov left them, the last night that finished.
+> On **29 Oct** the run got through all 973 listing updates and was killed inside the snapshot
+> upsert after its first batch: 200 of that day's 604 snapshots exist, every one carrying
+> `assumptions.run_id` = that run. On all eleven the run row never finished. The nights it fit
+> took about 26 s.
+> The fix (`listingUpdates`) reads the listing back, writes only the accounts that moved, one call
+> per patch, and writes the snapshots before the listing. What protects the run is the lower
+> total — a handful of calls a night where there were a thousand; the order only helps beside it,
+> since 29 Oct shows a run short of CPU can be cut off inside the snapshots too. A listing write a
+> kill does cut off is repaired the next night, because `listingUpdates` compares against the row
+> as stored, never against the last read. A `running` pb-score row with a fresh set of reads under
+> its `run_id` is this shape, not a score that never happened:
+>
+> ```sql
+> select r.id, r.started_at, r.status, count(x.*) as reads
+>   from pb_runs r left join pb_reads x on x.run_id = r.id
+>  where r.source = 'pb-score' and r.status = 'running' group by 1, 2, 3 order by 2 desc;
+> ```
+>
+> The same change made pb-score decide its answer after it closes the run row. Before it, a
+> failed final PATCH to `pb_runs` on an otherwise clean night left the row at `running` while the
+> function answered 200 with `ok: true` and status `success` (the error went into a list nothing
+> read again). It now answers 500 with a `pb_runs update: …` error in `errors`, and the response's
+> `counts` carries `snapshots` and `listing_updated` as the row would have. So for a `running`
+> pb-score row the watchdog's "the function answered …" names the shape: 546 is a kill, 500 is a
+> run whose work landed and whose row could not be closed — read the body from
+> `net._http_response` the same morning, before pg_net prunes it.
+
 `status` is `running` (never finished — investigate), `success`, `partial` (some rows
 errored; see `errors`) or `failed`. The seed run's `counts.skipped` lists the organisations
 and Notion rows dropped as "already an Agency Partner" by design (PRO-10).
@@ -2514,3 +2554,361 @@ the engine or the rubric.
 
 **`pb_chase_board` is not filtered** (§50, open). Nothing reads it today, so nothing shows a removed
 agency — but anything built on it must exclude `pb_removals` itself.
+
+## 33 · Reading the sales meetings
+
+DECISIONS §65. The team's internal sales meeting is the review, and what it says about a named agency
+is judgement: once a person confirms it on its card it ranks with `rater` under rule 9. pb-notes
+reads the meeting's TRANSCRIPT (never Fathom's summary) out of the delivery pb-fathom-webhook already
+keeps whole in `pb_webhook_inbox`, and writes **proposals** — `pb_meeting_proposals`, owner and rater
+lanes only. Nothing reaches `pb_facts` or `pb_register` until somebody approves a card in
+`index.html#meetings`; nothing is ever parked in `pb_fact_candidates`.
+
+**Status: migration A applied, nothing read yet.** Migration A applied 12 Nov 2026 as
+`20261112233107_prospect_book_sales_meeting_reader.sql` (steps 1–2 done: byte-identical by md5, both
+grants queries empty, the harness raised nothing). Migration B (`…_prospect_book_sales_meeting_cron.sql`)
+is still a draft carrying its drafting stamp, and pb-notes v17 has no `sales_meeting` route. The order
+below is the order things happen in; do not skip ahead.
+
+| Step | What | Done when |
+|---|---|---|
+| 1 | Apply migration A, transcribe it (33.1) | it applied (section 0 and the sentinel passed) and the file carries the applied version, md5-identical |
+| 2 | Verify it in the database (33.2) | both CLAUDE.md grants queries empty, the harness raises nothing |
+| 3 | Merge, then deploy pb-notes pinned to the merge commit (RUNBOOK §3) | `verify_jwt: false` in the deploy response; fetched back, it is the one-line entrypoint |
+| 4 | Register (33.3) | `pb_meetings` holds the internal recordings, the cursor is at the newest delivery |
+| 5 | Dry run one meeting and hand-check it (33.4) | 2 or fewer of 20 proposals wrong |
+| 6 | Read the three newest for real, one `recording_id` per call; the owner reviews them in one sitting | cards decided, the time per card measured |
+| 7 | Apply migration B, transcribe it (33.1) | `cron.job` holds `pb-meetings`; an idle tick writes no `pb_runs` row |
+| 8 | The next morning (33.6) | the 06:15 run carried the approvals; the anon probe finds nothing |
+
+### 33.1 · Applying a migration and transcribing it (the md5 rule)
+
+Each draft is applied once, through the MCP's `apply_migration`, with the **file's bytes unchanged** —
+including its "PLACEHOLDER VERSION" header, which stays as applied. Names:
+`prospect_book_sales_meeting_reader`, then (last) `prospect_book_sales_meeting_cron`.
+
+Migration A refuses to run rather than overwrite something newer. Section 0 compares the live
+`pb_dossier()` and `pb_reconcile_state()` with the bodies the file was built from (prosrc md5
+`ab44f7fd…` and `d6c124b7…`), and checks that `pb_current_facts` names no source the file does not.
+If it raises, another session changed one of them: rebuild sections 9–10 (or 6) from the LIVE body
+(`pg_get_functiondef`, `pg_get_viewdef`), keep the three §65 edits, update the expected md5 and
+apply that (§50a, §53a). Section 12, the sentinel, renders a synthetic account's dossier with a
+meeting fact, an override and a note on it and raises if any of the words, the meeting link or the
+literal `sales_meeting` comes out — then rolls itself back. A version that leaks cannot apply.
+
+Then file it under the version the database recorded, in the same sitting:
+
+```sql
+select version, name, md5(statements[1]) as md5
+  from supabase_migrations.schema_migrations
+ where name in ('prospect_book_sales_meeting_reader', 'prospect_book_sales_meeting_cron');
+```
+
+```bash
+git mv supabase/migrations/20261011000000_prospect_book_sales_meeting_reader.sql \
+       supabase/migrations/<version>_prospect_book_sales_meeting_reader.sql
+md5sum supabase/migrations/<version>_prospect_book_sales_meeting_reader.sql   # must equal md5 above
+```
+
+The tests read every object from the newest migration that defines it, so the rename needs no other
+change; CLAUDE.md's migration line drops "DRAFT" and gains the version. Until the renamed file is on
+main, CI's reconcile reports the applied name as unfiled — apply, transcribe and merge together.
+
+### 33.2 · Checking migration A, and the privacy harness
+
+```sql
+select count(*) from public.pb_board();                               -- unchanged by the apply
+select pb_reconcile_state() -> 'rule9_mismatches',                    -- 0
+       pb_reconcile_state() -> 'meeting_privacy',                     -- {"checked": 0, "leaks": 0}
+       pb_reconcile_state() -> 'meetings_work';
+select option_value from pg_options_to_table(
+  (select reloptions from pg_class where oid = 'public.pb_current_facts'::regclass));  -- true
+```
+
+Run both grants queries from CLAUDE.md: they must return nothing (the four new tables fall to
+`authenticated` SELECT and `anon` nothing). Then run `scripts/meeting_privacy_check.sql` whole through
+`execute_sql`. It is one `begin … rollback`: synthetic owner, rater and viewer members, a synthetic
+account and meeting, and one live prospect read as the subject — nothing survives it. Success is the
+absence of an exception and three NOTICE lines. It proves every lane refusal (a rater approving a
+tier call or a removal, a viewer, a non-WLIQ address), every rule refusal (no written reason, an
+unknown code, an override with no computed tier, a removal with an expiry, a fact that overrules a
+person without the tick — judged on the value sent, edited or not — a tier call that ends a live
+override without the tick, one pinning the computed tier included, a tick that names another override
+or another person's value than the one standing now — one the card never showed — any tier call once
+the register has moved past the read — an override written, lapsed or merged in since the engine's
+clock — a card over two agencies, an unplaced name), that a call at the tier the board shows records
+`agrees`, what the writes look like, and that `anon` gets the dossier and the board without a word of
+it. Run it again
+after any change to `pb_dossier()`, `pb_board()` or the six meeting functions.
+
+### 33.3 · Registering
+
+Every call registers before it reads, and a register-only call makes no model call (so it needs no
+API key). From the container, through `pg_net` as in §17:
+
+```sql
+select net.http_post(
+  url     := 'https://sgagrmapuovnjwvgsxbp.supabase.co/functions/v1/pb-notes',
+  headers := jsonb_build_object('Content-Type','application/json',
+    'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets
+                                  where name = 'PB_SYNC_TOKEN' limit 1)),
+  body    := jsonb_build_object('sources', jsonb_build_array('sales_meeting'), 'register_only', true),
+  timeout_milliseconds := 150000) as request_id;
+
+select status, skip_reason, selected_by, count(*) from public.pb_meetings group by 1, 2, 3 order by 1, 2, 3;
+```
+
+`sales_meeting` must be the ONLY source named: beside any other the call is a 400. Registration reads
+the Fathom deliveries past the `pb_source_watermarks('sales_meeting')` cursor — `(received_at, id)`,
+light columns only — and keeps the INTERNAL recordings with a transcript, by the webhook parser's own
+"internal only" test. Each becomes one `pb_meetings` row:
+
+- **Which are read.** The owner's say on one meeting (`include`) beats a title rule, which beats the
+  title patterns (`\bsales\b`, `\bprospect`, `\bgrading\b`, any case). Selected → `waiting`; not →
+  `skipped` with `not_selected` or `owner_excluded`. Someone outside WLIQ speaking (`external_speaker`)
+  or no spoken lines (`no_transcript`) is found at read time and is a refusal no rule overrides.
+- **Include and title rules**, owner only, from the "Not read" panel on the review screen or in SQL as
+  the owner: `pb_meeting_include(recording_id, true|false)` moves a meeting `skipped` ↔ `waiting` (or
+  a `failed` one out of the queue) and never touches one being read, read or a duplicate — it answers
+  `changed: false` with the reason. `pb_meeting_title_rule(title, true|false|null)` reads, never reads,
+  or forgets every meeting with that exact title (whitespace collapsed, lower-cased), and re-selects
+  the ones not yet read that the owner has not ruled on one by one.
+- **One recording per meeting.** Fathom sends one recording per recorder. Same normalised title, same
+  UTC date and overlapping by at least half of the shorter are one meeting; the longest is read and
+  the rest are `duplicate` of it. A meeting already being read or read keeps its representative.
+
+The cursor passes every delivery considered, internal or not, so the next call is idle. At design
+time (10 Oct 2026) a first registration found 78 internal recordings with transcripts: 21 `waiting`,
+2 `duplicate`, 55 `skipped`.
+
+### 33.4 · The dry run, and the hand check before anything is written
+
+```sql
+-- the newest waiting meeting
+select recording_id, held_at, status from public.pb_meetings
+ where status = 'waiting' order by held_at desc limit 1;
+-- then the same net.http_post with
+--   body := jsonb_build_object('sources', jsonb_build_array('sales_meeting'),
+--                              'recording_id', '<recording_id>', 'dry_run', true)
+select status_code, content::jsonb -> 'counters', content::jsonb -> 'usage'
+  from net._http_response where id = <request_id>;
+```
+
+A dry run reads and verifies exactly as a real one and writes only its `pb_runs` row: no lease, no
+registration, no proposal, no cursor. The response carries the proposals, QUOTES INCLUDED, for the hand
+check. That response sits in `net._http_response` (service role only) for a few hours: read what you
+need, then `delete from net._http_response where id = <request_id>`.
+
+Read the counters: `meeting.pass1.mentions_verified` against `meeting.pass1.as_said_not_on_line` and
+`mention_unverified`; `meeting.pass1.segment_lines_trimmed` (a company's lines reach only 5 before and
+30 after a line its name was verified on; a high count says pass 1's ranges run on over other
+discussions, or that the reach is too short for how this team talks); `meeting.mentions.resolved / suggested / ambiguous / unknown / refused` (a
+placeholder or one of our own names must be `refused`, never a card); `meeting.pass2.quote_verified`
+against `meeting.pass2.other_agency_lines` and `outside_segment` (a quote from another agency's lines
+is the wrong-company class, §60, and is dropped); `meeting.proposals.proposed / not_proposed /
+agrees` (facts and removals only: the reader never records a tier call `agrees`, §33.5) and
+`meeting.proposals.pre_ticked`; `usage`, and `meeting.ms.pass1` / `meeting.ms.pass2` for time. Then check 20 proposals against the
+transcript for the wrong agency, the wrong field, and decided versus merely floated. Proceed when 2 or
+fewer of 20 are wrong. Otherwise tighten the prompt and bump `MEETING_PROMPT_VERSION` (`meeting@v2`)
+before anything is written — every fingerprint carries the extractor id, so a new version is a clean
+second read.
+
+### 33.5 · Reading for real, and a deliberate re-read
+
+| Body (with `sources: ["sales_meeting"]`) | Does |
+|---|---|
+| `{}` | register, then read the oldest `waiting` meeting (what the schedule sends, with `budget_ms` 110000 and `concurrency` 6) |
+| `{recording_id}` | read that one, if `waiting` or a `reading` whose lease lapsed; 404 not registered, 409 duplicate, skipped, already read or leased |
+| `{recording_id, reread: true}` | read a `read`, `partial` or `failed` meeting again from pass 1 |
+
+A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
+pass 1, resolves the names in code, then pass 2 four agencies to a call inside the budget. The budget
+decides whether a round of calls STARTS; a call that started runs to the ceiling — the run's start +
+120 s, inside both the lease and the gateway's 150 s (§17) — and is stopped there if it has not
+answered (`out_of_time`), so no call outlives the lease and none is cut short at the budget it started
+inside (a 115 s pass 1 on the 110 s budget is read). `budget_ms` is capped at 120000. Out of budget in
+pass 2, the meeting stays `reading` with its progress and the next call resumes it — with the model it
+started with — and re-reads nothing; out of budget in pass 1, nothing was kept, and it goes back to
+`waiting`. A stopped call is counted in `credits_spent` as a call of unknown tokens. The runs in a row
+that settle nothing of a meeting are counted in its `counts.ceiling_stops_in_a_row` (a fresh pass 1
+keeps the count; a deliberate re-read starts it again), and on the third the meeting is set aside so
+it cannot hold the queue, which is read oldest first: a pass 1 that never fits is marked `failed`
+(`pass1.set_aside`, with a note — re-read it deliberately, with a faster `model` if need be), and
+pass-2 agencies whose calls keep stopping are recorded as not read (`pass2.set_aside`) and the meeting
+ends `partial`. It ends `read`, or `partial` when an agency's reply was
+unusable, or `failed` when pass 1's was. **A failed meeting is never retried on its own**: fix the
+cause and re-read it deliberately.
+
+A re-read starts again from nothing — mentions, progress and counts cleared; what it spent stays in
+`usage`. Under the SAME extractor the fingerprint keeps every claim already proposed from landing
+twice, so it adds only what is new (the agencies a `partial` read missed). A resolved agency's
+fingerprint is keyed on its account, not on the spoken forms pass 1 happened to hear, so a claim a
+person already decided does not come back because the re-read heard the name differently; a name
+nobody has placed is still keyed on what was said. A row keeps the fingerprint it was written with
+when a person places its name afterwards (or a merge moves it), so the re-read also drops any claim
+the meeting already holds on a card for the same agency, kind and key (a read: topic and line), under
+the same extractor and in any status (`proposals.already_on_card`). Under a NEW extractor
+(another model, or a new prompt version) the new rows sit beside the old ones and the later line wins
+between them — so **dismiss the meeting's open proposals first** ("Dismiss meeting", or
+`pb_dismiss_meeting(recording_id, null)`), then re-read.
+
+The review itself is the screen's: one card per agency in the order they came up; "Who is this?" for
+a name the reader would not place (placing it, with "Remember this name", writes `pb_meeting_aliases`
+and the next meeting places it alone); A approves what is ticked on that card and rejects the rest,
+in one `pb_decide_meeting_card` call that re-derives every rule. A tier call or a removal is the
+owner's; a removal is never pre-ticked and never expires. Facts and overrides move the tier at the
+next 06:15 score; a removal leaves the board at once.
+
+"The board already says it" (`agrees`) means what the board SHOWS: a tier call agrees only with the
+effective tier, so ANY other tier named while a live override shows one — the engine's own or a third
+— stays open, flagged `contradicts_live_override` and never pre-ticked, because approving writes a
+newer override and the engine applies the newest, which ends the person's. "A live override" is the
+one the read APPLIED (`scorecard.override`, the same test `pb_board()` uses), so an override AT the
+computed tier counts — an owner pinning the engine's tier, or the engine catching up to an override's
+— though it leaves the two tiers equal; the reader takes it (`override_tier`), the screen reads it off
+the scorecard, and the decide function asks the same of the read. Such a call is written only with
+`overrule`, which the screen sends only for a box a person ticked with "approving ends it" on the row;
+sent without it, the function refuses the card. `overrule` names what it ends, as `only_if_agrees`
+names the tier it agrees with: the screen sends the live override the row showed
+(`ends_override_tier`, and `ends_override_set_at` — the read's `scorecard.override.set_at`, its
+register row's time) and, for a fact, the person's value the row showed (`replaces_value`). The
+function reads the override and the value standing NOW and refuses the card when either is another
+— a tab left open across the 06:15 score shows the override it loaded with, while one written on the
+sheet or carried in by a merge the evening before is already in the new read, where the register
+check below cannot see it. The redraw then shows the override or value that stands, and the box,
+whose question moved, comes back unticked. And a live removal covers a
+meeting's removal only when it is as firm — a live `do_not_contact` covers anything, a live
+`unqualified` does not cover a do-not-contact, which stays open flagged `upgrades_removal` and, once
+approved, becomes the removal pb_removals shows (rule 7a). No register row a decision writes carries
+the quote or the meeting's title: pb_register is read by every signed-in lane, the viewer's included,
+so the row names the meeting's date and the line and points at the proposal; the prefilled written
+reason is the same, and a person who wants the words in it types them. That typed reason is why
+`pb_removed()` and `pb_removal()` answer a WLIQ address only, as pb_register's own policy does.
+
+The screen shows each open row against the book as it stands when the screen opens the meeting, not
+as the row was written: a row placed through "Who is this?" was written with no snapshot at all, and
+any row's can be stale. So the book's value on a fact's key, a person's value it would overrule, and
+the engine and board tiers for a tier call are read again — the open rows' facts AND their reads,
+every time the meeting is opened and after every decision, never only the reads the page loaded with,
+which are as old as the tab — and the decide function's own refusals are kept off the card before it
+is sent. A tier call naming the tier the board already shows is recorded `agrees` by the function and
+writes nothing, whether it is the engine's tier with no override live or a live override's. On screen
+both are flagged — "already the engine's tier" (`already_computed_tier`) and "already the tier a live
+override shows" (`already_override_tier`) — and carry no tick box and no override controls: nothing is
+written, so no reason, code or expiry is asked, and approving does not renew a live override (a new
+expiry is set from the agency's sheet). A sends either as an approval with `only_if_agrees` — never
+as a reject, because a rejected newer word returns an older meeting's contradicting call to the card;
+if the board has moved since the screen opened, the function refuses the card rather than write an
+override nobody chose, and the screen redraws the card from the book as it stands (any refusal does,
+keeping the edits), so the row shows what it is now. The board the function checks is the last
+score's read, and an override takes effect only at the next score, so it decides NO tier call once
+pb_register has moved past that read — an override on the agency written or lapsed, or another record
+merged into it (`pb_merge_accounts` moves the merged record's override rows with their old dates),
+since the engine's clock for that score (`scorecard.as_of`, fixed before pb-score reads the register;
+the run's start comes after it grades every account): every approval of the tier call, `only_if_agrees`
+or ticked, with `overrule` or without, is refused with words saying the tier changes at the 06:15 UTC
+score, and the whole card waits until after it — press Later. The screen shows the read, so it cannot
+have shown an override written since; a tick on that row, the screen's or a person's, never ends one.
+The reader cannot make that check — it never names pb_register (DECISIONS §65) — so it never records a
+tier call `agrees` itself: a call naming the tier the read shows is written `proposed`, not pre-ticked,
+and reaches the card like any other, where the screen flags it and A sends it `only_if_agrees`. The
+function records it `agrees` or, once the register has moved, refuses the card until the score; on
+the rater lane it waits for the owner like any tier call. A removal or a fact can still be `agrees`
+from the reader, because pb_removals and pb_current_facts are read as they stand, not through a score.
+A tick survives a redraw only while the question its box asks is unchanged (`meetingTick`): when
+the redraw moves it — a person recorded a value on the key, the board moved under a tier call (its
+engine or shown tier changed, the live override showing it is another, or a flag came or went) — a
+box nobody touched starts as a fresh screen
+would start it, and a box the person ticked is ticked exactly where that fresh start is ticked,
+however often the screen unticked or hid it in between (the person's own answer is kept apart from
+the drawn tick); an untick the person made always stands. So a tier call that showed as the board's
+own tier and no longer does is ticked exactly as a reload would tick it, never rejected on a box no
+one could see, and a fact ticked before a person
+recorded another value comes back unticked, labelled "overrule": `overrule` is only ever sent for a
+box a person ticked themselves with that conflict on the row. The refusal's words stay on the card
+even when the redraw finds it decided by somebody else meanwhile (a one-line card), or go to the top
+of the screen when the card is gone; they are shown on that draw and never kept for a later one. A
+fact edited on its card is checked against a person's value as
+edited: an edit that now overrules them unticks the row and labels it "overrule"; an edit to their
+own value goes as `agrees`. A card takes one decision at a time: a second A or X (or a held key)
+while the first is still in flight does nothing. Every meeting holding an open card is in the picker however old (the
+reader works a backlog oldest first), and the open proposals behind the roster's count and the
+picker are read a page at a time with an exact count, so PostgREST's max-rows cannot cut them short —
+as are the book's accounts and current reads the screen's checks rest on, since both now outnumber
+it: a cut read would flag an agency "no computed tier", and a cut roster would hide it from "Who is
+this?".
+
+Which word is newest is re-derived, never only added to (`pb_meeting_supersede`). An older claim a
+newer meeting superseded is open again once that newer row stops beating it — rejected on its card,
+sent back to "Who is this?", placed on another agency, or dismissed with its meeting — and is
+superseded again if a third, newer word still stands; "Propose anyway" on an older row is superseded
+at once by a newer one that stands. A card on an agency promoted since it was read can be rejected,
+not approved. A merge, by any path, carries the merged record's proposals and learned names to the
+survivor (the `pb_meeting_follow_merge` trigger), where the newer word wins; a name the survivor
+already holds, even one a person forgot there, is left as it is. The merged record keeps its last
+read for good (`pb_merge_accounts` never moves a read, and pb-score scores prospect and parked
+agencies only) while its override rows move to the survivor, so `pb_dossier()` strips the override's
+written reason and approver from every merged record's read, whatever its own register still holds.
+
+### 33.6 · What a halt looks like, and the checks that keep running
+
+A **halt** is an API refusal (no credit, a bad key, overload — `classifyExtractorFailure` decides, as
+for every channel) or a call that failed without an answer. A call stopped at the run's own budget is
+not a halt: it is `stopped_on_time`, as above. The meeting goes back to `waiting` with what it had,
+the lease is released, nothing is marked read, and the run row says so:
+
+```sql
+select started_at, status, counts -> 'halted' as halted, counts -> 'wrote' as wrote, errors
+  from public.pb_runs where kind = 'ingest' and source = 'sales_meeting'
+ order by started_at desc limit 10;
+-- status 'failed' (or 'partial' if it wrote first), halted 1, and an errors note
+-- "HALTED — <recording_id> pass 1: the extractor API answered 529 …"
+```
+
+The schedule posts again on its next tick, because a `waiting` meeting is work; while the cause lasts
+every tick halts the same way. Fix the cause, or stop it: `select cron.unschedule('pb-meetings');`.
+Run notes carry recording ids, refs and counts — never a quote, a name or a title.
+
+Every CI reconcile (push, and every 6 h) reads two blocks of `pb_reconcile_state()`:
+`meeting_privacy` renders `pb_dossier()` for the 20 accounts with the newest approved proposals, and
+for every record merged into one of them (a merge moves the proposals and the register rows to the
+survivor and never the read, so a merged record is checked against the survivor's words), and
+counts any approved quote, origin-tagged register text or literal `sales_meeting` found there — any
+leak FAILS CI; `meetings_work` FAILS CI when the reader's newest finished run halted (its
+`latest_run`, the pb_runs row above — a halt releases the lease and leaves the meeting `waiting`, so
+no count moves while every tick halts) or closed `failed` without a halt (a refused write, an
+unreadable rubric or a crash: the lease lapses, the next tick re-claims the meeting and fails the
+same way, and again only the run row says so), and warns on a failed meeting this week, a lease stuck over
+three hours, meetings selected but none read, and an open card older than three days (proposals
+never expire on a timer). The invariant that is never allowed to move:
+
+```sql
+select count(*) from public.pb_fact_candidates where source = 'sales_meeting';   -- 0, always
+```
+
+**The anon probe**, after the first real approval: call the dossier of an approved account the way
+the public does, with the page's publishable key, and look for the start of its approved quotes —
+expect nothing. From a machine with a route to `*.supabase.co`:
+
+```bash
+curl -sS "https://sgagrmapuovnjwvgsxbp.supabase.co/rest/v1/rpc/pb_dossier" \
+  -H "apikey: <the publishable key in web/index.html>" -H "Content-Type: application/json" \
+  -d '{"p_account_id":"<account_id>"}' | grep -c -F "<the first words of an approved quote>"   # 0
+```
+
+or, from the container, as `anon` inside a transaction that changes nothing:
+
+```sql
+begin;
+select set_config('probe.acct', (select account_id::text from public.pb_meeting_proposals
+                                  where status = 'approved' order by decided_at desc limit 1), true);
+select set_config('probe.needles', (select string_agg(left(btrim(regexp_replace(lower(quote), '[^a-z0-9]+', ' ', 'g')), 40), '|')
+                                      from public.pb_meeting_proposals
+                                     where status = 'approved' and account_id = current_setting('probe.acct')::uuid), true);
+set local role anon;
+select count(*) filter (where position(n in d) > 0) as leaks, count(*) as needles
+  from unnest(string_to_array(current_setting('probe.needles'), '|')) n,
+       (select btrim(regexp_replace(lower(public.pb_dossier(current_setting('probe.acct')::uuid)::text),
+                                    '[^a-z0-9]+', ' ', 'g')) as d) x;      -- leaks 0
+rollback;
+```

@@ -31,12 +31,19 @@ import type { ExtractedClaim, NoteExtraction, PipedriveNote } from "./written_re
  * what a model may claim
  * ------------------------------------------------------------------ */
 
-type Shape =
+/**
+ * The shape one extractable key's value must take. Exported (10 Oct 2026) so the sales-meeting
+ * verifier (ingest/meeting_claims.ts) checks a meeting claim's value with exactly the rule a note's
+ * claim is checked with — one shape table, one coercion, no second copy to drift.
+ */
+export type ClaimShape =
   | { kind: "boolean" }
   | { kind: "integer"; min: number; max: number }
   | { kind: "enum"; values: readonly string[] }
   /** A set drawn from a closed vocabulary. Order is not meaningful; duplicates collapse. */
   | { kind: "enum_list"; values: readonly string[]; max: number };
+
+type Shape = ClaimShape;
 
 /**
  * The only keys the sweep may write, and the only values each may take. A ProspectFeatures
@@ -125,7 +132,21 @@ export const EXTRACTABLE_SITE: Readonly<Record<string, Shape>> = Object.fromEntr
 /** The record kinds that are read as a website rather than as somebody's note. */
 export const SITE_SOURCES: readonly string[] = ["website"];
 
-/** Which keys this kind of record may be asked about. One answer, used by prompt AND verifier. */
+/**
+ * The record kinds that are an INTERNAL SALES MEETING (DECISIONS §65): what the team said about a
+ * named agency, read out of the transcript by ingest/meeting_claims.ts, never out of the summary.
+ */
+export const MEETING_SOURCES: readonly string[] = ["sales_meeting"];
+
+/**
+ * Which keys this kind of record may be asked about. One answer, used by prompt AND verifier.
+ *
+ * `keysFor('sales_meeting')` is the FULL `EXTRACTABLE` set, on purpose. A website is narrowed
+ * because a homepage cannot witness a deal; a sales meeting is the opposite case — it is the team
+ * reporting on the deal itself (who decides, whether there is money, when), so every key a note may
+ * carry, a meeting may carry too. What keeps a meeting claim safe is not a narrower key set but the
+ * line-ownership check and the person who approves it (ingest/meeting_claims.ts).
+ */
 export function keysFor(source: string | undefined): Readonly<Record<string, Shape>> {
   return SITE_SOURCES.includes(String(source ?? "")) ? EXTRACTABLE_SITE : EXTRACTABLE;
 }
@@ -535,7 +556,7 @@ export function verifyClaims(planned: PlannedNote, raw: unknown): VerifyResult {
       continue;
     }
 
-    const value = coerce(shape, c.value);
+    const value = coerceClaimValue(shape, c.value);
     if (value === undefined) {
       notes.push(`Note ${id}: ${key} came back as ${describe(c.value)}, which it cannot hold; dropped.`);
       bump(counters, "value_out_of_shape");
@@ -587,8 +608,13 @@ export function verifyClaims(planned: PlannedNote, raw: unknown): VerifyResult {
   return { extraction: { note_id: planned.note.id, claims }, notes, counters };
 }
 
-/** The value a key can hold, or undefined when the model returned something else. */
-function coerce(shape: Shape, v: unknown): unknown {
+/**
+ * The value a key can hold, or undefined when the model returned something else.
+ *
+ * Exported (10 Oct 2026) under this name for the sales-meeting verifier; the body is the coercion
+ * verifyClaims has always used, unchanged.
+ */
+export function coerceClaimValue(shape: ClaimShape, v: unknown): unknown {
   if (v === null) return undefined; // unknown is never evidence; say nothing instead
   if (shape.kind === "boolean") return typeof v === "boolean" ? v : undefined;
   if (shape.kind === "enum") return typeof v === "string" && shape.values.includes(v) ? v : undefined;
@@ -638,9 +664,20 @@ export const PROMPT_VERSION = "notes@v4";
  */
 export const SITE_PROMPT_VERSION = "site@v1";
 
+/**
+ * A sales meeting is read by its own two-pass prompt (ingest/meeting_claims.ts), so it carries its
+ * own version for the same reason the website does: the extractor id 'meeting@v1+<model>' goes into
+ * every meeting proposal's fingerprint, and sharing `notes@v…` would re-read every note and call in
+ * the book the first time the meeting prompt changed. notes@v4 and site@v1 are untouched by it.
+ */
+export const MEETING_PROMPT_VERSION = "meeting@v1";
+
 /** The prompt version that reads this kind of record. */
 export function promptVersionFor(source: string | undefined): string {
-  return SITE_SOURCES.includes(String(source ?? "")) ? SITE_PROMPT_VERSION : PROMPT_VERSION;
+  const s = String(source ?? "");
+  if (SITE_SOURCES.includes(s)) return SITE_PROMPT_VERSION;
+  if (MEETING_SOURCES.includes(s)) return MEETING_PROMPT_VERSION;
+  return PROMPT_VERSION;
 }
 
 /**
@@ -663,9 +700,17 @@ export function extractorId(model: string, promptVersion: string = PROMPT_VERSIO
 /** Kept so a caller that has not been updated still compiles; prefer extractorId(model). */
 export const EXTRACTOR_VERSION = PROMPT_VERSION;
 
-export function extractionPrompt(source?: string): string {
-  const site = SITE_SOURCES.includes(String(source ?? ""));
-  const keys = Object.entries(keysFor(source)).map(([k, s]) => {
+/**
+ * The "Keys and the values they may take" lines of a prompt, one per key of keysFor(source), in
+ * the order keysFor holds them: `  <key>: <shape in words>`.
+ *
+ * One renderer for every prompt that offers keys — extractionPrompt here and the sales-meeting
+ * claims prompt (ingest/meeting_claims.ts) — so what any prompt offers is printed from the same
+ * table the verifier checks against. extractionPrompt's output is byte-identical to what it printed
+ * before this was factored out; notes_sweep_test pins it with a hash.
+ */
+export function keyShapeLines(source?: string): string[] {
+  return Object.entries(keysFor(source)).map(([k, s]) => {
     const shape = s.kind === "boolean"
       ? "true or false"
       : s.kind === "enum"
@@ -674,7 +719,12 @@ export function extractionPrompt(source?: string): string {
       ? `a list (max ${s.max}) drawn from ${s.values.map((v) => `"${v}"`).join(", ")}`
       : `a whole number ${s.min}-${s.max}`;
     return `  ${k}: ${shape}`;
-  }).join("\n");
+  });
+}
+
+export function extractionPrompt(source?: string): string {
+  const site = SITE_SOURCES.includes(String(source ?? ""));
+  const keys = keyShapeLines(source).join("\n");
 
   return [
     site
