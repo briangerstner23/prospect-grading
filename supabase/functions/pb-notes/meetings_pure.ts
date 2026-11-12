@@ -20,6 +20,7 @@
  *   failureKind         halt, skip, or out of time: what a failed call means for the meeting
  *   callUsage           what a failed call is counted as: a reply billed, a stopped call, nothing
  *   failureNote         an extractor failure as a note that quotes NOTHING (ids and counts only)
+ *   SNAPSHOT_READ_SELECT / snapshotReadOf               the board's tiers per agency, live override included
  *   addUsage / addCounters / proposalCounts            bookkeeping
  *
  * PURE. No clock (`now_ms` and `today` are inputs), no network, no filesystem.
@@ -37,6 +38,7 @@ import {
 } from "../_shared/ingest/meeting_transcript.ts";
 import type { InboxLight, MeetingSpeaker, RecordingSpan, TitleRule } from "../_shared/ingest/meeting_transcript.ts";
 import type { MentionCluster } from "../_shared/ingest/meeting_mentions.ts";
+import type { SnapshotRead } from "../_shared/ingest/meeting_claims.ts";
 import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError } from "./extractor.ts";
 import type { ExtractorUsage } from "./extractor.ts";
 
@@ -500,6 +502,26 @@ export function meetingPeople(invitees: unknown, recordedBy: unknown, speakers: 
   if (isRec(recordedBy)) add(recordedBy.name);
   for (const s of speakers ?? []) add(s?.name);
   return out;
+}
+
+/**
+ * The pb_current_reads columns the snapshot takes for each resolved agency: the two tiers, and the
+ * tier of the override the engine APPLIED in that read (scorecard.override.tier, aliased
+ * override_tier). Without it an override at the computed tier is invisible — it leaves the effective
+ * tier equal to the computed one — and a third tier named under it would be pre-ticked, though
+ * approving it ends the person's override (meeting_claims.liveOverrideIn).
+ */
+export const SNAPSHOT_READ_SELECT = "account_id,computed_tier,effective_tier,override_tier:scorecard->override->>tier";
+
+/** One pb_current_reads row, as SNAPSHOT_READ_SELECT returns it → a SnapshotRead. */
+export function snapshotReadOf(row: Rec): SnapshotRead {
+  const text = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
+  return {
+    account_id: String(row.account_id),
+    computed_tier: text(row.computed_tier),
+    effective_tier: text(row.effective_tier),
+    override_tier: text(row.override_tier),
+  };
 }
 
 /** The active rubric's tiers and override reason codes, or null when it has neither. */

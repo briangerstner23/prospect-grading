@@ -859,11 +859,14 @@ function meetingSameValue(a, b) {
  * keeps the stored flags it would have recomputed. The meeting's own flags (shared_segment,
  * historic, …) and upgrades_removal (the screen holds no removals) are kept as written. A tier call
  * naming the tier the board shows takes one of the screen's own flags (MEETING_SCREEN_FLAGS):
- * already_computed_tier when that is the engine's tier, already_override_tier when a live override
- * put it there — pb_decide_meeting_card records both 'agrees'. One naming ANY other tier while a
- * live override shows one — the engine's own, or a third — is contradicts_live_override: the
- * function writes it as a newer override, which ends the live one (the engine applies the newest),
- * so it never starts ticked and its words say so. Those are its branches, in its order.
+ * already_computed_tier when that is the engine's tier with no override live, already_override_tier
+ * when a live override shows it — pb_decide_meeting_card records both 'agrees'. One naming ANY other
+ * tier while a live override shows one — the engine's own, or a third — is contradicts_live_override:
+ * the function writes it as a newer override, which ends the live one (the engine applies the
+ * newest), only when a person ticked it (overrule), so it never starts ticked and its words say so.
+ * Those are its branches, in its order. "A live override" is meetingLiveOverride: the read APPLIED
+ * one, which includes an override at the computed tier — the two tiers are then equal, so comparing
+ * them cannot see it.
  */
 function meetingLiveFlags(row, live) {
   const stored = Array.isArray(row?.flags) ? row.flags.slice() : [];
@@ -881,13 +884,28 @@ function meetingLiveFlags(row, live) {
     const shown = live.read?.effective_tier ?? comp;
     const t = String(row.tier ?? "").toLowerCase();
     if (comp && t) {
-      const isComp = t === String(comp).toLowerCase();
-      const byOverride = String(shown ?? "").toLowerCase() !== String(comp).toLowerCase();
-      if (t === String(shown ?? "").toLowerCase()) out.push(isComp ? "already_computed_tier" : "already_override_tier");
+      const byOverride = meetingLiveOverride(live.read);
+      if (t === String(shown ?? "").toLowerCase()) out.push(byOverride ? "already_override_tier" : "already_computed_tier");
       else if (byOverride) out.push("contradicts_live_override");
     }
   }
   return [...new Set(out)].sort();
+}
+
+/**
+ * Does this pb_current_reads row show a live override? meeting_claims.liveOverrideIn, mirrored: yes
+ * when the engine applied one (scorecard.override, the test pb_board() uses too) — an override at the
+ * computed tier included, which leaves the effective tier equal to the computed one — and, for a read
+ * that carries no scorecard, when the effective tier differs from the computed one, which only an
+ * override does. pb_decide_meeting_card asks the same of the read.
+ */
+function meetingLiveOverride(read) {
+  if (!read || typeof read !== "object") return false;
+  const ov = read.scorecard && typeof read.scorecard === "object" ? read.scorecard.override : null;
+  if (ov && typeof ov === "object" && typeof ov.tier === "string" && ov.tier.trim() !== "") return true;
+  const comp = String(read.computed_tier ?? "").toLowerCase();
+  const eff = String(read.effective_tier ?? "").toLowerCase();
+  return comp !== "" && eff !== "" && eff !== comp;
 }
 
 /**
@@ -1357,7 +1375,9 @@ function cleanMeetingEdit(kind, e) {
  * rows waiting for the owner
  * instead of rejecting them. A fact that disagrees with a person's value goes with overrule:true
  * only because the person ticked a box that says so (touched) — judged on the value it SENDS, edited or not
- * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call the board
+ * (meetingOverrules), since that is the value pb_decide_meeting_card compares. A tier call that would
+ * end a live override (contradicts_live_override, its words on the row) goes with overrule:true on the
+ * same terms, and pb_decide_meeting_card refuses one sent without it. A tier call the board
  * already shows (meetingBoardShows: the engine's tier or a live override's) is neither ticked nor
  * rejected: A approves it with only_if_agrees and no edit, so it lands 'agrees', writes nothing, and
  * keeps beating an older meeting's word; X still rejects it with the rest, because there the person
@@ -1390,6 +1410,9 @@ function cardItems(rows, choice, opts) {
     // Only a box a person set sends overrule: a tick the screen gave (meetingTick never gives one that
     // overrules) goes without it, and the function refuses rather than replace the person's value.
     if (r.kind === "fact" && c.touched === true && meetingOverrules(r, edit && "value" in edit ? edit.value : undefined)) item.overrule = true;
+    // The same for a tier call that ends a live override: never pre-ticked (meetingTick), so a tick
+    // here with the flag on the row is the person's, made with "approving ends it" in front of them.
+    if (r.kind === "override" && c.touched === true && (r.flags ?? []).includes("contradicts_live_override")) item.overrule = true;
     if (edit) item.edit = edit;
     items.push(item);
   }

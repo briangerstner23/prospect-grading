@@ -132,6 +132,8 @@ import {
   REREADABLE_STATUSES,
   roundHeadroom,
   rubricVocabulary,
+  SNAPSHOT_READ_SELECT,
+  snapshotReadOf,
   storedClusters,
   withCeilingStops,
 } from "./meetings_pure.ts";
@@ -1006,14 +1008,15 @@ async function rosterIndex(db: DbLike, people: string[]) {
 
 /**
  * What the book says now about the agencies the meeting resolved: the current facts (rule 9's
- * winners, as pb-score reads them), the current computed and effective tiers, and who is off the
+ * winners, as pb-score reads them), the current computed and effective tiers and the tier of any
+ * override the engine applied (SNAPSHOT_READ_SELECT — one at the computed tier is live too), and who is off the
  * board ON WHICH DISPOSITION (a live unqualified removal does not cover a do-not-contact; rule 7a).
  * Display snapshots and status hints only — the decide function re-derives all of it.
  */
 async function snapshot(db: DbLike, accounts: string[]): Promise<{ facts: SnapshotFact[]; reads: SnapshotRead[]; removals: SnapshotRemoval[] }> {
   const [f, r, x] = await Promise.all([
     selectIn(db, "pb_current_facts", "account_id", accounts, "id,account_id,key,value,evidence_label,source", 100, "id"),
-    selectIn(db, "pb_current_reads", "account_id", accounts, "account_id,computed_tier,effective_tier", 100, "account_id"),
+    selectIn(db, "pb_current_reads", "account_id", accounts, SNAPSHOT_READ_SELECT, 100, "account_id"),
     selectIn(db, "pb_removals", "account_id", accounts, "account_id,disposition", 100, "account_id"),
   ]);
   return {
@@ -1024,11 +1027,7 @@ async function snapshot(db: DbLike, accounts: string[]): Promise<{ facts: Snapsh
       evidence_label: String(row.evidence_label ?? ""),
       source: String(row.source ?? ""),
     })),
-    reads: r.map((row) => ({
-      account_id: String(row.account_id),
-      computed_tier: (row.computed_tier as string | null) ?? null,
-      effective_tier: (row.effective_tier as string | null) ?? null,
-    })),
+    reads: r.map(snapshotReadOf),
     removals: x.map((row) => ({
       account_id: String(row.account_id),
       disposition: typeof row.disposition === "string" ? row.disposition : null,

@@ -52,6 +52,8 @@ import {
   REREADABLE_STATUSES,
   roundHeadroom,
   rubricVocabulary,
+  SNAPSHOT_READ_SELECT,
+  snapshotReadOf,
   storedClusters,
   withCeilingStops,
   WRITE_MARGIN_MS,
@@ -221,6 +223,22 @@ check("inbox select: light columns only — the transcript's first line, never t
 for (const never of ["default_summary", "share_url", "action_items", "highlights"]) {
   check(`inbox select: never ${never}`, !INBOX_LIGHT_SELECT.includes(never));
 }
+/* The board's tiers per agency. An override AT the computed tier leaves the two tiers equal, so the
+   snapshot takes the override the read applied (scorecard.override.tier) as well — without it a third
+   tier named under that override was pre-ticked, and approving it ends the person's override. */
+check("reads select: the two tiers and the applied override's tier, aliased override_tier",
+  SNAPSHOT_READ_SELECT.split(",").includes("computed_tier") && SNAPSHOT_READ_SELECT.split(",").includes("effective_tier")
+    && SNAPSHOT_READ_SELECT.split(",").includes("override_tier:scorecard->override->>tier"));
+check("reads select: never the whole scorecard (its trace carries the override's written reason)", !/(^|,)scorecard(,|$)/.test(SNAPSHOT_READ_SELECT));
+eq("snapshotReadOf: an override at the computed tier is kept",
+  snapshotReadOf({ account_id: "acc-1", computed_tier: "Silver", effective_tier: "Silver", override_tier: "Silver" }),
+  { account_id: "acc-1", computed_tier: "Silver", effective_tier: "Silver", override_tier: "Silver" });
+eq("snapshotReadOf: none applied, or a blank, is null",
+  [snapshotReadOf({ account_id: "acc-2", computed_tier: "Gold", effective_tier: null, override_tier: null }),
+   snapshotReadOf({ account_id: "acc-3", computed_tier: "", effective_tier: "", override_tier: "" })],
+  [{ account_id: "acc-2", computed_tier: "Gold", effective_tier: null, override_tier: null },
+   { account_id: "acc-3", computed_tier: null, effective_tier: null, override_tier: null }]);
+
 eq("heldDates: distinct UTC dates, sorted", heldDates([{ held_at: "2026-10-09T23:30:00-02:00" }, { held_at: "2026-10-09T19:03:00Z" }, { held_at: null }]), ["2026-10-09", "2026-10-10"]);
 
 /* ------------------------------------------------------------------ *
@@ -583,6 +601,8 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
     check(`meetings.ts never selects ${never}`, !new RegExp(`body->>?${never}`).test(mc));
   }
   check("meetings.ts reads the inbox only through the light select and one body", (mc.match(/from\("pb_webhook_inbox"\)/g) ?? []).length === 1 && /selectAll\(db, "pb_webhook_inbox", INBOX_LIGHT_SELECT/.test(mc));
+  check("meetings.ts reads the board through SNAPSHOT_READ_SELECT and snapshotReadOf (an override at the computed tier is live)",
+    /selectIn\(db, "pb_current_reads", "account_id", accounts, SNAPSHOT_READ_SELECT,/.test(mc) && /reads: r\.map\(snapshotReadOf\)/.test(mc));
 
   /* The lease: one conditional update, and every later write holds it. */
   check("the claim matches only a free lease", /\.is\("read_started_at", null\)/.test(mc) && /\.lt\("read_started_at", leaseCutoff\(Date\.now\(\)\)\)/.test(mc));

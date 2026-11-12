@@ -381,13 +381,31 @@ check("the sales-meeting migrations are on disk", meetingFiles.length >= 2, meet
   if (existsSync(harness)) {
     const h = code(readFileSync(harness, "utf8")).trim();
     check("the operator harness runs inside begin … rollback", /^begin;/i.test(h) && /rollback;$/i.test(h) && !/\bcommit\b/i.test(h));
-    // A tier call is never taken as agreeing with a read pb_register has moved past: 4q (an override
-    // written since the score) and 4r (one lapsed since) each send it as the page does and expect the
-    // function's own refusal, and 4p's live override is a real register row written before the score.
-    check("the harness refuses only_if_agrees against a read the register moved past (4q written since, 4r lapsed since)",
-      /HARNESS 4q/.test(h) && /HARNESS 4r/.test(h) &&
-      (h.match(/sqlerrm not like '%since the board was last scored%'/g) ?? []).length === 2 &&
+    // No tier call is decided against a read pb_register has moved past: 4q (an override written since
+    // the score — sent as the page sends a call the board shows, and as a pre-ticked or person-ticked
+    // call, with and without overrule), 4r (one lapsed since), 4t (a record merged in since) and 4u (one
+    // written after the engine's clock but before its run row) each expect the function's own refusal,
+    // and 4p's live override is a real register row written before the score.
+    check("the harness refuses every tier call against a read the register moved past (4q written since, 4r lapsed, 4t merged, 4u engine's clock)",
+      /HARNESS 4q/.test(h) && /HARNESS 4r/.test(h) && /HARNESS 4t/.test(h) && /HARNESS 4u/.test(h) &&
+      (h.match(/sqlerrm not like '%since the board was last scored%'/g) ?? []).length === 5 &&
+      /jsonb_build_object\('id', p_h2, 'decision', 'approve', 'overrule', true\)/.test(h) &&
+      /perform public\.pb_merge_accounts\(v_m, v_k, 'harness'\)/.test(h) &&
+      /'as_of', to_char\(\(now\(\) - interval '2 hours'\)/.test(h) &&
       /insert into public\.pb_register \(kind, account_id, made_by, reason_code, text, payload, expires_at, created_at\)\s*values \('override', v_g,/.test(h));
+    // A tier call that ends a live override the read shows — one pinning the computed tier, which
+    // leaves the two tiers equal — is refused without overrule and written with it (4s).
+    check("the harness refuses a call ending a live override at the computed tier without overrule, and writes it with (4s)",
+      /HARNESS 4s/.test(h) && /sqlerrm not like '%a live override shows%'/.test(h) &&
+      /'override', jsonb_build_object\('tier', v_ctier, 'reason_code', 'relationship_known', 'approver', v_owner\)/.test(h) &&
+      /jsonb_build_object\('id', p_j1, 'decision', 'approve', 'overrule', true\)/.test(h));
+    // The subject account is chosen as the decide function would judge it: no live override in its
+    // scorecard, and nothing written, lapsed or merged in since the earliest of its run, its read and
+    // its engine clock — else 2c would be refused and 3f would need overrule.
+    check("the harness's subject has no live override and a register that has not moved past its read (the function's own anchor)",
+      /coalesce\(jsonb_typeof\(r\.scorecard->'override'\), 'null'\) = 'null'/.test(h) &&
+      /least\(\(select x\.started_at from public\.pb_runs x where x\.id = r\.run_id\), r\.run_at,/.test(h) &&
+      /g\.kind = 'decision' and g\.payload \? 'merged_from'\s+and g\.created_at > s\.seen/.test(h));
   }
 }
 

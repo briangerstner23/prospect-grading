@@ -84,6 +84,7 @@ const {
   MEETING_PERSON_SOURCES, meetingDefaultText, meetingSameValue, meetingLiveFlags, readTierWords,
   MEETING_SCREEN_FLAGS, meetingPersonHeld, meetingLiveRow, meetingOverrules, meetingsMissing, meetingPickList, pagedRows,
   meetingBoardShows, mergeReads, meetingReadOf, meetingSentValue, meetingTickBasis, meetingTick, placeCardNotices,
+  meetingLiveOverride,
 } = helpers;
 
 function run(): void {
@@ -568,25 +569,65 @@ eq("stalenessNote never reports a negative age (a read stamped ahead of now)",
       // only_if_agrees); any other tier while a live override shows one — the engine's own or a third —
       // → a newer override, which ends the live one (the engine applies the newest). The flags say the
       // same, and a screen flag is raised EXACTLY when the function would record 'agrees'.
+      // "A live override" is the one the read APPLIED (scorecard.override) — an override at the computed
+      // tier included, which leaves the two tiers equal — and, for a read with no scorecard, an
+      // effective tier off the computed one. The function asks the same of the read.
       let mismatches = 0, cases = 0;
-      for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", "Bronze", null]) {
+      for (const t of ["Gold", "Silver", "Bronze"]) for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", "Bronze", null]) for (const ovTier of [null, "Gold", "Silver"]) {
+        if (ovTier !== null && (comp === null || (eff ?? comp) !== ovTier)) continue; // an applied override is what the board shows
         cases++;
         const shown = eff ?? comp;
         const agrees = comp !== null && t.toLowerCase() === String(shown).toLowerCase();
-        const agreesSame = agrees && t.toLowerCase() === comp.toLowerCase();
-        const agreesOverride = agrees && t.toLowerCase() !== comp.toLowerCase();
-        const byOverride = comp !== null && String(shown).toLowerCase() !== comp.toLowerCase();
+        const byOverride = comp !== null && (ovTier !== null || String(shown).toLowerCase() !== comp.toLowerCase());
+        const agreesSame = agrees && !byOverride;
+        const agreesOverride = agrees && byOverride;
         const endsLive = byOverride && t.toLowerCase() !== String(shown).toLowerCase();
-        const f = meetingLiveFlags(ov(t), { read: comp === null && eff === null ? null : { computed_tier: comp, effective_tier: eff } });
+        const read = comp === null && eff === null ? null
+          : { computed_tier: comp, effective_tier: eff, scorecard: { override: ovTier === null ? null : { tier: ovTier, reason_code: "other" } } };
+        const f = meetingLiveFlags(ov(t), { read });
         const row = { ...ov(t), flags: f };
         if (f.includes("no_computed_tier") !== (comp === null) || f.includes("already_computed_tier") !== agreesSame
             || f.includes("already_override_tier") !== agreesOverride || f.includes("contradicts_live_override") !== endsLive
             || meetingBoardShows(row) !== agrees) {
           mismatches++;
-          console.error(`      tier ${t}, computed ${comp}, effective ${eff}: ${safeJson(f)}`);
+          console.error(`      tier ${t}, computed ${comp}, effective ${eff}, override ${ovTier}: ${safeJson(f)}`);
         }
       }
       eq(`meetingLiveFlags agrees with pb_decide_meeting_card's override branch (${cases} cases)`, mismatches, 0);
+    }
+    {
+      /* An override AT the computed tier: the owner pinned Gold while the engine said Silver, and the
+         engine has since computed Gold too — or the owner pinned the engine's own tier. The read is
+         computed Gold, effective Gold, status Overridden, scorecard.override set. Comparing the two
+         tiers cannot see it; the scorecard can. A meeting saying "Bronze" ends that override if
+         approved, so it is flagged, never pre-ticked, its words say so, and only a person's tick sends
+         overrule — which pb_decide_meeting_card needs before it writes. */
+      const pinnedRead = { computed_tier: "Gold", effective_tier: "Gold", status: "Overridden",
+        scorecard: { override: { tier: "Gold", reason_code: "relationship_known", expires_at: "2026-12-01T00:00:00Z" } } };
+      eq("meetingLiveOverride: an override at the computed tier is live (the scorecard says so)", meetingLiveOverride(pinnedRead), true);
+      eq("meetingLiveOverride: …and none when the scorecard applied none and the tiers agree",
+        meetingLiveOverride({ computed_tier: "Gold", effective_tier: "Gold", scorecard: { override: null } }), false);
+      eq("meetingLiveOverride: …a read with no scorecard falls back to the two tiers",
+        [meetingLiveOverride({ computed_tier: "Gold", effective_tier: "Silver" }), meetingLiveOverride({ computed_tier: "Gold", effective_tier: null }), meetingLiveOverride(null)], [true, false, false]);
+      const third = { ...ov("Bronze"), flags: meetingLiveFlags(ov("Bronze"), { read: pinnedRead }) };
+      eq("meetingLiveFlags: a third tier under an override at the computed tier → contradicts_live_override", third.flags, ["contradicts_live_override"]);
+      eq("…which never starts ticked", [meetingStartsTicked(third), meetingTick(third, {}).ticked], [false, false]);
+      includes("…and its words say approving ends the person's override",
+        meetingRowWords(third, { engineTier: "Gold", effectiveTier: "Gold", liveOverrideUntil: "2026-12-01" }), "by a live override until");
+      eq("meetingLiveFlags: the computed tier under it → already_override_tier (agrees; the override is not renewed)",
+        meetingLiveFlags(ov("Gold"), { read: pinnedRead }), ["already_override_tier"]);
+      const edit = { reason_code: "other", text: "x", expires_on: "2027-01-08" };
+      eq("cardItems: a person's tick on it sends overrule",
+        cardItems([third], { o: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner" }),
+        [{ id: "o", decision: "approve", overrule: true, edit: { reason_code: "other", expires_at: "2027-01-08T00:00:00Z", text: "x" } }]);
+      eq("cardItems: …a tick no person set (a stale load) sends none, and the function refuses rather than end the override",
+        cardItems([third], { o: { ticked: true, edit } }, { mode: "approve", lane: "owner" }),
+        [{ id: "o", decision: "approve", edit: { reason_code: "other", expires_at: "2027-01-08T00:00:00Z", text: "x" } }]);
+      eq("cardItems: …unticked, it is rejected as before", cardItems([third], { o: { ticked: false } }, { mode: "approve", lane: "owner" }), [{ id: "o", decision: "reject" }]);
+      const plain = { ...ov("Bronze"), flags: meetingLiveFlags(ov("Bronze"), { read: { computed_tier: "Gold", effective_tier: "Gold", scorecard: { override: null } } }) };
+      eq("cardItems: an ordinary tier call (no live override) never sends overrule, ticked by a person or not",
+        [cardItems([plain], { o: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner" })[0].overrule,
+         meetingStartsTicked(plain)], [undefined, true]);
     }
     const sameTier = { ...prow("s1", { kind: "override", key: null, value: null, tier: "Gold" }), flags: meetingLiveFlags(ov("Gold"), { read: { computed_tier: "Gold", effective_tier: "Gold" } }) };
     eq("meetingStartsTicked: a tier call the board already shows never starts ticked", meetingStartsTicked(sameTier), false);

@@ -38,6 +38,7 @@ import vm from "node:vm";
 
 import {
   CONTEXT_MAX_CHARS,
+  liveOverrideIn,
   MODES,
   proposalRows,
   READ_STATES,
@@ -64,6 +65,7 @@ import {
   parseMeetingBody,
   planRegistration,
   REREADABLE_STATUSES,
+  snapshotReadOf,
 } from "../supabase/functions/pb-notes/meetings_pure.ts";
 import type { NewRecording, RegisteredMeeting } from "../supabase/functions/pb-notes/meetings_pure.ts";
 
@@ -584,28 +586,64 @@ for (const c of ["mention_state", "matched_on", "kind", "confidence", "dispositi
   // A tier call naming the tier the board shows (the page's already_computed_tier, or a live
   // override's tier) is recorded 'agrees' and writes nothing — never refused, because the only way
   // left to close the card was a reject, and a reject reopens an older meeting's contradicting call.
-  const agreesAt = ovBranch.search(/if\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+and\s+not\s+v_moved\s+then\s+v_status\s*:=\s*'agrees'\s*;/i);
+  const agreesAt = ovBranch.search(/elsif\s+lower\(v_tier\)\s*=\s*lower\(coalesce\(v_etier,\s*v_ctier\)\)\s+then\s+v_status\s*:=\s*'agrees'\s*;/i);
   check("pb_decide_meeting_card records a tier call the board already shows as 'agrees', with no refusal in between",
     agreesAt >= 0 && !/lower\(v_tier\)\s*=\s*lower\(v_ctier\)\s+then\s+raise/i.test(ovBranch));
   // …but the board's tier is the last score's read, and the engine applies the register's newest live
-  // override at the NEXT score. An override written since that score began, or lapsed since, means the
-  // read cannot say what the board will show: an 'agrees' then would close the newest word while the
-  // board moves somewhere else (harness 4q, 4r).
+  // override at the NEXT score. An override written since that score's clock, or lapsed since, or a
+  // record merged in since, means the read cannot say what the board will show — and the screen, which
+  // shows the read, cannot have shown it: an 'agrees' then would close the newest word while the board
+  // moves somewhere else, and a write would end an override nobody saw (harness 4q, 4r, 4t, 4u).
   const movedAt = ovBranch.search(/v_moved\s*:=\s*exists\s*\(/i);
-  check("…never against a read pb_register has moved past: the read's score start is where the register is compared",
-    /left\s+join\s+public\.pb_runs\s+x\s+on\s+x\.id\s*=\s*r\.run_id/i.test(ovBranch) && /coalesce\(x\.started_at,\s*r\.run_at\)\s+into\s+v_ctier,\s*v_etier,\s*v_seen/i.test(ovBranch));
+  check("…never against a read pb_register has moved past: the earliest of the run's start and the read's write is compared",
+    /left\s+join\s+public\.pb_runs\s+x\s+on\s+x\.id\s*=\s*r\.run_id/i.test(ovBranch) &&
+    /least\(x\.started_at,\s*r\.run_at\),\s*r\.scorecard->>'as_of'\s+into\s+v_ctier,\s*v_etier,\s*v_otier,\s*v_seen,\s*v_asof/i.test(ovBranch));
+  check("…and the engine's own clock (scorecard.as_of, fixed before pb-score reads pb_register) when it is earlier, without failing on one that will not cast",
+    /begin\s+v_seen\s*:=\s*least\(v_seen,\s*v_asof::timestamptz\)\s*;\s*exception\s+when\s+others\s+then\s+null\s*;\s*end\s*;/i.test(ovBranch) &&
+    ovBranch.search(/v_seen\s*:=\s*least\(v_seen/i) < movedAt);
   check("…an override naming a tier written since it, or lapsed since it, moves the board",
     movedAt >= 0 && movedAt < agreesAt &&
-    /v_moved\s*:=\s*exists\s*\(\s*select\s+1\s+from\s+public\.pb_register\s+g\s+where\s+g\.account_id\s*=\s*v_acct\s+and\s+g\.kind\s*=\s*'override'\s+and\s+g\.payload->'tier'\s+is\s+not\s+null\s+and\s+jsonb_typeof\(g\.payload->'tier'\)\s*<>\s*'null'\s+and\s+\(g\.created_at\s*>\s*v_seen\s+or\s+\(g\.expires_at\s*>=\s*v_seen\s+and\s+g\.expires_at\s*<\s*now\(\)\)\)\)\s*;/i.test(ovBranch),
+    /v_moved\s*:=\s*exists\s*\(\s*select\s+1\s+from\s+public\.pb_register\s+g\s+where\s+g\.account_id\s*=\s*v_acct\s+and\s+g\.kind\s*=\s*'override'\s+and\s+g\.payload->'tier'\s+is\s+not\s+null\s+and\s+jsonb_typeof\(g\.payload->'tier'\)\s*<>\s*'null'\s+and\s+\(g\.created_at\s*>\s*v_seen\s+or\s+\(g\.expires_at\s*>=\s*v_seen\s+and\s+g\.expires_at\s*<\s*now\(\)\)\)\)/i.test(ovBranch),
     ovBranch.slice(Math.max(0, movedAt), movedAt + 400));
-  check("…where only_if_agrees refuses until the next score (and a ticked call falls through to the override write)",
-    /elsif\s+v_agree\s+and\s+v_moved\s+then\s+raise\s+exception\s+'an override on this agency was written or has lapsed since the board was last scored/i.test(ovBranch) &&
-    ovBranch.search(/elsif\s+v_agree\s+and\s+v_moved\s+then/i) < ovBranch.search(/elsif\s+v_agree\s+then/i) &&
-    ovBranch.search(/elsif\s+v_agree\s+then/i) < ovBranch.search(/insert\s+into\s+public\.pb_register/i));
+  check("…and so does a merge since it (pb_merge_accounts moves override rows with their old created_at and leaves a merged_from decision)",
+    /\)\s*or\s+exists\s*\(\s*select\s+1\s+from\s+public\.pb_register\s+g\s+where\s+g\.account_id\s*=\s*v_acct\s+and\s+g\.kind\s*=\s*'decision'\s+and\s+g\.payload\s*\?\s*'merged_from'\s+and\s+g\.created_at\s*>\s*v_seen\s*\)\s*;/i.test(ovBranch));
+  const refuseMovedAt = ovBranch.search(/if\s+v_moved\s+then\s+raise\s+exception\s+'an override on this agency was written or has lapsed, or another record was merged into it, since\s*'\s*'the board was last scored/i);
+  check("…where EVERY approval of a tier call is refused until the next score — only_if_agrees or not, overrule or not — before 'agrees' and before any write",
+    refuseMovedAt >= 0 && refuseMovedAt < agreesAt && refuseMovedAt < ovBranch.search(/insert\s+into\s+public\.pb_register/i) &&
+    !/v_agree\s+and\s+v_moved/i.test(ovBranch) && !/v_moved\s+and\s+not\s+v_overrule/i.test(ovBranch));
   check("…before it asks for a reason code, a written reason or an expiry (nothing is written for it)",
     agreesAt >= 0 && agreesAt < ovBranch.search(/v_codes\s*:=/) && agreesAt < ovBranch.search(/an override needs a written reason/));
   check("…and before the register insert, which only the other branch reaches",
     agreesAt >= 0 && agreesAt < ovBranch.search(/insert\s+into\s+public\.pb_register/i));
+  // A tier call that ends a live override is written only with overrule, which the page sends only for
+  // a box the person ticked with "approving ends it" on the row — and the override is the one the read
+  // APPLIED, so one AT the computed tier counts (it leaves the two tiers equal).
+  const endsAt = ovBranch.search(/elsif\s+v_otier\s+is\s+not\s+null\s+and\s+not\s+v_overrule\s+then\s+raise\s+exception\s+'a live override shows/i);
+  check("a tier call that ends the read's live override is refused without overrule, after the agree checks and before the write",
+    endsAt > agreesAt && endsAt > ovBranch.search(/elsif\s+v_agree\s+then/i) && endsAt < ovBranch.search(/insert\s+into\s+public\.pb_register/i));
+  check("…the live override being the one the read applied (scorecard.override), else an effective tier off the computed one",
+    /coalesce\(nullif\(btrim\(r\.scorecard->'override'->>'tier'\),\s*''\),\s*case\s+when\s+lower\(r\.effective_tier\)\s*<>\s*lower\(r\.computed_tier\)\s+then\s+r\.effective_tier\s+end\)/i.test(ovBranch));
+  {
+    // The three layers ask "is an override live on this read?" the same way: the page of the
+    // pb_current_reads row it loads (select *), the reader of the row SNAPSHOT_READ_SELECT returns,
+    // and the function of the scorecard (pinned above). An override at the computed tier is live.
+    let disagree = 0;
+    for (const comp of ["Gold", "Silver", null]) for (const eff of ["Gold", "Silver", "Bronze", null]) for (const ov of ["Gold", "Silver", null]) {
+      const page = P.meetingLiveOverride({ computed_tier: comp, effective_tier: eff, scorecard: { override: ov === null ? null : { tier: ov, reason_code: "other" } } });
+      const reader = liveOverrideIn(snapshotReadOf({ account_id: "a", computed_tier: comp, effective_tier: eff, override_tier: ov }));
+      const sql = ov !== null || (comp !== null && eff !== null && eff.toLowerCase() !== comp.toLowerCase());
+      if (page !== sql || reader !== sql) disagree++;
+    }
+    check("the page, the reader and pb_decide_meeting_card agree on which reads show a live override (36 cases)", disagree === 0, String(disagree));
+    const ends = prow("e1", { kind: "override", tier: "Bronze", key: null, value: null, flags: ["contradicts_live_override"] });
+    const edit = { reason_code: "other", text: "x", expires_on: "2027-01-08" };
+    const byPerson = P.cardItems([ends], { e1: { ticked: true, touched: true, mine: true, edit } }, { mode: "approve", lane: "owner", reasons: REASONS });
+    const byScreen = P.cardItems([ends], { e1: { ticked: true, edit } }, { mode: "approve", lane: "owner", reasons: REASONS });
+    check("the page sends overrule for a tier call ending a live override only when the person ticked it",
+      byPerson.length === 1 && byPerson[0].overrule === true && byScreen.length === 1 && byScreen[0].overrule === undefined,
+      JSON.stringify([byPerson, byScreen]));
+    subset("…and overrule is a key the function reads", byPerson.flatMap((i: Record<string, unknown>) => Object.keys(i)), itemKeys);
+  }
   check("only_if_agrees refuses the card when the board has moved, instead of writing an override nobody chose",
     /elsif\s+v_agree\s+then\s+raise\s+exception/i.test(ovBranch) &&
     /v_agree\s*:=\s*coalesce\(\(v_item->>'only_if_agrees'\)::boolean,\s*false\)/.test(decide) &&

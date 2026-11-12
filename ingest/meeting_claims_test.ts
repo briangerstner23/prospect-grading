@@ -25,6 +25,7 @@ import {
   removalCovers,
   hedgeFlags,
   HISTORIC_DAYS,
+  liveOverrideIn,
   MAX_FACTS_PER_AGENCY,
   MAX_READS_PER_AGENCY,
   MODES,
@@ -315,6 +316,21 @@ eq("the extractor id is meeting@v1+<model>", EXTRACTOR, "meeting@v1+model-x");
     [third.status, third.flags, third.default_selected], ["proposed", ["contradicts_live_override"], false]);
   const [pinned] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [{ account_id: "quill", computed_tier: "Silver", effective_tier: null }] });
   eq("no effective tier recorded → no override is on the board, so a different tier is an ordinary call", [pinned.flags, pinned.default_selected], [[], true]);
+  // An override AT the computed tier is applied (status Overridden) and leaves effective = computed:
+  // the owner pinned the engine's tier, or the engine caught up to the override's. Comparing the two
+  // tiers cannot see it; the read's applied override can. A third tier named under it ends it.
+  const atComp = { account_id: "quill", computed_tier: "Silver", effective_tier: "Silver", override_tier: "Silver" };
+  const [ends] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [atComp] });
+  eq("a third tier under an override AT the computed tier → contradicts_live_override, not pre-ticked",
+    [ends.status, ends.flags, ends.default_selected], ["proposed", ["contradicts_live_override"], false]);
+  const [same] = rows([vc({ type: "tier_call", tier: "Silver", key: null })], { reads: [atComp] });
+  eq("…the tier it pins (the board's) → agrees", [same.status, same.flags], ["agrees", []]);
+  const [none] = rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { reads: [{ ...atComp, override_tier: null }] });
+  eq("…and with no override applied, the same call is an ordinary one, pre-ticked", [none.flags, none.default_selected], [[], true]);
+  check("liveOverrideIn: an applied override, or (with none recorded) an effective tier off the computed one",
+    liveOverrideIn(atComp) && !liveOverrideIn({ ...atComp, override_tier: null }) && !liveOverrideIn({ ...atComp, override_tier: " " })
+      && liveOverrideIn({ account_id: "q", computed_tier: "Silver", effective_tier: "Gold" })
+      && !liveOverrideIn({ account_id: "q", computed_tier: "Silver", effective_tier: null }) && !liveOverrideIn(undefined));
   eq("the model's code is kept when the rubric lists it", rows([vc({ type: "tier_call", tier: "Platinum", key: null, code: "timing_known" })])[0].reason_code, "timing_known");
   eq("no relationship_known in the rubric → 'other'", rows([vc({ type: "tier_call", tier: "Platinum", key: null })], { overrideCodes: ["data_wrong", "other"] })[0].reason_code, "other");
   eq("default_text names the meeting's date and the line, never the quote or the title (pb_register is viewer-readable)",

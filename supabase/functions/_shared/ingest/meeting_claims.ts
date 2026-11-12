@@ -678,11 +678,18 @@ export interface SnapshotFact {
   source: string;
 }
 
-/** A pb_current_reads row for a resolved account. */
+/**
+ * A pb_current_reads row for a resolved account. `override_tier` is the tier of the override the
+ * engine APPLIED in that read (scorecard.override.tier), null when none was — the only sure sign one
+ * is live: an override at the computed tier is applied (status Overridden) and leaves the effective
+ * tier equal to the computed one, so the two tiers alone cannot see it. Absent, the two tiers are
+ * all the reader has, and a live override is one that moved the board off the computed tier.
+ */
 export interface SnapshotRead {
   account_id: string;
   computed_tier: string | null;
   effective_tier: string | null;
+  override_tier?: string | null;
 }
 
 /** A pb_removals row for a resolved account: who is off the board, and on which disposition. */
@@ -752,6 +759,19 @@ export function claimDiscriminator(r: { kind: string; key: string | null; topic:
 }
 
 /**
+ * Does this read show a live override? Yes when the engine applied one (override_tier set), and —
+ * for a read that does not say — when the effective tier differs from the computed one, which only an
+ * override does. pb_decide_meeting_card asks the same of the read's scorecard.override.
+ */
+export function liveOverrideIn(read: SnapshotRead | null | undefined): boolean {
+  if (!read) return false;
+  if (typeof read.override_tier === "string" && read.override_tier.trim() !== "") return true;
+  const comp = (read.computed_tier ?? "").toLowerCase();
+  const eff = (read.effective_tier ?? "").toLowerCase();
+  return comp !== "" && eff !== "" && eff !== comp;
+}
+
+/**
  * Verified claims → pb_meeting_proposals rows. For each claim of a readable cluster:
  *
  *   status    'not_proposed' for a hypothetical, question or joke; 'agrees' when the board already
@@ -761,9 +781,10 @@ export function claimDiscriminator(r: { kind: string; key: string | null; topic:
  *   flags     the verifier's, plus 'historic' (held more than HISTORIC_DAYS before as_of),
  *             'conflicts_with_person' (a fact that disagrees with a person's value),
  *             'no_computed_tier' (a tier call the engine would refuse), 'contradicts_live_override'
- *             (a live override shows its tier and the team named another, the computed one or a
- *             third: approving writes a newer override that ends the person's, which is not
- *             agreeing with the board and is never ticked by default) and
+ *             (a live override shows its tier — liveOverrideIn, so one AT the computed tier too —
+ *             and the team named another, the computed one or a third: approving writes a newer
+ *             override that ends the person's, which is not agreeing with the board and is never
+ *             ticked by default) and
  *             'upgrades_removal' (a do-not-contact said of an agency the board holds off only as
  *             unqualified);
  *   display   current_value / current_source, engine_tier / effective_tier — snapshots only;
@@ -820,9 +841,12 @@ export function proposalRows(input: ProposalInput): ProposalRow[] {
       const comp = (read?.computed_tier ?? "").toLowerCase();
       // The board shows the effective tier; with no override it is the computed one.
       const shown = (read?.effective_tier ?? read?.computed_tier ?? "").toLowerCase();
+      // An override is live when the read applied one — including one AT the computed tier, which
+      // leaves the two tiers equal (an owner pinning the engine's tier, or the engine catching up).
+      const live = liveOverrideIn(read);
       if (t !== "" && t === shown) {
         if (status === "proposed") status = "agrees";
-      } else if (t !== "" && comp !== "" && shown !== comp) {
+      } else if (t !== "" && comp !== "" && live) {
         // A live override puts its tier on the board and the team named another — the engine's
         // own, or a third. Approving writes a newer override, and the newest live one is the one
         // the engine applies, so approving ENDS the person's override (rule 7): the owner sees it

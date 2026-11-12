@@ -2629,9 +2629,11 @@ Run both grants queries from CLAUDE.md: they must return nothing (the four new t
 account and meeting, and one live prospect read as the subject — nothing survives it. Success is the
 absence of an exception and three NOTICE lines. It proves every lane refusal (a rater approving a
 tier call or a removal, a viewer, a non-WLIQ address), every rule refusal (no written reason, an
-unknown code, an override at the computed tier or with no computed tier, a removal with an expiry, a
-fact that overrules a person without the tick — judged on the value sent, edited or not — a card over
-two agencies, an unplaced name), what the
+unknown code, an override with no computed tier, a removal with an expiry, a fact that overrules a
+person without the tick — judged on the value sent, edited or not — a tier call that ends a live
+override without the tick, one pinning the computed tier included, any tier call once the register has
+moved past the read — an override written, lapsed or merged in since the engine's clock — a card over
+two agencies, an unplaced name), that a call at the tier the board shows records `agrees`, what the
 writes look like, and that `anon` gets the dossier and the board without a word of it. Run it again
 after any change to `pb_dossier()`, `pb_board()` or the six meeting functions.
 
@@ -2755,7 +2757,13 @@ next 06:15 score; a removal leaves the board at once.
 "The board already says it" (`agrees`) means what the board SHOWS: a tier call agrees only with the
 effective tier, so ANY other tier named while a live override shows one — the engine's own or a third
 — stays open, flagged `contradicts_live_override` and never pre-ticked, because approving writes a
-newer override and the engine applies the newest, which ends the person's; and a live removal covers a
+newer override and the engine applies the newest, which ends the person's. "A live override" is the
+one the read APPLIED (`scorecard.override`, the same test `pb_board()` uses), so an override AT the
+computed tier counts — an owner pinning the engine's tier, or the engine catching up to an override's
+— though it leaves the two tiers equal; the reader takes it (`override_tier`), the screen reads it off
+the scorecard, and the decide function asks the same of the read. Such a call is written only with
+`overrule`, which the screen sends only for a box a person ticked with "approving ends it" on the row;
+sent without it, the function refuses the card. And a live removal covers a
 meeting's removal only when it is as firm — a live `do_not_contact` covers anything, a live
 `unqualified` does not cover a do-not-contact, which stays open flagged `upgrades_removal` and, once
 approved, becomes the removal pb_removals shows (rule 7a). No register row a decision writes carries
@@ -2780,12 +2788,15 @@ as a reject, because a rejected newer word returns an older meeting's contradict
 if the board has moved since the screen opened, the function refuses the card rather than write an
 override nobody chose, and the screen redraws the card from the book as it stands (any refusal does,
 keeping the edits), so the row shows what it is now. The board the function checks is the last
-score's read, and an override takes effect only at the next score, so it never takes a tier call as
-agreeing once pb_register has moved past that read — an override on the agency written, or lapsed,
-since the score began: an `only_if_agrees` approval is then refused with words saying the tier
-changes at the 06:15 UTC score (the whole card waits until after it — press Later), and a call a
-person ticked is written as an override, which the board then shows whatever the register held. The
-reader does not make that check: it never names pb_register (DECISIONS §65), so a meeting read in that window
+score's read, and an override takes effect only at the next score, so it decides NO tier call once
+pb_register has moved past that read — an override on the agency written or lapsed, or another record
+merged into it (`pb_merge_accounts` moves the merged record's override rows with their old dates),
+since the engine's clock for that score (`scorecard.as_of`, fixed before pb-score reads the register;
+the run's start comes after it grades every account): every approval of the tier call, `only_if_agrees`
+or ticked, with `overrule` or without, is refused with words saying the tier changes at the 06:15 UTC
+score, and the whole card waits until after it — press Later. The screen shows the read, so it cannot
+have shown an override written since; a tick on that row, the screen's or a person's, never ends one.
+The reader does not make that check: it never names pb_register (DECISIONS §65), so a meeting read in that window
 can still write a tier call `agrees` against the stale read with nobody asked — an open item for the
 owner, not a rule. X still rejects
 it. A tick survives a redraw only while the question its box asks is unchanged (`meetingTick`): when
