@@ -4699,3 +4699,81 @@ bundle, the webhook's closure changed only in additive code it never calls.
 
 Implementation is in progress. Per the rule that a ruling is applied when the deployed artefact
 contains it, this section says what was ruled, not what runs.
+
+## §66 — A long meeting is read in windows, and a name heard only in part is asked about (13 Nov 2026)
+
+No owner ruling. This is how rule 8 applies once pass 1 reads a meeting in pieces. Basis: reasoned,
+from one measured failure and two review rounds.
+
+**Why windows.** On 12 Nov the first real read of a 93-minute, 878-line meeting never finished. Pass 1
+sent it as one call, under the old 160,000-character cap, and the run's 120 s ceiling stopped that call
+at 119 s every time. The cause is output, not input. Pass 1's reply lists every company mention with its
+lines, so the reply grows with the meeting, and the model writes about 100 tokens a second (measured the
+same day: a 386-line meeting of about 45,000 characters answered in 34 s with 3,400 output tokens). So the
+cap is now set by time. Past 40,000 rendered characters (`PASS1_WINDOW_CHARS`, about 350 lines), pass 1
+reads in windows of at most that, side by side, with consecutive windows sharing 40 lines
+(`PASS1_WINDOW_OVERLAP`) so a discussion on a seam is seen whole. The 878-line meeting becomes four windows
+of about half a minute each, which leaves pass 2 most of the budget. Below the cap, nothing changes: one
+window, one call, the same read as before.
+
+**What windows break, and the rule for it.** One window may hear "Vorn Digital" while a later one hears
+only "Vorn". A single read would group the two; the windows cannot. The first design joined the later
+short form to the account the earlier window named. Two review rounds then kept finding rosters on which
+that join put the team's words on the wrong agency: a word another live account also has, a prefix of two
+accounts' names, a word the naming window had listed apart, an ordinary word the roster shares. Each was
+patched and the next round found another. The join decided identity by a token, and rule 8 says identity
+never attaches below `high` confidence without a person. So the join no longer places:
+
+1. **A short form another window named becomes a "Who is this?" card** (`suggested`, no account) with that
+   account offered first. Pass 2 still reads it, so nothing the team said is lost, and a person places it
+   with one click (`meeting.pass1.suggested_by_name`).
+2. **The one placement is the same sighting**: the later window's mention cites lines that ONE resolved
+   mention in another window also cited, with every one of the same words. Every cited line the naming
+   window could see must be one it cited (`meeting.pass1.joined_same_lines`). This is the same words on
+   the same lines read twice, not a token deciding identity. Suggesting it instead would make two cards
+   own one line, and pass 2 flags every claim on a line two agencies share. **Only those lines are
+   placed.** A line the same mention cites past the naming window's edge is a sighting that window never
+   heard, grouped by a model that never heard the whole name. A first version placed it with the rest,
+   and review found the case that breaks: "Kestrelvane" past the edge, with two Kestrelvane accounts
+   live, landed on the one the overlap named, with its claims pre-ticked. So it is split off with its own
+   reach and read as a mention of its own: a question, or ambiguous (`meeting.pass1.split_past_edge`). A
+   line within reach of both parts is owned by both, so a claim on it waits for a person's tick. The
+   split part is never left unread. Review found that a part made of ordinary words, one of them shared
+   with another live account, stayed refused, and a refused card owns no line. The line past the edge
+   was then the placed card's alone, its claim pre-ticked. So a part that would stay refused or unknown
+   becomes a "Who is this?" card with the placed account first (`split_asked`). Past-edge lines that no
+   stretch of discussion reaches are dropped (`split_no_reach`), as `verifySegments` drops a mention
+   with no segment.
+3. **A word or prefix two accounts share stays an ambiguous card**, with the meeting's account offered
+   first only when every mention on the card was heard outside the windows that named it
+   (`offered_first`, counted per card).
+4. **A question card made of ordinary words keeps its spoken name** as its key. Without it, every such
+   card in a meeting shared the empty key, which meant one card, one fingerprint and one click for several
+   agencies (found in review, 13 Nov). Only the ordinary words go into that key, never a person at the
+   meeting, and never on a resolved card. One rule (`cardForms`) both groups mentions into cards and
+   names them. When they were two rules, "Orange" heard beside a fragment in one window and alone in
+   another made two cards with one name and one fingerprint, and the database kept only one of them.
+   For the same reason there is **one card per name pass 2 reads, whatever state each mention came out
+   in**. Across windows one short form can be ambiguous in one window and suggested in another, and the
+   fingerprint, the review page's chip and `pb_assign_meeting_mention` all key an unplaced name by the
+   name alone. So the card takes its most cautious state. A fingerprint minted twice in one read is
+   counted (`meeting.proposals.fingerprint_repeated`), never silent. **And an ordinary word is never learned.** "Remember this name"
+   stores a card's key as an alias that later resolves with no person, so `buildRosterIndex` skips a
+   learned part that is one ordinary word. Otherwise "orange" learned for one agency would place every
+   later "Orange" on it. The rest of a remembered key is still learned. **And [Wrong agency] forgets on
+   the same terms.** An alias is stored under the card's whole key ("quillmere|quillmere studio") and learned
+   part by part, so it places a later card heard only as "Quillmere". Unassign matched the whole key and
+   could never forget it. Migration 20261113180000 forgets every alias of the old account that shares a
+   part with the card's name. The review screen says so; it
+   cannot yet tell before the click whether a name will be learned. That needs a `learnable` column on
+   the proposal, and it is a follow-up.
+
+**The known limit.** A nickname or a mistranscription ("Vron") that is never said beside the full name
+and is heard only in a window that never heard the name stays its own unknown card: listed, not read. A
+single read could not place it either. The overlap exists to make that rare.
+
+Code: `ingest/meeting_transcript.ts` (`windowsFor`), `ingest/meeting_mentions.ts` (`joinAcrossWindows`,
+`clusterMentions`), `supabase/functions/pb-notes/meetings_pure.ts` (`clusterWindows`), RUNBOOK §33.5.
+Under the rule that a ruling is applied when the deployed artefact contains it, this section is live once
+pb-notes v19, pinned to the merge commit, is deployed and its first dry run has passed the hand check
+(RUNBOOK §33.4).

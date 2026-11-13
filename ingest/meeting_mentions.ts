@@ -352,7 +352,13 @@ export function buildRosterIndex(input: RosterInput): RosterIndex {
     if (t === null) continue;
     for (const part of String(l.said_key ?? "").split("|")) {
       const k = speechKey(part);
-      if (usable(k)) push(exact, k, { account: t, basis: "learned" });
+      if (!usable(k)) continue;
+      /* A learned name places a mention with no person, so it is never an ordinary word. An account's
+         own ordinary-word alias is only 'weak'; a remembered card key's ordinary word is not learned at
+         all — "orange" learned for one agency would place every later "Orange" on it, and turn
+         "Orange Fieldcrest" said beside "Orange" into a question. The rest of the key is learned. */
+      if (k.split(" ").length === 1 && ordinary(k)) continue;
+      push(exact, k, { account: t, basis: "learned" });
     }
   }
 
@@ -733,6 +739,39 @@ export interface MentionCluster {
 }
 
 /**
+ * The spoken forms that name a mention's card. A refused form names it only when nothing live does: a
+ * refused mention, or a question the cross-window join made out of ordinary words alone ("Orange" said
+ * beside "Orange Wyvernhold" in another window). Without that its key is "" — and every such question in
+ * the meeting would share it: one card, one fingerprint, one "Who is this?" click for all of them. Only
+ * the ordinary words, the ones the join read: never a person at the meeting, our own name or a short
+ * fragment, which "Remember this name" would otherwise store. And never on a resolved card, whose live
+ * forms already name it. ONE rule, used both to group mentions into cards (cardKey) and to name the card
+ * (clusterMentions): two rules would let one name become two cards with one fingerprint.
+ */
+function cardForms(r: MentionResolution): string[] {
+  const question = r.state !== "resolved" && r.state !== "refused" && r.surfaces.length > 0 &&
+    r.surfaces.every((x) => x.state === "refused");
+  return r.surfaces
+    .filter((s) => s.state !== "refused" || r.state === "refused" || (question && s.reason === "ordinary_word"))
+    .map((s) => s.key);
+}
+
+/**
+ * Which card a mention joins: its account when resolved; else its spoken name (cardForms) — ONE card per
+ * name pass 2 reads, whether its mentions came out suggested or ambiguous. Across windows one short form
+ * can be both (ambiguous where two accounts were named only elsewhere, suggested where its own window
+ * named one of them), and the proposal fingerprint, the review page's "Who is this?" chip and
+ * pb_assign_meeting_mention all key an unplaced name by the name alone: two cards would mint one
+ * fingerprint, and the later claim would be dropped on insert. Unknown and refused mentions, which pass
+ * 2 never reads, keep cards of their own state, so an unread mention never joins a read card.
+ */
+function cardKey(r: MentionResolution): string {
+  if (r.state === "resolved" && r.account_id) return `acct:${r.account_id}`;
+  const name = saidKeyOf(cardForms(r));
+  return r.state === "suggested" || r.state === "ambiguous" ? `said:read:${name}` : `said:${r.state}:${name}`;
+}
+
+/**
  * Resolved mentions of one account become one cluster; every other mention clusters by its
  * said_key, so the same unplaced name said twice is one "Who is this?" chip, and placing it later
  * never needs a re-read. Clusters come back in DISCUSSION ORDER — first line — with refs A1..An.
@@ -741,7 +780,7 @@ export interface MentionCluster {
 export function clusterMentions(resolutions: readonly MentionResolution[]): MentionCluster[] {
   const groups = new Map<string, MentionResolution[]>();
   for (const r of resolutions ?? []) {
-    const k = r.state === "resolved" && r.account_id ? `acct:${r.account_id}` : `said:${r.state}:${r.said_key}`;
+    const k = cardKey(r);
     const list = groups.get(k);
     if (list) list.push(r);
     else groups.set(k, [r]);
@@ -749,7 +788,9 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
 
   const clusters: Array<Omit<MentionCluster, "ref">> = [];
   for (const members of groups.values()) {
-    const head = members[0];
+    /* A card of one name heard suggested in one window and ambiguous in another is as cautious as its
+       most cautious mention: ambiguous, with that mention's reason. */
+    const head = members.find((m) => m.state === "ambiguous") ?? members[0];
     const said_as: string[] = [];
     const keys: string[] = [];
     const lines = new Set<number>();
@@ -757,7 +798,7 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
     const options: string[] = [];
     for (const m of members) {
       for (const s of m.as_said) if (!said_as.includes(s)) said_as.push(s);
-      for (const s of m.surfaces) if (s.state !== "refused" || m.state === "refused") keys.push(s.key);
+      keys.push(...cardForms(m));
       for (const n of m.mention_lines) lines.add(n);
       segs.push(...m.segments.map((s) => ({ ...s })));
       for (const o of m.options) if (!options.includes(o)) options.push(o);
@@ -786,4 +827,489 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
   }
   clusters.sort((a, b) => a.first_line - b.first_line || (a.said_key < b.said_key ? -1 : a.said_key > b.said_key ? 1 : 0));
   return clusters.map((c, i) => ({ ref: `A${i + 1}`, ...c }));
+}
+
+/* ------------------------------------------------------------------ *
+ * one company across pass-1 windows
+ * ------------------------------------------------------------------ */
+
+export interface WindowJoin {
+  /** Every mention, flat and in window order; the ones another window named suggested, that account first. */
+  resolutions: MentionResolution[];
+  /** joined_same_lines (placed) · split_past_edge (a placed mention's lines past the naming window's edge,
+   *  read on as a mention of their own) · split_asked (one of those that would have gone unread, made a
+   *  question) · split_no_reach (past-edge lines no discussion reaches, dropped) · suggested_by_name ·
+   *  conflicting_names (mentions) · offered_first (cards). */
+  counters: Record<string, number>;
+}
+
+/**
+ * A long meeting goes to pass 1 in overlapping windows (meeting_transcript.windowsFor), each a call
+ * that sees only its own lines. Inside ONE window the model puts every form of a company in one
+ * entry ("Vorn Digital" and "Vorn"), and resolveMention places the short form BESIDE the whole name.
+ * A window that only ever hears the short form cannot: "Vorn" alone is unknown (one word under
+ * MIN_TOKEN), "Orange" alone an ordinary word, a distinctive token alone only a suggestion. Grouped
+ * by account or by spoken name, it would become a second card whose lines are owned against the real
+ * one — and, when unknown, never read, so the team's later word on the agency would be lost.
+ *
+ * This puts back what one window would have done — AS A SUGGESTION, never a placement, save the one
+ * exception below (the same sighting) — from evidence IN THIS MEETING, and only ACROSS windows. "Joined"
+ * below means exactly that, except for the same sighting: the mention becomes a
+ * "Who is this?" card (state 'suggested', no account), which pass 2 still reads, with the account
+ * offered first; a person places it with one click. Two review rounds (13 Nov 2026) kept finding
+ * rosters on which in-meeting words carried a mention onto the wrong agency, and every one was a token
+ * deciding identity, which rule 8 gives to a person. A mention is joined to an account resolved in
+ * ANOTHER window, never to one its own window
+ * resolved too (that window's model saw both and kept them apart, as one window's would), so a
+ * meeting read in one window comes back unchanged. Nor is it joined to an account whose window listed
+ * any of its words apart from it: that window's model heard the name and those words and kept them
+ * apart, and its judgement holds for the same words heard in any other window.
+ *
+ * Meeting-local keys, each kept only while exactly one account holds it — and NO OTHER live account
+ * of the roster has it (or its de-spaced form) as a word or run of words of any name the index knows
+ * it by (its own, a merged row's, an alias, a learned alias), holds it as a key, or was offered for
+ * it, whether or not this meeting named that account:
+ *   · said beside — every form a RESOLVED mention carried beside its resolving name (live forms,
+ *     and an ordinary word that is a word of the account's own name: "Orange" beside "Orange
+ *     Wyvernhold");
+ *   · the account's own short name — the core, or the first word, of a name this meeting resolved,
+ *     when it is one word of MIN_KEY_CHARS or more that is not ordinary ("Vorn" of "Vorn Digital");
+ *   never a key the index refuses (our names, placeholders, junk), a word of anyone at the meeting,
+ *   a key shorter than MIN_KEY_CHARS, or an account with a poison partner. A key that STARTS another
+ *   account's word, by the matcher's own prefix rule ("Vorn" of "Harrow Vornholt Studio"), still names
+ *   its account to offer first but never places a mention. So "Vorn" said beside
+ *   "Vorn Digital" is no key while "Vorn Partners Group" is live, and "Zell" grouped by one window
+ *   with "Vorn Digital" is no key while "Zell Creative" is: a word two accounts share is never
+ *   placed by the join.
+ *
+ * Then, for a mention its own window could not place:
+ *   · the same sighting — ONE resolved mention in another window carried every one of its forms and
+ *     cited every one of its lines that window could see (the overlap, seen twice): those lines are
+ *     resolved to that mention's account, whatever its own state, because that other window's model
+ *     grouped those very words on those very lines — the ONE case the join PLACES, because it is not a
+ *     token deciding identity but the same words on the same lines read twice (suggesting it would make
+ *     two cards own one line). With the windows' ranges, a cited line past that window's edge — one it
+ *     never heard — is split off with its own reach and goes on below as a mention of its own, so it is
+ *     never placed by the token (split_past_edge); one that would stay unread (refused, unknown) is
+ *     made a "Who is this?" card with the placed account first (split_asked), and past-edge lines no
+ *     stretch reaches are dropped (split_no_reach). Never pooled: lines one mention cited and words
+ *     another carried are not it;
+ *   · unknown, suggested, or refused only as an ordinary word — joined (suggested, that account
+ *     first) when every form it has
+ *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
+ *     offers it) and every suggestion offers that account ALONE, in words no other live account's
+ *     name has or begins with — and no window that resolved the account listed any of its words
+ *     apart. A suggestion that also offers another account (a prefix of two accounts' tokens), or
+ *     whose word another name has or begins with, is the roster saying the word is shared: the mention
+ *     is never placed, it stays a suggestion with the meeting's account offered first. An ordinary
+ *     word said beside an account that the roster shares points at no one account. A form that points
+ *     nowhere ("Vorn Labs") leaves the mention as it was; forms that point at two accounts, or a
+ *     suggestion for another account only, make it AMBIGUOUS (conflicting_names) with the meeting's
+ *     accounts offered first, as resolveMention does with two names in one entry;
+ *   · ambiguous (a token two accounts share) — never joined: it stays a "Who is this?" card, with the
+ *     account this meeting named moved to the front of its options.
+ * Offered first is decided per CARD (one per state and spoken name, as clusterMentions groups them):
+ * an account goes first only when every mention of the card would put it there, so a card holding a
+ * mention its own window listed apart from that account keeps the roster's order.
+ * A suggested mention carries the basis of its OWN evidence ('token' for a word of the name or a form
+ * said beside it, or the suggestion's own); a same-sighting placement takes the basis its account was
+ * resolved on in this meeting, or 'token' when that was only a learned alias — never 'learned' or
+ * 'person': no person confirmed it.
+ *
+ * What it cannot join: a form that is neither a word of the name nor ever said beside it, heard only
+ * in a window that never heard the name — a nickname, a mistranscription ("Vron"). That stays its own
+ * card (unknown, so listed but not read): the known limit, and why the windows overlap.
+ */
+export function joinAcrossWindows(
+  perWindow: readonly (readonly MentionResolution[])[],
+  index: RosterIndex,
+  /** Each window's line range, in window order (meeting_transcript.windowsFor). Without it the same
+   *  sighting needs every cited line in the other window's mention — the strict, window-blind rule. */
+  ranges?: readonly { from: number; to: number }[],
+): WindowJoin {
+  const counters: Record<string, number> = {};
+  const all: Array<{ r: MentionResolution; w: number }> = [];
+  (perWindow ?? []).forEach((list, w) => { for (const r of list ?? []) all.push({ r, w }); });
+  if ((perWindow ?? []).length < 2) return { resolutions: all.map((x) => x.r), counters };
+
+  const keyable = (k: string): boolean => k.length >= MIN_KEY_CHARS && !index.refused.has(k) && !index.people.has(k);
+  const nameWords = (a: string): string[] => (index.accounts.get(a)?.full ?? "").split(" ").filter(Boolean);
+  const plainWord = (k: string): boolean =>
+    /^[a-z][a-z0-9]*$/.test(k) && !TRAILING_GENERIC.includes(k) && !FILLER_WORDS.includes(k) && !STOP_KEYS.has(k);
+  /** The forms of a mention that can carry it: live ones, and an ordinary word of an account's name. */
+  const ordinaryOf = (s: SurfaceResolution): boolean => s.state === "refused" && s.reason === "ordinary_word" && plainWord(s.key);
+
+  /* What the resolved mentions say: which windows resolved each account, on what basis, which lines
+     each cited, and which forms each carried beside its name. */
+  const resolvedIn = new Map<string, Set<number>>();
+  const basisOf = new Map<string, MatchedOn>();
+  /** Each resolved mention on its own: its account, window, the lines it cited and the forms it carried. */
+  const sightings: Array<{ a: string; w: number; lines: Set<number>; forms: Set<string> }> = [];
+  const beside = new Map<string, Set<string>>(); // account → forms it was said with
+  const offeredWith = new Map<string, Set<string>>(); // such a form → every account the roster offered for it
+  for (const { r, w } of all) {
+    if (r.state !== "resolved" || !r.account_id || !index.accounts.has(r.account_id)) continue;
+    const a = r.account_id;
+    if (!resolvedIn.has(a)) resolvedIn.set(a, new Set());
+    (resolvedIn.get(a) as Set<number>).add(w);
+    /* Never 'learned' (or 'person'): a joined mention's own words were confirmed by nobody. */
+    const b = r.matched_on;
+    const prev = basisOf.get(a);
+    if (b !== null && b !== "learned" && b !== "person" && (prev === undefined || (BASIS_RANK[b] ?? 9) < (BASIS_RANK[prev] ?? 9))) basisOf.set(a, b);
+    if (!beside.has(a)) beside.set(a, new Set());
+    const forms = beside.get(a) as Set<string>;
+    const own = new Set<string>();
+    const words = nameWords(a);
+    for (const s of r.surfaces) {
+      if (!keyable(s.key)) continue;
+      if (s.state !== "refused" || (ordinaryOf(s) && words.includes(s.key))) {
+        forms.add(s.key);
+        own.add(s.key);
+        if (!offeredWith.has(s.key)) offeredWith.set(s.key, new Set());
+        for (const o of s.options) (offeredWith.get(s.key) as Set<string>).add(o);
+      }
+    }
+    sightings.push({ a, w, lines: new Set(r.mention_lines), forms: own });
+  }
+
+  /* The meeting-local keys. The ROSTER holds a key too: every live account that has it as a word, or
+     a run of words, of ANY name the index knows it by — its current name, a merged row's name, an
+     alias, a learned alias, a token or domain label — or that the index holds it for. A key another
+     live account holds is never this meeting's, whichever account the meeting said it beside — so
+     "Vorn", said beside "Vorn Digital", is no key while "Vorn Partners Group" is on the roster, named
+     in this meeting or not, nor while "Vorn Partners" is a merged row or an alias of another account;
+     and a word the model grouped with the wrong name ("Zell" beside "Vorn Digital") cannot carry Zell
+     Creative's later discussion onto Vorn Digital's card. */
+  const rosterHolders = new Map<string, string[]>();
+  const heldBy = (k: string): string[] => {
+    let ids = rosterHolders.get(k);
+    if (ids === undefined) {
+      const set = new Set<string>();
+      const padded = ` ${k} `;
+      for (const acc of index.accounts.values()) if (` ${acc.full} `.includes(padded)) set.add(acc.id);
+      /* Every key the index holds is a name some live account is known by (a merged row's, an alias's,
+         a learned one's already redirected to the account it speaks for): a word of it is held too. */
+      for (const map of [index.exact, index.soft]) {
+        for (const [key, hits] of map) if (` ${key} `.includes(padded)) for (const h of hits) set.add(h.account);
+      }
+      ids = [...set];
+      rosterHolders.set(k, ids);
+    }
+    return ids;
+  };
+  /* resolveSurface matches a split word on its de-spaced form ("Brindle Cot" on the token
+     "brindlecot"), so the roster is asked about that form too: a transcript that splits a word
+     another account's name has must not slip past the check the whole word would fail. */
+  const despaced = (k: string): string => k.replace(/ /g, "");
+  const othersFor = (k: string, a: string): string[] => {
+    const joined = despaced(k);
+    const ids = joined === k ? heldBy(k) : [...new Set([...heldBy(k), ...heldBy(joined)])];
+    return ids.filter((x) => x !== a);
+  };
+  /* The matcher's own prefix rule, asked of EVERY word of every name the roster knows (resolveSurface
+     asks it only of first tokens, and only when no token or domain label matched): a spoken word of
+     MIN_KEY_CHARS or more that starts another account's word and is at least half its length could
+     mean that account. "Brindle" could be "Harrow Brindlewood Studio" though the matcher offered only
+     "Brindlecot Harrow Media", and could be Brindlecot though a domain label matched it to another. */
+  const rosterWords = new Map<string, Set<string>>();
+  const addWords = (name: string, a: string) => {
+    for (const w of name.split(" ")) {
+      if (w.length < MIN_KEY_CHARS) continue;
+      if (!rosterWords.has(w)) rosterWords.set(w, new Set());
+      (rosterWords.get(w) as Set<string>).add(a);
+    }
+  };
+  for (const acc of index.accounts.values()) addWords(acc.full, acc.id);
+  for (const map of [index.exact, index.soft]) for (const [key, hits] of map) for (const h of hits) addWords(key, h.account);
+  const prefixHolders = new Map<string, string[]>();
+  const prefixOf = (k: string, a: string): string[] => {
+    let ids = prefixHolders.get(k);
+    if (ids === undefined) {
+      const set = new Set<string>();
+      const spoken = new Set(k.split(" "));
+      spoken.add(despaced(k));
+      for (const u of spoken) {
+        if (u.length < MIN_KEY_CHARS) continue;
+        for (const [w, as] of rosterWords) if (w !== u && w.startsWith(u) && u.length * 2 >= w.length) for (const x of as) set.add(x);
+      }
+      ids = [...set];
+      prefixHolders.set(k, ids);
+    }
+    return ids.filter((x) => x !== a);
+  };
+
+  const holders = new Map<string, Set<string>>();
+  const hold = (k: string, a: string) => {
+    if (!holders.has(k)) holders.set(k, new Set());
+    (holders.get(k) as Set<string>).add(a);
+  };
+  for (const [a, forms] of beside) {
+    for (const k of forms) {
+      hold(k, a);
+      for (const b of othersFor(k, a)) hold(k, b);
+      for (const b of offeredWith.get(k) ?? []) hold(k, b);
+    }
+  }
+  for (const a of resolvedIn.keys()) {
+    const acc = index.accounts.get(a) as IndexedAccount;
+    const words = nameWords(a);
+    const core = dropTrailing(acc.full, TRAILING_GENERIC);
+    const own = new Set<string>();
+    if (!core.includes(" ")) own.add(core);
+    if (words.length >= 2) own.add(words[0]);
+    for (const k of own) {
+      if (!keyable(k) || !plainWord(k) || ordinary(k)) continue;
+      if (othersFor(k, a).length > 0) continue;
+      hold(k, a);
+    }
+  }
+  const local = new Map<string, string>();
+  for (const [k, as] of holders) {
+    if (as.size !== 1) continue;
+    const a = [...as][0];
+    if ((index.poison.get(a)?.size ?? 0) > 0) continue;
+    local.set(k, a);
+  }
+  /** A meeting-local key that another account's word starts with: it still names its account to offer
+      first, but it never places a mention — something else on the roster could be meant. */
+  const shadowed = (k: string): boolean => {
+    const a = local.get(k);
+    return a !== undefined && prefixOf(k, a).length > 0;
+  };
+
+  /* NEVER placed — suggested. The join's evidence is words heard in THIS meeting, and two review rounds
+     (13 Nov 2026) kept finding rosters on which such words carried a mention onto the wrong agency: a
+     word two live accounts share, a suggestion for several, a merged account's old name, a split word,
+     a prefix. Every one is a case of a token deciding identity, which rule 8 gives to a person. So what
+     the join would have placed it SUGGESTS: the mention becomes a "Who is this?" card — pass 2 still
+     reads it (READ_STATES), so the team's words are kept — with the account this meeting named offered
+     first, and a person places it with one click. Its basis is its own evidence ('token' for a word of
+     the name or a form said beside it, a suggestion's own basis otherwise), never 'learned'. */
+  /* The one exception: the SAME SIGHTING — these very lines, cited in another window by ONE resolved
+     mention that carried these very words (the overlap, read twice). That is not a token deciding
+     identity: it is another window's model grouping the same words on the same lines with the whole
+     name, as one window's would have. Those lines are placed, on the basis its account was resolved on
+     (never 'learned'); lines past that window's edge are split off and never placed (below). Suggesting
+     the overlap's lines instead would make two cards own them, and pass 2 would then flag every claim
+     on them. */
+  const placed = (r: MentionResolution, a: string, own: MatchedOn): MentionResolution =>
+    ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? own, options: [a], reason: null });
+  const suggest = (r: MentionResolution, a: string, own: MatchedOn): void => {
+    const options = [a, ...r.options.filter((o) => o !== a)].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);
+    keep({ ...r, state: "suggested", account_id: null, matched_on: own, options, reason: "named_in_another_window" }, [a]);
+  };
+  const ownBasis = (forms: readonly SurfaceResolution[]): MatchedOn => {
+    const bs = forms.map((s): MatchedOn => (local.has(s.key) || s.matched_on === null || s.matched_on === "learned" || s.matched_on === "person" ? "token" : s.matched_on));
+    return bs.sort((x, y) => (BASIS_RANK[x] ?? 9) - (BASIS_RANK[y] ?? 9))[0] ?? "token";
+  };
+
+  /* What a window that resolved an account listed APART from it: every form of every mention that
+     window left unplaced (de-spaced, as resolveSurface compares a split word). That window's model
+     heard the whole name and those words and kept them apart, as one window's would; the same words
+     heard in another window — the overlap's copy of that very line, or a later one — are never placed
+     on the account against that judgement. They stay as they were, the account offered first. */
+  const apartFrom = new Map<string, Set<string>>();
+  for (const { r, w } of all) {
+    if (r.state === "resolved") continue;
+    for (const [a, ws] of resolvedIn) {
+      if (!ws.has(w)) continue;
+      if (!apartFrom.has(a)) apartFrom.set(a, new Set());
+      for (const s of r.surfaces) if (keyable(s.key)) (apartFrom.get(a) as Set<string>).add(despaced(s.key));
+    }
+  }
+  const listedApart = (a: string, forms: readonly SurfaceResolution[]): boolean => {
+    const keys = apartFrom.get(a);
+    return keys !== undefined && forms.some((s) => keys.has(despaced(s.key)));
+  };
+
+  const out: MentionResolution[] = [];
+  /** Per mention left unplaced as it was: the accounts its own decision would offer first. */
+  const firstFor = new Map<number, string[]>();
+  const keep = (r: MentionResolution, front: string[]): void => {
+    firstFor.set(out.length, front);
+    out.push(r);
+  };
+  /** The parts of `segs` within reach of `at` (nearMentions' rule), merged where they touch. */
+  const reachOf = (segs: readonly { from: number; to: number }[], at: readonly number[]): Array<{ from: number; to: number }> => {
+    const sorted = [...at].sort((x, y) => x - y);
+    const parts = segs.flatMap((g) => nearMentions(g.from, g.to, sorted)).sort((x, y) => x.from - y.from || x.to - y.to);
+    const merged: Array<{ from: number; to: number }> = [];
+    for (const p of parts) {
+      const prev = merged[merged.length - 1];
+      if (prev && p.from <= prev.to + 1) prev.to = Math.max(prev.to, p.to);
+      else merged.push({ ...p });
+    }
+    return merged;
+  };
+  for (const item of all) {
+    const w = item.w;
+    let r = item.r;
+    if (r.state === "resolved") { out.push(r); continue; }
+    /** Set when r is the part of a same sighting past the naming window's edge: the account placed. */
+    let splitFrom: string | null = null;
+    /** Resolved in another window, and not in this one. */
+    const elsewhere = (a: string): boolean => {
+      const ws = resolvedIn.get(a);
+      return ws !== undefined && !ws.has(w);
+    };
+    /* Its forms: the live ones, and an ordinary word this meeting said beside an account — kept when
+       the roster shares it too (held, not local), so it still points somewhere no one account owns
+       and stops the mention: "Orange" beside "Orange Wyvernhold", with "Orange Fieldcrest" live, makes
+       "Vorn" + "Orange" no evidence for Vorn Digital. An ordinary word said beside nothing is no form. */
+    const forms = r.surfaces.filter((s) => s.state !== "refused" || (ordinaryOf(s) && holders.has(s.key)));
+
+    /* The same sighting: the overlap, where ONE resolved mention of another window cited these lines
+       AND carried every one of these words. Every cited line THAT WINDOW COULD SEE must be one it cited,
+       and at least one must be. Only those lines are placed. A cited line past the other window's edge
+       is a sighting that window never heard, grouped by a model that never heard the whole name: it is
+       split off, with the reach of its own lines, and goes on as a mention of its own (below) — a
+       question or ambiguous, never left unread (settle) — never placed by the token it shares
+       ("Kestrelvane" past the edge, with "Kestrelvane Interactive" and "Kestrelvane Studio" both live,
+       stays a question). A line within reach of both parts is owned by both, so a claim on it is
+       flagged and a person ticks it. Past-edge lines no stretch reaches are dropped (split_no_reach).
+       Never pooled across mentions: a line one mention cited and a word another mention carried,
+       elsewhere in the meeting, are not a sighting — so "Zell" grouped with "Vorn Digital" on other lines
+       cannot carry Zell on this line onto it. */
+    const seenBy = (n: number, wq: number): boolean => {
+      const g = ranges?.[wq];
+      return g === undefined || (n >= g.from && n <= g.to);
+    };
+    if (forms.some((s) => s.state !== "refused" || local.has(s.key)) && r.mention_lines.length > 0) {
+      const cur = r;
+      const matches = sightings.filter((q) =>
+        q.w !== w && elsewhere(q.a) &&
+        cur.mention_lines.some((n) => q.lines.has(n)) &&
+        cur.mention_lines.every((n) => q.lines.has(n) || !seenBy(n, q.w)) &&
+        forms.every((s) => q.forms.has(s.key)));
+      const same = [...new Set(matches.map((q) => q.a))];
+      if (same.length === 1 && !listedApart(same[0], forms)) {
+        const seen = new Set<number>();
+        for (const q of matches) for (const n of q.lines) seen.add(n);
+        const covered = r.mention_lines.filter((n) => seen.has(n));
+        const beyond = r.mention_lines.filter((n) => !seen.has(n));
+        bump(counters, "joined_same_lines");
+        if (beyond.length === 0) {
+          out.push(placed(r, same[0], "token"));
+          continue;
+        }
+        const rest = reachOf(r.segments, beyond);
+        out.push(placed({ ...r, mention_lines: covered, segments: reachOf(r.segments, covered) }, same[0], "token"));
+        /* Lines past the edge that no stretch of discussion reaches are passing words: like a mention
+           verifySegments drops for no segment, they are nobody's — not the placed account's, and not a
+           card of their own that pass 2 would read with nothing to read. */
+        if (rest.length === 0) { bump(counters, "split_no_reach"); continue; }
+        bump(counters, "split_past_edge");
+        splitFrom = same[0];
+        r = { ...r, mention_lines: beyond, segments: rest };
+      }
+    }
+
+    if (r.state === "ambiguous") {
+      const named = new Set<string>();
+      for (const s of forms) {
+        const a = local.get(s.key);
+        if (a !== undefined && elsewhere(a)) named.add(a);
+        for (const o of s.options) if (elsewhere(o)) named.add(o);
+      }
+      keep(r, r.options.filter((o) => named.has(o)));
+      continue;
+    }
+
+    /* A split part never ends where pass 2 cannot see it. Left as it was — refused, or unknown — it would
+       own no line (planBatches gives a refused card none) or be listed but never read, and the line past
+       the edge would belong to the placed card alone, its claim pre-ticked: the token deciding identity
+       the split exists to stop. So it becomes a "Who is this?" card (ambiguous, split_past_edge) with the
+       placed account first and every other account its words could mean: it co-owns its reach, a claim
+       on a line both parts reach is flagged, and a person decides. */
+    const settle = (x: MentionResolution, front: string[]): void => {
+      if (splitFrom === null || x.state === "suggested" || x.state === "ambiguous") { keep(x, front); return; }
+      const from = splitFrom;
+      const could: string[] = [from, ...front, ...x.options];
+      for (const s of forms) {
+        const a = local.get(s.key);
+        if (a !== undefined) could.push(a);
+        could.push(...s.options, ...othersFor(s.key, from), ...prefixOf(s.key, from));
+      }
+      const options = could.filter((o, i) => could.indexOf(o) === i && index.accounts.has(o)).slice(0, MAX_OPTIONS);
+      keep({ ...x, state: "ambiguous", account_id: null, matched_on: null, options, reason: "split_past_edge" }, [from]);
+      bump(counters, "split_asked");
+    };
+
+    /* unknown, suggested, or refused as an ordinary word */
+    const targets: string[] = [];
+    const offers: string[] = [];
+    let stray = forms.length === 0;
+    let blocked = false;
+    let shared = false;
+    for (const s of forms) {
+      if (s.state === "suggested") for (const o of s.options) if (!offers.includes(o)) offers.push(o);
+      const a = local.get(s.key);
+      if (a !== undefined) {
+        if (!elsewhere(a)) blocked = true;
+        else if (!targets.includes(a)) targets.push(a);
+        if (shadowed(s.key)) {
+          shared = true;
+          for (const o of prefixOf(s.key, a)) if (!offers.includes(o)) offers.push(o);
+        }
+        continue;
+      }
+      const hit = s.state === "suggested" ? s.options.filter(elsewhere) : [];
+      if (hit.length === 0) stray = true;
+      for (const o of hit) if (!targets.includes(o)) targets.push(o);
+    }
+    if (blocked || stray || targets.length === 0) { settle(r, []); continue; }
+    const t = targets[0];
+    /* A roster suggestion carries a mention only when it is evidence for t ALONE: it offers t and no
+       other account, no other live account has its words, and no other account's word starts with it.
+       One that also offers another account (a prefix of two accounts' tokens), whose word another name
+       has ("Brindlecot" of "Harrow Brindlecot Studio"), or that starts another's word ("Brindle" of
+       "Harrow Brindlewood Studio") is the roster saying the word is shared: never placed, t first. */
+    const solely = (s: SurfaceResolution): boolean =>
+      s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0 && prefixOf(s.key, t).length === 0;
+    if (targets.length === 1 && !shared && !listedApart(t, forms) && forms.every((s) => s.state !== "suggested" || solely(s))) {
+      suggest(r, t, ownBasis(forms));
+      bump(counters, "suggested_by_name");
+      continue;
+    }
+    if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(t))) {
+      settle(r, [t]);
+      continue;
+    }
+    const options = [...targets, ...offers.filter((o) => !targets.includes(o))].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);
+    // Its front is every account it points at (targets): on a card it shares with a mention that would
+    // put one of them first, that one goes first only if this mention points at it too.
+    keep({ ...r, state: "ambiguous", account_id: null, matched_on: null, options, reason: "conflicting_names" }, targets.filter((o) => index.accounts.has(o)));
+    bump(counters, "conflicting_names");
+  }
+
+  /* Offered first, per CARD. clusterMentions makes one card of every unplaced mention pass 2 reads with
+     the same spoken name (cardKey), and takes its options head first; so the order is decided for the
+     card, not for one of its mentions. An account goes first only when EVERY mention of the card would put it
+     there — resolved only in windows none of them came from. A card holding a mention its own window
+     listed apart from the account it named keeps the roster's order (that window's model saw both and
+     kept them apart), every mention of a card carries the same order, and offered_first counts cards
+     whose order moved — what the stored card shows. */
+  const cards = new Map<string, number[]>();
+  for (const i of firstFor.keys()) {
+    const r = out[i];
+    if (r.state !== "ambiguous" && r.state !== "suggested") continue;
+    const k = cardKey(r);
+    if (!cards.has(k)) cards.set(k, []);
+    (cards.get(k) as number[]).push(i);
+  }
+  for (const members of cards.values()) {
+    const common = (firstFor.get(members[0]) as string[]).filter((a) => members.every((i) => (firstFor.get(i) as string[]).includes(a)));
+    let moved = false;
+    for (const i of members) {
+      const r = out[i];
+      const front = common.filter((a) => r.options.includes(a));
+      const reordered = [...front, ...r.options.filter((o) => !front.includes(o))];
+      if (reordered.some((o, j) => o !== r.options[j])) {
+        out[i] = { ...r, options: reordered };
+        moved = true;
+      }
+    }
+    if (moved) bump(counters, "offered_first");
+  }
+  return { resolutions: out, counters };
 }

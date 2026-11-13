@@ -1,6 +1,7 @@
 -- WLIQ Prospect Book — the sales-meeting reader's operator harness (DECISIONS §65).
 --
--- Run it through execute_sql RIGHT AFTER migration A (prospect_book_sales_meeting_reader) applies,
+-- Run it through execute_sql RIGHT AFTER migration A (prospect_book_sales_meeting_reader) applies, and
+-- again after 20261113180000 (sales_meeting_alias_forget: 4b2 and 4b3 need it, and fail before it),
 -- and again after any change to pb_dossier(), pb_board(), the six meeting functions or the two removal
 -- reads. It runs inside BEGIN … ROLLBACK and leaves nothing behind: every member, account, meeting,
 -- proposal, fact, candidate, read and register row it makes is synthetic and is rolled back. It RAISES
@@ -533,11 +534,25 @@ begin
                                               where said_key = 'harness c' and account_id = v_b and active) then
     raise exception 'HARNESS 4a: assign did not place and remember the name (%)', v_r;
   end if;
+  -- An alias stored under a key of several parts (an earlier card's 'harness c|harness c studio') is
+  -- learned part by part, so it places a later 'harness c' too: unassign must forget it as well. One of
+  -- the same account sharing no part stays (migration 20261113180000).
+  insert into public.pb_meeting_aliases (said_key, account_id, confirmed_by, from_recording, active)
+  values ('harness c|harness c studio', v_b, v_owner, v_rec, true), ('harness zz|harness zz studio', v_b, v_owner, v_rec, true);
   v_r := public.pb_assign_meeting_mention(v_rec, 'harness c', 'unassign', null, true);
   if (v_r->>'rows')::int <> 1 or exists (select 1 from public.pb_meeting_aliases
                                           where said_key = 'harness c' and account_id = v_b and active)
      or (select account_id from public.pb_meeting_proposals where id = p_unplaced) is not null then
     raise exception 'HARNESS 4b: unassign did not send the name back and forget it (%)', v_r;
+  end if;
+  if exists (select 1 from public.pb_meeting_aliases
+              where said_key = 'harness c|harness c studio' and account_id = v_b and active)
+     or (v_r->>'forgotten')::int <> 2 then
+    raise exception 'HARNESS 4b2: unassign did not forget a learned name stored under a key of several parts (%)', v_r;
+  end if;
+  if not exists (select 1 from public.pb_meeting_aliases
+                  where said_key = 'harness zz|harness zz studio' and account_id = v_b and active) then
+    raise exception 'HARNESS 4b3: unassign forgot a learned name that shares no part with the card''s';
   end if;
 
   -- The newest word, re-derived. An older meeting says harness_k5 about v_b; this meeting says it

@@ -26,6 +26,7 @@ import {
   ceilingStops,
   ceilingVerdict,
   CLAIMABLE_STATUSES,
+  clusterWindows,
   DEFAULT_BUDGET_MS,
   emptyUsage,
   failureKind,
@@ -55,12 +56,18 @@ import {
   SNAPSHOT_READ_SELECT,
   snapshotReadOf,
   storedClusters,
+  windowMentions,
   withCeilingStops,
   WRITE_MARGIN_MS,
 } from "./meetings_pure.ts";
-import type { InboxLightRow, NewRecording, RegisteredMeeting } from "./meetings_pure.ts";
+import type { InboxLightRow, NewRecording, RegisteredMeeting, WindowReply } from "./meetings_pure.ts";
 import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError, parseReplyJson, replyText, usageOf } from "./extractor.ts";
 import { extractorId, MEETING_PROMPT_VERSION, PROMPT_VERSION } from "../_shared/ingest/notes_sweep.ts";
+import { clockText, PASS1_WINDOW_CHARS, windowsFor } from "../_shared/ingest/meeting_transcript.ts";
+import type { LineRange, TranscriptLine } from "../_shared/ingest/meeting_transcript.ts";
+import { buildRosterIndex, verifySegments } from "../_shared/ingest/meeting_mentions.ts";
+import type { MentionCluster } from "../_shared/ingest/meeting_mentions.ts";
+import { planBatches, verifyMeetingClaims } from "../_shared/ingest/meeting_claims.ts";
 
 let passed = 0;
 const failures: string[] = [];
@@ -534,6 +541,10 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
     { status: "agrees", kind: "override" },
     { status: "not_proposed", kind: "fact" },
   ]), { "proposals.proposed": 1, "proposals.kind.fact": 2, "proposals.pre_ticked": 1, "proposals.agrees": 1, "proposals.kind.override": 1, "proposals.not_proposed": 1 });
+  eq("proposals: a fingerprint minted twice in one read is counted, never silent (the insert would drop it)",
+    proposalCounts([{ status: "proposed", kind: "fact", fingerprint: "a" }, { status: "proposed", kind: "fact", fingerprint: "a" }, { status: "proposed", kind: "read", fingerprint: "b" }])["proposals.fingerprint_repeated"], 1);
+  eq("…and not counted when every fingerprint is its own",
+    proposalCounts([{ status: "proposed", kind: "fact", fingerprint: "a" }, { status: "proposed", kind: "fact", fingerprint: "b" }])["proposals.fingerprint_repeated"], undefined);
   eq("mentions: counted by state", mentionCounts([{ state: "resolved" }, { state: "unknown" }, { state: "resolved" }]), { "mentions.resolved": 2, "mentions.unknown": 1 });
   eq("notes: bounded to the newest", appendNotes(["a", "b", 3], ["c", "d"], 3), ["b", "c", "d"]);
 }
@@ -566,6 +577,253 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
 }
 
 /* ------------------------------------------------------------------ *
+ * 7b · pass 1 across windows: the 12 Nov shape, end to end
+ *
+ * The 878-line meeting goes to pass 1 in four overlapping windows. A model that answers faithfully
+ * lists, per window, the companies it can SEE there, with the forms said in that window. The windowed
+ * read must give the cards — and pass 2 the lines — that one window over the whole meeting gives.
+ * Agencies INVENTED; speakers S1..S5.
+ * ------------------------------------------------------------------ */
+
+{
+  const say: Record<number, string> = {};
+  /** A company: its forms, the lines each is said on, and the stretches the team discussed it. */
+  interface Co { forms: Record<number, string[]>; segments: LineRange[] }
+  const cos: Record<string, Co> = {
+    // Across the seam of windows 1 and 2: named in window 1 only, the short form in the overlap, the tier call in window 2 only.
+    vorn: { forms: { 268: ["Vorn Digital"], 290: ["Vorn"], 305: ["Vorn"] }, segments: [{ from: 266, to: 325 }] },
+    // Named in full in window 1, then — 600 lines on — only by its short form, in window 3.
+    zell: { forms: { 100: ["Zell Creative"], 700: ["Zell"] }, segments: [{ from: 98, to: 106 }, { from: 698, to: 706 }] },
+    // Named in the overlap of windows 2 and 3, decided in window 3 by its first word alone, and back in window 4 only by it.
+    bh: { forms: { 560: ["Brindlecot Harrow Media"], 575: ["Brindlecot"], 600: ["Brindlecot"], 870: ["Brindlecot"] }, segments: [{ from: 558, to: 606 }, { from: 868, to: 876 }] },
+    // A token two accounts share: named in window 1, then alone in window 3.
+    kvs: { forms: { 150: ["Kestrelvane Studio"], 152: ["Kestrelvane"], 720: ["Kestrelvane"] }, segments: [{ from: 148, to: 156 }, { from: 718, to: 724 }] },
+  };
+  say[268] = "Next up is Vorn Digital, they asked us for a quote on the new site last week.";
+  say[290] = "Vorn said the budget is about fifteen thousand a month for the whole build.";
+  say[305] = "I think Vorn is a strong fit for the partner tier, they build every month.";
+  say[320] = "So that makes them silver for now, they are a silver for me on what we know.";
+  say[100] = "Zell Creative came in through the referral, three people and a lot of build work.";
+  say[700] = "Back to Zell, they went quiet on us, take them off the board for now please.";
+  say[560] = "Brindlecot Harrow Media are back, they want the retainer we talked about.";
+  say[575] = "Brindlecot think the retainer can start next quarter, which is good news.";
+  say[600] = "So Brindlecot is a gold for me now, they are a gold on every count we have.";
+  say[870] = "Brindlecot signed the retainer, so we can plan the first build with them.";
+  say[150] = "Kestrelvane Studio sent the brief over, two sites and a web app this year.";
+  say[152] = "Kestrelvane want it fixed price, they are a careful buyer on every quote.";
+  say[720] = "Kestrelvane came up again on the call, they asked about the app timeline.";
+  const lines: TranscriptLine[] = Array.from({ length: 878 }, (_, i) => ({
+    n: i + 1, at: clockText(i * 6), seconds: i * 6, speaker: `S${(i % 5) + 1}`,
+    text: say[i + 1] ?? `Line ${i + 1}: we went through the agency's pipeline, the open quote and what they asked for on the last call.`,
+  }));
+  const index = buildRosterIndex({
+    accounts: [
+      { id: "vorn", name: "Vorn Digital", book: "prospect" },
+      { id: "zell", name: "Zell Creative", book: "prospect" },
+      { id: "bh", name: "Brindlecot Harrow Media", book: "prospect" },
+      { id: "kvi", name: "Kestrelvane Interactive", book: "prospect" },
+      { id: "kvs", name: "Kestrelvane Studio", book: "prospect" },
+    ],
+    people: ["Rep A", "Owner"],
+  });
+
+  /** What a faithful pass 1 answers for a window: every company seen in it, its forms said in it, its stretches clipped to it. */
+  const reply = (w: LineRange) => ({
+    companies: Object.values(cos).flatMap((co, i) => {
+      const seen = Object.keys(co.forms).map(Number).filter((n) => n >= w.from && n <= w.to);
+      if (seen.length === 0) return [];
+      return [{
+        ref: `C${i + 1}`, kind: "agency",
+        as_said: [...new Set(seen.flatMap((n) => co.forms[n]))],
+        mention_lines: seen,
+        segments: co.segments.map((g) => ({ from: Math.max(g.from, w.from), to: Math.min(g.to, w.to) })).filter((g) => g.from <= g.to),
+      }];
+    }),
+  });
+  const read = (ws: LineRange[]) => {
+    const replies: WindowReply[] = ws.map((w, i) => ({ window: i, lines: lines.filter((l) => l.n >= w.from && l.n <= w.to), value: reply(w) }));
+    const p1 = windowMentions(replies, ws.length);
+    // With the windows' ranges, as meetings.ts passes them: the same sighting knows each window's edge.
+    return { ...clusterWindows(p1.perWindow, index, ws), perWindow: p1.perWindow };
+  };
+  const windows = windowsFor(lines);
+  const inW = (n: number) => windows.map((w, i) => (n >= w.from && n <= w.to ? i + 1 : 0)).filter(Boolean);
+
+  /* The shape the walks need: the default windows, and each line where the walk says it is. */
+  check("windows: the 12 Nov shape is four windows under the default cap", windows.length === 4 && PASS1_WINDOW_CHARS === 40000, JSON.stringify(windows));
+  eq("windows: the seam walk — named in window 1 only, short form in the overlap, tier call in window 2 only",
+    [inW(268), inW(290), inW(305), inW(320)], [[1], [1, 2], [1, 2], [2]]);
+  eq("windows: the window 1 → 3 walk", [inW(100), inW(700)], [[1], [3]]);
+  eq("windows: the overlap walk — named where windows 2 and 3 overlap, decided in window 3 only, back in window 4 only",
+    [inW(560), inW(575), inW(600), inW(870)], [[2, 3], [2, 3], [3], [4]]);
+  eq("windows: the shared token — named in window 1, alone in window 3", [inW(150), inW(720)], [[1], [3]]);
+
+  const one = read([{ from: 1, to: 878 }]);
+  const many = read(windows);
+  const card = (cl: MentionCluster[], acct: string) => cl.find((c) => c.state === "resolved" && c.account_id === acct);
+
+  /* Before the join, the windows alone leave the short forms unplaced: this is what the join repairs. */
+  const unplaced = many.perWindow.flat().filter((mm) => mm.as_said.every((s) => ["Vorn", "Zell", "Brindlecot", "Kestrelvane"].includes(s)));
+  eq("windows: three windows hear a company only by a short form that does not resolve alone", unplaced.map((mm) => mm.ref).sort(), ["W2.C1", "W3.C2", "W3.C4", "W4.C3"]);
+
+  /* The same sighting (Vorn: the short form re-read on the overlap's lines) is PLACED: one card, as one
+     window gives it. A short form heard only in a later window (Zell in 3, Brindlecot in 4) is never
+     placed (13 Nov 2026): it is its own "Who is this?" card, read by pass 2, the named account offered
+     first — and between the two cards the company keeps every stretch one window gives it. */
+  const asking = (cl: MentionCluster[], said: string) => cl.find((c) => c.state === "suggested" && c.said_key === said);
+  {
+    const a = card(one.clusters, "vorn");
+    const b = card(many.clusters, "vorn");
+    check("the same sighting: one card for the company, read in windows (vorn)", many.clusters.filter((c) => c.account_id === "vorn").length === 1 && b !== undefined);
+    eq("…with the stretches one window gives it (vorn)", b?.segments, a?.segments);
+    eq("…placed on the same basis (vorn)", b?.matched_on, a?.matched_on);
+    check("…and no question left beside it", asking(many.clusters, "vorn") === undefined);
+  }
+  for (const [acct, said] of [["zell", "zell"], ["bh", "brindlecot"]]) {
+    const a = card(one.clusters, acct);
+    const named = card(many.clusters, acct);
+    const q = asking(many.clusters, said);
+    check(`a later short form: the named card stays, and a question is asked beside it (${acct})`, named !== undefined && q !== undefined);
+    eq(`…the question offers the named account first (${acct})`, q?.options[0], acct);
+    eq(`…and carries no account until a person places it (${acct})`, q?.account_id, null);
+    eq(`…between them, every stretch one window gives the company (${acct})`,
+      [...(named?.segments ?? []), ...(q?.segments ?? [])].sort((x, y) => x.from - y.from), a?.segments);
+  }
+  eq("no unknown or refused card is left for a company in the book", many.clusters.filter((c) => c.state === "unknown" || c.state === "refused").map((c) => c.said_as), []);
+  eq("counters: the same sighting placed, the later short forms suggested", many.counters, { joined_same_lines: 1, suggested_by_name: 2, offered_first: 1 });
+
+  /* The shared token stays a person's call in window 3 — the meeting's account offered first. */
+  const kv = many.clusters.filter((c) => c.said_key === "kestrelvane" && c.state === "ambiguous");
+  eq("the shared token alone in window 3 stays 'Who is this?', the account this meeting named first", kv.map((c) => [c.options, c.segments]), [[["kvs", "kvi"], [{ from: 718, to: 724 }]]]);
+  eq("…while the card for the account keeps what window 1 placed", card(many.clusters, "kvs")?.segments, [{ from: 148, to: 156 }]);
+
+  /* Pass 2 over the windowed cards: every claim on a company's own lines is kept, clean — a question's
+     included: pass 2 reads a suggested card, and its claims wait on it until a person places the name. */
+  const plan = planBatches(many.clusters, lines);
+  const refOf = (acct: string) => (card(many.clusters, acct) as MentionCluster).ref;
+  const askRef = (said: string) => (asking(many.clusters, said) as MentionCluster).ref;
+  /** The fake model answers for the company a card is about; a faithful one quotes only lines it was shown. */
+  const aboutOf: Record<string, string> = { zell: "zell", brindlecot: "bh" };
+  const claimsFor: Record<string, unknown[]> = {
+    vorn: [
+      { type: "read", topic: "fit", quote: say[305], line_from: 305, line_to: 305, mode: "asserted", confidence: "high" },
+      { type: "tier_call", tier: "Silver", code: "relationship_known", quote: say[320], line_from: 320, line_to: 320, mode: "asserted", confidence: "high" },
+    ],
+    zell: [{ type: "removal", disposition: "unqualified", code: "not_a_fit", quote: say[700], line_from: 700, line_to: 700, mode: "asserted", confidence: "high" }],
+    bh: [
+      { type: "tier_call", tier: "Gold", code: "relationship_known", quote: say[600], line_from: 600, line_to: 600, mode: "asserted", confidence: "high" },
+      { type: "read", topic: "next_step", quote: say[870], line_from: 870, line_to: 870, mode: "asserted", confidence: "high" },
+    ],
+    kvs: [{ type: "read", topic: "price", quote: say[152], line_from: 152, line_to: 152, mode: "asserted", confidence: "high" }],
+  };
+  const kept: string[] = [];
+  const counters: Record<string, number> = {};
+  for (const b of plan.batches) {
+    const claims = b.items.flatMap((it) => {
+      const about = it.account_id ?? (it.state === "suggested" ? aboutOf[it.said_key] : undefined);
+      return about ? (claimsFor[about] ?? []).filter((c) => it.owned.includes((c as { line_from: number }).line_from)).map((c) => ({ ...(c as object), ref: it.ref })) : [];
+    });
+    const v = verifyMeetingClaims({ claims }, {
+      lines, batch: b, owners: plan.owners, tiers: ["Bronze", "Silver", "Gold"], overrideCodes: ["relationship_known"],
+      removalReasons: [{ disposition: "unqualified", code: "not_a_fit", active: true }],
+    });
+    addCounters(counters, v.counters);
+    for (const c of v.claims) kept.push(`${c.ref}:${c.type}@${c.line_from}${c.flags.length ? JSON.stringify(c.flags) : ""}`);
+  }
+  eq("pass 2: every claim on a company's own lines is kept, none flagged shared_segment", kept.sort(), [
+    `${refOf("bh")}:tier_call@600`, `${askRef("brindlecot")}:read@870`, `${refOf("kvs")}:read@152`, `${refOf("vorn")}:read@305`, `${refOf("vorn")}:tier_call@320`, `${askRef("zell")}:removal@700`,
+  ].sort());
+  eq("pass 2: no claim is refused for another agency's lines or for lying outside its card", [counters.other_agency_lines ?? 0, counters.outside_segment ?? 0], [0, 0]);
+  check("pass 2: the removal said by the short form in window 3 is read, and waits on its question card", kept.includes(`${askRef("zell")}:removal@700`));
+
+  /* One window is not joined at all: exactly what clusterMentions(resolveMention) gave before windows. */
+  eq("one window: no join counters", one.counters, {});
+
+  /* A same sighting whose window-2 copy runs past window 1's edge on ordinary words another live account
+     shares (review of b77acfd): the line past the edge is never the placed card's alone. Its part is a
+     "Who is this?" card that pass 2 reads, both own the line, and a claim on it is flagged, never ticked. */
+  {
+    const say2: Record<number, string> = {
+      268: "Orange Social sent the brief over yesterday, two sites this year.",
+      272: "Social said they can start in January if the quote lands.",
+      290: "Orange are keen on the retainer, they said so on the call.",
+      318: "Social have about forty staff now, I checked their team page.",
+    };
+    const lines2: TranscriptLine[] = Array.from({ length: 589 }, (_, i) => ({
+      n: i + 1, at: clockText(i * 6), seconds: i * 6, speaker: `S${(i % 3) + 1}`,
+      text: say2[i + 1] ?? `Line ${i + 1}: we went through the timeline and the budget again.`,
+    }));
+    const idx2 = buildRosterIndex({
+      accounts: [
+        { id: "os", name: "Orange Social", book: "prospect" },
+        { id: "vorn", name: "Vorn Digital", book: "prospect" },
+        { id: "bms", name: "Brackmoor Social", book: "prospect" },
+      ],
+      people: ["Rep A", "Owner"],
+    });
+    const ws2: LineRange[] = [{ from: 1, to: 315 }, { from: 276, to: 589 }];
+    const p1 = windowMentions([
+      { window: 0, lines: lines2.filter((l) => l.n <= 315), value: { companies: [{ ref: "C1", kind: "agency", as_said: ["Orange Social", "Orange", "Social"], mention_lines: [268, 272, 290], segments: [{ from: 266, to: 300 }] }] } },
+      { window: 1, lines: lines2.filter((l) => l.n >= 276), value: { companies: [{ ref: "C1", kind: "agency", as_said: ["Orange", "Social"], mention_lines: [290, 318], segments: [{ from: 288, to: 330 }] }] } },
+    ], 2);
+    const cw = clusterWindows(p1.perWindow, idx2, ws2);
+    eq("past the edge on shared ordinary words: the placed card, and a question beside it pass 2 reads",
+      cw.clusters.map((c) => [c.state, c.account_id, c.options[0], c.reason]), [["resolved", "os", "os", null], ["ambiguous", null, "os", "split_past_edge"]]);
+    check("…the question offers the other account the word could mean", cw.clusters[1]?.options.includes("bms"), JSON.stringify(cw.clusters[1]?.options));
+    eq("…counted", cw.counters, { joined_same_lines: 1, split_past_edge: 1, split_asked: 1 });
+    const plan2 = planBatches(cw.clusters, lines2);
+    eq("…both own the line past the edge; the overlap's line is the placed card's alone",
+      [plan2.owners[318]?.length ?? 0, plan2.owners[290]], [2, [cw.clusters[0].ref]]);
+    const kept2: string[] = [];
+    for (const b of plan2.batches) {
+      const claims = b.items.filter((it) => it.owned.includes(318)).map((it) => ({
+        ref: it.ref, type: "fact", key: "headcount", value: 40, quote: "Social have about forty staff now", line_from: 318, line_to: 318, mode: "asserted", confidence: "high",
+      }));
+      const v = verifyMeetingClaims({ claims }, { lines: lines2, batch: b, owners: plan2.owners, tiers: ["Silver"], overrideCodes: ["relationship_known"], removalReasons: [] });
+      for (const c of v.claims) kept2.push(`${c.ref}:${c.flags.join(",")}`);
+    }
+    eq("…so a claim on it is flagged on both cards, never pre-ticked on the placed one", kept2.sort(), [`${cw.clusters[0].ref}:shared_segment`, `${cw.clusters[1].ref}:shared_segment`].sort());
+  }
+  eq("one window: one ref per company, the model's own", one.clusters.flatMap((c) => c.sources).sort(), ["C1", "C2", "C3", "C4"]);
+  eq("windowMentions: a reply for a window that does not exist is ignored", windowMentions([{ window: 7, lines, value: reply({ from: 1, to: 878 }) }], 4).perWindow.flat(), []);
+
+  /* What verifySegments counted and noted is kept, summed over the windows: meetings.ts files it as
+     pass1.* in the meeting's counts and the run's, and its notes on the meeting. */
+  const entries = (o: Record<string, number>) => Object.entries(o).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const sloppy = (w: LineRange) => ({
+    companies: [
+      ...reply(w).companies.map((c) => ({ ...c, as_said: [...c.as_said, "Vorn Labs"], segments: [{ from: w.from, to: w.to }] })),
+      { ref: "CP", kind: "person", as_said: ["Rep A"], mention_lines: [w.from], segments: [{ from: w.from, to: w.from }] },
+    ],
+  });
+  const whole: LineRange = { from: 1, to: 878 };
+  const solo = verifySegments(sloppy(whole), lines);
+  const soloW = windowMentions([{ window: 0, lines, value: sloppy(whole) }], 1);
+  eq("windowMentions, one window: verifySegments' counters, exactly", entries(soloW.counters), entries(solo.counters));
+  check("…and they are not empty (forms off their line, lines trimmed, a person dropped)",
+    (solo.counters.as_said_not_on_line ?? 0) > 0 && (solo.counters.segment_lines_trimmed ?? 0) > 0 && solo.counters.kind_person === 1 && (solo.counters.mentions_verified ?? 0) > 0,
+    JSON.stringify(solo.counters));
+  const garbled = windowMentions([{ window: 0, lines, value: "no companies here" }], 1);
+  eq("windowMentions, one window: verifySegments' notes, exactly", [garbled.notes, entries(garbled.counters)],
+    [verifySegments("no companies here", lines).notes, entries(verifySegments("no companies here", lines).counters)]);
+  check("…and the note is there", garbled.notes.length === 1 && garbled.counters.unreadable_response === 1);
+
+  const valueOf = (w: LineRange, i: number): unknown => (i === 1 ? "no companies here" : sloppy(w));
+  const linesOf = (w: LineRange) => lines.filter((l) => l.n >= w.from && l.n <= w.to);
+  const several = windowMentions(windows.map((w, i) => ({ window: i, lines: linesOf(w), value: valueOf(w, i) })), windows.length);
+  const sum: Record<string, number> = {};
+  const notes: string[] = [];
+  windows.forEach((w, i) => {
+    const v = verifySegments(valueOf(w, i), linesOf(w));
+    for (const [k, n] of Object.entries(v.counters)) sum[k] = (sum[k] ?? 0) + n;
+    notes.push(...v.notes);
+  });
+  eq("windowMentions, several windows: the per-window counters, summed", entries(several.counters), entries(sum));
+  eq("…and every window's notes, in window order", several.notes, notes);
+  check("…summed, not the last window's", several.counters.kind_person === windows.length - 1 && several.counters.unreadable_response === 1, JSON.stringify(several.counters));
+}
+
+/* ------------------------------------------------------------------ *
  * 8 · the orchestration, pinned by text
  * ------------------------------------------------------------------ */
 
@@ -583,6 +841,13 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
     "pb_meeting_proposals", "pb_meetings", "pb_runs", "pb_source_watermarks",
   ]);
   check("meetings.ts never deletes", !/\.delete\(/.test(mc));
+  /* Pass 1 across windows: verified per window, then resolved, joined across windows and clustered
+     by the pure functions §7b pins, never inline. */
+  check("meetings.ts verifies pass 1 per window through windowMentions", /const pass1 = windowMentions\(answered, windows\.length\)/.test(mc));
+  check("meetings.ts files pass 1's counters as pass1.* and keeps its notes on the meeting",
+    /addCounters\(here, pass1\.counters, "pass1"\)/.test(mc) && /meetingNotes\.push\(\.\.\.pass1\.notes\)/.test(mc));
+  check("meetings.ts clusters pass 1 through clusterWindows (the cross-window join), with the windows' ranges", /clusterWindows\(pass1\.perWindow, index, windows\)/.test(mc));
+  check("meetings.ts never resolves or clusters mentions itself", !/\b(resolveMention|clusterMentions|verifySegments)\(/.test(mc));
   const rpcs = [...mc.matchAll(/\.rpc\("([a-z_]+)"/g)].map((m) => m[1]);
   eq("meetings.ts calls one function: the supersession", [...new Set(rpcs)], ["pb_meeting_supersede"]);
   check("meetings.ts upserts proposals on the fingerprint, ignoring duplicates", /pb_meeting_proposals"\)\s*\.upsert\(rows, \{ onConflict: "fingerprint", ignoreDuplicates: true \}\)/.test(mc));

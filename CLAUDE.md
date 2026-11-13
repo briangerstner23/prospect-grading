@@ -215,7 +215,11 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             refuses to run if pb_dossier / pb_reconcile_state moved since they were read (prosrc md5),
             and a sentinel that a leaking version cannot pass) · 20261011000100 sales meeting cron (DRAFT)
             (pb-meetings, every 3 min outside 05:00–06:59 UTC, posting only when there is work —
-            applied LAST, after pb-notes carries the channel).
+            applied LAST, after pb-notes carries the channel) · 20261113180000 sales meeting alias
+            forget (DRAFT; DECISIONS §66): [Wrong agency] forgets a learned name stored under a key of
+            several parts, on the '|' parts the index learns; section 0 refuses unless the live
+            pb_assign_meeting_mention is migration A's (prosrc md5 6cb87141…). Apply it before the
+            first meeting is read for real, then run scripts/meeting_privacy_check.sql again (4b2/4b3).
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/ · pb-notes/extractor.ts (the ONE model call both pb-notes
             paths make: the request, the API refusal, the JSON salvage) · pb-notes/meetings.ts (the
@@ -443,7 +447,9 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   rubric fingerprinted once per run; a run row it cannot close answers 500. v14 was `d14223c`, the
   grid engine, killed by the CPU ceiling on 11 of 18 nights from 24 Oct — RUNBOOK §15. Deployed as
   a one-line entrypoint pinned to the commit's raw GitHub URL, so the deployed function IS the
-  commit; RUNBOOK §3; §52), **pb-notes v17** (10 Oct, pinned to the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
+  commit; RUNBOOK §3; §52), **pb-notes v18** (12 Nov, pinned to `b4b33fd`, the merge of PR #11: the sales-meeting route, §65; pass 1
+  of a long meeting does not fit the ceiling on it, so v19 carries the windowed read, §66), before it
+  **pb-notes v17** (10 Oct, `34bd48f`, the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
   entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v3** (10 Oct, pinned to the §64 merge commit: the create race is a note,
   not an error), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
   **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in

@@ -3669,7 +3669,7 @@ function whoStrip(unplaced) {
   const groups = unplaced.filter((g) => g.open.length || g.unsaid.length);
   if (!groups.length) return null;
   return group("Who is this?", `${groups.length}`,
-    "Names the reader would not place for certain. One tap places every claim said under that name. With “Remember this name” ticked, the next meeting places it by itself; two agencies remembered under one name make it a question again.",
+    "Names the reader would not place for certain. One tap places every claim said under that name. With “Remember this name” ticked, the next meeting places it by itself; two agencies remembered under one name make it a question again. A name that is one ordinary word (“Orange”) is never remembered: the next meeting asks again.",
     h("div", { class: "card list" }, ...groups.map(whoChip)));
 }
 
@@ -3689,7 +3689,7 @@ function whoChip(g) {
     });
     if (error) { setNotice(msg, "bad", "Refused: " + error.message, errorDetail(error)); for (const b of all) b.disabled = false; return; }
     flash("ok", decision === "assign"
-      ? `Placed ${said} on ${name ?? "that agency"}: ${n} claim${n === 1 ? "" : "s"} moved to its card.${remember.checked ? " The name is remembered for the next meeting." : ""}`
+      ? `Placed ${said} on ${name ?? "that agency"}: ${n} claim${n === 1 ? "" : "s"} moved to its card.${remember.checked ? " The name is remembered for the next meeting, unless it is one ordinary word." : ""}`
       : decision === "not_in_book"
         ? `${said}: not in the book. ${n} claim${n === 1 ? "" : "s"} rejected; nothing is admitted from here.`
         : `${said}: not an agency. ${n} claim${n === 1 ? "" : "s"} rejected.`);
