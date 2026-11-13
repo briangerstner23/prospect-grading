@@ -446,6 +446,28 @@ const LINES = [
     const card2 = clusterMentions(later.resolutions).find((c) => c.state === "ambiguous");
     eq("per card: heard alone in two later windows, the card offers the account first", [card2?.options, card2?.sources], [["kvs", "kvi"], ["W2.C1", "W3.C1"]]);
     eq("…counted once, for the one card", later.counters, { offered_first: 1 });
+    /* The reverse order: the card's FIRST mention would offer the account first, a later one would not. */
+    const reverse = J([
+      [m("W1.C1", ["Kestrelvane"], [100])],
+      [],
+      [m("W3.C1", ["Kestrelvane Studio"], [700]), m("W3.C2", ["Kestrelvane"], [720])],
+    ]);
+    const card3 = clusterMentions(reverse.resolutions).find((c) => c.state === "ambiguous");
+    eq("per card, reverse order: a later mention listed apart in the naming window keeps the roster's order", [card3?.options, card3?.sources], [["kvi", "kvs"], ["W1.C1", "W3.C2"]]);
+    eq("…every mention of it carries that order", [at(reverse, "W1.C1").options, at(reverse, "W3.C2").options], [["kvi", "kvs"], ["kvi", "kvs"]]);
+    eq("…and nothing is counted as offered first", reverse.counters, {});
+  }
+  {
+    /* A form said beside one account that the roster ALSO offers for another: both hold it. */
+    const BRINDLEMOOR = buildRosterIndex({ accounts: [acct("bh", "Brindlecot Harrow Media"), acct("bm", "Brindlemoor Studio")] });
+    eq("offered-with precondition: 'Brindle' suggests both accounts by prefix", [resolveSurface("Brindle", BRINDLEMOOR).state, resolveSurface("Brindle", BRINDLEMOOR).options], ["suggested", ["bh", "bm"]]);
+    const j = J([
+      [m("W1.C1", ["Brindlecot Harrow Media", "Brindle"], [120, 121])],
+      [m("W2.C1", ["Brindlemoor Studio"], [400])],
+      [m("W3.C1", ["Brindle"], [760])],
+    ], BRINDLEMOOR);
+    eq("never: a form said beside one account that the roster offers for another this meeting named — ambiguous", [at(j, "W3.C1").state, at(j, "W3.C1").options, at(j, "W3.C1").reason], ["ambiguous", ["bh", "bm"], "conflicting_names"]);
+    eq("…counted as conflicting", j.counters, { conflicting_names: 1 });
   }
 
   /* What is never joined. */
