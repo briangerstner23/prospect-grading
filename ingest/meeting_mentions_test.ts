@@ -574,6 +574,16 @@ const LINES = [
     const j = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindlecot"], [760])]], LATER);
     eq("never: a suggestion whose word another live account's name has", S(at(j, "W3.C1")), ["suggested", null, "token", ["bh"]]);
     eq("…nothing joined", j.counters, {});
+    /* The transcript splits the word: resolveSurface matches it on its de-spaced form. */
+    eq("split-word precondition: 'Brindle Cot' suggests the account on the de-spaced token", [resolveSurface("Brindle Cot", LATER).state, resolveSurface("Brindle Cot", LATER).key, resolveSurface("Brindle Cot", LATER).options], ["suggested", "brindle cot", ["bh"]]);
+    const split = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [m("W2.C1", ["Harrow Brindlecot Studio"], [400])], [m("W3.C1", ["Brindle Cot"], [760])]], LATER);
+    eq("never: a split word another live account's name has, while that account is named in full", S(at(split, "W3.C1")), ["suggested", null, "token", ["bh"]]);
+    eq("…nothing joined", split.counters, {});
+    const splitUnnamed = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindle Cot"], [760])]], LATER);
+    eq("never: a split word another live account's name has, named in this meeting or not", S(at(splitUnnamed, "W3.C1")), ["suggested", null, "token", ["bh"]]);
+    const splitBeside = J([[m("W1.C1", ["Brindlecot Harrow Media", "Brindle Cot"], [120, 121])], [], [m("W3.C1", ["Brindle Cot"], [760])]], LATER);
+    eq("never: a split word said beside the name, when another live account's name has the word", S(at(splitBeside, "W3.C1")), ["suggested", null, "token", ["bh"]]);
+    eq("…nothing joined", splitBeside.counters, {});
   }
   {
     const PREFIX = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vornholt", "Vornholt Studio")] });

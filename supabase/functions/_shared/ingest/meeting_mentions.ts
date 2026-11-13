@@ -914,7 +914,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
      and a word the model grouped with the wrong name ("Zell" beside "Vorn Digital") cannot carry Zell
      Creative's later discussion onto Vorn Digital's card. */
   const rosterHolders = new Map<string, string[]>();
-  const othersFor = (k: string, a: string): string[] => {
+  const heldBy = (k: string): string[] => {
     let ids = rosterHolders.get(k);
     if (ids === undefined) {
       const set = new Set<string>();
@@ -928,6 +928,14 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
       ids = [...set];
       rosterHolders.set(k, ids);
     }
+    return ids;
+  };
+  /* resolveSurface matches a split word on its de-spaced form ("Brindle Cot" on the token
+     "brindlecot"), so the roster is asked about that form too: a transcript that splits a word
+     another account's name has must not slip past the check the whole word would fail. */
+  const othersFor = (k: string, a: string): string[] => {
+    const joined = k.replace(/ /g, "");
+    const ids = joined === k ? heldBy(k) : [...new Set([...heldBy(k), ...heldBy(joined)])];
     return ids.filter((x) => x !== a);
   };
   const holders = new Map<string, Set<string>>();
