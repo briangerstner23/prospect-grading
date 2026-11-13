@@ -465,6 +465,39 @@ const LINES = [
     eq("never: a form its own window listed apart from the account it placed", at(j, "W2.C2").state, "unknown");
   }
   {
+    /* The window that NAMED the account listed the short form apart from it: that judgement holds in every other window. */
+    const overlap = J([
+      [m("W1.C1", ["Brindlecot Harrow Media"], [270]), m("W1.C2", ["Brindlecot"], [280])],
+      [m("W2.C1", ["Brindlecot"], [280])],
+    ]);
+    eq("never: the overlap's copy of a line whose short form the naming window listed apart", S(at(overlap, "W2.C1")), ["suggested", null, "token", ["bh"]]);
+    eq("…nothing joined", overlap.counters, {});
+    eq("…one 'Who is this?' card holds both copies of the line, and the account's card does not", clusterMentions(overlap.resolutions).map((c) => [c.state, c.account_id, c.sources, c.mention_lines]),
+      [["resolved", "bh", ["W1.C1"], [270]], ["suggested", null, ["W1.C2", "W2.C1"], [280]]]);
+    const vorn = J([
+      [m("W1.C1", ["Vorn Digital"], [270]), m("W1.C2", ["Vorn"], [280])],
+      [m("W2.C1", ["Vorn"], [280])],
+    ]);
+    eq("never: …nor an own short name the naming window listed apart", S(at(vorn, "W2.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined", vorn.counters, {});
+    const later = J([
+      [m("W1.C1", ["Brindlecot Harrow Media"], [120]), m("W1.C2", ["Brindlecot"], [130])],
+      [],
+      [m("W3.C1", ["Brindlecot"], [760])],
+    ]);
+    eq("never: a short form the naming window listed apart, heard again in a later window", S(at(later, "W3.C1")), ["suggested", null, "token", ["bh"]]);
+    eq("…nothing joined", later.counters, {});
+    const sighted = J([
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 280]), m("W1.C2", ["Vorn"], [500])],
+      [m("W2.C1", ["Vorn"], [280])],
+    ]);
+    eq("never: a same sighting, while the naming window also listed the word apart", S(at(sighted, "W2.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined", sighted.counters, {});
+    /* Listed apart in a window that never named the account is no judgement about it. */
+    const blind = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [m("W2.C1", ["Vorn"], [520])], [m("W3.C1", ["Vorn"], [800])]]);
+    eq("still: a short form heard alone in two windows that never named the account joins both", [at(blind, "W2.C1").account_id, at(blind, "W3.C1").account_id, blind.counters], ["vorn", "vorn", { joined_by_name: 2 }]);
+  }
+  {
     const PEOPLE = buildRosterIndex({ accounts: [acct("zell", "Zell Creative")], people: ["Rep A", "Rik Zell"] });
     const j = J([[m("W1.C1", ["Zell Creative", "Zell"], [100, 101])], [], [m("W3.C1", ["Zell"], [700])]], PEOPLE);
     eq("never: a word of anyone at the meeting", [at(j, "W3.C1").state, at(j, "W3.C1").reason], ["refused", "person"]);

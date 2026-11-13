@@ -816,7 +816,9 @@ export interface WindowJoin {
  * This puts back what one window would have done, from evidence IN THIS MEETING, and only ACROSS
  * windows: a mention is joined to an account resolved in ANOTHER window, never to one its own window
  * resolved too (that window's model saw both and kept them apart, as one window's would), so a
- * meeting read in one window comes back unchanged.
+ * meeting read in one window comes back unchanged. Nor is it joined to an account whose window listed
+ * any of its words apart from it: that window's model heard the name and those words and kept them
+ * apart, and its judgement holds for the same words heard in any other window.
  *
  * Meeting-local keys, each kept only while exactly one account holds it — and NO OTHER live account
  * of the roster has it as a word (or run of words) of its name, holds it as a key, or was offered
@@ -981,6 +983,26 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     return bs.sort((x, y) => (BASIS_RANK[x] ?? 9) - (BASIS_RANK[y] ?? 9))[0] ?? "token";
   };
 
+  /* What a window that resolved an account listed APART from it: every form of every mention that
+     window left unplaced (de-spaced, as resolveSurface compares a split word). That window's model
+     heard the whole name and those words and kept them apart, as one window's would; the same words
+     heard in another window — the overlap's copy of that very line, or a later one — are never placed
+     on the account against that judgement. They stay as they were, the account offered first. */
+  const despaced = (k: string): string => k.replace(/ /g, "");
+  const apartFrom = new Map<string, Set<string>>();
+  for (const { r, w } of all) {
+    if (r.state === "resolved") continue;
+    for (const [a, ws] of resolvedIn) {
+      if (!ws.has(w)) continue;
+      if (!apartFrom.has(a)) apartFrom.set(a, new Set());
+      for (const s of r.surfaces) if (keyable(s.key)) (apartFrom.get(a) as Set<string>).add(despaced(s.key));
+    }
+  }
+  const listedApart = (a: string, forms: readonly SurfaceResolution[]): boolean => {
+    const keys = apartFrom.get(a);
+    return keys !== undefined && forms.some((s) => keys.has(despaced(s.key)));
+  };
+
   const out: MentionResolution[] = [];
   /** Per mention left unplaced as it was: the accounts its own decision would offer first. */
   const firstFor = new Map<number, string[]>();
@@ -1006,7 +1028,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
         q.w !== w && elsewhere(q.a) &&
         r.mention_lines.every((n) => q.lines.has(n)) &&
         forms.every((s) => q.forms.has(s.key))).map((q) => q.a))];
-      if (same.length === 1) {
+      if (same.length === 1 && !listedApart(same[0], forms)) {
         out.push(placed(r, same[0], "token"));
         bump(counters, "joined_same_lines");
         continue;
@@ -1049,7 +1071,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
        Brindlecot Studio") is the roster saying the word is shared: never placed, t offered first. */
     const solely = (s: SurfaceResolution): boolean =>
       s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0;
-    if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || solely(s))) {
+    if (targets.length === 1 && !listedApart(t, forms) && forms.every((s) => s.state !== "suggested" || solely(s))) {
       out.push(placed(r, t, ownBasis(forms)));
       bump(counters, "joined_by_name");
       continue;
