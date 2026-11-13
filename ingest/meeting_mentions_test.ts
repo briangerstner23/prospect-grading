@@ -504,6 +504,36 @@ const LINES = [
     eq("never: a word said beside one name while another LIVE account has it, named in this meeting or not", at(unnamed, "W3.C1").state, "unknown");
   }
   {
+    /* The roster knows a name for ANOTHER account that has the word: a merged row, an alias, a learned alias. */
+    const base = [acct("vorn", "Vorn Digital"), acct("quill", "Quillfern Digital")];
+    const holders: Array<[string, RosterInput, string]> = [
+      ["a merged row's name", { accounts: [...base, acct("vp", "Vorn Partners", { book: "merged", merged_into: "quill" })] }, "resolved"],
+      ["an authoritative alias", {
+        accounts: base, resolution: [{ account_id: "quill", slug: "q-slug" }],
+        aliases: [{ slug: "q-slug", alias: "Vorn Partners", alias_type: "name", authoritative: true }],
+      }, "resolved"],
+      ["a non-authoritative alias", {
+        accounts: base, resolution: [{ account_id: "quill", slug: "q-slug" }],
+        aliases: [{ slug: "q-slug", alias: "Vorn Partners", alias_type: "name", authoritative: false }],
+      }, "suggested"],
+      ["a learned alias", { accounts: base, learned: [{ said_key: "vorn partners", account_id: "quill" }] }, "resolved"],
+    ];
+    for (const [what, input, state] of holders) {
+      const idx = buildRosterIndex(input);
+      const pre = resolveSurface("Vorn Partners", idx);
+      eq(`${what} precondition: 'Vorn Partners' speaks for the other account`, [pre.state, pre.options], [state, ["quill"]]);
+      const own = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], idx);
+      eq(`never: an own short name that is a word of ${what} of another account`, S(at(own, "W3.C1")), ["unknown", null, null, []]);
+      eq(`…nothing joined (${what})`, own.counters, {});
+      const said = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 271])], [], [m("W3.C1", ["Vorn"], [800])]], idx);
+      eq(`never: a word said beside the name that is a word of ${what} of another account`, S(at(said, "W3.C1")), ["unknown", null, null, []]);
+    }
+    /* A merged duplicate of the SAME account holds nothing against it. */
+    const SELF = buildRosterIndex({ accounts: [...base, acct("vd2", "Vorn Partners", { book: "merged", merged_into: "vorn" })] });
+    const self = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], SELF);
+    eq("still: a merged row of the account itself does not stop its own short name", S(at(self, "W3.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+  }
+  {
     const ORANGES = buildRosterIndex({ accounts: [acct("ow", "Orange Wyvernhold"), acct("of", "Orange Fieldcrest")] });
     const j = J([
       [m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])],

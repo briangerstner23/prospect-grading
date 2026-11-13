@@ -906,9 +906,11 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
   }
 
   /* The meeting-local keys. The ROSTER holds a key too: every live account that has it as a word, or
-     a run of words, of its name, or that the index holds it for. A key another live account holds is
-     never this meeting's, whichever account the meeting said it beside — so "Vorn", said beside "Vorn
-     Digital", is no key while "Vorn Partners Group" is on the roster, named in this meeting or not;
+     a run of words, of ANY name the index knows it by — its current name, a merged row's name, an
+     alias, a learned alias, a token or domain label — or that the index holds it for. A key another
+     live account holds is never this meeting's, whichever account the meeting said it beside — so
+     "Vorn", said beside "Vorn Digital", is no key while "Vorn Partners Group" is on the roster, named
+     in this meeting or not, nor while "Vorn Partners" is a merged row or an alias of another account;
      and a word the model grouped with the wrong name ("Zell" beside "Vorn Digital") cannot carry Zell
      Creative's later discussion onto Vorn Digital's card. */
   const rosterHolders = new Map<string, string[]>();
@@ -918,7 +920,11 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
       const set = new Set<string>();
       const padded = ` ${k} `;
       for (const acc of index.accounts.values()) if (` ${acc.full} `.includes(padded)) set.add(acc.id);
-      for (const h of [...(index.exact.get(k) ?? []), ...(index.soft.get(k) ?? [])]) set.add(h.account);
+      /* Every key the index holds is a name some live account is known by (a merged row's, an alias's,
+         a learned one's already redirected to the account it speaks for): a word of it is held too. */
+      for (const map of [index.exact, index.soft]) {
+        for (const [key, hits] of map) if (` ${key} `.includes(padded)) for (const h of hits) set.add(h.account);
+      }
       ids = [...set];
       rosterHolders.set(k, ids);
     }
