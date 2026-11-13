@@ -376,6 +376,24 @@ const LINES = [
     eq("window 1 → 3: an ordinary word of the name, said beside it, is joined", S(at(beside, "W3.C1")), ["resolved", "orange", "name", ["orange"]]);
     const never = J([[m("W1.C1", ["Orange Wyvernhold"], [400])], [], [m("W3.C1", ["Orange"], [750])]]);
     eq("…but an ordinary word never said beside the name stays refused", [at(never, "W3.C1").state, at(never, "W3.C1").reason], ["refused", "ordinary_word"]);
+    /* No account on this roster has the word, so only the word-of-its-own-name rule refuses it. */
+    const NO_ORANGE = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("zell", "Zell Creative")] });
+    eq("ordinary-word precondition: 'Orange' alone is refused on a roster none of whose names has it", [resolveSurface("Orange", NO_ORANGE).state, resolveSurface("Orange", NO_ORANGE).reason], ["refused", "ordinary_word"]);
+    const notItsName = J([[m("W1.C1", ["Vorn Digital", "Orange"], [270, 271])], [], [m("W3.C1", ["Orange"], [800])]], NO_ORANGE);
+    eq("never: an ordinary word said beside a name it is not a word of", [at(notItsName, "W3.C1").state, at(notItsName, "W3.C1").reason, at(notItsName, "W3.C1").account_id], ["refused", "ordinary_word", null]);
+    eq("…nothing joined", notItsName.counters, {});
+  }
+  {
+    /* The own short name is no key while another account holds that word as a key (here a registry alias). */
+    const ALIASED = buildRosterIndex({
+      accounts: [acct("zell", "Zell Creative"), acct("qs", "Quarrystone Partners")],
+      aliases: [{ slug: "qs-slug", alias: "Zell", alias_type: "name", authoritative: false }],
+      resolution: [{ account_id: "qs", slug: "qs-slug" }],
+    });
+    eq("aliased precondition: 'Zell' alone suggests the account whose alias it is", [resolveSurface("Zell", ALIASED).state, resolveSurface("Zell", ALIASED).options], ["suggested", ["qs"]]);
+    const j = J([[m("W1.C1", ["Zell Creative"], [100])], [], [m("W3.C1", ["Zell"], [700])]], ALIASED);
+    eq("never: an own short name another account holds as a key — the mention stays as it was", S(at(j, "W3.C1")), ["suggested", null, "alias", ["qs"]]);
+    eq("…nothing joined, nothing made ambiguous", j.counters, {});
   }
   {
     const j = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [150, 152])], [], [m("W3.C1", ["Kestrelvane"], [720])]]);
