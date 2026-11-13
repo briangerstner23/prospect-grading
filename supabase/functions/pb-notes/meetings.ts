@@ -735,7 +735,7 @@ async function readMeeting(
 
     /* Resolve in code. The roster never reaches the model. */
     const index = await rosterIndex(db, meetingPeople((inbox as Rec).calendar_invitees, (inbox as Rec).recorded_by, tl.speakers));
-    const joined = clusterWindows(pass1.perWindow, index);
+    const joined = clusterWindows(pass1.perWindow, index, windows);
     clusters = joined.clusters;
     addCounters(here, joined.counters, "pass1");
     addCounters(here, mentionCounts(clusters));

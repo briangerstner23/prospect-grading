@@ -762,7 +762,12 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
     const options: string[] = [];
     for (const m of members) {
       for (const s of m.as_said) if (!said_as.includes(s)) said_as.push(s);
-      for (const s of m.surfaces) if (s.state !== "refused" || m.state === "refused") keys.push(s.key);
+      /* A refused form names the card only when nothing live does: a refused mention, or one the
+         cross-window join made a question out of ordinary words alone ("Orange" said beside "Orange
+         Wyvernhold" in another window). Without this its key is "" — and every such question in the
+         meeting would share it: one card, one fingerprint, one "Who is this?" click for all of them. */
+      const allRefused = m.surfaces.length > 0 && m.surfaces.every((x) => x.state === "refused");
+      for (const s of m.surfaces) if (s.state !== "refused" || m.state === "refused" || allRefused) keys.push(s.key);
       for (const n of m.mention_lines) lines.add(n);
       segs.push(...m.segments.map((s) => ({ ...s })));
       for (const o of m.options) if (!options.includes(o)) options.push(o);
@@ -782,7 +787,7 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
       options: options.slice(0, MAX_OPTIONS),
       reason: head.reason,
       said_as,
-      said_key: saidKeyOf(keys),
+      said_key: saidKeyOf(keys) || head.said_key,
       segments: merged,
       mention_lines,
       first_line: Math.min(merged[0]?.from ?? Infinity, mention_lines[0] ?? Infinity),
@@ -876,7 +881,13 @@ export interface WindowJoin {
  * in a window that never heard the name — a nickname, a mistranscription ("Vron"). That stays its own
  * card (unknown, so listed but not read): the known limit, and why the windows overlap.
  */
-export function joinAcrossWindows(perWindow: readonly (readonly MentionResolution[])[], index: RosterIndex): WindowJoin {
+export function joinAcrossWindows(
+  perWindow: readonly (readonly MentionResolution[])[],
+  index: RosterIndex,
+  /** Each window's line range, in window order (meeting_transcript.windowsFor). Without it the same
+   *  sighting needs every cited line in the other window's mention — the strict, window-blind rule. */
+  ranges?: readonly { from: number; to: number }[],
+): WindowJoin {
   const counters: Record<string, number> = {};
   const all: Array<{ r: MentionResolution; w: number }> = [];
   (perWindow ?? []).forEach((list, w) => { for (const r of list ?? []) all.push({ r, w }); });
@@ -1091,14 +1102,23 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
        "Vorn" + "Orange" no evidence for Vorn Digital. An ordinary word said beside nothing is no form. */
     const forms = r.surfaces.filter((s) => s.state !== "refused" || (ordinaryOf(s) && holders.has(s.key)));
 
-    /* The same sighting: the overlap, where ONE resolved mention of another window cited every one of
-       these lines AND carried every one of these words. Never pooled across mentions: a line one
-       mention cited and a word another mention carried, elsewhere in the meeting, are not a sighting —
-       so "Zell" grouped with "Vorn Digital" on other lines cannot carry Zell on this line onto it. */
+    /* The same sighting: the overlap, where ONE resolved mention of another window cited these lines
+       AND carried every one of these words. Every cited line THAT WINDOW COULD SEE must be one it cited,
+       and at least one must be; a cited line past the other window's edge it could not have seen, and is
+       this window's own grouping of the one company, as one window's read would group it (a discussion
+       that runs on past the overlap stays ONE card, and no line is owned twice). Never pooled across
+       mentions: a line one mention cited and a word another mention carried, elsewhere in the meeting,
+       are not a sighting — so "Zell" grouped with "Vorn Digital" on other lines cannot carry Zell on this
+       line onto it. */
+    const seenBy = (n: number, wq: number): boolean => {
+      const g = ranges?.[wq];
+      return g === undefined || (n >= g.from && n <= g.to);
+    };
     if (forms.some((s) => s.state !== "refused" || local.has(s.key)) && r.mention_lines.length > 0) {
       const same = [...new Set(sightings.filter((q) =>
         q.w !== w && elsewhere(q.a) &&
-        r.mention_lines.every((n) => q.lines.has(n)) &&
+        r.mention_lines.some((n) => q.lines.has(n)) &&
+        r.mention_lines.every((n) => q.lines.has(n) || !seenBy(n, q.w)) &&
         forms.every((s) => q.forms.has(s.key))).map((q) => q.a))];
       if (same.length === 1 && !listedApart(same[0], forms)) {
         out.push(placed(r, same[0], "token"));

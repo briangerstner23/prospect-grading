@@ -795,7 +795,7 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   check("meetings.ts verifies pass 1 per window through windowMentions", /const pass1 = windowMentions\(answered, windows\.length\)/.test(mc));
   check("meetings.ts files pass 1's counters as pass1.* and keeps its notes on the meeting",
     /addCounters\(here, pass1\.counters, "pass1"\)/.test(mc) && /meetingNotes\.push\(\.\.\.pass1\.notes\)/.test(mc));
-  check("meetings.ts clusters pass 1 through clusterWindows (the cross-window join)", /clusterWindows\(pass1\.perWindow, index\)/.test(mc));
+  check("meetings.ts clusters pass 1 through clusterWindows (the cross-window join), with the windows' ranges", /clusterWindows\(pass1\.perWindow, index, windows\)/.test(mc));
   check("meetings.ts never resolves or clusters mentions itself", !/\b(resolveMention|clusterMentions|verifySegments)\(/.test(mc));
   const rpcs = [...mc.matchAll(/\.rpc\("([a-z_]+)"/g)].map((m) => m[1]);
   eq("meetings.ts calls one function: the supersession", [...new Set(rpcs)], ["pb_meeting_supersede"]);

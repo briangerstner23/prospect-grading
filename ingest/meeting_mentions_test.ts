@@ -313,7 +313,8 @@ const LINES = [
     mention_lines: [...lines].sort((a, b) => a - b),
   });
   const res = (mm: VerifiedMention, idx = JOIN): MentionResolution => resolveMention(mm, idx);
-  const J = (ws: VerifiedMention[][], idx = JOIN) => joinAcrossWindows(ws.map((w) => w.map((mm) => res(mm, idx))), idx);
+  const J = (ws: VerifiedMention[][], idx = JOIN, ranges?: { from: number; to: number }[]) =>
+    joinAcrossWindows(ws.map((w) => w.map((mm) => res(mm, idx))), idx, ranges);
   const at = (j: { resolutions: MentionResolution[] }, ref: string) => j.resolutions.find((r) => r.ref === ref) as MentionResolution;
   const S = (r: MentionResolution) => [r.state, r.account_id, r.matched_on, r.options];
 
@@ -397,9 +398,46 @@ const LINES = [
       j.resolutions.every((r) => r.state !== "resolved" || resolvedBefore.has(r.ref) || r.ref === "W2.C1"),
       JSON.stringify(j.resolutions.map((r) => [r.ref, r.state])));
     eq("…which is placed: the same words on the same lines another window resolved", S(at(j, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
-    check("…and every mention it touched carries no account", j.resolutions.filter((r) => r.reason === "named_in_another_window").every((r) => r.account_id === null && r.state === "suggested"));
+    const touched = j.resolutions.filter((r) => r.reason === "named_in_another_window");
+    eq("…the mentions it suggested are exactly the later short forms", touched.map((r) => r.ref).sort(), ["W3.C1", "W3.C2", "W3.C3"]);
+    check("…and every one carries no account", touched.every((r) => r.account_id === null && r.state === "suggested"));
     check("…while the ones it suggested are read by pass 2 (suggested, not unknown)", ["W3.C1", "W3.C2", "W3.C3"].every((ref) => at(j, ref).state === "suggested"),
       JSON.stringify(j.resolutions.map((r) => [r.ref, r.state])));
+  }
+
+  /* The same sighting, window-aware (13 Nov 2026): a discussion that starts in the overlap and runs on
+     past the naming window's edge is ONE card. Lines the naming window could see must be ones its mention
+     cited; lines past its edge are the later window's own grouping, as one window's read would group them. */
+  {
+    const ranges = [{ from: 1, to: 315 }, { from: 276, to: 589 }];
+    const ws = [[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290, 305])], [m("W2.C1", ["Vorn"], [290, 305, 320])]];
+    const aware = J(ws, JOIN, ranges);
+    eq("past the overlap: placed, with the windows' ranges", S(at(aware, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+    eq("…counted as the same sighting", aware.counters, { joined_same_lines: 1 });
+    eq("…ONE card, so no line is owned twice", clusterMentions(aware.resolutions).map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]]]);
+    eq("…without the ranges, the strict rule: a question card", S(at(J(ws), "W2.C1"))[0], "suggested");
+    const unseen = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [m("W2.C1", ["Vorn"], [290, 300, 320])]], JOIN, ranges);
+    eq("never: a line the naming window could see but did not cite", S(at(unseen, "W2.C1"))[0], "suggested");
+    const none = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [m("W2.C1", ["Vorn"], [400, 420])]], JOIN, ranges);
+    eq("never: no line shared with the naming window's mention", S(at(none, "W2.C1"))[0], "suggested");
+  }
+
+  /* Question cards born from ordinary words keep their own names (13 Nov 2026): two of them must never
+     share a card key, or they become one card, one fingerprint, one click for two agencies. */
+  {
+    const ORD = buildRosterIndex({
+      accounts: [acct("vorn", "Vorn Digital"), acct("orange", "Orange Wyvernhold"), acct("silver", "Silver Quenmarsh")],
+      people: ["Rep A", "Owner"],
+    });
+    const j = J([
+      [m("W1.C1", ["Orange Wyvernhold", "Orange"], [100, 110]), m("W1.C2", ["Silver Quenmarsh", "Silver"], [200, 210])],
+      [],
+      [m("W3.C1", ["Orange"], [800]), m("W3.C2", ["Silver"], [850])],
+    ], ORD);
+    const asks = clusterMentions(j.resolutions).filter((c) => c.state === "suggested");
+    eq("ordinary-word questions: one card each, under their own spoken names", asks.map((c) => [c.said_key, c.options[0]]).sort(), [["orange", "orange"], ["silver", "silver"]]);
+    check("…and no card pass 2 reads has an empty name", clusterMentions(j.resolutions).every((c) => c.state === "resolved" || c.state === "refused" || c.state === "unknown" || c.said_key !== ""),
+      JSON.stringify(clusterMentions(j.resolutions).map((c) => [c.state, c.said_key])));
   }
 
   /* Window 1, then window 3, by a short form. */

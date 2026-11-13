@@ -786,16 +786,22 @@ export function windowMentions(replies: readonly WindowReply[], windowCount: num
 /**
  * Pass 1's mentions → the meeting's agency cards. Resolved in code against the roster (resolveMention),
  * then joined across windows (meeting_mentions.joinAcrossWindows: a company one window heard only by a
- * short form, placed by the name another window heard), then clustered one card per account or per
+ * short form becomes a "Who is this?" card offering the name another window heard, save the overlap
+ * read twice, which is placed), then clustered one card per account or per
  * spoken name, in discussion order (clusterMentions). One window is never joined: it comes back as
  * clusterMentions(resolveMention) always gave it.
  */
-export function clusterWindows(perWindow: readonly (readonly VerifiedMention[])[], index: RosterIndex): {
+export function clusterWindows(
+  perWindow: readonly (readonly VerifiedMention[])[],
+  index: RosterIndex,
+  /** Each window's line range, in window order: what lets the same sighting run past the overlap. */
+  ranges?: readonly { from: number; to: number }[],
+): {
   clusters: MentionCluster[];
   counters: Record<string, number>;
 } {
   const resolved = (perWindow ?? []).map((ms) => (ms ?? []).map((m) => resolveMention(m, index)));
-  const joined = joinAcrossWindows(resolved, index);
+  const joined = joinAcrossWindows(resolved, index, ranges);
   return { clusters: clusterMentions(joined.resolutions), counters: joined.counters };
 }
 
