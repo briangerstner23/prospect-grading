@@ -1057,13 +1057,17 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
       const ws = resolvedIn.get(a);
       return ws !== undefined && !ws.has(w);
     };
-    const forms = r.surfaces.filter((s) => s.state !== "refused" || (ordinaryOf(s) && local.has(s.key)));
+    /* Its forms: the live ones, and an ordinary word this meeting said beside an account — kept when
+       the roster shares it too (held, not local), so it still points somewhere no one account owns
+       and stops the mention: "Orange" beside "Orange Wyvernhold", with "Orange Fieldcrest" live, makes
+       "Vorn" + "Orange" no evidence for Vorn Digital. An ordinary word said beside nothing is no form. */
+    const forms = r.surfaces.filter((s) => s.state !== "refused" || (ordinaryOf(s) && holders.has(s.key)));
 
     /* The same sighting: the overlap, where ONE resolved mention of another window cited every one of
        these lines AND carried every one of these words. Never pooled across mentions: a line one
        mention cited and a word another mention carried, elsewhere in the meeting, are not a sighting —
        so "Zell" grouped with "Vorn Digital" on other lines cannot carry Zell on this line onto it. */
-    if (forms.length > 0 && r.mention_lines.length > 0) {
+    if (forms.some((s) => s.state !== "refused" || local.has(s.key)) && r.mention_lines.length > 0) {
       const same = [...new Set(sightings.filter((q) =>
         q.w !== w && elsewhere(q.a) &&
         r.mention_lines.every((n) => q.lines.has(n)) &&

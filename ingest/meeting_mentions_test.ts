@@ -574,6 +574,28 @@ const LINES = [
       [m("W3.C1", ["Orange"], [800])],
     ], ORANGES);
     eq("never: an ordinary word of two accounts' names, said beside one of them", [at(j, "W3.C1").state, at(j, "W3.C1").reason, at(j, "W3.C1").account_id], ["refused", "ordinary_word", null]);
+    /* Beside another account's short form, the shared ordinary word still points away from it. */
+    const VORN_ORANGES = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("ow", "Orange Wyvernhold"), acct("of", "Orange Fieldcrest")] });
+    const mixed = J([
+      [m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])],
+      [m("W2.C1", ["Vorn Digital"], [500])],
+      [m("W3.C1", ["Vorn", "Orange"], [800])],
+    ], VORN_ORANGES);
+    eq("never: a short form beside an ordinary word this meeting said beside another account, which the roster shares", S(at(mixed, "W3.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined", mixed.counters, {});
+    const VORN_ORANGE = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("ow", "Orange Wyvernhold")] });
+    const mixedOne = J([
+      [m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])],
+      [m("W2.C1", ["Vorn Digital"], [500])],
+      [m("W3.C1", ["Vorn", "Orange"], [800])],
+    ], VORN_ORANGE);
+    eq("…with one account holding the word, two accounts named: ambiguous, never placed", [at(mixedOne, "W3.C1").state, at(mixedOne, "W3.C1").options, at(mixedOne, "W3.C1").reason], ["ambiguous", ["vorn", "ow"], "conflicting_names"]);
+    /* The overlap copy of a shared ordinary word is not a sighting by itself, whatever the window grouped. */
+    const overlap = J([[m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])], [m("W2.C1", ["Orange"], [402])]], ORANGES);
+    eq("never: a shared ordinary word alone on an overlap line", [at(overlap, "W2.C1").state, at(overlap, "W2.C1").account_id], ["refused", null]);
+    const overlapMixed = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [400, 402])], [m("W2.C1", ["Vorn", "Orange"], [402])], [m("W3.C1", ["Orange Wyvernhold", "Orange"], [700, 702])]], VORN_ORANGES);
+    eq("never: an overlap sighting whose shared ordinary word the other window did not carry", S(at(overlapMixed, "W2.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined", overlapMixed.counters, {});
   }
   {
     /* One window's model groups another live account's short name with the wrong whole name. */
