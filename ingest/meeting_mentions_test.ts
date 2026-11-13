@@ -441,10 +441,33 @@ const LINES = [
     const VPG = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vpg", "Vorn Partners Group")], people: ["Rep A", "Owner"] });
     const vp = J([[m("W1.C1", ["Vorn Partners Group"], [100]), m("W1.C2", ["Vorn Digital", "Vorn"], [270, 300])], [m("W2.C1", ["Vorn"], [300, 550])]], VPG, ranges);
     const vpParts = vp.resolutions.filter((r) => r.ref === "W2.C1");
-    eq("a word two accounts have, past the edge: the overlap line placed, the far line never resolved",
-      vpParts.map((r) => [r.state === "resolved", r.account_id, r.mention_lines]), [[true, "vorn", [300]], [false, null, [550]]]);
+    eq("a word two accounts have, past the edge: the overlap line placed, the far line a question, the placed account first",
+      vpParts.map((r) => [r.state, r.account_id, r.mention_lines, r.options[0], r.reason]), [["resolved", "vorn", [300], "vorn", null], ["ambiguous", null, [550], "vorn", "split_past_edge"]]);
     check("…and no resolved card owns line 550", clusterMentions(vp.resolutions).filter((c) => c.state === "resolved").every((c) =>
       c.segments.every((g) => g.to < 545)));
+
+    /* A split part that would have stayed refused (ordinary words, one shared) is made a question, so it
+       owns its reach: otherwise the line past the edge is the placed card's alone (review of b77acfd). */
+    const OS = buildRosterIndex({
+      accounts: [acct("os", "Orange Social"), acct("vorn", "Vorn Digital"), acct("bms", "Brackmoor Social")],
+      people: ["Rep A", "Owner"],
+    });
+    const os = J([[m("W1.C1", ["Orange Social", "Orange", "Social"], [268, 272, 290])], [m("W2.C1", ["Orange", "Social"], [290, 318])]], OS, ranges);
+    const osParts = os.resolutions.filter((r) => r.ref === "W2.C1");
+    eq("ordinary words past the edge, one shared: the far part is a question, never left refused",
+      osParts.map((r) => [r.state, r.account_id, r.mention_lines, r.reason]), [["resolved", "os", [290], null], ["ambiguous", null, [318], "split_past_edge"]]);
+    eq("…offering the placed account first, then the other one the word could mean", osParts[1]?.options.slice(0, 2), ["os", "bms"]);
+    const osCards = clusterMentions(os.resolutions);
+    check("…and both cards reach line 318", osCards.filter((c) => c.segments.some((g) => g.from <= 318 && g.to >= 318)).length === 2,
+      JSON.stringify(osCards.map((c) => [c.state, c.segments])));
+    eq("…with a name of its own words", osCards.find((c) => c.state === "ambiguous")?.said_key, "orange|social");
+
+    /* Past-edge lines no stretch of discussion reaches are dropped, never a card read with nothing to read. */
+    const bare = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])],
+      [{ ref: "W2.C1", as_said: ["Vorn"], kind: "agency", segments: [{ from: 285, to: 300 }], mention_lines: [290, 340] }]], JOIN, ranges);
+    eq("a past-edge line with no reach: dropped, the overlap line placed", [bare.resolutions.filter((r) => r.ref === "W2.C1").map((r) => [r.state, r.mention_lines]), bare.counters],
+      [[["resolved", [290]]], { joined_same_lines: 1, split_no_reach: 1 }]);
+    check("…and no card carries the line or an empty stretch", clusterMentions(bare.resolutions).every((c) => !c.mention_lines.includes(340) && c.segments.length > 0));
   }
 
   /* Question cards born from ordinary words keep their own names (13 Nov 2026): two of them must never
@@ -475,6 +498,22 @@ const LINES = [
       [{ from: 1, to: 315 }, { from: 276, to: 589 }]);
     eq("…a same sighting of an ordinary word leaves the resolved card's name as its live forms make it",
       clusterMentions(placedOrd.resolutions).map((c) => [c.state, c.account_id, c.said_key]), [["resolved", "orange", "orange wyvernhold"]]);
+  }
+
+  /* One rule groups and names a question card (review of b77acfd): "Orange" heard with a fragment in one
+     window and alone in another is one card named "orange", not two cards with one name and one
+     fingerprint, one of them dropped. */
+  {
+    const ORD2 = buildRosterIndex({
+      accounts: [acct("vorn", "Vorn Digital"), acct("orange", "Orange Wyvernhold")],
+      people: ["Rep A", "Owner"],
+    });
+    eq("precondition: 'OQ' alone is refused as too short", [resolveSurface("OQ", ORD2).state, resolveSurface("OQ", ORD2).reason], ["refused", "short"]);
+    const j = J([[m("W1.C1", ["Orange Wyvernhold", "Orange"], [100, 110])], [m("W2.C1", ["Orange", "OQ"], [400])], [m("W3.C1", ["Orange"], [800])]], ORD2);
+    eq("the same ordinary name with and without a fragment: ONE question card",
+      clusterMentions(j.resolutions).filter((c) => c.state === "suggested").map((c) => [c.said_key, c.sources]), [["orange", ["W2.C1", "W3.C1"]]]);
+    const keys = clusterMentions(j.resolutions).map((c) => `${c.state}:${c.account_id ?? c.said_key}`);
+    eq("…and no two cards share a state and a name", keys.length, new Set(keys).size);
   }
 
   /* Remembering a name never teaches an ordinary word (review of 53249b8): a learned alias places with no

@@ -639,7 +639,8 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   const read = (ws: LineRange[]) => {
     const replies: WindowReply[] = ws.map((w, i) => ({ window: i, lines: lines.filter((l) => l.n >= w.from && l.n <= w.to), value: reply(w) }));
     const p1 = windowMentions(replies, ws.length);
-    return { ...clusterWindows(p1.perWindow, index), perWindow: p1.perWindow };
+    // With the windows' ranges, as meetings.ts passes them: the same sighting knows each window's edge.
+    return { ...clusterWindows(p1.perWindow, index, ws), perWindow: p1.perWindow };
   };
   const windows = windowsFor(lines);
   const inW = (n: number) => windows.map((w, i) => (n >= w.from && n <= w.to ? i + 1 : 0)).filter(Boolean);
@@ -733,6 +734,52 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
 
   /* One window is not joined at all: exactly what clusterMentions(resolveMention) gave before windows. */
   eq("one window: no join counters", one.counters, {});
+
+  /* A same sighting whose window-2 copy runs past window 1's edge on ordinary words another live account
+     shares (review of b77acfd): the line past the edge is never the placed card's alone. Its part is a
+     "Who is this?" card that pass 2 reads, both own the line, and a claim on it is flagged, never ticked. */
+  {
+    const say2: Record<number, string> = {
+      268: "Orange Social sent the brief over yesterday, two sites this year.",
+      272: "Social said they can start in January if the quote lands.",
+      290: "Orange are keen on the retainer, they said so on the call.",
+      318: "Social have about forty staff now, I checked their team page.",
+    };
+    const lines2: TranscriptLine[] = Array.from({ length: 589 }, (_, i) => ({
+      n: i + 1, at: clockText(i * 6), seconds: i * 6, speaker: `S${(i % 3) + 1}`,
+      text: say2[i + 1] ?? `Line ${i + 1}: we went through the timeline and the budget again.`,
+    }));
+    const idx2 = buildRosterIndex({
+      accounts: [
+        { id: "os", name: "Orange Social", book: "prospect" },
+        { id: "vorn", name: "Vorn Digital", book: "prospect" },
+        { id: "bms", name: "Brackmoor Social", book: "prospect" },
+      ],
+      people: ["Rep A", "Owner"],
+    });
+    const ws2: LineRange[] = [{ from: 1, to: 315 }, { from: 276, to: 589 }];
+    const p1 = windowMentions([
+      { window: 0, lines: lines2.filter((l) => l.n <= 315), value: { companies: [{ ref: "C1", kind: "agency", as_said: ["Orange Social", "Orange", "Social"], mention_lines: [268, 272, 290], segments: [{ from: 266, to: 300 }] }] } },
+      { window: 1, lines: lines2.filter((l) => l.n >= 276), value: { companies: [{ ref: "C1", kind: "agency", as_said: ["Orange", "Social"], mention_lines: [290, 318], segments: [{ from: 288, to: 330 }] }] } },
+    ], 2);
+    const cw = clusterWindows(p1.perWindow, idx2, ws2);
+    eq("past the edge on shared ordinary words: the placed card, and a question beside it pass 2 reads",
+      cw.clusters.map((c) => [c.state, c.account_id, c.options[0], c.reason]), [["resolved", "os", "os", null], ["ambiguous", null, "os", "split_past_edge"]]);
+    check("…the question offers the other account the word could mean", cw.clusters[1]?.options.includes("bms"), JSON.stringify(cw.clusters[1]?.options));
+    eq("…counted", cw.counters, { joined_same_lines: 1, split_past_edge: 1, split_asked: 1 });
+    const plan2 = planBatches(cw.clusters, lines2);
+    eq("…both own the line past the edge; the overlap's line is the placed card's alone",
+      [plan2.owners[318]?.length ?? 0, plan2.owners[290]], [2, [cw.clusters[0].ref]]);
+    const kept2: string[] = [];
+    for (const b of plan2.batches) {
+      const claims = b.items.filter((it) => it.owned.includes(318)).map((it) => ({
+        ref: it.ref, type: "fact", key: "headcount", value: 40, quote: "Social have about forty staff now", line_from: 318, line_to: 318, mode: "asserted", confidence: "high",
+      }));
+      const v = verifyMeetingClaims({ claims }, { lines: lines2, batch: b, owners: plan2.owners, tiers: ["Silver"], overrideCodes: ["relationship_known"], removalReasons: [] });
+      for (const c of v.claims) kept2.push(`${c.ref}:${c.flags.join(",")}`);
+    }
+    eq("…so a claim on it is flagged on both cards, never pre-ticked on the placed one", kept2.sort(), [`${cw.clusters[0].ref}:shared_segment`, `${cw.clusters[1].ref}:shared_segment`].sort());
+  }
   eq("one window: one ref per company, the model's own", one.clusters.flatMap((c) => c.sources).sort(), ["C1", "C2", "C3", "C4"]);
   eq("windowMentions: a reply for a window that does not exist is ignored", windowMentions([{ window: 7, lines, value: reply({ from: 1, to: 878 }) }], 4).perWindow.flat(), []);
 

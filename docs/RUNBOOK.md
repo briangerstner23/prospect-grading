@@ -2733,8 +2733,10 @@ lines, which ONE resolved mention in another window cited with those very words
 (`meeting.pass1.joined_same_lines`) — the same words on the same lines read twice, and two cards owning
 one line would make pass 2 flag every claim on it. Only the lines the naming window could see are
 placed: a line the same mention cites past that window's edge is split off with its own reach and read
-as a mention of its own — a question, or ambiguous (`meeting.pass1.split_past_edge`) — and a line within
-reach of both parts is owned by both, so a claim on it waits for a person's tick. A word another live account also has — as a word of
+as a mention of its own — a question, or ambiguous (`meeting.pass1.split_past_edge`), and never left
+unread: a part that would stay refused or unknown is made a "Who is this?" card with the placed account
+first (`split_asked`) — and a line within reach of both parts is owned by both, so a claim on it waits
+for a person's tick. Past-edge lines no stretch of discussion reaches are dropped (`split_no_reach`). A word another live account also has — as a word of
 its name, a key, or an option the roster offers — is not even suggested that way, and a token or prefix
 two accounts share stays an ambiguous card with that account offered first (`offered_first`, counted per
 card, and only when every mention of the card was heard outside the windows that named it); a nickname
@@ -2770,7 +2772,8 @@ between them — so **dismiss the meeting's open proposals first** ("Dismiss mee
 
 The review itself is the screen's: one card per agency in the order they came up; "Who is this?" for
 a name the reader would not place (placing it, with "Remember this name", writes `pb_meeting_aliases`
-and the next meeting places it alone); A approves what is ticked on that card and rejects the rest,
+and the next meeting places it alone — except a part of the name that is one ordinary word, which
+`buildRosterIndex` never learns, so "Orange" is asked about again; DECISIONS §66); A approves what is ticked on that card and rejects the rest,
 in one `pb_decide_meeting_card` call that re-derives every rule. A tier call or a removal is the
 owner's; a removal is never pre-ticked and never expires. Facts and overrides move the tier at the
 next 06:15 score; a removal leaves the board at once.

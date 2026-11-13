@@ -738,9 +738,27 @@ export interface MentionCluster {
   sources: string[];
 }
 
-/** Which card a mention joins: its account when resolved, else its state and spoken name. */
+/**
+ * The spoken forms that name a mention's card. A refused form names it only when nothing live does: a
+ * refused mention, or a question the cross-window join made out of ordinary words alone ("Orange" said
+ * beside "Orange Wyvernhold" in another window). Without that its key is "" — and every such question in
+ * the meeting would share it: one card, one fingerprint, one "Who is this?" click for all of them. Only
+ * the ordinary words, the ones the join read: never a person at the meeting, our own name or a short
+ * fragment, which "Remember this name" would otherwise store. And never on a resolved card, whose live
+ * forms already name it. ONE rule, used both to group mentions into cards (cardKey) and to name the card
+ * (clusterMentions): two rules would let one name become two cards with one fingerprint.
+ */
+function cardForms(r: MentionResolution): string[] {
+  const question = r.state !== "resolved" && r.state !== "refused" && r.surfaces.length > 0 &&
+    r.surfaces.every((x) => x.state === "refused");
+  return r.surfaces
+    .filter((s) => s.state !== "refused" || r.state === "refused" || (question && s.reason === "ordinary_word"))
+    .map((s) => s.key);
+}
+
+/** Which card a mention joins: its account when resolved, else its state and spoken name (cardForms). */
 function cardKey(r: MentionResolution): string {
-  return r.state === "resolved" && r.account_id ? `acct:${r.account_id}` : `said:${r.state}:${r.said_key}`;
+  return r.state === "resolved" && r.account_id ? `acct:${r.account_id}` : `said:${r.state}:${saidKeyOf(cardForms(r))}`;
 }
 
 /**
@@ -768,17 +786,7 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
     const options: string[] = [];
     for (const m of members) {
       for (const s of m.as_said) if (!said_as.includes(s)) said_as.push(s);
-      /* A refused form names the card only when nothing live does: a refused mention, or a question the
-         cross-window join made out of ordinary words alone ("Orange" said beside "Orange Wyvernhold" in
-         another window). Without this its key is "" — and every such question in the meeting would share
-         it: one card, one fingerprint, one "Who is this?" click for all of them. Only the ordinary words,
-         the ones the join read: never a person at the meeting or our own name, which "Remember this
-         name" would otherwise learn. And never on a resolved card, whose live forms already name it. */
-      const question = m.state !== "resolved" && m.state !== "refused" && m.surfaces.length > 0 &&
-        m.surfaces.every((x) => x.state === "refused");
-      for (const s of m.surfaces) {
-        if (s.state !== "refused" || m.state === "refused" || (question && s.reason === "ordinary_word")) keys.push(s.key);
-      }
+      keys.push(...cardForms(m));
       for (const n of m.mention_lines) lines.add(n);
       segs.push(...m.segments.map((s) => ({ ...s })));
       for (const o of m.options) if (!options.includes(o)) options.push(o);
@@ -817,7 +825,9 @@ export interface WindowJoin {
   /** Every mention, flat and in window order; the ones another window named suggested, that account first. */
   resolutions: MentionResolution[];
   /** joined_same_lines (placed) · split_past_edge (a placed mention's lines past the naming window's edge,
-   *  read on as a mention of their own) · suggested_by_name · conflicting_names (mentions) · offered_first (cards). */
+   *  read on as a mention of their own) · split_asked (one of those that would have gone unread, made a
+   *  question) · split_no_reach (past-edge lines no discussion reaches, dropped) · suggested_by_name ·
+   *  conflicting_names (mentions) · offered_first (cards). */
   counters: Record<string, number>;
 }
 
@@ -868,7 +878,9 @@ export interface WindowJoin {
  *     token deciding identity but the same words on the same lines read twice (suggesting it would make
  *     two cards own one line). With the windows' ranges, a cited line past that window's edge — one it
  *     never heard — is split off with its own reach and goes on below as a mention of its own, so it is
- *     never placed by the token (split_past_edge). Never pooled: lines one mention cited and words
+ *     never placed by the token (split_past_edge); one that would stay unread (refused, unknown) is
+ *     made a "Who is this?" card with the placed account first (split_asked), and past-edge lines no
+ *     stretch reaches are dropped (split_no_reach). Never pooled: lines one mention cited and words
  *     another carried are not it;
  *   · unknown, suggested, or refused only as an ordinary word — joined (suggested, that account
  *     first) when every form it has
@@ -1121,6 +1133,8 @@ export function joinAcrossWindows(
     const w = item.w;
     let r = item.r;
     if (r.state === "resolved") { out.push(r); continue; }
+    /** Set when r is the part of a same sighting past the naming window's edge: the account placed. */
+    let splitFrom: string | null = null;
     /** Resolved in another window, and not in this one. */
     const elsewhere = (a: string): boolean => {
       const ws = resolvedIn.get(a);
@@ -1137,9 +1151,10 @@ export function joinAcrossWindows(
        and at least one must be. Only those lines are placed. A cited line past the other window's edge
        is a sighting that window never heard, grouped by a model that never heard the whole name: it is
        split off, with the reach of its own lines, and goes on as a mention of its own (below) — a
-       question, ambiguous, or as it was — never placed by the token it shares ("Kestrelvane" past the
-       edge, with "Kestrelvane Interactive" and "Kestrelvane Studio" both live, stays a question). A line
-       within reach of both parts is owned by both, so a claim on it is flagged and a person ticks it.
+       question or ambiguous, never left unread (settle) — never placed by the token it shares
+       ("Kestrelvane" past the edge, with "Kestrelvane Interactive" and "Kestrelvane Studio" both live,
+       stays a question). A line within reach of both parts is owned by both, so a claim on it is
+       flagged and a person ticks it. Past-edge lines no stretch reaches are dropped (split_no_reach).
        Never pooled across mentions: a line one mention cited and a word another mention carried,
        elsewhere in the meeting, are not a sighting — so "Zell" grouped with "Vorn Digital" on other lines
        cannot carry Zell on this line onto it. */
@@ -1165,9 +1180,15 @@ export function joinAcrossWindows(
           out.push(placed(r, same[0], "token"));
           continue;
         }
+        const rest = reachOf(r.segments, beyond);
         out.push(placed({ ...r, mention_lines: covered, segments: reachOf(r.segments, covered) }, same[0], "token"));
+        /* Lines past the edge that no stretch of discussion reaches are passing words: like a mention
+           verifySegments drops for no segment, they are nobody's — not the placed account's, and not a
+           card of their own that pass 2 would read with nothing to read. */
+        if (rest.length === 0) { bump(counters, "split_no_reach"); continue; }
         bump(counters, "split_past_edge");
-        r = { ...r, mention_lines: beyond, segments: reachOf(r.segments, beyond) };
+        splitFrom = same[0];
+        r = { ...r, mention_lines: beyond, segments: rest };
       }
     }
 
@@ -1181,6 +1202,26 @@ export function joinAcrossWindows(
       keep(r, r.options.filter((o) => named.has(o)));
       continue;
     }
+
+    /* A split part never ends where pass 2 cannot see it. Left as it was — refused, or unknown — it would
+       own no line (planBatches gives a refused card none) or be listed but never read, and the line past
+       the edge would belong to the placed card alone, its claim pre-ticked: the token deciding identity
+       the split exists to stop. So it becomes a "Who is this?" card (ambiguous, split_past_edge) with the
+       placed account first and every other account its words could mean: it co-owns its reach, a claim
+       on a line both parts reach is flagged, and a person decides. */
+    const settle = (x: MentionResolution, front: string[]): void => {
+      if (splitFrom === null || x.state === "suggested" || x.state === "ambiguous") { keep(x, front); return; }
+      const from = splitFrom;
+      const could: string[] = [from, ...front, ...x.options];
+      for (const s of forms) {
+        const a = local.get(s.key);
+        if (a !== undefined) could.push(a);
+        could.push(...s.options, ...othersFor(s.key, from), ...prefixOf(s.key, from));
+      }
+      const options = could.filter((o, i) => could.indexOf(o) === i && index.accounts.has(o)).slice(0, MAX_OPTIONS);
+      keep({ ...x, state: "ambiguous", account_id: null, matched_on: null, options, reason: "split_past_edge" }, [from]);
+      bump(counters, "split_asked");
+    };
 
     /* unknown, suggested, or refused as an ordinary word */
     const targets: string[] = [];
@@ -1204,7 +1245,7 @@ export function joinAcrossWindows(
       if (hit.length === 0) stray = true;
       for (const o of hit) if (!targets.includes(o)) targets.push(o);
     }
-    if (blocked || stray || targets.length === 0) { keep(r, []); continue; }
+    if (blocked || stray || targets.length === 0) { settle(r, []); continue; }
     const t = targets[0];
     /* A roster suggestion carries a mention only when it is evidence for t ALONE: it offers t and no
        other account, no other live account has its words, and no other account's word starts with it.
@@ -1219,7 +1260,7 @@ export function joinAcrossWindows(
       continue;
     }
     if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(t))) {
-      keep(r, [t]);
+      settle(r, [t]);
       continue;
     }
     const options = [...targets, ...offers.filter((o) => !targets.includes(o))].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);

@@ -4737,17 +4737,27 @@ never attaches below `high` confidence without a person. So the join no longer p
    and review found the case that breaks: "Kestrelvane" past the edge, with two Kestrelvane accounts
    live, landed on the one the overlap named, with its claims pre-ticked. So it is split off with its own
    reach and read as a mention of its own: a question, or ambiguous (`meeting.pass1.split_past_edge`). A
-   line within reach of both parts is owned by both, so a claim on it waits for a person's tick.
+   line within reach of both parts is owned by both, so a claim on it waits for a person's tick. The
+   split part is never left unread. Review found that a part made of ordinary words, one of them shared
+   with another live account, stayed refused, and a refused card owns no line. The line past the edge
+   was then the placed card's alone, its claim pre-ticked. So a part that would stay refused or unknown
+   becomes a "Who is this?" card with the placed account first (`split_asked`). Past-edge lines that no
+   stretch of discussion reaches are dropped (`split_no_reach`), as `verifySegments` drops a mention
+   with no segment.
 3. **A word or prefix two accounts share stays an ambiguous card**, with the meeting's account offered
    first only when every mention on the card was heard outside the windows that named it
    (`offered_first`, counted per card).
 4. **A question card made of ordinary words keeps its spoken name** as its key. Without it, every such
    card in a meeting shared the empty key, which meant one card, one fingerprint and one click for several
    agencies (found in review, 13 Nov). Only the ordinary words go into that key, never a person at the
-   meeting, and never on a resolved card. **And an ordinary word is never learned.** "Remember this name"
+   meeting, and never on a resolved card. One rule (`cardForms`) both groups mentions into cards and
+   names them. When they were two rules, "Orange" heard beside a fragment in one window and alone in
+   another made two cards with one name and one fingerprint, and the database kept only one of them. **And an ordinary word is never learned.** "Remember this name"
    stores a card's key as an alias that later resolves with no person, so `buildRosterIndex` skips a
    learned part that is one ordinary word. Otherwise "orange" learned for one agency would place every
-   later "Orange" on it. The rest of a remembered key is still learned.
+   later "Orange" on it. The rest of a remembered key is still learned. The review screen says so; it
+   cannot yet tell before the click whether a name will be learned. That needs a `learnable` column on
+   the proposal, and it is a follow-up.
 
 **The known limit.** A nickname or a mistranscription ("Vron") that is never said beside the full name
 and is heard only in a window that never heard the name stays its own unknown card: listed, not read. A
