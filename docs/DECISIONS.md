@@ -4699,3 +4699,54 @@ bundle, the webhook's closure changed only in additive code it never calls.
 
 Implementation is in progress. Per the rule that a ruling is applied when the deployed artefact
 contains it, this section says what was ruled, not what runs.
+
+## §66 — A long meeting is read in windows, and a name heard only in part is asked about (13 Nov 2026)
+
+No owner ruling. This is how rule 8 applies once pass 1 reads a meeting in pieces. Basis: reasoned,
+from one measured failure and two review rounds.
+
+**Why windows.** On 12 Nov the first real read of a 93-minute, 878-line meeting never finished. Pass 1
+sent it as one call, under the old 160,000-character cap, and the run's 120 s ceiling stopped that call
+at 119 s every time. The cause is output, not input. Pass 1's reply lists every company mention with its
+lines, so the reply grows with the meeting, and the model writes about 100 tokens a second (measured the
+same day: a 386-line meeting of about 45,000 characters answered in 34 s with 3,400 output tokens). So the
+cap is now set by time. Past 40,000 rendered characters (`PASS1_WINDOW_CHARS`, about 350 lines), pass 1
+reads in windows of at most that, side by side, with consecutive windows sharing 40 lines
+(`PASS1_WINDOW_OVERLAP`) so a discussion on a seam is seen whole. The 878-line meeting becomes four windows
+of about half a minute each, which leaves pass 2 most of the budget. Below the cap, nothing changes: one
+window, one call, the same read as before.
+
+**What windows break, and the rule for it.** One window may hear "Vorn Digital" while a later one hears
+only "Vorn". A single read would group the two; the windows cannot. The first design joined the later
+short form to the account the earlier window named. Two review rounds then kept finding rosters on which
+that join put the team's words on the wrong agency: a word another live account also has, a prefix of two
+accounts' names, a word the naming window had listed apart, an ordinary word the roster shares. Each was
+patched and the next round found another. The join decided identity by a token, and rule 8 says identity
+never attaches below `high` confidence without a person. So the join no longer places:
+
+1. **A short form another window named becomes a "Who is this?" card** (`suggested`, no account) with that
+   account offered first. Pass 2 still reads it, so nothing the team said is lost, and a person places it
+   with one click (`meeting.pass1.suggested_by_name`).
+2. **The one placement is the same sighting**: the later window's mention cites lines that ONE resolved
+   mention in another window also cited, with every one of the same words. Every cited line the naming
+   window could see must be one it cited. Lines past that window's edge it could not have seen, and they
+   stay the later window's own grouping of one company, as a single read would group them
+   (`meeting.pass1.joined_same_lines`). This is the same words on the same lines read twice, not a token
+   deciding identity. Suggesting it instead would make two cards own one line, and pass 2 flags every
+   claim on a line two agencies share.
+3. **A word or prefix two accounts share stays an ambiguous card**, with the meeting's account offered
+   first only when every mention on the card was heard outside the windows that named it
+   (`offered_first`, counted per card).
+4. **A question card made of ordinary words keeps its spoken name** as its key. Without it, every such
+   card in a meeting shared the empty key, which meant one card, one fingerprint and one click for several
+   agencies (found in review, 13 Nov).
+
+**The known limit.** A nickname or a mistranscription ("Vron") that is never said beside the full name
+and is heard only in a window that never heard the name stays its own unknown card: listed, not read. A
+single read could not place it either. The overlap exists to make that rare.
+
+Code: `ingest/meeting_transcript.ts` (`windowsFor`), `ingest/meeting_mentions.ts` (`joinAcrossWindows`,
+`clusterMentions`), `supabase/functions/pb-notes/meetings_pure.ts` (`clusterWindows`), RUNBOOK §33.5.
+Under the rule that a ruling is applied when the deployed artefact contains it, this section is live once
+pb-notes v19, pinned to the merge commit, is deployed and its first dry run has passed the hand check
+(RUNBOOK §33.4).
