@@ -405,21 +405,46 @@ const LINES = [
       JSON.stringify(j.resolutions.map((r) => [r.ref, r.state])));
   }
 
-  /* The same sighting, window-aware (13 Nov 2026): a discussion that starts in the overlap and runs on
-     past the naming window's edge is ONE card. Lines the naming window could see must be ones its mention
-     cited; lines past its edge are the later window's own grouping, as one window's read would group them. */
+  /* The same sighting, window-aware (13 Nov 2026). Lines the naming window could see must be ones its
+     mention cited, and only those are placed. A cited line past its edge is a sighting that window never
+     heard: it is split off with its own reach and read on as a mention of its own — never placed by the
+     token it shares (review of 53249b8). */
   {
     const ranges = [{ from: 1, to: 315 }, { from: 276, to: 589 }];
     const ws = [[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290, 305])], [m("W2.C1", ["Vorn"], [290, 305, 320])]];
     const aware = J(ws, JOIN, ranges);
-    eq("past the overlap: placed, with the windows' ranges", S(at(aware, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
-    eq("…counted as the same sighting", aware.counters, { joined_same_lines: 1 });
-    eq("…ONE card, so no line is owned twice", clusterMentions(aware.resolutions).map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]]]);
+    const parts = aware.resolutions.filter((r) => r.ref === "W2.C1");
+    eq("past the overlap: the lines both windows saw are placed, the line past the edge is asked about",
+      parts.map((r) => [r.state, r.account_id, r.mention_lines, r.segments]),
+      [["resolved", "vorn", [290, 305], [{ from: 288, to: 325 }]], ["suggested", null, [320], [{ from: 315, to: 325 }]]]);
+    eq("…counted: one same sighting, one split, the split part suggested by name", aware.counters, { joined_same_lines: 1, split_past_edge: 1, suggested_by_name: 1 });
+    eq("…two cards: the placed discussion, and a question for the line only the later window heard",
+      clusterMentions(aware.resolutions).map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]], ["suggested", null, ["W2.C1"]]]);
+    const whole = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290, 305])], [m("W2.C1", ["Vorn"], [290, 305])]], JOIN, ranges);
+    eq("all of its lines inside the naming window: placed whole, no split", [S(at(whole, "W2.C1")), whole.counters], [["resolved", "vorn", "name", ["vorn"]], { joined_same_lines: 1 }]);
     eq("…without the ranges, the strict rule: a question card", S(at(J(ws), "W2.C1"))[0], "suggested");
     const unseen = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [m("W2.C1", ["Vorn"], [290, 300, 320])]], JOIN, ranges);
     eq("never: a line the naming window could see but did not cite", S(at(unseen, "W2.C1"))[0], "suggested");
     const none = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [m("W2.C1", ["Vorn"], [400, 420])]], JOIN, ranges);
     eq("never: no line shared with the naming window's mention", S(at(none, "W2.C1"))[0], "suggested");
+
+    /* A token two accounts share, past the edge: the later sighting stays a "Who is this?" card. */
+    const kv = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [280, 290])], [m("W2.C1", ["Kestrelvane"], [290, 500])]], JOIN, ranges);
+    const kvParts = kv.resolutions.filter((r) => r.ref === "W2.C1");
+    eq("a shared token past the edge: the overlap line placed, the far line still ambiguous, the named account first",
+      kvParts.map((r) => [r.state, r.account_id, r.mention_lines, r.options[0]]), [["resolved", "kvs", [290], "kvs"], ["ambiguous", null, [500], "kvs"]]);
+    const kvCards = clusterMentions(kv.resolutions);
+    check("…and no resolved card owns the far line or its reach", kvCards.filter((c) => c.state === "resolved").every((c) =>
+      !c.mention_lines.includes(500) && c.segments.every((g) => g.to < 495)), JSON.stringify(kvCards.map((c) => [c.state, c.account_id, c.segments])));
+
+    /* A word another live account has, past the edge: never carried onto the account the overlap placed. */
+    const VPG = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vpg", "Vorn Partners Group")], people: ["Rep A", "Owner"] });
+    const vp = J([[m("W1.C1", ["Vorn Partners Group"], [100]), m("W1.C2", ["Vorn Digital", "Vorn"], [270, 300])], [m("W2.C1", ["Vorn"], [300, 550])]], VPG, ranges);
+    const vpParts = vp.resolutions.filter((r) => r.ref === "W2.C1");
+    eq("a word two accounts have, past the edge: the overlap line placed, the far line never resolved",
+      vpParts.map((r) => [r.state === "resolved", r.account_id, r.mention_lines]), [[true, "vorn", [300]], [false, null, [550]]]);
+    check("…and no resolved card owns line 550", clusterMentions(vp.resolutions).filter((c) => c.state === "resolved").every((c) =>
+      c.segments.every((g) => g.to < 545)));
   }
 
   /* Question cards born from ordinary words keep their own names (13 Nov 2026): two of them must never
@@ -438,6 +463,35 @@ const LINES = [
     eq("ordinary-word questions: one card each, under their own spoken names", asks.map((c) => [c.said_key, c.options[0]]).sort(), [["orange", "orange"], ["silver", "silver"]]);
     check("…and no card pass 2 reads has an empty name", clusterMentions(j.resolutions).every((c) => c.state === "resolved" || c.state === "refused" || c.state === "unknown" || c.said_key !== ""),
       JSON.stringify(clusterMentions(j.resolutions).map((c) => [c.state, c.said_key])));
+
+    const PPL = buildRosterIndex({
+      accounts: [acct("vorn", "Vorn Digital"), acct("orange", "Orange Wyvernhold")],
+      people: ["Rep A", "Owner", "Dana Example"],
+    });
+    const withPerson = J([[m("W1.C1", ["Orange Wyvernhold", "Orange"], [100, 110])], [], [m("W3.C1", ["Orange", "Dana"], [800])]], PPL);
+    eq("…a person at the meeting never enters a question's name (it would be learned)",
+      clusterMentions(withPerson.resolutions).filter((c) => c.state === "suggested").map((c) => c.said_key), ["orange"]);
+    const placedOrd = J([[m("W1.C1", ["Orange Wyvernhold", "Orange"], [270, 290])], [m("W2.C1", ["Orange"], [290])]], ORD,
+      [{ from: 1, to: 315 }, { from: 276, to: 589 }]);
+    eq("…a same sighting of an ordinary word leaves the resolved card's name as its live forms make it",
+      clusterMentions(placedOrd.resolutions).map((c) => [c.state, c.account_id, c.said_key]), [["resolved", "orange", "orange wyvernhold"]]);
+  }
+
+  /* Remembering a name never teaches an ordinary word (review of 53249b8): a learned alias places with no
+     person, and "orange" learned for one agency would place every later "Orange" on it. The rest of a
+     remembered key is still learned. */
+  {
+    const L = buildRosterIndex({
+      accounts: [acct("vorn", "Vorn Digital"), acct("orange", "Orange Wyvernhold"), acct("ofc", "Orange Fieldcrest")],
+      learned: [{ said_key: "orange", account_id: "orange" }, { said_key: "orange|vornie", account_id: "vorn" }],
+      people: ["Rep A"],
+    });
+    eq("learned: an ordinary word is not learned", [resolveSurface("Orange", L).state, resolveSurface("Orange", L).reason], ["refused", "ordinary_word"]);
+    eq("…the rest of the key is", [resolveSurface("Vornie", L).state, resolveSurface("Vornie", L).account_id, resolveSurface("Vornie", L).matched_on], ["resolved", "vorn", "learned"]);
+    eq("…and another account's full name said beside the word still resolves",
+      [resolveMention({ ref: "C1", as_said: ["Orange Fieldcrest", "Orange"], kind: "agency", segments: [{ from: 1, to: 5 }], mention_lines: [2] }, L).state,
+       resolveMention({ ref: "C1", as_said: ["Orange Fieldcrest", "Orange"], kind: "agency", segments: [{ from: 1, to: 5 }], mention_lines: [2] }, L).account_id],
+      ["resolved", "ofc"]);
   }
 
   /* Window 1, then window 3, by a short form. */

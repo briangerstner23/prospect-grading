@@ -352,7 +352,13 @@ export function buildRosterIndex(input: RosterInput): RosterIndex {
     if (t === null) continue;
     for (const part of String(l.said_key ?? "").split("|")) {
       const k = speechKey(part);
-      if (usable(k)) push(exact, k, { account: t, basis: "learned" });
+      if (!usable(k)) continue;
+      /* A learned name places a mention with no person, so it is never an ordinary word. An account's
+         own ordinary-word alias is only 'weak'; a remembered card key's ordinary word is not learned at
+         all — "orange" learned for one agency would place every later "Orange" on it, and turn
+         "Orange Fieldcrest" said beside "Orange" into a question. The rest of the key is learned. */
+      if (k.split(" ").length === 1 && ordinary(k)) continue;
+      push(exact, k, { account: t, basis: "learned" });
     }
   }
 
@@ -762,12 +768,17 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
     const options: string[] = [];
     for (const m of members) {
       for (const s of m.as_said) if (!said_as.includes(s)) said_as.push(s);
-      /* A refused form names the card only when nothing live does: a refused mention, or one the
-         cross-window join made a question out of ordinary words alone ("Orange" said beside "Orange
-         Wyvernhold" in another window). Without this its key is "" — and every such question in the
-         meeting would share it: one card, one fingerprint, one "Who is this?" click for all of them. */
-      const allRefused = m.surfaces.length > 0 && m.surfaces.every((x) => x.state === "refused");
-      for (const s of m.surfaces) if (s.state !== "refused" || m.state === "refused" || allRefused) keys.push(s.key);
+      /* A refused form names the card only when nothing live does: a refused mention, or a question the
+         cross-window join made out of ordinary words alone ("Orange" said beside "Orange Wyvernhold" in
+         another window). Without this its key is "" — and every such question in the meeting would share
+         it: one card, one fingerprint, one "Who is this?" click for all of them. Only the ordinary words,
+         the ones the join read: never a person at the meeting or our own name, which "Remember this
+         name" would otherwise learn. And never on a resolved card, whose live forms already name it. */
+      const question = m.state !== "resolved" && m.state !== "refused" && m.surfaces.length > 0 &&
+        m.surfaces.every((x) => x.state === "refused");
+      for (const s of m.surfaces) {
+        if (s.state !== "refused" || m.state === "refused" || (question && s.reason === "ordinary_word")) keys.push(s.key);
+      }
       for (const n of m.mention_lines) lines.add(n);
       segs.push(...m.segments.map((s) => ({ ...s })));
       for (const o of m.options) if (!options.includes(o)) options.push(o);
@@ -787,7 +798,7 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
       options: options.slice(0, MAX_OPTIONS),
       reason: head.reason,
       said_as,
-      said_key: saidKeyOf(keys) || head.said_key,
+      said_key: saidKeyOf(keys),
       segments: merged,
       mention_lines,
       first_line: Math.min(merged[0]?.from ?? Infinity, mention_lines[0] ?? Infinity),
@@ -805,7 +816,8 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
 export interface WindowJoin {
   /** Every mention, flat and in window order; the ones another window named suggested, that account first. */
   resolutions: MentionResolution[];
-  /** joined_same_lines (placed) · suggested_by_name · conflicting_names (mentions) · offered_first (cards). */
+  /** joined_same_lines (placed) · split_past_edge (a placed mention's lines past the naming window's edge,
+   *  read on as a mention of their own) · suggested_by_name · conflicting_names (mentions) · offered_first (cards). */
   counters: Record<string, number>;
 }
 
@@ -849,12 +861,15 @@ export interface WindowJoin {
  *   placed by the join.
  *
  * Then, for a mention its own window could not place:
- *   · the same sighting — every line it cites was cited, in another window, by ONE resolved mention
- *     that also carried every one of its forms (the overlap, seen twice): resolved to that mention's
- *     account, whatever its own state, because that other window's model grouped those very words on
- *     those very lines — the ONE case the join PLACES, because it is not a token deciding identity but
- *     the same words on the same lines read twice (suggesting it would make two cards own one line).
- *     Never pooled: lines one mention cited and words another carried are not it;
+ *   · the same sighting — ONE resolved mention in another window carried every one of its forms and
+ *     cited every one of its lines that window could see (the overlap, seen twice): those lines are
+ *     resolved to that mention's account, whatever its own state, because that other window's model
+ *     grouped those very words on those very lines — the ONE case the join PLACES, because it is not a
+ *     token deciding identity but the same words on the same lines read twice (suggesting it would make
+ *     two cards own one line). With the windows' ranges, a cited line past that window's edge — one it
+ *     never heard — is split off with its own reach and goes on below as a mention of its own, so it is
+ *     never placed by the token (split_past_edge). Never pooled: lines one mention cited and words
+ *     another carried are not it;
  *   · unknown, suggested, or refused only as an ordinary word — joined (suggested, that account
  *     first) when every form it has
  *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
@@ -1049,9 +1064,10 @@ export function joinAcrossWindows(
   /* The one exception: the SAME SIGHTING — these very lines, cited in another window by ONE resolved
      mention that carried these very words (the overlap, read twice). That is not a token deciding
      identity: it is another window's model grouping the same words on the same lines with the whole
-     name, as one window's would have. It is placed, on the basis its account was resolved on (never
-     'learned'). Suggesting it instead would make two cards own the same lines, and pass 2 would then
-     flag or refuse every claim on them. */
+     name, as one window's would have. Those lines are placed, on the basis its account was resolved on
+     (never 'learned'); lines past that window's edge are split off and never placed (below). Suggesting
+     the overlap's lines instead would make two cards own them, and pass 2 would then flag every claim
+     on them. */
   const placed = (r: MentionResolution, a: string, own: MatchedOn): MentionResolution =>
     ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? own, options: [a], reason: null });
   const suggest = (r: MentionResolution, a: string, own: MatchedOn): void => {
@@ -1089,7 +1105,21 @@ export function joinAcrossWindows(
     firstFor.set(out.length, front);
     out.push(r);
   };
-  for (const { r, w } of all) {
+  /** The parts of `segs` within reach of `at` (nearMentions' rule), merged where they touch. */
+  const reachOf = (segs: readonly { from: number; to: number }[], at: readonly number[]): Array<{ from: number; to: number }> => {
+    const sorted = [...at].sort((x, y) => x - y);
+    const parts = segs.flatMap((g) => nearMentions(g.from, g.to, sorted)).sort((x, y) => x.from - y.from || x.to - y.to);
+    const merged: Array<{ from: number; to: number }> = [];
+    for (const p of parts) {
+      const prev = merged[merged.length - 1];
+      if (prev && p.from <= prev.to + 1) prev.to = Math.max(prev.to, p.to);
+      else merged.push({ ...p });
+    }
+    return merged;
+  };
+  for (const item of all) {
+    const w = item.w;
+    let r = item.r;
     if (r.state === "resolved") { out.push(r); continue; }
     /** Resolved in another window, and not in this one. */
     const elsewhere = (a: string): boolean => {
@@ -1104,26 +1134,40 @@ export function joinAcrossWindows(
 
     /* The same sighting: the overlap, where ONE resolved mention of another window cited these lines
        AND carried every one of these words. Every cited line THAT WINDOW COULD SEE must be one it cited,
-       and at least one must be; a cited line past the other window's edge it could not have seen, and is
-       this window's own grouping of the one company, as one window's read would group it (a discussion
-       that runs on past the overlap stays ONE card, and no line is owned twice). Never pooled across
-       mentions: a line one mention cited and a word another mention carried, elsewhere in the meeting,
-       are not a sighting — so "Zell" grouped with "Vorn Digital" on other lines cannot carry Zell on this
-       line onto it. */
+       and at least one must be. Only those lines are placed. A cited line past the other window's edge
+       is a sighting that window never heard, grouped by a model that never heard the whole name: it is
+       split off, with the reach of its own lines, and goes on as a mention of its own (below) — a
+       question, ambiguous, or as it was — never placed by the token it shares ("Kestrelvane" past the
+       edge, with "Kestrelvane Interactive" and "Kestrelvane Studio" both live, stays a question). A line
+       within reach of both parts is owned by both, so a claim on it is flagged and a person ticks it.
+       Never pooled across mentions: a line one mention cited and a word another mention carried,
+       elsewhere in the meeting, are not a sighting — so "Zell" grouped with "Vorn Digital" on other lines
+       cannot carry Zell on this line onto it. */
     const seenBy = (n: number, wq: number): boolean => {
       const g = ranges?.[wq];
       return g === undefined || (n >= g.from && n <= g.to);
     };
     if (forms.some((s) => s.state !== "refused" || local.has(s.key)) && r.mention_lines.length > 0) {
-      const same = [...new Set(sightings.filter((q) =>
+      const cur = r;
+      const matches = sightings.filter((q) =>
         q.w !== w && elsewhere(q.a) &&
-        r.mention_lines.some((n) => q.lines.has(n)) &&
-        r.mention_lines.every((n) => q.lines.has(n) || !seenBy(n, q.w)) &&
-        forms.every((s) => q.forms.has(s.key))).map((q) => q.a))];
+        cur.mention_lines.some((n) => q.lines.has(n)) &&
+        cur.mention_lines.every((n) => q.lines.has(n) || !seenBy(n, q.w)) &&
+        forms.every((s) => q.forms.has(s.key)));
+      const same = [...new Set(matches.map((q) => q.a))];
       if (same.length === 1 && !listedApart(same[0], forms)) {
-        out.push(placed(r, same[0], "token"));
+        const seen = new Set<number>();
+        for (const q of matches) for (const n of q.lines) seen.add(n);
+        const covered = r.mention_lines.filter((n) => seen.has(n));
+        const beyond = r.mention_lines.filter((n) => !seen.has(n));
         bump(counters, "joined_same_lines");
-        continue;
+        if (beyond.length === 0) {
+          out.push(placed(r, same[0], "token"));
+          continue;
+        }
+        out.push(placed({ ...r, mention_lines: covered, segments: reachOf(r.segments, covered) }, same[0], "token"));
+        bump(counters, "split_past_edge");
+        r = { ...r, mention_lines: beyond, segments: reachOf(r.segments, beyond) };
       }
     }
 

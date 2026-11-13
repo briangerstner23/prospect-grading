@@ -2731,7 +2731,10 @@ reads, with the account the meeting named offered first (`meeting.pass1.suggeste
 places it with one click. The one placement is the SAME SIGHTING: a short form re-read on the overlap's
 lines, which ONE resolved mention in another window cited with those very words
 (`meeting.pass1.joined_same_lines`) — the same words on the same lines read twice, and two cards owning
-one line would make pass 2 flag every claim on it. A word another live account also has — as a word of
+one line would make pass 2 flag every claim on it. Only the lines the naming window could see are
+placed: a line the same mention cites past that window's edge is split off with its own reach and read
+as a mention of its own — a question, or ambiguous (`meeting.pass1.split_past_edge`) — and a line within
+reach of both parts is owned by both, so a claim on it waits for a person's tick. A word another live account also has — as a word of
 its name, a key, or an option the roster offers — is not even suggested that way, and a token or prefix
 two accounts share stays an ambiguous card with that account offered first (`offered_first`, counted per
 card, and only when every mention of the card was heard outside the windows that named it); a nickname
