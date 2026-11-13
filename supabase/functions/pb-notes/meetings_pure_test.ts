@@ -65,7 +65,7 @@ import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError, parseRep
 import { extractorId, MEETING_PROMPT_VERSION, PROMPT_VERSION } from "../_shared/ingest/notes_sweep.ts";
 import { clockText, PASS1_WINDOW_CHARS, windowsFor } from "../_shared/ingest/meeting_transcript.ts";
 import type { LineRange, TranscriptLine } from "../_shared/ingest/meeting_transcript.ts";
-import { buildRosterIndex } from "../_shared/ingest/meeting_mentions.ts";
+import { buildRosterIndex, verifySegments } from "../_shared/ingest/meeting_mentions.ts";
 import type { MentionCluster } from "../_shared/ingest/meeting_mentions.ts";
 import { planBatches, verifyMeetingClaims } from "../_shared/ingest/meeting_claims.ts";
 
@@ -712,6 +712,41 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   eq("one window: no join counters", one.counters, {});
   eq("one window: one ref per company, the model's own", one.clusters.flatMap((c) => c.sources).sort(), ["C1", "C2", "C3", "C4"]);
   eq("windowMentions: a reply for a window that does not exist is ignored", windowMentions([{ window: 7, lines, value: reply({ from: 1, to: 878 }) }], 4).perWindow.flat(), []);
+
+  /* What verifySegments counted and noted is kept, summed over the windows: meetings.ts files it as
+     pass1.* in the meeting's counts and the run's, and its notes on the meeting. */
+  const entries = (o: Record<string, number>) => Object.entries(o).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const sloppy = (w: LineRange) => ({
+    companies: [
+      ...reply(w).companies.map((c) => ({ ...c, as_said: [...c.as_said, "Vorn Labs"], segments: [{ from: w.from, to: w.to }] })),
+      { ref: "CP", kind: "person", as_said: ["Rep A"], mention_lines: [w.from], segments: [{ from: w.from, to: w.from }] },
+    ],
+  });
+  const whole: LineRange = { from: 1, to: 878 };
+  const solo = verifySegments(sloppy(whole), lines);
+  const soloW = windowMentions([{ window: 0, lines, value: sloppy(whole) }], 1);
+  eq("windowMentions, one window: verifySegments' counters, exactly", entries(soloW.counters), entries(solo.counters));
+  check("…and they are not empty (forms off their line, lines trimmed, a person dropped)",
+    (solo.counters.as_said_not_on_line ?? 0) > 0 && (solo.counters.segment_lines_trimmed ?? 0) > 0 && solo.counters.kind_person === 1 && (solo.counters.mentions_verified ?? 0) > 0,
+    JSON.stringify(solo.counters));
+  const garbled = windowMentions([{ window: 0, lines, value: "no companies here" }], 1);
+  eq("windowMentions, one window: verifySegments' notes, exactly", [garbled.notes, entries(garbled.counters)],
+    [verifySegments("no companies here", lines).notes, entries(verifySegments("no companies here", lines).counters)]);
+  check("…and the note is there", garbled.notes.length === 1 && garbled.counters.unreadable_response === 1);
+
+  const valueOf = (w: LineRange, i: number): unknown => (i === 1 ? "no companies here" : sloppy(w));
+  const linesOf = (w: LineRange) => lines.filter((l) => l.n >= w.from && l.n <= w.to);
+  const several = windowMentions(windows.map((w, i) => ({ window: i, lines: linesOf(w), value: valueOf(w, i) })), windows.length);
+  const sum: Record<string, number> = {};
+  const notes: string[] = [];
+  windows.forEach((w, i) => {
+    const v = verifySegments(valueOf(w, i), linesOf(w));
+    for (const [k, n] of Object.entries(v.counters)) sum[k] = (sum[k] ?? 0) + n;
+    notes.push(...v.notes);
+  });
+  eq("windowMentions, several windows: the per-window counters, summed", entries(several.counters), entries(sum));
+  eq("…and every window's notes, in window order", several.notes, notes);
+  check("…summed, not the last window's", several.counters.kind_person === windows.length - 1 && several.counters.unreadable_response === 1, JSON.stringify(several.counters));
 }
 
 /* ------------------------------------------------------------------ *
@@ -735,6 +770,8 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   /* Pass 1 across windows: verified per window, then resolved, joined across windows and clustered
      by the pure functions §7b pins, never inline. */
   check("meetings.ts verifies pass 1 per window through windowMentions", /const pass1 = windowMentions\(answered, windows\.length\)/.test(mc));
+  check("meetings.ts files pass 1's counters as pass1.* and keeps its notes on the meeting",
+    /addCounters\(here, pass1\.counters, "pass1"\)/.test(mc) && /meetingNotes\.push\(\.\.\.pass1\.notes\)/.test(mc));
   check("meetings.ts clusters pass 1 through clusterWindows (the cross-window join)", /clusterWindows\(pass1\.perWindow, index\)/.test(mc));
   check("meetings.ts never resolves or clusters mentions itself", !/\b(resolveMention|clusterMentions|verifySegments)\(/.test(mc));
   const rpcs = [...mc.matchAll(/\.rpc\("([a-z_]+)"/g)].map((m) => m[1]);
