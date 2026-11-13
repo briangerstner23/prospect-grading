@@ -821,8 +821,9 @@ export interface WindowJoin {
  * apart, and its judgement holds for the same words heard in any other window.
  *
  * Meeting-local keys, each kept only while exactly one account holds it — and NO OTHER live account
- * of the roster has it as a word (or run of words) of its name, holds it as a key, or was offered
- * for it, whether or not this meeting named that account:
+ * of the roster has it (or its de-spaced form) as a word or run of words of any name the index knows
+ * it by (its own, a merged row's, an alias, a learned alias), holds it as a key, or was offered for
+ * it, whether or not this meeting named that account:
  *   · said beside — every form a RESOLVED mention carried beside its resolving name (live forms,
  *     and an ordinary word that is a word of the account's own name: "Orange" beside "Orange
  *     Wyvernhold");
@@ -844,9 +845,11 @@ export interface WindowJoin {
  *   · unknown, suggested, or refused only as an ordinary word — resolved when every form it has
  *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
  *     offers it) and every suggestion offers that account ALONE, in words no other live account's
- *     name has. A suggestion that also offers another account (a prefix of two accounts' tokens), or
- *     whose word another name has, is the roster saying the word is shared: the mention is never
- *     placed, it stays a suggestion with the meeting's account offered first. A form that points
+ *     name has or begins with — and no window that resolved the account listed any of its words
+ *     apart. A suggestion that also offers another account (a prefix of two accounts' tokens), or
+ *     whose word another name has or begins with, is the roster saying the word is shared: the mention
+ *     is never placed, it stays a suggestion with the meeting's account offered first. An ordinary
+ *     word said beside an account that the roster shares points at no one account. A form that points
  *     nowhere ("Vorn Labs") leaves the mention as it was; forms that point at two accounts, or a
  *     suggestion for another account only, make it AMBIGUOUS (conflicting_names) with the meeting's
  *     accounts offered first, as resolveMention does with two names in one entry;
