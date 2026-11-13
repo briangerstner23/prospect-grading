@@ -341,6 +341,16 @@ const LINES = [
     eq("…and the two windows are one card", cl.map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]]]);
   }
   {
+    /* The overlap line carries ANOTHER company too: only the words the other window grouped with the account are its. */
+    const other = J([[m("W1.C1", ["Vorn Digital"], [290])], [m("W2.C1", ["Zell"], [290])]]);
+    eq("the overlap: another company's short form on a line the first window placed is not joined to it", S(at(other, "W2.C1")), ["unknown", null, null, []]);
+    eq("…nothing counted", other.counters, {});
+    const besideToo = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [280, 290])], [m("W2.C1", ["Zell"], [290])]]);
+    eq("…not even when the first window said a short form of its own there", S(at(besideToo, "W2.C1")), ["unknown", null, null, []]);
+    const named = J([[m("W1.C1", ["Vorn Digital"], [290])], [m("W2.C1", ["Zell"], [290])], [m("W3.C1", ["Zell Creative"], [700])]]);
+    eq("…and when the other company is named in full elsewhere, it joins THAT account, not the line's", S(at(named, "W2.C1")), ["resolved", "zell", "name", ["zell"]]);
+  }
+  {
     /* A token two accounts share, re-read in the overlap: the first window grouped those very words on those very lines. */
     const j = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [280, 290])], [m("W2.C1", ["Kestrelvane"], [290])]]);
     eq("the overlap: a shared token on the lines the first window placed is that account", S(at(j, "W2.C1")), ["resolved", "kvs", "name", ["kvs"]]);
