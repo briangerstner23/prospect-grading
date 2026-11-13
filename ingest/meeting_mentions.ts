@@ -851,7 +851,8 @@ export interface WindowJoin {
  * an account goes first only when every mention of the card would put it there, so a card holding a
  * mention its own window listed apart from that account keeps the roster's order.
  * A joined mention takes the basis its account was resolved on in this meeting, never 'learned': no
- * person confirmed it.
+ * person confirmed it. When the account was resolved only on a learned alias, it takes the basis of its
+ * own evidence instead ('token', or the suggestion's own).
  *
  * What it cannot join: a form that is neither a word of the name nor ever said beside it, heard only
  * in a window that never heard the name — a nickname, a mistranscription ("Vron"). That stays its own
@@ -882,9 +883,10 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     const a = r.account_id;
     if (!resolvedIn.has(a)) resolvedIn.set(a, new Set());
     (resolvedIn.get(a) as Set<number>).add(w);
+    /* Never 'learned' (or 'person'): a joined mention's own words were confirmed by nobody. */
     const b = r.matched_on;
     const prev = basisOf.get(a);
-    if (b !== null && (prev === undefined || (BASIS_RANK[b] ?? 9) < (BASIS_RANK[prev] ?? 9))) basisOf.set(a, b);
+    if (b !== null && b !== "learned" && b !== "person" && (prev === undefined || (BASIS_RANK[b] ?? 9) < (BASIS_RANK[prev] ?? 9))) basisOf.set(a, b);
     if (!cited.has(a)) cited.set(a, new Map());
     const lines = cited.get(a) as Map<number, Set<number>>;
     for (const n of r.mention_lines) {
@@ -956,8 +958,15 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     local.set(k, a);
   }
 
-  const placed = (r: MentionResolution, a: string): MentionResolution =>
-    ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? "name", options: [a], reason: null });
+  /* The basis its account was resolved on in this meeting; when that was only a learned alias, the
+     basis of the joined mention's own evidence ('token' for a word of the name or a form said beside
+     it, a suggestion's own basis otherwise) — never 'learned', which says a person confirmed it. */
+  const placed = (r: MentionResolution, a: string, own: MatchedOn): MentionResolution =>
+    ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? own, options: [a], reason: null });
+  const ownBasis = (forms: readonly SurfaceResolution[]): MatchedOn => {
+    const bs = forms.map((s): MatchedOn => (local.has(s.key) || s.matched_on === null || s.matched_on === "learned" || s.matched_on === "person" ? "token" : s.matched_on));
+    return bs.sort((x, y) => (BASIS_RANK[x] ?? 9) - (BASIS_RANK[y] ?? 9))[0] ?? "token";
+  };
 
   const out: MentionResolution[] = [];
   /** Per mention left unplaced as it was: the accounts its own decision would offer first. */
@@ -982,7 +991,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
         r.mention_lines.every((n) => [...(cited.get(a)?.get(n) ?? [])].some((x) => x !== w)) &&
         forms.every((s) => (beside.get(a) as Set<string>).has(s.key)));
       if (same.length === 1) {
-        out.push(placed(r, same[0]));
+        out.push(placed(r, same[0], "token"));
         bump(counters, "joined_same_lines");
         continue;
       }
@@ -1025,7 +1034,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     const solely = (s: SurfaceResolution): boolean =>
       s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0;
     if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || solely(s))) {
-      out.push(placed(r, t));
+      out.push(placed(r, t, ownBasis(forms)));
       bump(counters, "joined_by_name");
       continue;
     }

@@ -502,6 +502,17 @@ const LINES = [
     check("a joined mention never claims a person confirmed it", at(j, "W3.C1").matched_on !== "learned" && at(j, "W3.C1").matched_on !== "person");
     eq("the output keeps window order", j.resolutions.map((r) => r.ref), ["W1.C1", "W3.C1"]);
   }
+  {
+    /* The meeting resolved the account ONLY on a name a person confirmed before. */
+    const LEARNED = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital")], learned: [{ said_key: "vornie", account_id: "vorn" }] });
+    eq("learned precondition: 'Vornie' resolves on a learned alias", [resolveSurface("Vornie", LEARNED).state, resolveSurface("Vornie", LEARNED).matched_on], ["resolved", "learned"]);
+    const j = J([[m("W1.C1", ["Vornie"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], LEARNED);
+    eq("joined where the account was resolved only on a learned alias: placed, on its own evidence, never 'learned'", S(at(j, "W3.C1")), ["resolved", "vorn", "token", ["vorn"]]);
+    const first = J([[m("W1.C1", ["Vorn"], [270])], [], [m("W3.C1", ["Vornie"], [800])]], LEARNED);
+    eq("…and when the joined mention heads the card, the card does not claim a person confirmed it", clusterMentions(first.resolutions).map((c) => [c.account_id, c.matched_on, c.sources]), [["vorn", "token", ["W1.C1", "W3.C1"]]]);
+    const named = J([[m("W1.C1", ["Vornie"], [270]), m("W1.C2", ["Vorn Digital"], [280])], [], [m("W3.C1", ["Vorn"], [800])]], LEARNED);
+    eq("…while a whole name resolved too, it takes that basis", at(named, "W3.C1").matched_on, "name");
+  }
 }
 
 /* ------------------------------------------------------------------ *
