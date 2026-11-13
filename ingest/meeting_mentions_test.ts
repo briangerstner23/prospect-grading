@@ -405,6 +405,49 @@ const LINES = [
       [m("W3.C1", ["Vorn"], [800])],
     ], TWO);
     eq("never: a short form said beside two accounts' names", at(both, "W3.C1").state, "unknown");
+
+    /* Said beside ONE of the two names: the roster still holds the word for the other. */
+    const oneWindow = J([[
+      m("C1", ["Vorn Digital", "Vorn"], [270, 290]), m("C2", ["Vorn Partners Group"], [520]), m("C3", ["Vorn"], [800]),
+    ]], TWO);
+    eq("shared word, one window: the bare 'Vorn' listed apart is unknown", at(oneWindow, "C3").state, "unknown");
+    const otherNamed = J([
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])],
+      [m("W2.C1", ["Vorn Partners Group"], [520])],
+      [m("W3.C1", ["Vorn"], [800])],
+    ], TWO);
+    eq("never: a word said beside one name while another account with that word is named in full elsewhere", S(at(otherNamed, "W3.C1")), ["unknown", null, null, []]);
+    eq("…no counters", otherNamed.counters, {});
+    eq("…two cards: the bare 'Vorn' does not join Vorn Digital's", clusterMentions(otherNamed.resolutions).map((c) => [c.state, c.account_id, c.sources]),
+      [["resolved", "vorn", ["W1.C1"]], ["resolved", "vpg", ["W2.C1"]], ["unknown", null, ["W3.C1"]]]);
+    const sameWindow = J([
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 271])],
+      [],
+      [m("W3.C1", ["Vorn Partners Group"], [790]), m("W3.C2", ["Vorn"], [800])],
+    ], TWO);
+    eq("never: a word said beside one name, heard ten lines after the other account's full name", S(at(sameWindow, "W3.C2")), ["unknown", null, null, []]);
+    const unnamed = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [], [m("W3.C1", ["Vorn"], [800])]], TWO);
+    eq("never: a word said beside one name while another LIVE account has it, named in this meeting or not", at(unnamed, "W3.C1").state, "unknown");
+  }
+  {
+    const ORANGES = buildRosterIndex({ accounts: [acct("ow", "Orange Wyvernhold"), acct("of", "Orange Fieldcrest")] });
+    const j = J([
+      [m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])],
+      [m("W2.C1", ["Orange Fieldcrest"], [520])],
+      [m("W3.C1", ["Orange"], [800])],
+    ], ORANGES);
+    eq("never: an ordinary word of two accounts' names, said beside one of them", [at(j, "W3.C1").state, at(j, "W3.C1").reason, at(j, "W3.C1").account_id], ["refused", "ordinary_word", null]);
+  }
+  {
+    /* One window's model groups another live account's short name with the wrong whole name. */
+    const wrong = J([[m("W1.C1", ["Vorn Digital", "Zell"], [270, 271])], [], [m("W3.C1", ["Zell"], [800])]]);
+    eq("never: a word of another live account's name, grouped by one window with this account", S(at(wrong, "W3.C1")), ["unknown", null, null, []]);
+    const both = J([
+      [m("W1.C1", ["Vorn Digital", "Zell"], [270, 271])],
+      [m("W2.C1", ["Zell Creative"], [500])],
+      [m("W3.C1", ["Zell"], [800])],
+    ]);
+    eq("never: …nor on the account it names, while one window grouped it with another", S(at(both, "W3.C1")), ["unknown", null, null, []]);
   }
   {
     const PREFIX = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vornholt", "Vornholt Studio")] });

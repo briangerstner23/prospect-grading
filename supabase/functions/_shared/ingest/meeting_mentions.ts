@@ -813,15 +813,19 @@ export interface WindowJoin {
  * resolved too (that window's model saw both and kept them apart, as one window's would), so a
  * meeting read in one window comes back unchanged.
  *
- * Meeting-local keys, each kept only while exactly one account of this meeting holds it:
+ * Meeting-local keys, each kept only while exactly one account holds it — and NO OTHER live account
+ * of the roster has it as a word (or run of words) of its name, holds it as a key, or was offered
+ * for it, whether or not this meeting named that account:
  *   · said beside — every form a RESOLVED mention carried beside its resolving name (live forms,
  *     and an ordinary word that is a word of the account's own name: "Orange" beside "Orange
  *     Wyvernhold");
  *   · the account's own short name — the core, or the first word, of a name this meeting resolved,
- *     when it is one word of MIN_KEY_CHARS or more that is not ordinary and that NO OTHER live
- *     account has as a word of its name or holds as a key ("Vorn" of "Vorn Digital");
+ *     when it is one word of MIN_KEY_CHARS or more that is not ordinary ("Vorn" of "Vorn Digital");
  *   never a key the index refuses (our names, placeholders, junk), a word of anyone at the meeting,
- *   a key shorter than MIN_KEY_CHARS, or an account with a poison partner.
+ *   a key shorter than MIN_KEY_CHARS, or an account with a poison partner. So "Vorn" said beside
+ *   "Vorn Digital" is no key while "Vorn Partners Group" is live, and "Zell" grouped by one window
+ *   with "Vorn Digital" is no key while "Zell Creative" is: a word two accounts share is never
+ *   placed by the join.
  *
  * Then, for a mention its own window could not place:
  *   · the same sighting — every line it cites was cited, in another window, by a resolved mention
@@ -861,6 +865,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
   const basisOf = new Map<string, MatchedOn>();
   const cited = new Map<string, Map<number, Set<number>>>(); // account → line → windows
   const beside = new Map<string, Set<string>>(); // account → forms it was said with
+  const offeredWith = new Map<string, Set<string>>(); // such a form → every account the roster offered for it
   for (const { r, w } of all) {
     if (r.state !== "resolved" || !r.account_id || !index.accounts.has(r.account_id)) continue;
     const a = r.account_id;
@@ -880,22 +885,43 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     const words = nameWords(a);
     for (const s of r.surfaces) {
       if (!keyable(s.key)) continue;
-      if (s.state !== "refused" || (ordinaryOf(s) && words.includes(s.key))) forms.add(s.key);
+      if (s.state !== "refused" || (ordinaryOf(s) && words.includes(s.key))) {
+        forms.add(s.key);
+        if (!offeredWith.has(s.key)) offeredWith.set(s.key, new Set());
+        for (const o of s.options) (offeredWith.get(s.key) as Set<string>).add(o);
+      }
     }
   }
 
-  /* The meeting-local keys. */
+  /* The meeting-local keys. The ROSTER holds a key too: every live account that has it as a word, or
+     a run of words, of its name, or that the index holds it for. A key another live account holds is
+     never this meeting's, whichever account the meeting said it beside — so "Vorn", said beside "Vorn
+     Digital", is no key while "Vorn Partners Group" is on the roster, named in this meeting or not;
+     and a word the model grouped with the wrong name ("Zell" beside "Vorn Digital") cannot carry Zell
+     Creative's later discussion onto Vorn Digital's card. */
+  const rosterHolders = new Map<string, string[]>();
+  const othersFor = (k: string, a: string): string[] => {
+    let ids = rosterHolders.get(k);
+    if (ids === undefined) {
+      const set = new Set<string>();
+      const padded = ` ${k} `;
+      for (const acc of index.accounts.values()) if (` ${acc.full} `.includes(padded)) set.add(acc.id);
+      for (const h of [...(index.exact.get(k) ?? []), ...(index.soft.get(k) ?? [])]) set.add(h.account);
+      ids = [...set];
+      rosterHolders.set(k, ids);
+    }
+    return ids.filter((x) => x !== a);
+  };
   const holders = new Map<string, Set<string>>();
   const hold = (k: string, a: string) => {
     if (!holders.has(k)) holders.set(k, new Set());
     (holders.get(k) as Set<string>).add(a);
   };
-  for (const [a, forms] of beside) for (const k of forms) hold(k, a);
-  const wordHolders = new Map<string, Set<string>>();
-  for (const acc of index.accounts.values()) {
-    for (const word of acc.full.split(" ")) {
-      if (!wordHolders.has(word)) wordHolders.set(word, new Set());
-      (wordHolders.get(word) as Set<string>).add(acc.id);
+  for (const [a, forms] of beside) {
+    for (const k of forms) {
+      hold(k, a);
+      for (const b of othersFor(k, a)) hold(k, b);
+      for (const b of offeredWith.get(k) ?? []) hold(k, b);
     }
   }
   for (const a of resolvedIn.keys()) {
@@ -907,8 +933,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     if (words.length >= 2) own.add(words[0]);
     for (const k of own) {
       if (!keyable(k) || !plainWord(k) || ordinary(k)) continue;
-      if ([...(wordHolders.get(k) ?? [])].some((x) => x !== a)) continue;
-      if ([...(index.exact.get(k) ?? []), ...(index.soft.get(k) ?? [])].some((h) => h.account !== a)) continue;
+      if (othersFor(k, a).length > 0) continue;
       hold(k, a);
     }
   }
