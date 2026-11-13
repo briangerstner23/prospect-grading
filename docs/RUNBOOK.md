@@ -2727,8 +2727,8 @@ pass 1 — past 40,000 rendered characters in overlapping windows of at most tha
 windows, a company one window heard only by a short form ("Vorn" for "Vorn Digital") is placed by the
 name another window heard (`meeting.pass1.joined_same_lines` / `joined_by_name`); a word another live
 account also has — as a word of its name, a key, or an option the roster offers — is never placed that
-way, whichever name this meeting said it beside, and a token two accounts share stays a "Who is this?"
-card with that account offered first (`offered_first`); a nickname or mistranscription never said
+way, whichever name this meeting said it beside, and a token or prefix two accounts share stays a "Who
+is this?" card with that account offered first (`offered_first`); a nickname or mistranscription never said
 beside the name stays its own card. The budget
 decides whether a round of calls STARTS; a call that started runs to the ceiling — the run's start +
 120 s, inside both the lease and the gateway's 150 s (§17) — and is stopped there if it has not

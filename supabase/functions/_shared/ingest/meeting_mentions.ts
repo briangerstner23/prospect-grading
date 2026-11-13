@@ -833,10 +833,13 @@ export interface WindowJoin {
  *     whatever its own state, because that other window's model grouped those very words;
  *   · unknown, suggested, or refused only as an ordinary word — resolved when every form it has
  *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
- *     offers it) and every suggestion offers it. A form that points nowhere ("Vorn Labs") leaves the
- *     mention as it was; forms that point at two accounts, or a suggestion for another account, make
- *     it AMBIGUOUS (conflicting_names) with the meeting's accounts offered first, as resolveMention
- *     does with two names in one entry;
+ *     offers it) and every suggestion offers that account ALONE, in words no other live account's
+ *     name has. A suggestion that also offers another account (a prefix of two accounts' tokens), or
+ *     whose word another name has, is the roster saying the word is shared: the mention is never
+ *     placed, it stays a suggestion with the meeting's account offered first. A form that points
+ *     nowhere ("Vorn Labs") leaves the mention as it was; forms that point at two accounts, or a
+ *     suggestion for another account only, make it AMBIGUOUS (conflicting_names) with the meeting's
+ *     accounts offered first, as resolveMention does with two names in one entry;
  *   · ambiguous (a token two accounts share) — never joined: it stays a "Who is this?" card, with the
  *     account this meeting named moved to the front of its options.
  * A joined mention takes the basis its account was resolved on in this meeting, never 'learned': no
@@ -1007,9 +1010,26 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
       for (const o of hit) if (!targets.includes(o)) targets.push(o);
     }
     if (blocked || stray || targets.length === 0) { out.push(r); continue; }
-    if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(targets[0]))) {
-      out.push(placed(r, targets[0]));
+    const t = targets[0];
+    /* A roster suggestion carries a mention only when it is evidence for t ALONE: it offers t and no
+       other account, and no other live account has its words. One that also offers another account
+       (a prefix of two accounts' tokens) or whose word another name has ("Brindlecot" of "Harrow
+       Brindlecot Studio") is the roster saying the word is shared: never placed, t offered first. */
+    const solely = (s: SurfaceResolution): boolean =>
+      s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0;
+    if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || solely(s))) {
+      out.push(placed(r, t));
       bump(counters, "joined_by_name");
+      continue;
+    }
+    if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(t))) {
+      const reordered = [t, ...r.options.filter((o) => o !== t)];
+      if (r.options.includes(t) && reordered.some((o, i) => o !== r.options[i])) {
+        out.push({ ...r, options: reordered });
+        bump(counters, "offered_first");
+      } else {
+        out.push(r);
+      }
       continue;
     }
     const options = [...targets, ...offers.filter((o) => !targets.includes(o))].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);

@@ -450,6 +450,28 @@ const LINES = [
     eq("never: …nor on the account it names, while one window grouped it with another", S(at(both, "W3.C1")), ["unknown", null, null, []]);
   }
   {
+    /* A prefix the roster offers to two accounts is shared, whichever of them this meeting named in full. */
+    const BRINDLES = buildRosterIndex({ accounts: [acct("bh", "Brindlecot Harrow Media"), acct("bw", "Brindlewood Partners")] });
+    eq("shared prefix precondition: 'Brindle' alone suggests both accounts", [resolveSurface("Brindle", BRINDLES).state, resolveSurface("Brindle", BRINDLES).matched_on, resolveSurface("Brindle", BRINDLES).options], ["suggested", "prefix", ["bh", "bw"]]);
+    const one = J([[m("C1", ["Brindlecot Harrow Media"], [120]), m("C2", ["Brindle"], [760])]], BRINDLES);
+    eq("shared prefix, one window: listed apart it stays a suggestion of both", S(at(one, "C2")), ["suggested", null, "prefix", ["bh", "bw"]]);
+    const j = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindle"], [760])]], BRINDLES);
+    eq("never: a prefix two accounts share is placed on the one this meeting named", S(at(j, "W3.C1")), ["suggested", null, "prefix", ["bh", "bw"]]);
+    eq("…nothing joined", j.counters, {});
+    eq("…its own card, still 'Who is this?'", clusterMentions(j.resolutions).map((c) => [c.state, c.account_id, c.sources]), [["resolved", "bh", ["W1.C1"]], ["suggested", null, ["W3.C1"]]]);
+    const other = J([[m("W1.C1", ["Brindlewood Partners"], [120])], [], [m("W3.C1", ["Brindle"], [760])]], BRINDLES);
+    eq("…the account this meeting named is offered first", S(at(other, "W3.C1")), ["suggested", null, "prefix", ["bw", "bh"]]);
+    eq("…counted", other.counters, { offered_first: 1 });
+  }
+  {
+    /* A distinctive word the token index offers to one account, but another live name has it too. */
+    const LATER = buildRosterIndex({ accounts: [acct("bh", "Brindlecot Harrow Media"), acct("hb", "Harrow Brindlecot Studio")] });
+    eq("later-word precondition: 'Brindlecot' alone suggests only the account whose FIRST word it is", [resolveSurface("Brindlecot", LATER).state, resolveSurface("Brindlecot", LATER).options], ["suggested", ["bh"]]);
+    const j = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindlecot"], [760])]], LATER);
+    eq("never: a suggestion whose word another live account's name has", S(at(j, "W3.C1")), ["suggested", null, "token", ["bh"]]);
+    eq("…nothing joined", j.counters, {});
+  }
+  {
     const PREFIX = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vornholt", "Vornholt Studio")] });
     eq("conflict precondition: 'Vorn' alone suggests another account by prefix", [resolveSurface("Vorn", PREFIX).state, resolveSurface("Vorn", PREFIX).options], ["suggested", ["vornholt"]]);
     const j = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], PREFIX);
