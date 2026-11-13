@@ -692,6 +692,12 @@ const LINES = [
     eq("…and when the joined mention heads the card, the card does not claim a person confirmed it", clusterMentions(first.resolutions).map((c) => [c.account_id, c.matched_on, c.sources]), [["vorn", "token", ["W1.C1", "W3.C1"]]]);
     const named = J([[m("W1.C1", ["Vornie"], [270]), m("W1.C2", ["Vorn Digital"], [280])], [], [m("W3.C1", ["Vorn"], [800])]], LEARNED);
     eq("…while a whole name resolved too, it takes that basis", at(named, "W3.C1").matched_on, "name");
+    /* The same sighting, where the account was resolved only on the learned alias. */
+    const sighted = J([[m("W1.C1", ["Vornie", "Vorn"], [318, 320])], [m("W2.C1", ["Vorn"], [320])]], LEARNED);
+    eq("the same sighting of an account resolved only on a learned alias: placed on 'token', never 'learned'", S(at(sighted, "W2.C1")), ["resolved", "vorn", "token", ["vorn"]]);
+    eq("…counted as the same sighting", sighted.counters, { joined_same_lines: 1 });
+    const sightedFirst = J([[m("W1.C1", ["Vorn"], [320])], [m("W2.C1", ["Vornie", "Vorn"], [318, 320])]], LEARNED);
+    eq("…and when it heads the card, the card does not claim a person confirmed it", clusterMentions(sightedFirst.resolutions).map((c) => [c.account_id, c.matched_on, c.sources]), [["vorn", "token", ["W1.C1", "W2.C1"]]]);
   }
 }
 
