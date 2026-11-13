@@ -14,6 +14,7 @@ import {
   clusterMentions,
   domainLabel,
   FILLER_WORDS,
+  joinAcrossWindows,
   MENTION_LEAD_LINES,
   MENTION_REACH_LINES,
   nearMentions,
@@ -284,6 +285,138 @@ const LINES = [
   eq("a refused form beside a good one does not spoil it", [mixed.state, mixed.account_id, mixed.said_key], ["resolved", "quill", "quillfern"]);
   const conflict = resolveMention({ ref: "C1", as_said: ["Quillfern", "Bluebarrow Ashgrove"], kind: "agency", segments: [{ from: 1, to: 1 }], mention_lines: [1] }, INDEX);
   eq("two accounts named in one mention → ambiguous", [conflict.state, conflict.options], ["ambiguous", ["quill", "blue"]]);
+}
+
+/* ------------------------------------------------------------------ *
+ * 5 · one company across pass-1 windows: joinAcrossWindows
+ *
+ * A long meeting goes to pass 1 in overlapping windows, each a call that sees only its own lines.
+ * One window puts "Vorn Digital" and "Vorn" in one entry; a window that only hears "Vorn" cannot.
+ * These pin what is joined back, and — as much — what is not. All names INVENTED.
+ * ------------------------------------------------------------------ */
+
+{
+  const JOIN = buildRosterIndex({
+    accounts: [
+      acct("vorn", "Vorn Digital"),
+      acct("zell", "Zell Creative"),
+      acct("orange", "Orange Wyvernhold"),
+      acct("kvi", "Kestrelvane Interactive"),
+      acct("kvs", "Kestrelvane Studio"),
+      acct("bh", "Brindlecot Harrow Media"),
+    ],
+    people: ["Rep A", "Owner"],
+  });
+  const m = (ref: string, as_said: string[], lines: number[]): VerifiedMention => ({
+    ref, as_said, kind: "agency",
+    segments: [{ from: Math.min(...lines) - 2, to: Math.max(...lines) + 5 }],
+    mention_lines: [...lines].sort((a, b) => a - b),
+  });
+  const res = (mm: VerifiedMention, idx = JOIN): MentionResolution => resolveMention(mm, idx);
+  const J = (ws: VerifiedMention[][], idx = JOIN) => joinAcrossWindows(ws.map((w) => w.map((mm) => res(mm, idx))), idx);
+  const at = (j: { resolutions: MentionResolution[] }, ref: string) => j.resolutions.find((r) => r.ref === ref) as MentionResolution;
+  const S = (r: MentionResolution) => [r.state, r.account_id, r.matched_on, r.options];
+
+  /* The short forms on their own: none of them resolves, so a window that hears only it cannot place it. */
+  eq("join precondition: 'Vorn' alone is unknown (one word under the token length)", [resolveSurface("Vorn", JOIN).state], ["unknown"]);
+  eq("join precondition: 'Zell' alone is unknown", resolveSurface("Zell", JOIN).state, "unknown");
+  eq("join precondition: 'Orange' alone is an ordinary word", [resolveSurface("Orange", JOIN).state, resolveSurface("Orange", JOIN).reason], ["refused", "ordinary_word"]);
+  eq("join precondition: 'Brindlecot' alone only suggests", [resolveSurface("Brindlecot", JOIN).state, resolveSurface("Brindlecot", JOIN).options], ["suggested", ["bh"]]);
+  eq("join precondition: 'Kestrelvane' alone is shared by two accounts", [resolveSurface("Kestrelvane", JOIN).state, resolveSurface("Kestrelvane", JOIN).options], ["ambiguous", ["kvi", "kvs"]]);
+
+  /* One window: nothing is joined, whatever the model listed apart. */
+  {
+    const one = [[m("C1", ["Vorn Digital", "Vorn"], [270, 290]), m("C2", ["Vorn"], [600])]];
+    const j = J(one);
+    eq("one window comes back exactly as resolveMention gave it", j.resolutions, one[0].map((mm) => res(mm)));
+    eq("…with no counters", j.counters, {});
+  }
+
+  /* Across a seam / in the overlap: the second window re-reads lines the first one already placed. */
+  {
+    const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290, 305])], [m("W2.C1", ["Vorn"], [290, 305])]]);
+    eq("the overlap: 'Vorn' on lines the first window placed beside 'Vorn Digital' is joined", S(at(j, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+    eq("…counted as the same sighting", j.counters, { joined_same_lines: 1 });
+    const cl = clusterMentions(j.resolutions);
+    eq("…and the two windows are one card", cl.map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]]]);
+  }
+  {
+    /* A token two accounts share, re-read in the overlap: the first window grouped those very words on those very lines. */
+    const j = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [280, 290])], [m("W2.C1", ["Kestrelvane"], [290])]]);
+    eq("the overlap: a shared token on the lines the first window placed is that account", S(at(j, "W2.C1")), ["resolved", "kvs", "name", ["kvs"]]);
+  }
+
+  /* Window 1, then window 3, by a short form. */
+  {
+    const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [], [m("W3.C1", ["Vorn"], [800, 805])]]);
+    eq("window 1 → 3: 'Vorn', said beside the name in window 1, is joined in window 3", S(at(j, "W3.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+    eq("…counted as joined by name", j.counters, { joined_by_name: 1 });
+    eq("…one card with both discussions", clusterMentions(j.resolutions).map((c) => [c.account_id, c.segments]), [["vorn", [{ from: 268, to: 295 }, { from: 798, to: 810 }]]]);
+  }
+  {
+    const j = J([[m("W1.C1", ["Zell Creative"], [100])], [], [m("W3.C1", ["Zell"], [700])]]);
+    eq("window 1 → 3: the account's own short name joins though window 1 never said it alone", S(at(j, "W3.C1")), ["resolved", "zell", "name", ["zell"]]);
+  }
+  {
+    const j = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindlecot"], [760])]]);
+    eq("window 1 → 3: a distinctive token that only suggested the account this meeting named is joined", S(at(j, "W3.C1")), ["resolved", "bh", "name", ["bh"]]);
+  }
+  {
+    const beside = J([[m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])], [], [m("W3.C1", ["Orange"], [750])]]);
+    eq("window 1 → 3: an ordinary word of the name, said beside it, is joined", S(at(beside, "W3.C1")), ["resolved", "orange", "name", ["orange"]]);
+    const never = J([[m("W1.C1", ["Orange Wyvernhold"], [400])], [], [m("W3.C1", ["Orange"], [750])]]);
+    eq("…but an ordinary word never said beside the name stays refused", [at(never, "W3.C1").state, at(never, "W3.C1").reason], ["refused", "ordinary_word"]);
+  }
+  {
+    const j = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [150, 152])], [], [m("W3.C1", ["Kestrelvane"], [720])]]);
+    eq("window 1 → 3: a token two accounts share is never joined — it stays 'Who is this?'", [at(j, "W3.C1").state, at(j, "W3.C1").account_id], ["ambiguous", null]);
+    eq("…with the account this meeting named offered first", at(j, "W3.C1").options, ["kvs", "kvi"]);
+    eq("…counted", j.counters, { offered_first: 1 });
+  }
+
+  /* What is never joined. */
+  {
+    const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [], [m("W3.C1", ["Vron"], [800])]]);
+    eq("never: a mistranscription heard only in a later window (the known limit) stays unknown", S(at(j, "W3.C1")), ["unknown", null, null, []]);
+  }
+  {
+    const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [], [m("W3.C1", ["Vorn Labs", "Vorn"], [800, 801])]]);
+    eq("never: a mention with a form that points nowhere ('Vorn Labs') stays as it was", at(j, "W3.C1").state, "unknown");
+  }
+  {
+    const j = J([
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])],
+      [m("W2.C1", ["Vorn Digital"], [400]), m("W2.C2", ["Vorn"], [500])],
+    ]);
+    eq("never: a form its own window listed apart from the account it placed", at(j, "W2.C2").state, "unknown");
+  }
+  {
+    const PEOPLE = buildRosterIndex({ accounts: [acct("zell", "Zell Creative")], people: ["Rep A", "Rik Zell"] });
+    const j = J([[m("W1.C1", ["Zell Creative", "Zell"], [100, 101])], [], [m("W3.C1", ["Zell"], [700])]], PEOPLE);
+    eq("never: a word of anyone at the meeting", [at(j, "W3.C1").state, at(j, "W3.C1").reason], ["refused", "person"]);
+  }
+  {
+    const TWO = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vpg", "Vorn Partners Group")] });
+    const own = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], TWO);
+    eq("never: an own short name another live account also has as a word", at(own, "W3.C1").state, "unknown");
+    const both = J([
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 271])],
+      [m("W2.C1", ["Vorn Partners Group", "Vorn"], [400, 401])],
+      [m("W3.C1", ["Vorn"], [800])],
+    ], TWO);
+    eq("never: a short form said beside two accounts' names", at(both, "W3.C1").state, "unknown");
+  }
+  {
+    const PREFIX = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vornholt", "Vornholt Studio")] });
+    eq("conflict precondition: 'Vorn' alone suggests another account by prefix", [resolveSurface("Vorn", PREFIX).state, resolveSurface("Vorn", PREFIX).options], ["suggested", ["vornholt"]]);
+    const j = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], PREFIX);
+    eq("conflict: a roster suggestion for another account → ambiguous, this meeting's account first", [at(j, "W3.C1").state, at(j, "W3.C1").options, at(j, "W3.C1").reason], ["ambiguous", ["vorn", "vornholt"], "conflicting_names"]);
+  }
+  {
+    const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [], [m("W3.C1", ["Vorn"], [800])]]);
+    check("a joined mention never claims a person confirmed it", at(j, "W3.C1").matched_on !== "learned" && at(j, "W3.C1").matched_on !== "person");
+    eq("the output keeps window order", j.resolutions.map((r) => r.ref), ["W1.C1", "W3.C1"]);
+  }
 }
 
 /* ------------------------------------------------------------------ *

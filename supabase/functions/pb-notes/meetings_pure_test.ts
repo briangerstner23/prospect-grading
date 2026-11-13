@@ -26,6 +26,7 @@ import {
   ceilingStops,
   ceilingVerdict,
   CLAIMABLE_STATUSES,
+  clusterWindows,
   DEFAULT_BUDGET_MS,
   emptyUsage,
   failureKind,
@@ -55,12 +56,18 @@ import {
   SNAPSHOT_READ_SELECT,
   snapshotReadOf,
   storedClusters,
+  windowMentions,
   withCeilingStops,
   WRITE_MARGIN_MS,
 } from "./meetings_pure.ts";
-import type { InboxLightRow, NewRecording, RegisteredMeeting } from "./meetings_pure.ts";
+import type { InboxLightRow, NewRecording, RegisteredMeeting, WindowReply } from "./meetings_pure.ts";
 import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError, parseReplyJson, replyText, usageOf } from "./extractor.ts";
 import { extractorId, MEETING_PROMPT_VERSION, PROMPT_VERSION } from "../_shared/ingest/notes_sweep.ts";
+import { clockText, PASS1_WINDOW_CHARS, windowsFor } from "../_shared/ingest/meeting_transcript.ts";
+import type { LineRange, TranscriptLine } from "../_shared/ingest/meeting_transcript.ts";
+import { buildRosterIndex } from "../_shared/ingest/meeting_mentions.ts";
+import type { MentionCluster } from "../_shared/ingest/meeting_mentions.ts";
+import { planBatches, verifyMeetingClaims } from "../_shared/ingest/meeting_claims.ts";
 
 let passed = 0;
 const failures: string[] = [];
@@ -566,6 +573,148 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
 }
 
 /* ------------------------------------------------------------------ *
+ * 7b · pass 1 across windows: the 12 Nov shape, end to end
+ *
+ * The 878-line meeting goes to pass 1 in four overlapping windows. A model that answers faithfully
+ * lists, per window, the companies it can SEE there, with the forms said in that window. The windowed
+ * read must give the cards — and pass 2 the lines — that one window over the whole meeting gives.
+ * Agencies INVENTED; speakers S1..S5.
+ * ------------------------------------------------------------------ */
+
+{
+  const say: Record<number, string> = {};
+  /** A company: its forms, the lines each is said on, and the stretches the team discussed it. */
+  interface Co { forms: Record<number, string[]>; segments: LineRange[] }
+  const cos: Record<string, Co> = {
+    // Across the seam of windows 1 and 2: named in window 1 only, the short form in the overlap, the tier call in window 2 only.
+    vorn: { forms: { 268: ["Vorn Digital"], 290: ["Vorn"], 305: ["Vorn"] }, segments: [{ from: 266, to: 325 }] },
+    // Named in full in window 1, then — 600 lines on — only by its short form, in window 3.
+    zell: { forms: { 100: ["Zell Creative"], 700: ["Zell"] }, segments: [{ from: 98, to: 106 }, { from: 698, to: 706 }] },
+    // Named in the overlap of windows 2 and 3, decided in window 3 by its first word alone, and back in window 4 only by it.
+    bh: { forms: { 560: ["Brindlecot Harrow Media"], 575: ["Brindlecot"], 600: ["Brindlecot"], 870: ["Brindlecot"] }, segments: [{ from: 558, to: 606 }, { from: 868, to: 876 }] },
+    // A token two accounts share: named in window 1, then alone in window 3.
+    kvs: { forms: { 150: ["Kestrelvane Studio"], 152: ["Kestrelvane"], 720: ["Kestrelvane"] }, segments: [{ from: 148, to: 156 }, { from: 718, to: 724 }] },
+  };
+  say[268] = "Next up is Vorn Digital, they asked us for a quote on the new site last week.";
+  say[290] = "Vorn said the budget is about fifteen thousand a month for the whole build.";
+  say[305] = "I think Vorn is a strong fit for the partner tier, they build every month.";
+  say[320] = "So that makes them silver for now, they are a silver for me on what we know.";
+  say[100] = "Zell Creative came in through the referral, three people and a lot of build work.";
+  say[700] = "Back to Zell, they went quiet on us, take them off the board for now please.";
+  say[560] = "Brindlecot Harrow Media are back, they want the retainer we talked about.";
+  say[575] = "Brindlecot think the retainer can start next quarter, which is good news.";
+  say[600] = "So Brindlecot is a gold for me now, they are a gold on every count we have.";
+  say[870] = "Brindlecot signed the retainer, so we can plan the first build with them.";
+  say[150] = "Kestrelvane Studio sent the brief over, two sites and a web app this year.";
+  say[152] = "Kestrelvane want it fixed price, they are a careful buyer on every quote.";
+  say[720] = "Kestrelvane came up again on the call, they asked about the app timeline.";
+  const lines: TranscriptLine[] = Array.from({ length: 878 }, (_, i) => ({
+    n: i + 1, at: clockText(i * 6), seconds: i * 6, speaker: `S${(i % 5) + 1}`,
+    text: say[i + 1] ?? `Line ${i + 1}: we went through the agency's pipeline, the open quote and what they asked for on the last call.`,
+  }));
+  const index = buildRosterIndex({
+    accounts: [
+      { id: "vorn", name: "Vorn Digital", book: "prospect" },
+      { id: "zell", name: "Zell Creative", book: "prospect" },
+      { id: "bh", name: "Brindlecot Harrow Media", book: "prospect" },
+      { id: "kvi", name: "Kestrelvane Interactive", book: "prospect" },
+      { id: "kvs", name: "Kestrelvane Studio", book: "prospect" },
+    ],
+    people: ["Rep A", "Owner"],
+  });
+
+  /** What a faithful pass 1 answers for a window: every company seen in it, its forms said in it, its stretches clipped to it. */
+  const reply = (w: LineRange) => ({
+    companies: Object.values(cos).flatMap((co, i) => {
+      const seen = Object.keys(co.forms).map(Number).filter((n) => n >= w.from && n <= w.to);
+      if (seen.length === 0) return [];
+      return [{
+        ref: `C${i + 1}`, kind: "agency",
+        as_said: [...new Set(seen.flatMap((n) => co.forms[n]))],
+        mention_lines: seen,
+        segments: co.segments.map((g) => ({ from: Math.max(g.from, w.from), to: Math.min(g.to, w.to) })).filter((g) => g.from <= g.to),
+      }];
+    }),
+  });
+  const read = (ws: LineRange[]) => {
+    const replies: WindowReply[] = ws.map((w, i) => ({ window: i, lines: lines.filter((l) => l.n >= w.from && l.n <= w.to), value: reply(w) }));
+    const p1 = windowMentions(replies, ws.length);
+    return { ...clusterWindows(p1.perWindow, index), perWindow: p1.perWindow };
+  };
+  const windows = windowsFor(lines);
+  const inW = (n: number) => windows.map((w, i) => (n >= w.from && n <= w.to ? i + 1 : 0)).filter(Boolean);
+
+  /* The shape the walks need: the default windows, and each line where the walk says it is. */
+  check("windows: the 12 Nov shape is four windows under the default cap", windows.length === 4 && PASS1_WINDOW_CHARS === 40000, JSON.stringify(windows));
+  eq("windows: the seam walk — named in window 1 only, short form in the overlap, tier call in window 2 only",
+    [inW(268), inW(290), inW(305), inW(320)], [[1], [1, 2], [1, 2], [2]]);
+  eq("windows: the window 1 → 3 walk", [inW(100), inW(700)], [[1], [3]]);
+  eq("windows: the overlap walk — named where windows 2 and 3 overlap, decided in window 3 only, back in window 4 only",
+    [inW(560), inW(575), inW(600), inW(870)], [[2, 3], [2, 3], [3], [4]]);
+  eq("windows: the shared token — named in window 1, alone in window 3", [inW(150), inW(720)], [[1], [3]]);
+
+  const one = read([{ from: 1, to: 878 }]);
+  const many = read(windows);
+  const card = (cl: MentionCluster[], acct: string) => cl.find((c) => c.state === "resolved" && c.account_id === acct);
+
+  /* Before the join, the windows alone leave the short forms unplaced: this is what the join repairs. */
+  const unplaced = many.perWindow.flat().filter((mm) => mm.as_said.every((s) => ["Vorn", "Zell", "Brindlecot", "Kestrelvane"].includes(s)));
+  eq("windows: three windows hear a company only by a short form that does not resolve alone", unplaced.map((mm) => mm.ref).sort(), ["W2.C1", "W3.C2", "W3.C4", "W4.C3"]);
+
+  for (const acct of ["vorn", "zell", "bh"]) {
+    const a = card(one.clusters, acct);
+    const b = card(many.clusters, acct);
+    check(`one card per company, read in windows (${acct})`, many.clusters.filter((c) => c.account_id === acct).length === 1 && b !== undefined);
+    eq(`…with the stretches one window gives it (${acct})`, b?.segments, a?.segments);
+    eq(`…placed on the same basis (${acct})`, b?.matched_on, a?.matched_on);
+  }
+  eq("no unknown or refused card is left for a company in the book", many.clusters.filter((c) => c.state === "unknown" || c.state === "refused").map((c) => c.said_as), []);
+  eq("counters: the joins are counted", many.counters, { joined_same_lines: 1, joined_by_name: 2, offered_first: 1 });
+
+  /* The shared token stays a person's call in window 3 — the meeting's account offered first. */
+  const kv = many.clusters.filter((c) => c.said_key === "kestrelvane" && c.state === "ambiguous");
+  eq("the shared token alone in window 3 stays 'Who is this?', the account this meeting named first", kv.map((c) => [c.options, c.segments]), [[["kvs", "kvi"], [{ from: 718, to: 724 }]]]);
+  eq("…while the card for the account keeps what window 1 placed", card(many.clusters, "kvs")?.segments, [{ from: 148, to: 156 }]);
+
+  /* Pass 2 over the windowed cards: every claim on a company's own lines is kept, clean. */
+  const plan = planBatches(many.clusters, lines);
+  const refOf = (acct: string) => (card(many.clusters, acct) as MentionCluster).ref;
+  const claimsFor: Record<string, unknown[]> = {
+    vorn: [
+      { type: "read", topic: "fit", quote: say[305], line_from: 305, line_to: 305, mode: "asserted", confidence: "high" },
+      { type: "tier_call", tier: "Silver", code: "relationship_known", quote: say[320], line_from: 320, line_to: 320, mode: "asserted", confidence: "high" },
+    ],
+    zell: [{ type: "removal", disposition: "unqualified", code: "not_a_fit", quote: say[700], line_from: 700, line_to: 700, mode: "asserted", confidence: "high" }],
+    bh: [
+      { type: "tier_call", tier: "Gold", code: "relationship_known", quote: say[600], line_from: 600, line_to: 600, mode: "asserted", confidence: "high" },
+      { type: "read", topic: "next_step", quote: say[870], line_from: 870, line_to: 870, mode: "asserted", confidence: "high" },
+    ],
+    kvs: [{ type: "read", topic: "price", quote: say[152], line_from: 152, line_to: 152, mode: "asserted", confidence: "high" }],
+  };
+  const kept: string[] = [];
+  const counters: Record<string, number> = {};
+  for (const b of plan.batches) {
+    const claims = b.items.flatMap((it) => (it.account_id ? (claimsFor[it.account_id] ?? []).map((c) => ({ ...(c as object), ref: it.ref })) : []));
+    const v = verifyMeetingClaims({ claims }, {
+      lines, batch: b, owners: plan.owners, tiers: ["Bronze", "Silver", "Gold"], overrideCodes: ["relationship_known"],
+      removalReasons: [{ disposition: "unqualified", code: "not_a_fit", active: true }],
+    });
+    addCounters(counters, v.counters);
+    for (const c of v.claims) kept.push(`${c.ref}:${c.type}@${c.line_from}${c.flags.length ? JSON.stringify(c.flags) : ""}`);
+  }
+  eq("pass 2: every claim on a company's own lines is kept, none flagged shared_segment", kept.sort(), [
+    `${refOf("bh")}:tier_call@600`, `${refOf("bh")}:read@870`, `${refOf("kvs")}:read@152`, `${refOf("vorn")}:read@305`, `${refOf("vorn")}:tier_call@320`, `${refOf("zell")}:removal@700`,
+  ].sort());
+  eq("pass 2: no claim is refused for another agency's lines or for lying outside its card", [counters.other_agency_lines ?? 0, counters.outside_segment ?? 0], [0, 0]);
+  check("pass 2: the removal said by the short form in window 3 reaches the account's card", kept.includes(`${refOf("zell")}:removal@700`));
+
+  /* One window is not joined at all: exactly what clusterMentions(resolveMention) gave before windows. */
+  eq("one window: no join counters", one.counters, {});
+  eq("one window: one ref per company, the model's own", one.clusters.flatMap((c) => c.sources).sort(), ["C1", "C2", "C3", "C4"]);
+  eq("windowMentions: a reply for a window that does not exist is ignored", windowMentions([{ window: 7, lines, value: reply({ from: 1, to: 878 }) }], 4).perWindow.flat(), []);
+}
+
+/* ------------------------------------------------------------------ *
  * 8 · the orchestration, pinned by text
  * ------------------------------------------------------------------ */
 
@@ -583,6 +732,11 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
     "pb_meeting_proposals", "pb_meetings", "pb_runs", "pb_source_watermarks",
   ]);
   check("meetings.ts never deletes", !/\.delete\(/.test(mc));
+  /* Pass 1 across windows: verified per window, then resolved, joined across windows and clustered
+     by the pure functions §7b pins, never inline. */
+  check("meetings.ts verifies pass 1 per window through windowMentions", /const pass1 = windowMentions\(answered, windows\.length\)/.test(mc));
+  check("meetings.ts clusters pass 1 through clusterWindows (the cross-window join)", /clusterWindows\(pass1\.perWindow, index\)/.test(mc));
+  check("meetings.ts never resolves or clusters mentions itself", !/\b(resolveMention|clusterMentions|verifySegments)\(/.test(mc));
   const rpcs = [...mc.matchAll(/\.rpc\("([a-z_]+)"/g)].map((m) => m[1]);
   eq("meetings.ts calls one function: the supersession", [...new Set(rpcs)], ["pb_meeting_supersede"]);
   check("meetings.ts upserts proposals on the fingerprint, ignoring duplicates", /pb_meeting_proposals"\)\s*\.upsert\(rows, \{ onConflict: "fingerprint", ignoreDuplicates: true \}\)/.test(mc));

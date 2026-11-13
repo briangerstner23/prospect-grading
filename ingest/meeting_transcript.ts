@@ -443,7 +443,9 @@ export interface LineRange {
  * that had not answered when the run's ceiling stopped it at 119 s — every time, so it could never
  * be read. 40,000 characters (about 350 lines) keeps each call near half a minute, leaves pass 2
  * most of the budget, and the windows of a long meeting run side by side; their overlap (below)
- * sees a discussion on a seam whole, and clusterMentions merges a company seen in two windows.
+ * sees a discussion on a seam whole. A window that hears a company only by a short form ("Vorn" for
+ * "Vorn Digital") cannot place it alone; meeting_mentions.joinAcrossWindows places it by the name
+ * another window heard, before clusterMentions makes one card per account.
  */
 export const PASS1_WINDOW_CHARS = 40000;
 /** Consecutive pass-1 windows share this many lines, so a discussion on the seam is seen whole. */

@@ -20,8 +20,10 @@
  *                 an update that matches only while read_started_at is free.
  *   3. PASS 1     one call over the numbered transcript (windows of PASS1_WINDOW_CHARS, ~40k, side by side past that): which
  *                 companies were discussed, in the words as said, on which lines. verifySegments
- *                 keeps a name only on a line it was cited for.
- *   4. RESOLVE    in code, never by the model: buildRosterIndex / resolveMention / clusterMentions.
+ *                 keeps a name only on a line it was cited for (windowMentions, per window).
+ *   4. RESOLVE    in code, never by the model: buildRosterIndex, then clusterWindows — resolveMention,
+ *                 joinAcrossWindows (a company one window heard only by a short form, placed by the
+ *                 name another window heard), clusterMentions.
  *                 Stored in pb_meetings.mentions; the meeting is 'reading'.
  *   5. PASS 2     four agencies to a call, each seeing ONLY its own lines, up to six calls at once,
  *                 round by round inside the budget. verifyMeetingClaims refuses a quote that is not
@@ -71,7 +73,7 @@ import type { DbLike, Rec } from "../_shared/helpers.ts";
 import { extractorId, isPastCursor, MEETING_PROMPT_VERSION } from "../_shared/ingest/notes_sweep.ts";
 import { MEETING_SOURCE, renderLines, transcriptLines, windowsFor } from "../_shared/ingest/meeting_transcript.ts";
 import type { TitleRule } from "../_shared/ingest/meeting_transcript.ts";
-import { buildRosterIndex, clusterMentions, resolveMention, verifySegments } from "../_shared/ingest/meeting_mentions.ts";
+import { buildRosterIndex } from "../_shared/ingest/meeting_mentions.ts";
 import type {
   JunkRow,
   LearnedAlias,
@@ -80,7 +82,6 @@ import type {
   MentionCluster,
   PoisonPair,
   RosterAccount,
-  VerifiedMention,
 } from "../_shared/ingest/meeting_mentions.ts";
 import {
   claimsMessage,
@@ -112,6 +113,7 @@ import {
   ceilingStops,
   ceilingVerdict,
   CLAIMABLE_STATUSES,
+  clusterWindows,
   emptyUsage,
   failureKind,
   failureNote,
@@ -135,9 +137,18 @@ import {
   SNAPSHOT_READ_SELECT,
   snapshotReadOf,
   storedClusters,
+  windowMentions,
   withCeilingStops,
 } from "./meetings_pure.ts";
-import type { InboxLightRow, MeetingOptions, MeetingProgress, MeetingUsage, RegisteredMeeting, RegistrationPlan } from "./meetings_pure.ts";
+import type {
+  InboxLightRow,
+  MeetingOptions,
+  MeetingProgress,
+  MeetingUsage,
+  RegisteredMeeting,
+  RegistrationPlan,
+  WindowReply,
+} from "./meetings_pure.ts";
 
 export interface MeetingDeps {
   /** The standing model when neither the body nor PB_EXTRACTOR_MODEL names one. */
@@ -661,7 +672,8 @@ async function readMeeting(
     }
     here["ms.pass1"] = Date.now() - t1;
 
-    const mentions: VerifiedMention[] = [];
+    /* replies[i] is windows[i]: rounds run in order and Promise.all keeps it. */
+    const answered: WindowReply[] = [];
     let failed: unknown = null;
     for (const [i, x] of replies.entries()) {
       charge(run, spend, x.out);
@@ -678,13 +690,12 @@ async function readMeeting(
         }
         continue;
       }
-      const v = verifySegments(x.out.r.value, x.lines);
-      addCounters(here, v.counters, "pass1");
-      meetingNotes.push(...v.notes);
-      /* Two windows each number their companies from C1; the window keeps them apart. Mentions of
-         one company seen in both are merged by clusterMentions like any other repeat. */
-      for (const mm of v.mentions) mentions.push(windows.length > 1 ? { ...mm, ref: `W${i + 1}.${mm.ref}` } : mm);
+      answered.push({ window: i, lines: x.lines, value: x.out.r.value });
     }
+    /* Each window numbers its companies from C1; windowMentions keeps them apart (W2.C1). */
+    const pass1 = windowMentions(answered, windows.length);
+    addCounters(here, pass1.counters, "pass1");
+    meetingNotes.push(...pass1.notes);
 
     if (run.halted !== null) {
       run.notes.push(`HALTED — ${run.halted}. ${rid} goes back to waiting; nothing was marked read.`);
@@ -724,7 +735,9 @@ async function readMeeting(
 
     /* Resolve in code. The roster never reaches the model. */
     const index = await rosterIndex(db, meetingPeople((inbox as Rec).calendar_invitees, (inbox as Rec).recorded_by, tl.speakers));
-    clusters = clusterMentions(mentions.map((mm) => resolveMention(mm, index)));
+    const joined = clusterWindows(pass1.perWindow, index);
+    clusters = joined.clusters;
+    addCounters(here, joined.counters, "pass1");
     addCounters(here, mentionCounts(clusters));
     progress = { done_refs: [], failed_refs: [] };
     settledHere++;

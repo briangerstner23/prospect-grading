@@ -14,6 +14,8 @@
  *                       like an agency is not one)
  *   rubricVocabulary    the active rubric's tiers and override codes, or null
  *   progressOf / storedClusters / modelFromExtractor   what a resumed read picks up
+ *   windowMentions      pass 1's window replies → the mentions each supports, refs W<i>.C<n>
+ *   clusterWindows      those mentions → resolved in code, joined across windows, one card each
  *   roundHeadroom       what the next round of calls is expected to take, against the budget
  *   callDeadline        the instant a call still running is stopped: the run's ceiling, not its budget
  *   ceilingVerdict      a meeting whose calls keep being stopped there: count the runs, set it aside
@@ -37,7 +39,8 @@ import {
   selectMeeting,
 } from "../_shared/ingest/meeting_transcript.ts";
 import type { InboxLight, MeetingSpeaker, RecordingSpan, TitleRule } from "../_shared/ingest/meeting_transcript.ts";
-import type { MentionCluster } from "../_shared/ingest/meeting_mentions.ts";
+import { clusterMentions, joinAcrossWindows, resolveMention, verifySegments } from "../_shared/ingest/meeting_mentions.ts";
+import type { MentionCluster, RosterIndex, SpokenLine, VerifiedMention } from "../_shared/ingest/meeting_mentions.ts";
 import type { SnapshotRead } from "../_shared/ingest/meeting_claims.ts";
 import { ExtractorApiError, ExtractorReplyError, ExtractorTimeoutError } from "./extractor.ts";
 import type { ExtractorUsage } from "./extractor.ts";
@@ -738,6 +741,62 @@ export function proposalCounts(rows: readonly { status: string; kind: string; de
     if (r.default_selected) bump(c, "proposals.pre_ticked");
   }
   return c;
+}
+
+/* ------------------------------------------------------------------ *
+ * pass 1 across windows
+ * ------------------------------------------------------------------ */
+
+/** One pass-1 window that answered: where it sits in windowsFor's list, its lines, its parsed reply. */
+export interface WindowReply {
+  /** 0-based, in windowsFor's order. */
+  window: number;
+  lines: readonly SpokenLine[];
+  value: unknown;
+}
+
+export interface WindowMentions {
+  /** Per window, in window order: the mentions its reply supports. */
+  perWindow: VerifiedMention[][];
+  /** verifySegments' counters, summed over the windows. */
+  counters: Record<string, number>;
+  notes: string[];
+}
+
+/**
+ * The windows that answered → what each supports (verifySegments, against that window's lines only).
+ * Past one window, every window numbers its companies from C1, so each ref carries its window:
+ * W2.C1. One window keeps the model's own refs, exactly as before windows existed.
+ */
+export function windowMentions(replies: readonly WindowReply[], windowCount: number): WindowMentions {
+  const n = Math.max(1, Math.floor(windowCount));
+  const perWindow: VerifiedMention[][] = Array.from({ length: n }, () => []);
+  const counters: Record<string, number> = {};
+  const notes: string[] = [];
+  for (const x of replies ?? []) {
+    if (!Number.isInteger(x.window) || x.window < 0 || x.window >= n) continue;
+    const v = verifySegments(x.value, x.lines);
+    addCounters(counters, v.counters);
+    notes.push(...v.notes);
+    for (const mm of v.mentions) perWindow[x.window].push(n > 1 ? { ...mm, ref: `W${x.window + 1}.${mm.ref}` } : mm);
+  }
+  return { perWindow, counters, notes };
+}
+
+/**
+ * Pass 1's mentions → the meeting's agency cards. Resolved in code against the roster (resolveMention),
+ * then joined across windows (meeting_mentions.joinAcrossWindows: a company one window heard only by a
+ * short form, placed by the name another window heard), then clustered one card per account or per
+ * spoken name, in discussion order (clusterMentions). One window is never joined: it comes back as
+ * clusterMentions(resolveMention) always gave it.
+ */
+export function clusterWindows(perWindow: readonly (readonly VerifiedMention[])[], index: RosterIndex): {
+  clusters: MentionCluster[];
+  counters: Record<string, number>;
+} {
+  const resolved = (perWindow ?? []).map((ms) => (ms ?? []).map((m) => resolveMention(m, index)));
+  const joined = joinAcrossWindows(resolved, index);
+  return { clusters: clusterMentions(joined.resolutions), counters: joined.counters };
 }
 
 /** Mentions by state, for the meeting header's counts. */

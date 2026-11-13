@@ -2723,7 +2723,12 @@ second read.
 
 A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
 pass 1 — past 40,000 rendered characters in overlapping windows of at most that, side by side (12 Nov
-2026: a 93-minute meeting sent as one call never answered inside the ceiling) — resolves the names in code, then pass 2 four agencies to a call inside the budget. The budget
+2026: a 93-minute meeting sent as one call never answered inside the ceiling) — resolves the names in code, then pass 2 four agencies to a call inside the budget. Read in
+windows, a company one window heard only by a short form ("Vorn" for "Vorn Digital") is placed by the
+name another window heard (`meeting.pass1.joined_same_lines` / `joined_by_name`); a token two accounts
+share is never placed that way — it stays a "Who is this?" card with that account offered first
+(`offered_first`), and a nickname or mistranscription never said beside the name stays its own
+card. The budget
 decides whether a round of calls STARTS; a call that started runs to the ceiling — the run's start +
 120 s, inside both the lease and the gateway's 150 s (§17) — and is stopped there if it has not
 answered (`out_of_time`), so no call outlives the lease and none is cut short at the budget it started

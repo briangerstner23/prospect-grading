@@ -787,3 +787,209 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
   clusters.sort((a, b) => a.first_line - b.first_line || (a.said_key < b.said_key ? -1 : a.said_key > b.said_key ? 1 : 0));
   return clusters.map((c, i) => ({ ref: `A${i + 1}`, ...c }));
 }
+
+/* ------------------------------------------------------------------ *
+ * one company across pass-1 windows
+ * ------------------------------------------------------------------ */
+
+export interface WindowJoin {
+  /** Every mention, flat and in window order; the ones joined across windows placed. */
+  resolutions: MentionResolution[];
+  /** joined_same_lines · joined_by_name · conflicting_names · offered_first. */
+  counters: Record<string, number>;
+}
+
+/**
+ * A long meeting goes to pass 1 in overlapping windows (meeting_transcript.windowsFor), each a call
+ * that sees only its own lines. Inside ONE window the model puts every form of a company in one
+ * entry ("Vorn Digital" and "Vorn"), and resolveMention places the short form BESIDE the whole name.
+ * A window that only ever hears the short form cannot: "Vorn" alone is unknown (one word under
+ * MIN_TOKEN), "Orange" alone an ordinary word, a distinctive token alone only a suggestion. Grouped
+ * by account or by spoken name, it would become a second card whose lines are owned against the real
+ * one — and, when unknown, never read, so the team's later word on the agency would be lost.
+ *
+ * This puts back what one window would have done, from evidence IN THIS MEETING, and only ACROSS
+ * windows: a mention is joined to an account resolved in ANOTHER window, never to one its own window
+ * resolved too (that window's model saw both and kept them apart, as one window's would), so a
+ * meeting read in one window comes back unchanged.
+ *
+ * Meeting-local keys, each kept only while exactly one account of this meeting holds it:
+ *   · said beside — every form a RESOLVED mention carried beside its resolving name (live forms,
+ *     and an ordinary word that is a word of the account's own name: "Orange" beside "Orange
+ *     Wyvernhold");
+ *   · the account's own short name — the core, or the first word, of a name this meeting resolved,
+ *     when it is one word of MIN_KEY_CHARS or more that is not ordinary and that NO OTHER live
+ *     account has as a word of its name or holds as a key ("Vorn" of "Vorn Digital");
+ *   never a key the index refuses (our names, placeholders, junk), a word of anyone at the meeting,
+ *   a key shorter than MIN_KEY_CHARS, or an account with a poison partner.
+ *
+ * Then, for a mention its own window could not place:
+ *   · the same sighting — every line it cites was cited, in another window, by a resolved mention
+ *     of one account that carried every one of its forms (the overlap, seen twice): resolved to it,
+ *     whatever its own state, because that other window's model grouped those very words;
+ *   · unknown, suggested, or refused only as an ordinary word — resolved when every form it has
+ *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
+ *     offers it) and every suggestion offers it. A form that points nowhere ("Vorn Labs") leaves the
+ *     mention as it was; forms that point at two accounts, or a suggestion for another account, make
+ *     it AMBIGUOUS (conflicting_names) with the meeting's accounts offered first, as resolveMention
+ *     does with two names in one entry;
+ *   · ambiguous (a token two accounts share) — never joined: it stays a "Who is this?" card, with the
+ *     account this meeting named moved to the front of its options.
+ * A joined mention takes the basis its account was resolved on in this meeting, never 'learned': no
+ * person confirmed it.
+ *
+ * What it cannot join: a form that is neither a word of the name nor ever said beside it, heard only
+ * in a window that never heard the name — a nickname, a mistranscription ("Vron"). That stays its own
+ * card (unknown, so listed but not read): the known limit, and why the windows overlap.
+ */
+export function joinAcrossWindows(perWindow: readonly (readonly MentionResolution[])[], index: RosterIndex): WindowJoin {
+  const counters: Record<string, number> = {};
+  const all: Array<{ r: MentionResolution; w: number }> = [];
+  (perWindow ?? []).forEach((list, w) => { for (const r of list ?? []) all.push({ r, w }); });
+  if ((perWindow ?? []).length < 2) return { resolutions: all.map((x) => x.r), counters };
+
+  const keyable = (k: string): boolean => k.length >= MIN_KEY_CHARS && !index.refused.has(k) && !index.people.has(k);
+  const nameWords = (a: string): string[] => (index.accounts.get(a)?.full ?? "").split(" ").filter(Boolean);
+  const plainWord = (k: string): boolean =>
+    /^[a-z][a-z0-9]*$/.test(k) && !TRAILING_GENERIC.includes(k) && !FILLER_WORDS.includes(k) && !STOP_KEYS.has(k);
+  /** The forms of a mention that can carry it: live ones, and an ordinary word of an account's name. */
+  const ordinaryOf = (s: SurfaceResolution): boolean => s.state === "refused" && s.reason === "ordinary_word" && plainWord(s.key);
+
+  /* What the resolved mentions say: which windows resolved each account, on what basis, which lines
+     each cited, and which forms each carried beside its name. */
+  const resolvedIn = new Map<string, Set<number>>();
+  const basisOf = new Map<string, MatchedOn>();
+  const cited = new Map<string, Map<number, Set<number>>>(); // account → line → windows
+  const beside = new Map<string, Set<string>>(); // account → forms it was said with
+  for (const { r, w } of all) {
+    if (r.state !== "resolved" || !r.account_id || !index.accounts.has(r.account_id)) continue;
+    const a = r.account_id;
+    if (!resolvedIn.has(a)) resolvedIn.set(a, new Set());
+    (resolvedIn.get(a) as Set<number>).add(w);
+    const b = r.matched_on;
+    const prev = basisOf.get(a);
+    if (b !== null && (prev === undefined || (BASIS_RANK[b] ?? 9) < (BASIS_RANK[prev] ?? 9))) basisOf.set(a, b);
+    if (!cited.has(a)) cited.set(a, new Map());
+    const lines = cited.get(a) as Map<number, Set<number>>;
+    for (const n of r.mention_lines) {
+      if (!lines.has(n)) lines.set(n, new Set());
+      (lines.get(n) as Set<number>).add(w);
+    }
+    if (!beside.has(a)) beside.set(a, new Set());
+    const forms = beside.get(a) as Set<string>;
+    const words = nameWords(a);
+    for (const s of r.surfaces) {
+      if (!keyable(s.key)) continue;
+      if (s.state !== "refused" || (ordinaryOf(s) && words.includes(s.key))) forms.add(s.key);
+    }
+  }
+
+  /* The meeting-local keys. */
+  const holders = new Map<string, Set<string>>();
+  const hold = (k: string, a: string) => {
+    if (!holders.has(k)) holders.set(k, new Set());
+    (holders.get(k) as Set<string>).add(a);
+  };
+  for (const [a, forms] of beside) for (const k of forms) hold(k, a);
+  const wordHolders = new Map<string, Set<string>>();
+  for (const acc of index.accounts.values()) {
+    for (const word of acc.full.split(" ")) {
+      if (!wordHolders.has(word)) wordHolders.set(word, new Set());
+      (wordHolders.get(word) as Set<string>).add(acc.id);
+    }
+  }
+  for (const a of resolvedIn.keys()) {
+    const acc = index.accounts.get(a) as IndexedAccount;
+    const words = nameWords(a);
+    const core = dropTrailing(acc.full, TRAILING_GENERIC);
+    const own = new Set<string>();
+    if (!core.includes(" ")) own.add(core);
+    if (words.length >= 2) own.add(words[0]);
+    for (const k of own) {
+      if (!keyable(k) || !plainWord(k) || ordinary(k)) continue;
+      if ([...(wordHolders.get(k) ?? [])].some((x) => x !== a)) continue;
+      if ([...(index.exact.get(k) ?? []), ...(index.soft.get(k) ?? [])].some((h) => h.account !== a)) continue;
+      hold(k, a);
+    }
+  }
+  const local = new Map<string, string>();
+  for (const [k, as] of holders) {
+    if (as.size !== 1) continue;
+    const a = [...as][0];
+    if ((index.poison.get(a)?.size ?? 0) > 0) continue;
+    local.set(k, a);
+  }
+
+  const placed = (r: MentionResolution, a: string): MentionResolution =>
+    ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? "name", options: [a], reason: null });
+
+  const out: MentionResolution[] = [];
+  for (const { r, w } of all) {
+    if (r.state === "resolved") { out.push(r); continue; }
+    /** Resolved in another window, and not in this one. */
+    const elsewhere = (a: string): boolean => {
+      const ws = resolvedIn.get(a);
+      return ws !== undefined && !ws.has(w);
+    };
+    const forms = r.surfaces.filter((s) => s.state !== "refused" || (ordinaryOf(s) && local.has(s.key)));
+
+    /* The same sighting: the overlap, where another window placed these very lines and words. */
+    if (forms.length > 0 && r.mention_lines.length > 0) {
+      const same = [...resolvedIn.keys()].filter((a) =>
+        elsewhere(a) &&
+        r.mention_lines.every((n) => [...(cited.get(a)?.get(n) ?? [])].some((x) => x !== w)) &&
+        forms.every((s) => (beside.get(a) as Set<string>).has(s.key)));
+      if (same.length === 1) {
+        out.push(placed(r, same[0]));
+        bump(counters, "joined_same_lines");
+        continue;
+      }
+    }
+
+    if (r.state === "ambiguous") {
+      const named = new Set<string>();
+      for (const s of forms) {
+        const a = local.get(s.key);
+        if (a !== undefined && elsewhere(a)) named.add(a);
+        for (const o of s.options) if (elsewhere(o)) named.add(o);
+      }
+      const front = r.options.filter((o) => named.has(o));
+      const reordered = [...front, ...r.options.filter((o) => !named.has(o))];
+      if (front.length > 0 && reordered.some((o, i) => o !== r.options[i])) {
+        out.push({ ...r, options: reordered });
+        bump(counters, "offered_first");
+      } else {
+        out.push(r);
+      }
+      continue;
+    }
+
+    /* unknown, suggested, or refused as an ordinary word */
+    const targets: string[] = [];
+    const offers: string[] = [];
+    let stray = forms.length === 0;
+    let blocked = false;
+    for (const s of forms) {
+      if (s.state === "suggested") for (const o of s.options) if (!offers.includes(o)) offers.push(o);
+      const a = local.get(s.key);
+      if (a !== undefined) {
+        if (!elsewhere(a)) blocked = true;
+        else if (!targets.includes(a)) targets.push(a);
+        continue;
+      }
+      const hit = s.state === "suggested" ? s.options.filter(elsewhere) : [];
+      if (hit.length === 0) stray = true;
+      for (const o of hit) if (!targets.includes(o)) targets.push(o);
+    }
+    if (blocked || stray || targets.length === 0) { out.push(r); continue; }
+    if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(targets[0]))) {
+      out.push(placed(r, targets[0]));
+      bump(counters, "joined_by_name");
+      continue;
+    }
+    const options = [...targets, ...offers.filter((o) => !targets.includes(o))].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);
+    out.push({ ...r, state: "ambiguous", account_id: null, matched_on: null, options, reason: "conflicting_names" });
+    bump(counters, "conflicting_names");
+  }
+  return { resolutions: out, counters };
+}
