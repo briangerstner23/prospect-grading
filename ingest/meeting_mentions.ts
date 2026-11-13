@@ -756,9 +756,19 @@ function cardForms(r: MentionResolution): string[] {
     .map((s) => s.key);
 }
 
-/** Which card a mention joins: its account when resolved, else its state and spoken name (cardForms). */
+/**
+ * Which card a mention joins: its account when resolved; else its spoken name (cardForms) — ONE card per
+ * name pass 2 reads, whether its mentions came out suggested or ambiguous. Across windows one short form
+ * can be both (ambiguous where two accounts were named only elsewhere, suggested where its own window
+ * named one of them), and the proposal fingerprint, the review page's "Who is this?" chip and
+ * pb_assign_meeting_mention all key an unplaced name by the name alone: two cards would mint one
+ * fingerprint, and the later claim would be dropped on insert. Unknown and refused mentions, which pass
+ * 2 never reads, keep cards of their own state, so an unread mention never joins a read card.
+ */
 function cardKey(r: MentionResolution): string {
-  return r.state === "resolved" && r.account_id ? `acct:${r.account_id}` : `said:${r.state}:${saidKeyOf(cardForms(r))}`;
+  if (r.state === "resolved" && r.account_id) return `acct:${r.account_id}`;
+  const name = saidKeyOf(cardForms(r));
+  return r.state === "suggested" || r.state === "ambiguous" ? `said:read:${name}` : `said:${r.state}:${name}`;
 }
 
 /**
@@ -778,7 +788,9 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
 
   const clusters: Array<Omit<MentionCluster, "ref">> = [];
   for (const members of groups.values()) {
-    const head = members[0];
+    /* A card of one name heard suggested in one window and ambiguous in another is as cautious as its
+       most cautious mention: ambiguous, with that mention's reason. */
+    const head = members.find((m) => m.state === "ambiguous") ?? members[0];
     const said_as: string[] = [];
     const keys: string[] = [];
     const lines = new Set<number>();
@@ -1264,13 +1276,15 @@ export function joinAcrossWindows(
       continue;
     }
     const options = [...targets, ...offers.filter((o) => !targets.includes(o))].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);
-    out.push({ ...r, state: "ambiguous", account_id: null, matched_on: null, options, reason: "conflicting_names" });
+    // Its front is every account it points at (targets): on a card it shares with a mention that would
+    // put one of them first, that one goes first only if this mention points at it too.
+    keep({ ...r, state: "ambiguous", account_id: null, matched_on: null, options, reason: "conflicting_names" }, targets.filter((o) => index.accounts.has(o)));
     bump(counters, "conflicting_names");
   }
 
-  /* Offered first, per CARD. clusterMentions makes one card of every unplaced mention with the same
-     state and said_key, and takes its options head first; so the order is decided for the card, not
-     for one of its mentions. An account goes first only when EVERY mention of the card would put it
+  /* Offered first, per CARD. clusterMentions makes one card of every unplaced mention pass 2 reads with
+     the same spoken name (cardKey), and takes its options head first; so the order is decided for the
+     card, not for one of its mentions. An account goes first only when EVERY mention of the card would put it
      there — resolved only in windows none of them came from. A card holding a mention its own window
      listed apart from the account it named keeps the roster's order (that window's model saw both and
      kept them apart), every mention of a card carries the same order, and offered_first counts cards

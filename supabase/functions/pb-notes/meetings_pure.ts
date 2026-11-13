@@ -733,12 +733,19 @@ export function addCounters(into: Record<string, number>, more: Record<string, n
 }
 
 /** Proposal rows → counts by status and by kind, for pb_meetings.counts and the run. */
-export function proposalCounts(rows: readonly { status: string; kind: string; default_selected?: boolean }[]): Record<string, number> {
+export function proposalCounts(rows: readonly { status: string; kind: string; default_selected?: boolean; fingerprint?: string }[]): Record<string, number> {
   const c: Record<string, number> = {};
+  const seen = new Set<string>();
   for (const r of rows ?? []) {
     bump(c, `proposals.${r.status}`);
     bump(c, `proposals.kind.${r.kind}`);
     if (r.default_selected) bump(c, "proposals.pre_ticked");
+    /* One read must never mint a fingerprint twice: the insert ignores a duplicate, so the second claim
+       would vanish with no trace. Counted, so a dry run shows it (RUNBOOK §33.4). */
+    if (typeof r.fingerprint === "string") {
+      if (seen.has(r.fingerprint)) bump(c, "proposals.fingerprint_repeated");
+      seen.add(r.fingerprint);
+    }
   }
   return c;
 }

@@ -516,6 +516,28 @@ const LINES = [
     eq("…and no two cards share a state and a name", keys.length, new Set(keys).size);
   }
 
+  /* One card per name pass 2 reads, whatever state each mention came out in (review of 4d16910): a short
+     form ambiguous in one window (both accounts named only elsewhere) and suggested in another (its own
+     window named one) is ONE card, as cautious as its most cautious mention — never two cards whose
+     claims share a fingerprint, the later one dropped on insert. */
+  {
+    const BB = buildRosterIndex({
+      accounts: [acct("bh", "Brindlecot Harrow Media"), acct("bw", "Brindlewood Harrow Studio"), acct("zd", "Zarquell Digital")],
+      people: ["Rep A"],
+    });
+    const j = J([[m("W1.C1", ["Brindlecot Harrow Media", "Brindle"], [100, 110])], [m("W2.C1", ["Brindle"], [400])],
+      [m("W3.C1", ["Brindlewood Harrow Studio"], [700]), m("W3.C2", ["Brindle"], [800])]], BB);
+    eq("precondition: the one short form comes out in two states", ["W2.C1", "W3.C2"].map((ref) => at(j, ref).state), ["ambiguous", "suggested"]);
+    const readable = clusterMentions(j.resolutions).filter((c) => c.state === "suggested" || c.state === "ambiguous");
+    eq("…ONE card for the name, ambiguous, both mentions on it, both agencies offered",
+      readable.map((c) => [c.said_key, c.state, c.reason, c.sources, [...c.options].sort()]), [["brindle", "ambiguous", "conflicting_names", ["W2.C1", "W3.C2"], ["bh", "bw"]]]);
+    const names = readable.map((c) => c.said_key);
+    eq("…no two cards pass 2 reads share a name (so none can share a fingerprint)", names.length, new Set(names).size);
+    const unread = J([[m("W1.C1", ["Vorn Digital"], [100])], [m("W2.C1", ["Quorvath"], [400])], [m("W3.C1", ["Quorvath"], [800])]], BB);
+    check("…while an unread mention never joins a read card", clusterMentions(unread.resolutions).every((c) => c.state === "unknown" || c.state === "resolved" || c.state === "refused"),
+      JSON.stringify(clusterMentions(unread.resolutions).map((c) => [c.state, c.said_key])));
+  }
+
   /* Remembering a name never teaches an ordinary word (review of 53249b8): a learned alias places with no
      person, and "orange" learned for one agency would place every later "Orange" on it. The rest of a
      remembered key is still learned. */

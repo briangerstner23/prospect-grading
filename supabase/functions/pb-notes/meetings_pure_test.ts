@@ -541,6 +541,10 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
     { status: "agrees", kind: "override" },
     { status: "not_proposed", kind: "fact" },
   ]), { "proposals.proposed": 1, "proposals.kind.fact": 2, "proposals.pre_ticked": 1, "proposals.agrees": 1, "proposals.kind.override": 1, "proposals.not_proposed": 1 });
+  eq("proposals: a fingerprint minted twice in one read is counted, never silent (the insert would drop it)",
+    proposalCounts([{ status: "proposed", kind: "fact", fingerprint: "a" }, { status: "proposed", kind: "fact", fingerprint: "a" }, { status: "proposed", kind: "read", fingerprint: "b" }])["proposals.fingerprint_repeated"], 1);
+  eq("…and not counted when every fingerprint is its own",
+    proposalCounts([{ status: "proposed", kind: "fact", fingerprint: "a" }, { status: "proposed", kind: "fact", fingerprint: "b" }])["proposals.fingerprint_repeated"], undefined);
   eq("mentions: counted by state", mentionCounts([{ state: "resolved" }, { state: "unknown" }, { state: "resolved" }]), { "mentions.resolved": 2, "mentions.unknown": 1 });
   eq("notes: bounded to the newest", appendNotes(["a", "b", 3], ["c", "d"], 3), ["b", "c", "d"]);
 }

@@ -4752,10 +4752,19 @@ never attaches below `high` confidence without a person. So the join no longer p
    agencies (found in review, 13 Nov). Only the ordinary words go into that key, never a person at the
    meeting, and never on a resolved card. One rule (`cardForms`) both groups mentions into cards and
    names them. When they were two rules, "Orange" heard beside a fragment in one window and alone in
-   another made two cards with one name and one fingerprint, and the database kept only one of them. **And an ordinary word is never learned.** "Remember this name"
+   another made two cards with one name and one fingerprint, and the database kept only one of them.
+   For the same reason there is **one card per name pass 2 reads, whatever state each mention came out
+   in**. Across windows one short form can be ambiguous in one window and suggested in another, and the
+   fingerprint, the review page's chip and `pb_assign_meeting_mention` all key an unplaced name by the
+   name alone. So the card takes its most cautious state. A fingerprint minted twice in one read is
+   counted (`meeting.proposals.fingerprint_repeated`), never silent. **And an ordinary word is never learned.** "Remember this name"
    stores a card's key as an alias that later resolves with no person, so `buildRosterIndex` skips a
    learned part that is one ordinary word. Otherwise "orange" learned for one agency would place every
-   later "Orange" on it. The rest of a remembered key is still learned. The review screen says so; it
+   later "Orange" on it. The rest of a remembered key is still learned. **And [Wrong agency] forgets on
+   the same terms.** An alias is stored under the card's whole key ("quillmere|quillmere studio") and learned
+   part by part, so it places a later card heard only as "Quillmere". Unassign matched the whole key and
+   could never forget it. Migration 20261113180000 forgets every alias of the old account that shares a
+   part with the card's name. The review screen says so; it
    cannot yet tell before the click whether a name will be learned. That needs a `learnable` column on
    the proposal, and it is a follow-up.
 

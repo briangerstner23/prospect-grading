@@ -2564,17 +2564,22 @@ keeps whole in `pb_webhook_inbox`, and writes **proposals** — `pb_meeting_prop
 lanes only. Nothing reaches `pb_facts` or `pb_register` until somebody approves a card in
 `index.html#meetings`; nothing is ever parked in `pb_fact_candidates`.
 
-**Status: migration A applied, nothing read yet.** Migration A applied 12 Nov 2026 as
-`20261112233107_prospect_book_sales_meeting_reader.sql` (steps 1–2 done: byte-identical by md5, both
-grants queries empty, the harness raised nothing). Migration B (`…_prospect_book_sales_meeting_cron.sql`)
-is still a draft carrying its drafting stamp, and pb-notes v17 has no `sales_meeting` route. The order
-below is the order things happen in; do not skip ahead.
+**Status (13 Nov 2026): migration A applied, registered, nothing read yet.** Migration A applied 12 Nov
+2026 as `20261112233107_prospect_book_sales_meeting_reader.sql` (steps 1–2 done: byte-identical by md5,
+both grants queries empty, the harness raised nothing). pb-notes v18, pinned to `b4b33fd` (the merge of
+PR #11), carries the route, and registration has run: 176 internal recordings registered, 41 waiting,
+no model call (steps 3–4). The first dry read, of a 93-minute meeting, never finished pass 1 inside the
+ceiling, so pass 1 now reads a long meeting in windows (DECISIONS §66). Step 3 is therefore done again
+for pb-notes v19, with 3b beside it. Migration B (`…_prospect_book_sales_meeting_cron.sql`) and
+`20261113180000_prospect_book_sales_meeting_alias_forget.sql` are drafts carrying their drafting stamps.
+The order below is the order things happen in; do not skip ahead.
 
 | Step | What | Done when |
 |---|---|---|
 | 1 | Apply migration A, transcribe it (33.1) | it applied (section 0 and the sentinel passed) and the file carries the applied version, md5-identical |
 | 2 | Verify it in the database (33.2) | both CLAUDE.md grants queries empty, the harness raises nothing |
 | 3 | Merge, then deploy pb-notes pinned to the merge commit (RUNBOOK §3) | `verify_jwt: false` in the deploy response; fetched back, it is the one-line entrypoint |
+| 3b | Apply `20261113180000` (alias forget), transcribe it (33.1), run the harness again (33.2) | section 0 passed; the harness raises nothing, 4b2 and 4b3 included. Before step 6: from then on a person can tick "Remember this name" |
 | 4 | Register (33.3) | `pb_meetings` holds the internal recordings, the cursor is at the newest delivery |
 | 5 | Dry run one meeting and hand-check it (33.4) | 2 or fewer of 20 proposals wrong |
 | 6 | Read the three newest for real, one `recording_id` per call; the owner reviews them in one sitting | cards decided, the time per card measured |
@@ -2707,7 +2712,9 @@ placeholder or one of our own names must be `refused`, never a card); `meeting.p
 against `meeting.pass2.other_agency_lines` and `outside_segment` (a quote from another agency's lines
 is the wrong-company class, §60, and is dropped); `meeting.proposals.proposed / not_proposed /
 agrees` (facts and removals only: the reader never records a tier call `agrees`, §33.5) and
-`meeting.proposals.pre_ticked`; `usage`, and `meeting.ms.pass1` / `meeting.ms.pass2` for time. Then check 20 proposals against the
+`meeting.proposals.pre_ticked`; `meeting.proposals.fingerprint_repeated` (must be absent: one read minting a
+fingerprint twice means the insert silently drops a claim); `meeting.pass1.split_past_edge` /
+`split_asked` / `split_no_reach` (§66); `usage`, and `meeting.ms.pass1` / `meeting.ms.pass2` for time. Then check 20 proposals against the
 transcript for the wrong agency, the wrong field, and decided versus merely floated. Proceed when 2 or
 fewer of 20 are wrong. Otherwise tighten the prompt and bump `MEETING_PROMPT_VERSION` (`meeting@v2`)
 before anything is written — every fingerprint carries the extractor id, so a new version is a clean
