@@ -373,6 +373,26 @@ const LINES = [
     eq("…with the account this meeting named offered first", at(j, "W3.C1").options, ["kvs", "kvi"]);
     eq("…counted", j.counters, { offered_first: 1 });
   }
+  {
+    /* Offered first is decided per CARD: clusterMentions merges every unplaced mention of one spoken name. */
+    const apart = J([
+      [m("W1.C1", ["Kestrelvane Studio"], [150]), m("W1.C2", ["Kestrelvane"], [160])],
+      [],
+      [m("W3.C1", ["Kestrelvane"], [720])],
+    ]);
+    const card = clusterMentions(apart.resolutions).find((c) => c.state === "ambiguous");
+    eq("per card: listed apart in the window that named the account, the card keeps the roster's order", [card?.options, card?.sources], [["kvi", "kvs"], ["W1.C2", "W3.C1"]]);
+    eq("…every mention of it carries that order", [at(apart, "W1.C2").options, at(apart, "W3.C1").options], [["kvi", "kvs"], ["kvi", "kvs"]]);
+    eq("…and nothing is counted as offered first", apart.counters, {});
+    const later = J([
+      [m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [150, 152])],
+      [m("W2.C1", ["Kestrelvane"], [500])],
+      [m("W3.C1", ["Kestrelvane"], [720])],
+    ]);
+    const card2 = clusterMentions(later.resolutions).find((c) => c.state === "ambiguous");
+    eq("per card: heard alone in two later windows, the card offers the account first", [card2?.options, card2?.sources], [["kvs", "kvi"], ["W2.C1", "W3.C1"]]);
+    eq("…counted once, for the one card", later.counters, { offered_first: 1 });
+  }
 
   /* What is never joined. */
   {

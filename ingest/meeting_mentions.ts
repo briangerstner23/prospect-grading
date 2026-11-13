@@ -732,6 +732,11 @@ export interface MentionCluster {
   sources: string[];
 }
 
+/** Which card a mention joins: its account when resolved, else its state and spoken name. */
+function cardKey(r: MentionResolution): string {
+  return r.state === "resolved" && r.account_id ? `acct:${r.account_id}` : `said:${r.state}:${r.said_key}`;
+}
+
 /**
  * Resolved mentions of one account become one cluster; every other mention clusters by its
  * said_key, so the same unplaced name said twice is one "Who is this?" chip, and placing it later
@@ -741,7 +746,7 @@ export interface MentionCluster {
 export function clusterMentions(resolutions: readonly MentionResolution[]): MentionCluster[] {
   const groups = new Map<string, MentionResolution[]>();
   for (const r of resolutions ?? []) {
-    const k = r.state === "resolved" && r.account_id ? `acct:${r.account_id}` : `said:${r.state}:${r.said_key}`;
+    const k = cardKey(r);
     const list = groups.get(k);
     if (list) list.push(r);
     else groups.set(k, [r]);
@@ -795,7 +800,7 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
 export interface WindowJoin {
   /** Every mention, flat and in window order; the ones joined across windows placed. */
   resolutions: MentionResolution[];
-  /** joined_same_lines · joined_by_name · conflicting_names · offered_first. */
+  /** joined_same_lines · joined_by_name · conflicting_names (mentions) · offered_first (cards). */
   counters: Record<string, number>;
 }
 
@@ -842,6 +847,9 @@ export interface WindowJoin {
  *     accounts offered first, as resolveMention does with two names in one entry;
  *   · ambiguous (a token two accounts share) — never joined: it stays a "Who is this?" card, with the
  *     account this meeting named moved to the front of its options.
+ * Offered first is decided per CARD (one per state and spoken name, as clusterMentions groups them):
+ * an account goes first only when every mention of the card would put it there, so a card holding a
+ * mention its own window listed apart from that account keeps the roster's order.
  * A joined mention takes the basis its account was resolved on in this meeting, never 'learned': no
  * person confirmed it.
  *
@@ -952,6 +960,12 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? "name", options: [a], reason: null });
 
   const out: MentionResolution[] = [];
+  /** Per mention left unplaced as it was: the accounts its own decision would offer first. */
+  const firstFor = new Map<number, string[]>();
+  const keep = (r: MentionResolution, front: string[]): void => {
+    firstFor.set(out.length, front);
+    out.push(r);
+  };
   for (const { r, w } of all) {
     if (r.state === "resolved") { out.push(r); continue; }
     /** Resolved in another window, and not in this one. */
@@ -981,14 +995,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
         if (a !== undefined && elsewhere(a)) named.add(a);
         for (const o of s.options) if (elsewhere(o)) named.add(o);
       }
-      const front = r.options.filter((o) => named.has(o));
-      const reordered = [...front, ...r.options.filter((o) => !named.has(o))];
-      if (front.length > 0 && reordered.some((o, i) => o !== r.options[i])) {
-        out.push({ ...r, options: reordered });
-        bump(counters, "offered_first");
-      } else {
-        out.push(r);
-      }
+      keep(r, r.options.filter((o) => named.has(o)));
       continue;
     }
 
@@ -1009,7 +1016,7 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
       if (hit.length === 0) stray = true;
       for (const o of hit) if (!targets.includes(o)) targets.push(o);
     }
-    if (blocked || stray || targets.length === 0) { out.push(r); continue; }
+    if (blocked || stray || targets.length === 0) { keep(r, []); continue; }
     const t = targets[0];
     /* A roster suggestion carries a mention only when it is evidence for t ALONE: it offers t and no
        other account, and no other live account has its words. One that also offers another account
@@ -1023,18 +1030,42 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
       continue;
     }
     if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(t))) {
-      const reordered = [t, ...r.options.filter((o) => o !== t)];
-      if (r.options.includes(t) && reordered.some((o, i) => o !== r.options[i])) {
-        out.push({ ...r, options: reordered });
-        bump(counters, "offered_first");
-      } else {
-        out.push(r);
-      }
+      keep(r, [t]);
       continue;
     }
     const options = [...targets, ...offers.filter((o) => !targets.includes(o))].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);
     out.push({ ...r, state: "ambiguous", account_id: null, matched_on: null, options, reason: "conflicting_names" });
     bump(counters, "conflicting_names");
+  }
+
+  /* Offered first, per CARD. clusterMentions makes one card of every unplaced mention with the same
+     state and said_key, and takes its options head first; so the order is decided for the card, not
+     for one of its mentions. An account goes first only when EVERY mention of the card would put it
+     there — resolved only in windows none of them came from. A card holding a mention its own window
+     listed apart from the account it named keeps the roster's order (that window's model saw both and
+     kept them apart), every mention of a card carries the same order, and offered_first counts cards
+     whose order moved — what the stored card shows. */
+  const cards = new Map<string, number[]>();
+  for (const i of firstFor.keys()) {
+    const r = out[i];
+    if (r.state !== "ambiguous" && r.state !== "suggested") continue;
+    const k = cardKey(r);
+    if (!cards.has(k)) cards.set(k, []);
+    (cards.get(k) as number[]).push(i);
+  }
+  for (const members of cards.values()) {
+    const common = (firstFor.get(members[0]) as string[]).filter((a) => members.every((i) => (firstFor.get(i) as string[]).includes(a)));
+    let moved = false;
+    for (const i of members) {
+      const r = out[i];
+      const front = common.filter((a) => r.options.includes(a));
+      const reordered = [...front, ...r.options.filter((o) => !front.includes(o))];
+      if (reordered.some((o, j) => o !== r.options[j])) {
+        out[i] = { ...r, options: reordered };
+        moved = true;
+      }
+    }
+    if (moved) bump(counters, "offered_first");
   }
   return { resolutions: out, counters };
 }
