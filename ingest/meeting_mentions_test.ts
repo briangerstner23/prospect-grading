@@ -463,6 +463,14 @@ const LINES = [
       [m("W2.C1", ["Vorn Digital"], [400]), m("W2.C2", ["Vorn"], [500])],
     ]);
     eq("never: a form its own window listed apart from the account it placed", at(j, "W2.C2").state, "unknown");
+    /* The guard itself: a form pointing at the account its OWN window resolved stops the mention, even
+       when another of its forms points at an account resolved elsewhere. */
+    const mixed = J([
+      [m("W1.C1", ["Brindlecot Harrow Media"], [120])],
+      [m("W2.C1", ["Vorn Digital"], [400]), m("W2.C2", ["Vorn", "Brindlecot"], [500])],
+    ]);
+    eq("never: a mention carrying a form of the account its own window resolved, beside another account's", S(at(mixed, "W2.C2")), ["suggested", null, "token", ["bh"]]);
+    eq("…nothing joined", mixed.counters, {});
   }
   {
     /* The window that NAMED the account listed the short form apart from it: that judgement holds in every other window. */
