@@ -833,9 +833,10 @@ export interface WindowJoin {
  *   placed by the join.
  *
  * Then, for a mention its own window could not place:
- *   · the same sighting — every line it cites was cited, in another window, by a resolved mention
- *     of one account that carried every one of its forms (the overlap, seen twice): resolved to it,
- *     whatever its own state, because that other window's model grouped those very words;
+ *   · the same sighting — every line it cites was cited, in another window, by ONE resolved mention
+ *     that also carried every one of its forms (the overlap, seen twice): resolved to that mention's
+ *     account, whatever its own state, because that other window's model grouped those very words on
+ *     those very lines. Never pooled: lines one mention cited and words another carried are not it;
  *   · unknown, suggested, or refused only as an ordinary word — resolved when every form it has
  *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
  *     offers it) and every suggestion offers that account ALONE, in words no other live account's
@@ -875,7 +876,8 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
      each cited, and which forms each carried beside its name. */
   const resolvedIn = new Map<string, Set<number>>();
   const basisOf = new Map<string, MatchedOn>();
-  const cited = new Map<string, Map<number, Set<number>>>(); // account → line → windows
+  /** Each resolved mention on its own: its account, window, the lines it cited and the forms it carried. */
+  const sightings: Array<{ a: string; w: number; lines: Set<number>; forms: Set<string> }> = [];
   const beside = new Map<string, Set<string>>(); // account → forms it was said with
   const offeredWith = new Map<string, Set<string>>(); // such a form → every account the roster offered for it
   for (const { r, w } of all) {
@@ -887,23 +889,20 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     const b = r.matched_on;
     const prev = basisOf.get(a);
     if (b !== null && b !== "learned" && b !== "person" && (prev === undefined || (BASIS_RANK[b] ?? 9) < (BASIS_RANK[prev] ?? 9))) basisOf.set(a, b);
-    if (!cited.has(a)) cited.set(a, new Map());
-    const lines = cited.get(a) as Map<number, Set<number>>;
-    for (const n of r.mention_lines) {
-      if (!lines.has(n)) lines.set(n, new Set());
-      (lines.get(n) as Set<number>).add(w);
-    }
     if (!beside.has(a)) beside.set(a, new Set());
     const forms = beside.get(a) as Set<string>;
+    const own = new Set<string>();
     const words = nameWords(a);
     for (const s of r.surfaces) {
       if (!keyable(s.key)) continue;
       if (s.state !== "refused" || (ordinaryOf(s) && words.includes(s.key))) {
         forms.add(s.key);
+        own.add(s.key);
         if (!offeredWith.has(s.key)) offeredWith.set(s.key, new Set());
         for (const o of s.options) (offeredWith.get(s.key) as Set<string>).add(o);
       }
     }
+    sightings.push({ a, w, lines: new Set(r.mention_lines), forms: own });
   }
 
   /* The meeting-local keys. The ROSTER holds a key too: every live account that has it as a word, or
@@ -984,12 +983,15 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     };
     const forms = r.surfaces.filter((s) => s.state !== "refused" || (ordinaryOf(s) && local.has(s.key)));
 
-    /* The same sighting: the overlap, where another window placed these very lines and words. */
+    /* The same sighting: the overlap, where ONE resolved mention of another window cited every one of
+       these lines AND carried every one of these words. Never pooled across mentions: a line one
+       mention cited and a word another mention carried, elsewhere in the meeting, are not a sighting —
+       so "Zell" grouped with "Vorn Digital" on other lines cannot carry Zell on this line onto it. */
     if (forms.length > 0 && r.mention_lines.length > 0) {
-      const same = [...resolvedIn.keys()].filter((a) =>
-        elsewhere(a) &&
-        r.mention_lines.every((n) => [...(cited.get(a)?.get(n) ?? [])].some((x) => x !== w)) &&
-        forms.every((s) => (beside.get(a) as Set<string>).has(s.key)));
+      const same = [...new Set(sightings.filter((q) =>
+        q.w !== w && elsewhere(q.a) &&
+        r.mention_lines.every((n) => q.lines.has(n)) &&
+        forms.every((s) => q.forms.has(s.key))).map((q) => q.a))];
       if (same.length === 1) {
         out.push(placed(r, same[0], "token"));
         bump(counters, "joined_same_lines");

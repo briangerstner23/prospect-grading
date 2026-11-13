@@ -351,6 +351,32 @@ const LINES = [
     eq("…and when the other company is named in full elsewhere, it joins THAT account, not the line's", S(at(named, "W2.C1")), ["resolved", "zell", "name", ["zell"]]);
   }
   {
+    /* The same sighting is ONE mention's: the lines one resolved mention cited and the words another
+       carried, elsewhere in the meeting, are never pooled into one. */
+    const pooled = J([
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])],
+      [m("W2.C1", ["Zell"], [290])],
+      [m("W3.C1", ["Vorn Digital", "Zell"], [800, 801]), m("W3.C2", ["Zell Creative"], [820])],
+    ]);
+    eq("never: the overlap line from one mention and a word another window grouped elsewhere", S(at(pooled, "W2.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined on the same lines", pooled.counters.joined_same_lines, undefined);
+    eq("…Vorn Digital's card holds only the mentions that named it", clusterMentions(pooled.resolutions).filter((c) => c.account_id === "vorn").map((c) => c.sources), [["W1.C1", "W3.C1"]]);
+    const pooledOnly = J([
+      [m("W1.C1", ["Vorn Digital"], [320])],
+      [m("W2.C1", ["Zell"], [320])],
+      [m("W3.C1", ["Vorn Digital", "Zell"], [700, 701])],
+    ]);
+    eq("never: pooled, even with Zell Creative not named in this meeting", S(at(pooledOnly, "W2.C1")), ["unknown", null, null, []]);
+    eq("…no counters", pooledOnly.counters, {});
+    const sharedPooled = J([
+      [m("W1.C1", ["Kestrelvane Studio"], [320])],
+      [m("W2.C1", ["Kestrelvane"], [320])],
+      [m("W3.C1", ["Kestrelvane Studio", "Kestrelvane"], [700, 701])],
+    ]);
+    eq("never: a shared token on a line one mention cited, grouped with the account only on other lines", S(at(sharedPooled, "W2.C1")), ["ambiguous", null, null, ["kvs", "kvi"]]);
+    eq("…counted only as offered first", sharedPooled.counters, { offered_first: 1 });
+  }
+  {
     /* A token two accounts share, re-read in the overlap: the first window grouped those very words on those very lines. */
     const j = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [280, 290])], [m("W2.C1", ["Kestrelvane"], [290])]]);
     eq("the overlap: a shared token on the lines the first window placed is that account", S(at(j, "W2.C1")), ["resolved", "kvs", "name", ["kvs"]]);
