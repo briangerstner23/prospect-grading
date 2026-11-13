@@ -22,7 +22,7 @@
  *                 companies were discussed, in the words as said, on which lines. verifySegments
  *                 keeps a name only on a line it was cited for (windowMentions, per window).
  *   4. RESOLVE    in code, never by the model: buildRosterIndex, then clusterWindows — resolveMention,
- *                 joinAcrossWindows (a company one window heard only by a short form, placed by the
+ *                 joinAcrossWindows (a company one window heard only by a short form: a question, offering the
  *                 name another window heard), clusterMentions.
  *                 Stored in pb_meetings.mentions; the meeting is 'reading'.
  *   5. PASS 2     four agencies to a call, each seeing ONLY its own lines, up to six calls at once,

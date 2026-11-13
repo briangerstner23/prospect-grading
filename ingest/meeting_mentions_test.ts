@@ -335,10 +335,10 @@ const LINES = [
   /* Across a seam / in the overlap: the second window re-reads lines the first one already placed. */
   {
     const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290, 305])], [m("W2.C1", ["Vorn"], [290, 305])]]);
-    eq("the overlap: 'Vorn' on lines the first window placed beside 'Vorn Digital' is joined", S(at(j, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+    eq("the overlap: 'Vorn' on lines the first window placed beside 'Vorn Digital' is the same sighting: placed", S(at(j, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
     eq("…counted as the same sighting", j.counters, { joined_same_lines: 1 });
     const cl = clusterMentions(j.resolutions);
-    eq("…and the two windows are one card", cl.map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]]]);
+    eq("…and the two windows are one card, so no line is owned twice", cl.map((c) => [c.state, c.account_id, c.sources]), [["resolved", "vorn", ["W1.C1", "W2.C1"]]]);
   }
   {
     /* The overlap line carries ANOTHER company too: only the words the other window grouped with the account are its. */
@@ -348,7 +348,7 @@ const LINES = [
     const besideToo = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [280, 290])], [m("W2.C1", ["Zell"], [290])]]);
     eq("…not even when the first window said a short form of its own there", S(at(besideToo, "W2.C1")), ["unknown", null, null, []]);
     const named = J([[m("W1.C1", ["Vorn Digital"], [290])], [m("W2.C1", ["Zell"], [290])], [m("W3.C1", ["Zell Creative"], [700])]]);
-    eq("…and when the other company is named in full elsewhere, it joins THAT account, not the line's", S(at(named, "W2.C1")), ["resolved", "zell", "name", ["zell"]]);
+    eq("…and when the other company is named in full elsewhere, it suggests THAT account, not the line's", S(at(named, "W2.C1")), ["suggested", null, "token", ["zell"]]);
   }
   {
     /* The same sighting is ONE mention's: the lines one resolved mention cited and the words another
@@ -379,27 +379,47 @@ const LINES = [
   {
     /* A token two accounts share, re-read in the overlap: the first window grouped those very words on those very lines. */
     const j = J([[m("W1.C1", ["Kestrelvane Studio", "Kestrelvane"], [280, 290])], [m("W2.C1", ["Kestrelvane"], [290])]]);
-    eq("the overlap: a shared token on the lines the first window placed is that account", S(at(j, "W2.C1")), ["resolved", "kvs", "name", ["kvs"]]);
+    eq("the overlap: a shared token on the lines the first window placed is that account: the same sighting", S(at(j, "W2.C1")), ["resolved", "kvs", "name", ["kvs"]]);
+  }
+
+  /* THE RULE (13 Nov 2026): the join never places. Across every case below, a mention the join touched
+     is 'suggested' with no account, never 'resolved' — what was resolved came resolved from its own window. */
+  {
+    const ws = [
+      [m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290, 305]), m("W1.C2", ["Zell Creative"], [100])],
+      [m("W2.C1", ["Vorn"], [290, 305]), m("W2.C2", ["Brindlecot Harrow Media"], [400])],
+      [m("W3.C1", ["Vorn"], [800]), m("W3.C2", ["Zell"], [820]), m("W3.C3", ["Brindlecot"], [840]), m("W3.C4", ["Orange"], [860])],
+    ];
+    const before = ws.map((w) => w.map((mm) => res(mm)));
+    const j = J(ws);
+    const resolvedBefore = new Set(before.flat().filter((r) => r.state === "resolved").map((r) => r.ref));
+    check("the join resolves nothing its own window did not, but the same sighting (the overlap read twice)",
+      j.resolutions.every((r) => r.state !== "resolved" || resolvedBefore.has(r.ref) || r.ref === "W2.C1"),
+      JSON.stringify(j.resolutions.map((r) => [r.ref, r.state])));
+    eq("…which is placed: the same words on the same lines another window resolved", S(at(j, "W2.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+    check("…and every mention it touched carries no account", j.resolutions.filter((r) => r.reason === "named_in_another_window").every((r) => r.account_id === null && r.state === "suggested"));
+    check("…while the ones it suggested are read by pass 2 (suggested, not unknown)", ["W3.C1", "W3.C2", "W3.C3"].every((ref) => at(j, ref).state === "suggested"),
+      JSON.stringify(j.resolutions.map((r) => [r.ref, r.state])));
   }
 
   /* Window 1, then window 3, by a short form. */
   {
     const j = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [], [m("W3.C1", ["Vorn"], [800, 805])]]);
-    eq("window 1 → 3: 'Vorn', said beside the name in window 1, is joined in window 3", S(at(j, "W3.C1")), ["resolved", "vorn", "name", ["vorn"]]);
-    eq("…counted as joined by name", j.counters, { joined_by_name: 1 });
-    eq("…one card with both discussions", clusterMentions(j.resolutions).map((c) => [c.account_id, c.segments]), [["vorn", [{ from: 268, to: 295 }, { from: 798, to: 810 }]]]);
+    eq("window 1 → 3: 'Vorn', said beside the name in window 1, is suggested in window 3, that account first — never placed", S(at(j, "W3.C1")), ["suggested", null, "token", ["vorn"]]);
+    eq("…counted as suggested by name", j.counters, { suggested_by_name: 1 });
+    eq("…two cards: the named discussion settled, the later one asking, both read", clusterMentions(j.resolutions).map((c) => [c.state, c.account_id, c.segments]), [["resolved", "vorn", [{ from: 268, to: 295 }]], ["suggested", null, [{ from: 798, to: 810 }]]]);
   }
   {
     const j = J([[m("W1.C1", ["Zell Creative"], [100])], [], [m("W3.C1", ["Zell"], [700])]]);
-    eq("window 1 → 3: the account's own short name joins though window 1 never said it alone", S(at(j, "W3.C1")), ["resolved", "zell", "name", ["zell"]]);
+    eq("window 1 → 3: the account's own short name joins though window 1 never said it alone", S(at(j, "W3.C1")), ["suggested", null, "token", ["zell"]]);
   }
   {
     const j = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindlecot"], [760])]]);
-    eq("window 1 → 3: a distinctive token that only suggested the account this meeting named is joined", S(at(j, "W3.C1")), ["resolved", "bh", "name", ["bh"]]);
+    eq("window 1 → 3: a distinctive token that only suggested the account this meeting named is joined", S(at(j, "W3.C1")), ["suggested", null, "token", ["bh"]]);
   }
   {
     const beside = J([[m("W1.C1", ["Orange Wyvernhold", "Orange"], [400, 402])], [], [m("W3.C1", ["Orange"], [750])]]);
-    eq("window 1 → 3: an ordinary word of the name, said beside it, is joined", S(at(beside, "W3.C1")), ["resolved", "orange", "name", ["orange"]]);
+    eq("window 1 → 3: an ordinary word of the name, said beside it, is joined", S(at(beside, "W3.C1")), ["suggested", null, "token", ["orange"]]);
     const never = J([[m("W1.C1", ["Orange Wyvernhold"], [400])], [], [m("W3.C1", ["Orange"], [750])]]);
     eq("…but an ordinary word never said beside the name stays refused", [at(never, "W3.C1").state, at(never, "W3.C1").reason], ["refused", "ordinary_word"]);
     /* No account on this roster has the word, so only the word-of-its-own-name rule refuses it. */
@@ -525,7 +545,7 @@ const LINES = [
     eq("…nothing joined", sighted.counters, {});
     /* Listed apart in a window that never named the account is no judgement about it. */
     const blind = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 290])], [m("W2.C1", ["Vorn"], [520])], [m("W3.C1", ["Vorn"], [800])]]);
-    eq("still: a short form heard alone in two windows that never named the account joins both", [at(blind, "W2.C1").account_id, at(blind, "W3.C1").account_id, blind.counters], ["vorn", "vorn", { joined_by_name: 2 }]);
+    eq("still: a short form heard alone in two windows that never named the account joins both", [S(at(blind, "W2.C1")), S(at(blind, "W3.C1")), blind.counters], [["suggested", null, "token", ["vorn"]], ["suggested", null, "token", ["vorn"]], { suggested_by_name: 2 }]);
   }
   {
     const PEOPLE = buildRosterIndex({ accounts: [acct("zell", "Zell Creative")], people: ["Rep A", "Rik Zell"] });
@@ -594,7 +614,7 @@ const LINES = [
     /* A merged duplicate of the SAME account holds nothing against it. */
     const SELF = buildRosterIndex({ accounts: [...base, acct("vd2", "Vorn Partners", { book: "merged", merged_into: "vorn" })] });
     const self = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], SELF);
-    eq("still: a merged row of the account itself does not stop its own short name", S(at(self, "W3.C1")), ["resolved", "vorn", "name", ["vorn"]]);
+    eq("still: a merged row of the account itself does not stop its own short name", S(at(self, "W3.C1")), ["suggested", null, "token", ["vorn"]]);
   }
   {
     const ORANGES = buildRosterIndex({ accounts: [acct("ow", "Orange Wyvernhold"), acct("of", "Orange Fieldcrest")] });
@@ -709,11 +729,11 @@ const LINES = [
     const LEARNED = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital")], learned: [{ said_key: "vornie", account_id: "vorn" }] });
     eq("learned precondition: 'Vornie' resolves on a learned alias", [resolveSurface("Vornie", LEARNED).state, resolveSurface("Vornie", LEARNED).matched_on], ["resolved", "learned"]);
     const j = J([[m("W1.C1", ["Vornie"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], LEARNED);
-    eq("joined where the account was resolved only on a learned alias: placed, on its own evidence, never 'learned'", S(at(j, "W3.C1")), ["resolved", "vorn", "token", ["vorn"]]);
+    eq("joined where the account was resolved only on a learned alias: suggested, on its own evidence, never 'learned'", S(at(j, "W3.C1")), ["suggested", null, "token", ["vorn"]]);
     const first = J([[m("W1.C1", ["Vorn"], [270])], [], [m("W3.C1", ["Vornie"], [800])]], LEARNED);
-    eq("…and when the joined mention heads the card, the card does not claim a person confirmed it", clusterMentions(first.resolutions).map((c) => [c.account_id, c.matched_on, c.sources]), [["vorn", "token", ["W1.C1", "W3.C1"]]]);
+    eq("…and when the joined mention heads the card, the card does not claim a person confirmed it", clusterMentions(first.resolutions).map((c) => [c.account_id, c.matched_on, c.sources]), [[null, "token", ["W1.C1"]], ["vorn", "learned", ["W3.C1"]]]);
     const named = J([[m("W1.C1", ["Vornie"], [270]), m("W1.C2", ["Vorn Digital"], [280])], [], [m("W3.C1", ["Vorn"], [800])]], LEARNED);
-    eq("…while a whole name resolved too, it takes that basis", at(named, "W3.C1").matched_on, "name");
+    eq("…and a whole name resolved too gives it no basis of the account's: its own evidence", at(named, "W3.C1").matched_on, "token");
     /* The same sighting, where the account was resolved only on the learned alias. */
     const sighted = J([[m("W1.C1", ["Vornie", "Vorn"], [318, 320])], [m("W2.C1", ["Vorn"], [320])]], LEARNED);
     eq("the same sighting of an account resolved only on a learned alias: placed on 'token', never 'learned'", S(at(sighted, "W2.C1")), ["resolved", "vorn", "token", ["vorn"]]);

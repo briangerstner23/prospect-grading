@@ -798,9 +798,9 @@ export function clusterMentions(resolutions: readonly MentionResolution[]): Ment
  * ------------------------------------------------------------------ */
 
 export interface WindowJoin {
-  /** Every mention, flat and in window order; the ones joined across windows placed. */
+  /** Every mention, flat and in window order; the ones another window named suggested, that account first. */
   resolutions: MentionResolution[];
-  /** joined_same_lines · joined_by_name · conflicting_names (mentions) · offered_first (cards). */
+  /** joined_same_lines (placed) · suggested_by_name · conflicting_names (mentions) · offered_first (cards). */
   counters: Record<string, number>;
 }
 
@@ -813,8 +813,14 @@ export interface WindowJoin {
  * by account or by spoken name, it would become a second card whose lines are owned against the real
  * one — and, when unknown, never read, so the team's later word on the agency would be lost.
  *
- * This puts back what one window would have done, from evidence IN THIS MEETING, and only ACROSS
- * windows: a mention is joined to an account resolved in ANOTHER window, never to one its own window
+ * This puts back what one window would have done — AS A SUGGESTION, never a placement, save the one
+ * exception below (the same sighting) — from evidence IN THIS MEETING, and only ACROSS windows. "Joined"
+ * below means exactly that, except for the same sighting: the mention becomes a
+ * "Who is this?" card (state 'suggested', no account), which pass 2 still reads, with the account
+ * offered first; a person places it with one click. Two review rounds (13 Nov 2026) kept finding
+ * rosters on which in-meeting words carried a mention onto the wrong agency, and every one was a token
+ * deciding identity, which rule 8 gives to a person. A mention is joined to an account resolved in
+ * ANOTHER window, never to one its own window
  * resolved too (that window's model saw both and kept them apart, as one window's would), so a
  * meeting read in one window comes back unchanged. Nor is it joined to an account whose window listed
  * any of its words apart from it: that window's model heard the name and those words and kept them
@@ -841,8 +847,11 @@ export interface WindowJoin {
  *   · the same sighting — every line it cites was cited, in another window, by ONE resolved mention
  *     that also carried every one of its forms (the overlap, seen twice): resolved to that mention's
  *     account, whatever its own state, because that other window's model grouped those very words on
- *     those very lines. Never pooled: lines one mention cited and words another carried are not it;
- *   · unknown, suggested, or refused only as an ordinary word — resolved when every form it has
+ *     those very lines — the ONE case the join PLACES, because it is not a token deciding identity but
+ *     the same words on the same lines read twice (suggesting it would make two cards own one line).
+ *     Never pooled: lines one mention cited and words another carried are not it;
+ *   · unknown, suggested, or refused only as an ordinary word — joined (suggested, that account
+ *     first) when every form it has
  *     points at the same account of this meeting (a meeting-local key, or a roster suggestion that
  *     offers it) and every suggestion offers that account ALONE, in words no other live account's
  *     name has or begins with — and no window that resolved the account listed any of its words
@@ -858,9 +867,10 @@ export interface WindowJoin {
  * Offered first is decided per CARD (one per state and spoken name, as clusterMentions groups them):
  * an account goes first only when every mention of the card would put it there, so a card holding a
  * mention its own window listed apart from that account keeps the roster's order.
- * A joined mention takes the basis its account was resolved on in this meeting, never 'learned': no
- * person confirmed it. When the account was resolved only on a learned alias, it takes the basis of its
- * own evidence instead ('token', or the suggestion's own).
+ * A suggested mention carries the basis of its OWN evidence ('token' for a word of the name or a form
+ * said beside it, or the suggestion's own); a same-sighting placement takes the basis its account was
+ * resolved on in this meeting, or 'token' when that was only a learned alias — never 'learned' or
+ * 'person': no person confirmed it.
  *
  * What it cannot join: a form that is neither a word of the name nor ever said beside it, heard only
  * in a window that never heard the name — a nickname, a mistranscription ("Vron"). That stays its own
@@ -1017,11 +1027,26 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     return a !== undefined && prefixOf(k, a).length > 0;
   };
 
-  /* The basis its account was resolved on in this meeting; when that was only a learned alias, the
-     basis of the joined mention's own evidence ('token' for a word of the name or a form said beside
-     it, a suggestion's own basis otherwise) — never 'learned', which says a person confirmed it. */
+  /* NEVER placed — suggested. The join's evidence is words heard in THIS meeting, and two review rounds
+     (13 Nov 2026) kept finding rosters on which such words carried a mention onto the wrong agency: a
+     word two live accounts share, a suggestion for several, a merged account's old name, a split word,
+     a prefix. Every one is a case of a token deciding identity, which rule 8 gives to a person. So what
+     the join would have placed it SUGGESTS: the mention becomes a "Who is this?" card — pass 2 still
+     reads it (READ_STATES), so the team's words are kept — with the account this meeting named offered
+     first, and a person places it with one click. Its basis is its own evidence ('token' for a word of
+     the name or a form said beside it, a suggestion's own basis otherwise), never 'learned'. */
+  /* The one exception: the SAME SIGHTING — these very lines, cited in another window by ONE resolved
+     mention that carried these very words (the overlap, read twice). That is not a token deciding
+     identity: it is another window's model grouping the same words on the same lines with the whole
+     name, as one window's would have. It is placed, on the basis its account was resolved on (never
+     'learned'). Suggesting it instead would make two cards own the same lines, and pass 2 would then
+     flag or refuse every claim on them. */
   const placed = (r: MentionResolution, a: string, own: MatchedOn): MentionResolution =>
     ({ ...r, state: "resolved", account_id: a, matched_on: basisOf.get(a) ?? own, options: [a], reason: null });
+  const suggest = (r: MentionResolution, a: string, own: MatchedOn): void => {
+    const options = [a, ...r.options.filter((o) => o !== a)].filter((o) => index.accounts.has(o)).slice(0, MAX_OPTIONS);
+    keep({ ...r, state: "suggested", account_id: null, matched_on: own, options, reason: "named_in_another_window" }, [a]);
+  };
   const ownBasis = (forms: readonly SurfaceResolution[]): MatchedOn => {
     const bs = forms.map((s): MatchedOn => (local.has(s.key) || s.matched_on === null || s.matched_on === "learned" || s.matched_on === "person" ? "token" : s.matched_on));
     return bs.sort((x, y) => (BASIS_RANK[x] ?? 9) - (BASIS_RANK[y] ?? 9))[0] ?? "token";
@@ -1125,8 +1150,8 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     const solely = (s: SurfaceResolution): boolean =>
       s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0 && prefixOf(s.key, t).length === 0;
     if (targets.length === 1 && !shared && !listedApart(t, forms) && forms.every((s) => s.state !== "suggested" || solely(s))) {
-      out.push(placed(r, t, ownBasis(forms)));
-      bump(counters, "joined_by_name");
+      suggest(r, t, ownBasis(forms));
+      bump(counters, "suggested_by_name");
       continue;
     }
     if (targets.length === 1 && forms.every((s) => s.state !== "suggested" || s.options.includes(t))) {

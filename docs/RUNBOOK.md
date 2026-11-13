@@ -2724,13 +2724,18 @@ second read.
 A read takes a 150 s lease on the meeting (one conditional update; two runs cannot both hold it), runs
 pass 1 — past 40,000 rendered characters in overlapping windows of at most that, side by side (12 Nov
 2026: a 93-minute meeting sent as one call never answered inside the ceiling) — resolves the names in code, then pass 2 four agencies to a call inside the budget. Read in
-windows, a company one window heard only by a short form ("Vorn" for "Vorn Digital") is placed by the
-name another window heard (`meeting.pass1.joined_same_lines` / `joined_by_name`); a word another live
-account also has — as a word of its name, a key, or an option the roster offers — is never placed that
-way, whichever name this meeting said it beside, and a token or prefix two accounts share stays a "Who
-is this?" card with that account offered first (`offered_first`, counted per card, and only when every
-mention of the card was heard outside the windows that named it); a nickname or mistranscription never said
-beside the name stays its own card. The budget
+windows, a company one window heard only by a short form ("Vorn" for "Vorn Digital") is NEVER placed by
+the name another window heard (13 Nov 2026: two review rounds kept finding rosters on which that put the
+team's words on the wrong agency). It becomes its own "Who is this?" card instead, which pass 2 still
+reads, with the account the meeting named offered first (`meeting.pass1.suggested_by_name`); a person
+places it with one click. The one placement is the SAME SIGHTING: a short form re-read on the overlap's
+lines, which ONE resolved mention in another window cited with those very words
+(`meeting.pass1.joined_same_lines`) — the same words on the same lines read twice, and two cards owning
+one line would make pass 2 flag every claim on it. A word another live account also has — as a word of
+its name, a key, or an option the roster offers — is not even suggested that way, and a token or prefix
+two accounts share stays an ambiguous card with that account offered first (`offered_first`, counted per
+card, and only when every mention of the card was heard outside the windows that named it); a nickname
+or mistranscription never said beside the name stays its own card. The budget
 decides whether a round of calls STARTS; a call that started runs to the ceiling — the run's start +
 120 s, inside both the lease and the gateway's 150 s (§17) — and is stopped there if it has not
 answered (`out_of_time`), so no call outlives the lease and none is cut short at the budget it started

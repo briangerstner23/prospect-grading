@@ -661,24 +661,44 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   const unplaced = many.perWindow.flat().filter((mm) => mm.as_said.every((s) => ["Vorn", "Zell", "Brindlecot", "Kestrelvane"].includes(s)));
   eq("windows: three windows hear a company only by a short form that does not resolve alone", unplaced.map((mm) => mm.ref).sort(), ["W2.C1", "W3.C2", "W3.C4", "W4.C3"]);
 
-  for (const acct of ["vorn", "zell", "bh"]) {
+  /* The same sighting (Vorn: the short form re-read on the overlap's lines) is PLACED: one card, as one
+     window gives it. A short form heard only in a later window (Zell in 3, Brindlecot in 4) is never
+     placed (13 Nov 2026): it is its own "Who is this?" card, read by pass 2, the named account offered
+     first — and between the two cards the company keeps every stretch one window gives it. */
+  const asking = (cl: MentionCluster[], said: string) => cl.find((c) => c.state === "suggested" && c.said_key === said);
+  {
+    const a = card(one.clusters, "vorn");
+    const b = card(many.clusters, "vorn");
+    check("the same sighting: one card for the company, read in windows (vorn)", many.clusters.filter((c) => c.account_id === "vorn").length === 1 && b !== undefined);
+    eq("…with the stretches one window gives it (vorn)", b?.segments, a?.segments);
+    eq("…placed on the same basis (vorn)", b?.matched_on, a?.matched_on);
+    check("…and no question left beside it", asking(many.clusters, "vorn") === undefined);
+  }
+  for (const [acct, said] of [["zell", "zell"], ["bh", "brindlecot"]]) {
     const a = card(one.clusters, acct);
-    const b = card(many.clusters, acct);
-    check(`one card per company, read in windows (${acct})`, many.clusters.filter((c) => c.account_id === acct).length === 1 && b !== undefined);
-    eq(`…with the stretches one window gives it (${acct})`, b?.segments, a?.segments);
-    eq(`…placed on the same basis (${acct})`, b?.matched_on, a?.matched_on);
+    const named = card(many.clusters, acct);
+    const q = asking(many.clusters, said);
+    check(`a later short form: the named card stays, and a question is asked beside it (${acct})`, named !== undefined && q !== undefined);
+    eq(`…the question offers the named account first (${acct})`, q?.options[0], acct);
+    eq(`…and carries no account until a person places it (${acct})`, q?.account_id, null);
+    eq(`…between them, every stretch one window gives the company (${acct})`,
+      [...(named?.segments ?? []), ...(q?.segments ?? [])].sort((x, y) => x.from - y.from), a?.segments);
   }
   eq("no unknown or refused card is left for a company in the book", many.clusters.filter((c) => c.state === "unknown" || c.state === "refused").map((c) => c.said_as), []);
-  eq("counters: the joins are counted", many.counters, { joined_same_lines: 1, joined_by_name: 2, offered_first: 1 });
+  eq("counters: the same sighting placed, the later short forms suggested", many.counters, { joined_same_lines: 1, suggested_by_name: 2, offered_first: 1 });
 
   /* The shared token stays a person's call in window 3 — the meeting's account offered first. */
   const kv = many.clusters.filter((c) => c.said_key === "kestrelvane" && c.state === "ambiguous");
   eq("the shared token alone in window 3 stays 'Who is this?', the account this meeting named first", kv.map((c) => [c.options, c.segments]), [[["kvs", "kvi"], [{ from: 718, to: 724 }]]]);
   eq("…while the card for the account keeps what window 1 placed", card(many.clusters, "kvs")?.segments, [{ from: 148, to: 156 }]);
 
-  /* Pass 2 over the windowed cards: every claim on a company's own lines is kept, clean. */
+  /* Pass 2 over the windowed cards: every claim on a company's own lines is kept, clean — a question's
+     included: pass 2 reads a suggested card, and its claims wait on it until a person places the name. */
   const plan = planBatches(many.clusters, lines);
   const refOf = (acct: string) => (card(many.clusters, acct) as MentionCluster).ref;
+  const askRef = (said: string) => (asking(many.clusters, said) as MentionCluster).ref;
+  /** The fake model answers for the company a card is about; a faithful one quotes only lines it was shown. */
+  const aboutOf: Record<string, string> = { zell: "zell", brindlecot: "bh" };
   const claimsFor: Record<string, unknown[]> = {
     vorn: [
       { type: "read", topic: "fit", quote: say[305], line_from: 305, line_to: 305, mode: "asserted", confidence: "high" },
@@ -694,7 +714,10 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
   const kept: string[] = [];
   const counters: Record<string, number> = {};
   for (const b of plan.batches) {
-    const claims = b.items.flatMap((it) => (it.account_id ? (claimsFor[it.account_id] ?? []).map((c) => ({ ...(c as object), ref: it.ref })) : []));
+    const claims = b.items.flatMap((it) => {
+      const about = it.account_id ?? (it.state === "suggested" ? aboutOf[it.said_key] : undefined);
+      return about ? (claimsFor[about] ?? []).filter((c) => it.owned.includes((c as { line_from: number }).line_from)).map((c) => ({ ...(c as object), ref: it.ref })) : [];
+    });
     const v = verifyMeetingClaims({ claims }, {
       lines, batch: b, owners: plan.owners, tiers: ["Bronze", "Silver", "Gold"], overrideCodes: ["relationship_known"],
       removalReasons: [{ disposition: "unqualified", code: "not_a_fit", active: true }],
@@ -703,10 +726,10 @@ eq("extractor: an older meeting prompt is not resumed", modelFromExtractor("meet
     for (const c of v.claims) kept.push(`${c.ref}:${c.type}@${c.line_from}${c.flags.length ? JSON.stringify(c.flags) : ""}`);
   }
   eq("pass 2: every claim on a company's own lines is kept, none flagged shared_segment", kept.sort(), [
-    `${refOf("bh")}:tier_call@600`, `${refOf("bh")}:read@870`, `${refOf("kvs")}:read@152`, `${refOf("vorn")}:read@305`, `${refOf("vorn")}:tier_call@320`, `${refOf("zell")}:removal@700`,
+    `${refOf("bh")}:tier_call@600`, `${askRef("brindlecot")}:read@870`, `${refOf("kvs")}:read@152`, `${refOf("vorn")}:read@305`, `${refOf("vorn")}:tier_call@320`, `${askRef("zell")}:removal@700`,
   ].sort());
   eq("pass 2: no claim is refused for another agency's lines or for lying outside its card", [counters.other_agency_lines ?? 0, counters.outside_segment ?? 0], [0, 0]);
-  check("pass 2: the removal said by the short form in window 3 reaches the account's card", kept.includes(`${refOf("zell")}:removal@700`));
+  check("pass 2: the removal said by the short form in window 3 is read, and waits on its question card", kept.includes(`${askRef("zell")}:removal@700`));
 
   /* One window is not joined at all: exactly what clusterMentions(resolveMention) gave before windows. */
   eq("one window: no join counters", one.counters, {});
