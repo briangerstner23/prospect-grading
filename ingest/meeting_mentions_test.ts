@@ -619,6 +619,29 @@ const LINES = [
     eq("…nothing joined", splitBeside.counters, {});
   }
   {
+    /* A prefix the matcher did not offer: a domain label matched first, or the word is not a first word. */
+    const HIDDEN = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital", { domain: "brindle.example" }), acct("bh", "Brindlecot Harrow Media")] });
+    eq("hidden-prefix precondition: 'Brindle' suggests the account whose domain label it is", [resolveSurface("Brindle", HIDDEN).state, resolveSurface("Brindle", HIDDEN).matched_on, resolveSurface("Brindle", HIDDEN).options], ["suggested", "domain", ["vorn"]]);
+    const hidden = J([[m("W1.C1", ["Vorn Digital"], [100]), m("W1.C2", ["Brindlecot Harrow Media"], [140])], [], [m("W3.C1", ["Brindle"], [760])]], HIDDEN);
+    eq("never: a domain-label suggestion that starts another account's word, while that account is named", S(at(hidden, "W3.C1")), ["suggested", null, "domain", ["vorn"]]);
+    eq("…nothing joined", hidden.counters, {});
+    const hiddenUnnamed = J([[m("W1.C1", ["Vorn Digital"], [100])], [], [m("W3.C1", ["Brindle"], [760])]], HIDDEN);
+    eq("never: …named in this meeting or not", S(at(hiddenUnnamed, "W3.C1")), ["suggested", null, "domain", ["vorn"]]);
+    const LATERWORD = buildRosterIndex({ accounts: [acct("bh", "Brindlecot Harrow Media"), acct("hw", "Harrow Brindlewood Studio")] });
+    eq("later-word prefix precondition: 'Brindle' suggests only the account whose FIRST word it starts", [resolveSurface("Brindle", LATERWORD).state, resolveSurface("Brindle", LATERWORD).matched_on, resolveSurface("Brindle", LATERWORD).options], ["suggested", "prefix", ["bh"]]);
+    const laterWord = J([[m("W1.C1", ["Brindlecot Harrow Media"], [120])], [], [m("W3.C1", ["Brindle"], [760])]], LATERWORD);
+    eq("never: a prefix suggestion that also starts a later word of another account's name", S(at(laterWord, "W3.C1")), ["suggested", null, "prefix", ["bh"]]);
+    eq("…nothing joined", laterWord.counters, {});
+    const SHADOW = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("hv", "Harrow Vornholt Studio")] });
+    eq("shadow precondition: 'Vorn' alone is unknown (no first word it starts)", resolveSurface("Vorn", SHADOW).state, "unknown");
+    const shadowOwn = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], SHADOW);
+    eq("never: an own short name that starts another account's word", S(at(shadowOwn, "W3.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined", shadowOwn.counters, {});
+    const shadowBeside = J([[m("W1.C1", ["Vorn Digital", "Vorn"], [270, 271])], [], [m("W3.C1", ["Vorn"], [800])]], SHADOW);
+    eq("never: a word said beside the name that starts another account's word", S(at(shadowBeside, "W3.C1")), ["unknown", null, null, []]);
+    eq("…nothing joined", shadowBeside.counters, {});
+  }
+  {
     const PREFIX = buildRosterIndex({ accounts: [acct("vorn", "Vorn Digital"), acct("vornholt", "Vornholt Studio")] });
     eq("conflict precondition: 'Vorn' alone suggests another account by prefix", [resolveSurface("Vorn", PREFIX).state, resolveSurface("Vorn", PREFIX).options], ["suggested", ["vornholt"]]);
     const j = J([[m("W1.C1", ["Vorn Digital"], [270])], [], [m("W3.C1", ["Vorn"], [800])]], PREFIX);

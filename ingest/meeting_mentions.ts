@@ -829,7 +829,9 @@ export interface WindowJoin {
  *   · the account's own short name — the core, or the first word, of a name this meeting resolved,
  *     when it is one word of MIN_KEY_CHARS or more that is not ordinary ("Vorn" of "Vorn Digital");
  *   never a key the index refuses (our names, placeholders, junk), a word of anyone at the meeting,
- *   a key shorter than MIN_KEY_CHARS, or an account with a poison partner. So "Vorn" said beside
+ *   a key shorter than MIN_KEY_CHARS, or an account with a poison partner. A key that STARTS another
+ *   account's word, by the matcher's own prefix rule ("Vorn" of "Harrow Vornholt Studio"), still names
+ *   its account to offer first but never places a mention. So "Vorn" said beside
  *   "Vorn Digital" is no key while "Vorn Partners Group" is live, and "Zell" grouped by one window
  *   with "Vorn Digital" is no key while "Zell Creative" is: a word two accounts share is never
  *   placed by the join.
@@ -935,11 +937,44 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
   /* resolveSurface matches a split word on its de-spaced form ("Brindle Cot" on the token
      "brindlecot"), so the roster is asked about that form too: a transcript that splits a word
      another account's name has must not slip past the check the whole word would fail. */
+  const despaced = (k: string): string => k.replace(/ /g, "");
   const othersFor = (k: string, a: string): string[] => {
-    const joined = k.replace(/ /g, "");
+    const joined = despaced(k);
     const ids = joined === k ? heldBy(k) : [...new Set([...heldBy(k), ...heldBy(joined)])];
     return ids.filter((x) => x !== a);
   };
+  /* The matcher's own prefix rule, asked of EVERY word of every name the roster knows (resolveSurface
+     asks it only of first tokens, and only when no token or domain label matched): a spoken word of
+     MIN_KEY_CHARS or more that starts another account's word and is at least half its length could
+     mean that account. "Brindle" could be "Harrow Brindlewood Studio" though the matcher offered only
+     "Brindlecot Harrow Media", and could be Brindlecot though a domain label matched it to another. */
+  const rosterWords = new Map<string, Set<string>>();
+  const addWords = (name: string, a: string) => {
+    for (const w of name.split(" ")) {
+      if (w.length < MIN_KEY_CHARS) continue;
+      if (!rosterWords.has(w)) rosterWords.set(w, new Set());
+      (rosterWords.get(w) as Set<string>).add(a);
+    }
+  };
+  for (const acc of index.accounts.values()) addWords(acc.full, acc.id);
+  for (const map of [index.exact, index.soft]) for (const [key, hits] of map) for (const h of hits) addWords(key, h.account);
+  const prefixHolders = new Map<string, string[]>();
+  const prefixOf = (k: string, a: string): string[] => {
+    let ids = prefixHolders.get(k);
+    if (ids === undefined) {
+      const set = new Set<string>();
+      const spoken = new Set(k.split(" "));
+      spoken.add(despaced(k));
+      for (const u of spoken) {
+        if (u.length < MIN_KEY_CHARS) continue;
+        for (const [w, as] of rosterWords) if (w !== u && w.startsWith(u) && u.length * 2 >= w.length) for (const x of as) set.add(x);
+      }
+      ids = [...set];
+      prefixHolders.set(k, ids);
+    }
+    return ids.filter((x) => x !== a);
+  };
+
   const holders = new Map<string, Set<string>>();
   const hold = (k: string, a: string) => {
     if (!holders.has(k)) holders.set(k, new Set());
@@ -972,6 +1007,12 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     if ((index.poison.get(a)?.size ?? 0) > 0) continue;
     local.set(k, a);
   }
+  /** A meeting-local key that another account's word starts with: it still names its account to offer
+      first, but it never places a mention — something else on the roster could be meant. */
+  const shadowed = (k: string): boolean => {
+    const a = local.get(k);
+    return a !== undefined && prefixOf(k, a).length > 0;
+  };
 
   /* The basis its account was resolved on in this meeting; when that was only a learned alias, the
      basis of the joined mention's own evidence ('token' for a word of the name or a form said beside
@@ -988,7 +1029,6 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
      heard the whole name and those words and kept them apart, as one window's would; the same words
      heard in another window — the overlap's copy of that very line, or a later one — are never placed
      on the account against that judgement. They stay as they were, the account offered first. */
-  const despaced = (k: string): string => k.replace(/ /g, "");
   const apartFrom = new Map<string, Set<string>>();
   for (const { r, w } of all) {
     if (r.state === "resolved") continue;
@@ -1051,12 +1091,17 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     const offers: string[] = [];
     let stray = forms.length === 0;
     let blocked = false;
+    let shared = false;
     for (const s of forms) {
       if (s.state === "suggested") for (const o of s.options) if (!offers.includes(o)) offers.push(o);
       const a = local.get(s.key);
       if (a !== undefined) {
         if (!elsewhere(a)) blocked = true;
         else if (!targets.includes(a)) targets.push(a);
+        if (shadowed(s.key)) {
+          shared = true;
+          for (const o of prefixOf(s.key, a)) if (!offers.includes(o)) offers.push(o);
+        }
         continue;
       }
       const hit = s.state === "suggested" ? s.options.filter(elsewhere) : [];
@@ -1066,12 +1111,13 @@ export function joinAcrossWindows(perWindow: readonly (readonly MentionResolutio
     if (blocked || stray || targets.length === 0) { keep(r, []); continue; }
     const t = targets[0];
     /* A roster suggestion carries a mention only when it is evidence for t ALONE: it offers t and no
-       other account, and no other live account has its words. One that also offers another account
-       (a prefix of two accounts' tokens) or whose word another name has ("Brindlecot" of "Harrow
-       Brindlecot Studio") is the roster saying the word is shared: never placed, t offered first. */
+       other account, no other live account has its words, and no other account's word starts with it.
+       One that also offers another account (a prefix of two accounts' tokens), whose word another name
+       has ("Brindlecot" of "Harrow Brindlecot Studio"), or that starts another's word ("Brindle" of
+       "Harrow Brindlewood Studio") is the roster saying the word is shared: never placed, t first. */
     const solely = (s: SurfaceResolution): boolean =>
-      s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0;
-    if (targets.length === 1 && !listedApart(t, forms) && forms.every((s) => s.state !== "suggested" || solely(s))) {
+      s.options.length === 1 && s.options[0] === t && othersFor(s.key, t).length === 0 && prefixOf(s.key, t).length === 0;
+    if (targets.length === 1 && !shared && !listedApart(t, forms) && forms.every((s) => s.state !== "suggested" || solely(s))) {
       out.push(placed(r, t, ownBasis(forms)));
       bump(counters, "joined_by_name");
       continue;
