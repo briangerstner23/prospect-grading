@@ -4763,7 +4763,7 @@ never attaches below `high` confidence without a person. So the join no longer p
    later "Orange" on it. The rest of a remembered key is still learned. **And [Wrong agency] forgets on
    the same terms.** An alias is stored under the card's whole key ("quillmere|quillmere studio") and learned
    part by part, so it places a later card heard only as "Quillmere". Unassign matched the whole key and
-   could never forget it. Migration 20261113180000 forgets every alias of the old account that shares a
+   could never forget it. Migration 20261115002615 forgets every alias of the old account that shares a
    part with the card's name. The review screen says so; it
    cannot yet tell before the click whether a name will be learned. That needs a `learnable` column on
    the proposal, and it is a follow-up.
