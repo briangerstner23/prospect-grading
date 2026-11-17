@@ -1,7 +1,7 @@
 -- WLIQ Prospect Book — the sales-meeting reader's operator harness (DECISIONS §65).
 --
 -- Run it through execute_sql RIGHT AFTER migration A (prospect_book_sales_meeting_reader) applies, and
--- again after 20261113180000 (sales_meeting_alias_forget: 4b2 and 4b3 need it, and fail before it),
+-- again after 20261115002615 (sales_meeting_alias_forget: 4b2 and 4b3 need it, and fail before it),
 -- and again after any change to pb_dossier(), pb_board(), the six meeting functions or the two removal
 -- reads. It runs inside BEGIN … ROLLBACK and leaves nothing behind: every member, account, meeting,
 -- proposal, fact, candidate, read and register row it makes is synthetic and is rolled back. It RAISES
@@ -536,7 +536,7 @@ begin
   end if;
   -- An alias stored under a key of several parts (an earlier card's 'harness c|harness c studio') is
   -- learned part by part, so it places a later 'harness c' too: unassign must forget it as well. One of
-  -- the same account sharing no part stays (migration 20261113180000).
+  -- the same account sharing no part stays (migration 20261115002615).
   insert into public.pb_meeting_aliases (said_key, account_id, confirmed_by, from_recording, active)
   values ('harness c|harness c studio', v_b, v_owner, v_rec, true), ('harness zz|harness zz studio', v_b, v_owner, v_rec, true);
   v_r := public.pb_assign_meeting_mention(v_rec, 'harness c', 'unassign', null, true);

@@ -2569,9 +2569,11 @@ lanes only. Nothing reaches `pb_facts` or `pb_register` until somebody approves 
 both grants queries empty, the harness raised nothing). pb-notes v18, pinned to `b4b33fd` (the merge of
 PR #11), carries the route, and registration has run: 176 internal recordings registered, 41 waiting,
 no model call (steps 3–4). The first dry read, of a 93-minute meeting, never finished pass 1 inside the
-ceiling, so pass 1 now reads a long meeting in windows (DECISIONS §66). Step 3 is therefore done again
-for pb-notes v19, with 3b beside it. Migration B (`…_prospect_book_sales_meeting_cron.sql`) and
-`20261113180000_prospect_book_sales_meeting_alias_forget.sql` are drafts carrying their drafting stamps.
+ceiling, so pass 1 now reads a long meeting in windows (DECISIONS §66). Step 3 was done again on 14 Nov:
+pb-notes v19, pinned to `237b7f5` (the merge of PR #12), `verify_jwt: false`, read back. Step 3b was done
+on 15 Nov: `20261115002615_prospect_book_sales_meeting_alias_forget.sql` (drafted as `20261113180000`)
+applied, byte-identical to its statement by md5, and the harness at `237b7f5` passed against it.
+Migration B (`…_prospect_book_sales_meeting_cron.sql`) is still a draft carrying its drafting stamp.
 The order below is the order things happen in; do not skip ahead.
 
 | Step | What | Done when |
@@ -2579,7 +2581,7 @@ The order below is the order things happen in; do not skip ahead.
 | 1 | Apply migration A, transcribe it (33.1) | it applied (section 0 and the sentinel passed) and the file carries the applied version, md5-identical |
 | 2 | Verify it in the database (33.2) | both CLAUDE.md grants queries empty, the harness raises nothing |
 | 3 | Merge, then deploy pb-notes pinned to the merge commit (RUNBOOK §3) | `verify_jwt: false` in the deploy response; fetched back, it is the one-line entrypoint |
-| 3b | Apply `20261113180000` (alias forget), transcribe it (33.1), run the harness again (33.2) | section 0 passed; the harness raises nothing, 4b2 and 4b3 included. Before step 6: from then on a person can tick "Remember this name" |
+| 3b | Apply the alias-forget migration (filed as `20261115002615`), transcribe it (33.1), run the harness again (33.2) | section 0 passed; the harness raises nothing, 4b2 and 4b3 included. Before step 6: from then on a person can tick "Remember this name" |
 | 4 | Register (33.3) | `pb_meetings` holds the internal recordings, the cursor is at the newest delivery |
 | 5 | Dry run one meeting and hand-check it (33.4) | 2 or fewer of 20 proposals wrong |
 | 6 | Read the three newest for real, one `recording_id` per call; the owner reviews them in one sitting | cards decided, the time per card measured |
