@@ -4777,3 +4777,32 @@ Code: `ingest/meeting_transcript.ts` (`windowsFor`), `ingest/meeting_mentions.ts
 Under the rule that a ruling is applied when the deployed artefact contains it, this section is live once
 pb-notes v19, pinned to the merge commit, is deployed and its first dry run has passed the hand check
 (RUNBOOK §33.4).
+
+## §67 — The board's reads are found by index, never by sorting every read (15–17 Nov 2026)
+
+No owner ruling; an operational repair. On 15 Nov the public board showed its error panel: `pb_board()` and
+`pb_lift()` both answered 500 at 01:17 UTC, cancelled by anon's 3 s `statement_timeout` (57014). The
+6-hourly reconcile had failed on the same timeout since at least 7 Nov.
+
+**Cause.** Two "newest read per account" lookups sorted every read in the book. `pb_reads` holds about
+72,000 rows (343 MB, a scorecard each) for 1,100 accounts and grows by about 830 a night.
+1. `pb_current_reads` was `distinct on (account_id) … order by account_id, run_at desc`: 3,128 ms on its own.
+2. `pb_engagement.stage_label` takes `order by as_of desc limit 1` per account, and no index is ordered by
+   `as_of`, so each account's ~67 reads were fetched and sorted, inside `pb_chase_board`, the board's base.
+   By 17 Nov `pb_board()` took 6.65 s with every page already in memory.
+
+**Fix, in three migrations, each filed byte-identical to its applied statement:**
+- `20261115023404` rewrote `pb_current_reads` as a recursive loose index scan: 35 ms alone, same 1,100
+  rows. It could not be parameterized, so `pb_board()`'s join on `account_id` re-ran it per row and the
+  board went to 4.5 s for about 20 minutes. Replaced the same night.
+- `20261115023710` drives the view from `pb_accounts` (every read's account, by foreign key) with one
+  `(account_id, run_at desc)` probe each: 6 ms, the same 1,100 ids as the DISTINCT ON view (checked as a
+  set before applying), `pb_reconcile_state()` 1.4 s. Visibility unchanged: security_invoker, and both
+  tables carry the same `pb_is_wliq()` row policy. No ORDER BY; every caller orders.
+- `20261117012758` adds `pb_reads_account_asof_idx (account_id, as_of desc) include (urgency)`, which turns
+  the stage label into one index-only probe. No definition changed. `pb_board()`: 6.65 s → 1.05 s warm.
+
+**Open.** `pb_lift()` takes about 25 s and always times out as anon; the board catches that and renders
+without the lift line. `pb_board()` at about 1 s still touches ~150,000 buffers (the board-wide CTEs in
+`pb_chase_board`), so it has a 3x margin, not a large one. Both are tracked; the next step is the same
+method — `explain (analyze, buffers)`, find the sort or scan that grows with the book, index or rewrite it.

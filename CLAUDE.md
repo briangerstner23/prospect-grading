@@ -221,6 +221,10 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             several parts, on the '|' parts the index learns; section 0 checked the live
             pb_assign_meeting_mention was migration A's (prosrc md5 6cb87141…), and the new prosrc is
             899d5938…. scripts/meeting_privacy_check.sql at 237b7f5 passed against it (4b2/4b3 included).
+            20261115023404 current reads by index (superseded the same night) · 20261115023710 current
+            reads by account (pb_current_reads driven by pb_accounts, one probe per account; 3.1 s → 6 ms)
+            · 20261117012758 reads as_of index (pb_engagement's stage label by index-only probe; pb_board()
+            6.65 s → 1.05 s). All applied, each byte-identical to its statement (md5). DECISIONS §67.
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/ · pb-notes/extractor.ts (the ONE model call both pb-notes
             paths make: the request, the API refusal, the JSON salvage) · pb-notes/meetings.ts (the
