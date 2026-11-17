@@ -4806,3 +4806,34 @@ No owner ruling; an operational repair. On 15 Nov the public board showed its er
 without the lift line. `pb_board()` at about 1 s still touches ~150,000 buffers (the board-wide CTEs in
 `pb_chase_board`), so it has a 3x margin, not a large one. Both are tracked; the next step is the same
 method — `explain (analyze, buffers)`, find the sort or scan that grows with the book, index or rewrite it.
+
+## §68 — The reconcile reads a snapshot the database took, not a live call (17 Nov 2026; DRAFT, not yet applied)
+
+No owner ruling; an operational repair. The 6-hourly reconcile still failed after §67: every scheduled run
+from 14 Nov, including 17 Nov 07:51 UTC on the merge commit, answered 500 from `pb_reconcile_state()` on
+anon's 3 s `statement_timeout`. It passed on PR #13's run only because that ran right after the cache was
+warmed by hand.
+
+**Cause: the CPU, not the query.** `pb_reconcile_state()` takes 0.23 s warm with all 24,004 buffers in
+memory, yet `pg_stat_statements` records the same call at 44 ms to 4.9 s (anon's completed calls: mean
+1.28 s, worst 2.98 s; the ones over 3 s were cancelled and are not recorded). A million-row
+`generate_series` count took 192 ms on an idle database. The project runs on Supabase's **Micro** compute
+size: a shared two-core ARM CPU and 1 GB (shared_buffers 224 MB), shared with every other system in the
+project. Small (~$15/mo) is still a shared CPU; Large (~$110/mo) is the first dedicated one. The same swing
+hits the public board: `pb_board()` as anon averages 1.1 s and has completed at up to 4.2 s, so the 15 Nov
+error panel can return on a busy hour. Compute size is the owner's decision; this section does not make it.
+
+**Fix (migration drafted as `20261117200000_prospect_book_reconcile_snapshot.sql`, re-filed under its
+applied version when applied, RUNBOOK §28.6).** pg_cron job `pb-reconcile-snapshot` (minutes 7, 27, 47)
+runs `pb_reconcile_snapshot()` as postgres, which has no statement timeout, and stores
+`pb_reconcile_state()`'s object in `pb_reconcile_snapshots` (seven days kept; RLS on, no grant to anon or
+authenticated). `pb_reconcile_latest()`, a SECURITY DEFINER read granted to anon and authenticated, returns
+the newest one with a `snapshot` block (id, taken_at, took_ms, age_seconds). `scripts/reconcile.ts` reads
+it, falls back to the live call only on 404 or no snapshot, and adds check 8: a snapshot older than three
+hours FAILS, because an old green snapshot would hide every other check. `pb_reconcile_state()` is
+unchanged (three tests pin its newest definition) and stays on anon's list. This adds a sixth definer
+read for anon; it returns nothing anon could not already read.
+
+**Open.** The board's own margin on this CPU (above); `pb_lift()` at ~25 s; and whether anon should keep
+execute on the live `pb_reconcile_state()` at all once nothing calls it, since a 0.2–5 s call anyone can
+repeat is load on a shared CPU.

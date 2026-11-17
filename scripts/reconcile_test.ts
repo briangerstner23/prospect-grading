@@ -323,6 +323,34 @@ const green = (): State => ({
   check("…and does not fail", !v.failures.some((f) => f.startsWith("meeting")));
 }
 
+// 8 · the snapshot is fresh (DECISIONS §68)
+const snap = (hoursOld: number) => ({ id: 41, taken_at: new Date(NOW.getTime() - hoursOld * 3_600_000).toISOString(), took_ms: 230, age_seconds: Math.round(hoursOld * 3600) });
+{
+  const v = evaluate(green(), ledger, disk, FP, NOW);
+  check("a state with no snapshot block (live call or offline file) is not age-checked", !v.failures.some((f) => f.startsWith("snapshot")) && v.summary.some((x) => x.includes("read live")));
+}
+{
+  const s = green(); s.snapshot = snap(0.3);
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a 20-minute-old snapshot passes and says how old it is", v.failures.length === 0 && v.summary.some((x) => x.startsWith("snapshot 41: 18 min old")), v.summary.join(" | "));
+}
+{
+  const s = green(); s.snapshot = snap(2.9);
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a snapshot just under three hours passes", !v.failures.some((f) => f.startsWith("snapshot")));
+}
+{
+  const s = green(); s.snapshot = snap(3.2);
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a snapshot over three hours old fails (the job stopped)", v.failures.some((f) => f.startsWith("snapshot: the newest reconcile snapshot is 3.2 h old")), v.failures.join(" | "));
+  check("…and the other checks still run against it", v.summary.some((x) => x.includes("applied")));
+}
+{
+  const s = green(); s.snapshot = { id: 1, taken_at: "not a time", took_ms: 1, age_seconds: 0 };
+  const v = evaluate(s, ledger, disk, FP, NOW);
+  check("a snapshot whose taken_at does not parse fails rather than passing as fresh", v.failures.some((f) => f.startsWith("snapshot: taken_at")));
+}
+
 console.log(`reconcile_test: ${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);
 if (failures.length) process.exit(1);
