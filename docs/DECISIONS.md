@@ -4837,3 +4837,27 @@ read for anon; it returns nothing anon could not already read.
 **Open.** The board's own margin on this CPU (above); `pb_lift()` at ~25 s; and whether anon should keep
 execute on the live `pb_reconcile_state()` at all once nothing calls it, since a 0.2–5 s call anyone can
 repeat is load on a shared CPU.
+
+## §69 — The board carries its chase cells again (20 Nov 2026; DRAFT, not yet applied)
+
+No owner ruling; a repair that restores what §52 ruled. Since 18 Sep the public board has grouped every
+row under "No cell (rubric before 0.1.7)", and the dossier's cell chip and play line have been blank.
+Two migrations share the version `20260918100000`: `prospect_book_board_by_cell` gave `pb_board()` ten cell
+columns (`cell_id`, `cell_name`, `cell_play`, `cell_rank`, `cell_owner_role`, `cell_sla_days`, `cell_abm`,
+`readiness`, `ceiling_assumed`, `timing_aged_out`), and `prospect_book_removals` then re-created the function
+from the definition before that one to filter removed agencies out (§50), dropping all ten. The live function
+(prosrc md5 `6c47cb99…`, 20 Nov) returns the 21 pre-cell columns; `web/board.html` reads `cell_id` and finds
+none. `pb_prospect_board` still computes every cell column, so nothing upstream is wrong. It went unnoticed
+because the page test pins the page, the privacy test pins what the function may NOT return, and nothing
+pinned what it MUST return.
+
+**Fix (drafted as `20261120020000_prospect_book_board_cells_restored.sql`, re-filed under its applied
+version when applied).** Drop and re-create `pb_board()` with the removals body unchanged plus the ten
+columns from the view; restate the grants (`anon`, `authenticated`, `service_role`) and the comment.
+Section 0 refuses to run if the live body moved since it was read. Nothing in the database depends on the
+function (`pg_depend`). The corrected query returned all 847 rows at the same ~150,000 buffers as the live
+one: the view computed the cell columns all along and the function discarded them.
+
+**Open.** A test that the newest `pb_board()` returns every column `web/board.html` reads, so a later
+re-creation cannot drop them silently again; and the duplicate migration version itself (§26's note in
+CLAUDE.md), which let two definitions race.
