@@ -139,7 +139,11 @@ export type AccountMode = "attach" | "create" | "review";
  * A pb_accounts proposal from an organization event.
  *   attach — `id` is an existing row matched HIGH; set pipedrive_org_id, roster_source and
  *            roster_certified on it; fill name/domain (never change `key`).
- *   create — no existing row resembles it; insert.
+ *   create — no existing row resembles it; insert, UNCERTIFIED (DECISIONS §70). A Pipedrive
+ *            organisation is not a sales-qualified lead until it has a Client Journey card: anyone
+ *            (a person, an import, another system) can add an organisation, and a certified row is
+ *            what PRO-6 calls the roster. The nightly pb_certify_from_roster_cards() certifies it
+ *            the morning its org appears on the Client Journey pipeline.
  *   review — a medium/low resemblance exists; write the candidates, insert nothing.
  */
 export interface AccountUpsert {
@@ -150,7 +154,8 @@ export interface AccountUpsert {
   key: string;
   domain: string | null;
   roster_source: "pipedrive";
-  roster_certified: true;
+  /** true on attach (the account is already on the book); false on create and review (§70). */
+  roster_certified: boolean;
 }
 
 /** A pb_contacts row. `pipedrive_org_id` is not a column; kept so a later attach can find it. */
@@ -683,7 +688,7 @@ function parseOrganization(
       out.candidates.push(candidateRow(c, sourceId, name, domain, "Pipedrive organization resembles an existing account; confirm before it is created or attached"));
     }
     out.notes.push(`organization ${orgId} "${name}" resembles ${proposal.candidates.length} existing account(s); held for review`);
-    out.account = { mode: "review", id: null, pipedrive_org_id: orgId, name, key, domain, roster_source: "pipedrive", roster_certified: true };
+    out.account = { mode: "review", id: null, pipedrive_org_id: orgId, name, key, domain, roster_source: "pipedrive", roster_certified: false };
     return;
   }
 
@@ -691,8 +696,8 @@ function parseOrganization(
     out.ignored = `organization ${orgId} "${name}" normalises to an empty key`;
     return;
   }
-  out.notes.push(`organization ${orgId} "${name}" is new to the book; create`);
-  out.account = { mode: "create", id: null, pipedrive_org_id: orgId, name, key, domain, roster_source: "pipedrive", roster_certified: true };
+  out.notes.push(`organization ${orgId} "${name}" is new to the book; create, uncertified until its org has a Client Journey card (DECISIONS §70)`);
+  out.account = { mode: "create", id: null, pipedrive_org_id: orgId, name, key, domain, roster_source: "pipedrive", roster_certified: false };
 }
 
 /* ------------------------------------------------------------------ *

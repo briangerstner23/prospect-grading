@@ -260,7 +260,10 @@ const baseDeal = (o: Record<string, unknown> = {}): Record<string, unknown> => (
   const r = parsePipedriveEvent(evt("create", "organization", { id: 777, name: "Copperline Digital, LLC", address: "12 Quay St, Harbourtown", custom_fields: { [WEBSITE_HASH]: "https://www.copperline.example/about" } }), FIELD_MAP, KNOWN, NOW);
   eq("org create (new): mode create", r.account?.mode, "create");
   eq("org create (new): row", [r.account?.pipedrive_org_id, r.account?.name, r.account?.key, r.account?.domain, r.account?.roster_source, r.account?.roster_certified, r.account?.id],
-    [777, "Copperline Digital, LLC", "copperline digital", "copperline.example", "pipedrive", true, null]);
+    [777, "Copperline Digital, LLC", "copperline digital", "copperline.example", "pipedrive", false, null]);
+  // §70: a new Pipedrive organisation is not on the roster until it has a Client Journey card;
+  // anyone can add an organisation, and a certified row is what PRO-6 calls the roster.
+  check("org create (new): enters uncertified, and the note says why", r.account?.roster_certified === false && r.notes.some((n) => n.includes("uncertified until its org has a Client Journey card")));
   eq("org create (new): no candidates", r.candidates, []);
   eq("org create (new): no deal/contact/signal", [r.deal, r.contact, r.signal], [undefined, undefined, undefined]);
 }

@@ -4853,7 +4853,8 @@ pinned what it MUST return.
 
 **Fix (drafted as `20261120020000_prospect_book_board_cells_restored.sql`, re-filed under its applied
 version when applied).** Drop and re-create `pb_board()` with the removals body unchanged plus the ten
-columns from the view; restate the grants (`anon`, `authenticated`, `service_role`) and the comment.
+columns from the view (and, since §70, the live sales stage); restate the grants (`anon`, `authenticated`,
+`service_role`) and the comment.
 Section 0 refuses to run if the live body moved since it was read. Nothing in the database depends on the
 function (`pg_depend`). The corrected query returned all 847 rows at the same ~150,000 buffers as the live
 one: the view computed the cell columns all along and the function discarded them.
@@ -4861,3 +4862,85 @@ one: the view computed the cell columns all along and the function discarded the
 **Open.** A test that the newest `pb_board()` returns every column `web/board.html` reads, so a later
 re-creation cannot drop them silently again; and the duplicate migration version itself (§26's note in
 CLAUDE.md), which let two definitions race.
+
+## §70 — Two systems share this database: the boundary, the outreach guard, and the roster certified only from the Client Journey (27 Nov 2026)
+
+**Owner ruling, 27 Nov 2026** ("do 1, 2, 3 and 5" on a five-point proposal). The owner's reasons, in his
+words where they matter: the book's prospects are mostly SQLs (sales-qualified leads), "a huge benefit [that]
+should elevate qualification above cold outreach"; the New York leads "may or may not have heard of us"; and
+"I want to make certain all of this is not getting tangled up". Point 4 (a separate database login for the
+other system) was not chosen and stays open.
+
+**The other system.** An OpenAI GPT-built pipeline screens a cold list in this same database (schema
+`prospect_intake`) and in Notion: a 71,685-row filter index built from one LinkedIn export (agency-signal,
+owner-title and New York tags), a 2,197-person New York review queue (priority 1 = New York + agency signal +
+owner title, 461; priority 2 = New York + agency signal, 718; priority 3 = New York + owner title, 1,018), and
+since 24 Nov "manhattan" qualification snapshots and review views. It works daily (queue rows updated
+27 Nov 14:59 UTC; 9,733 review events) through admin SQL; 11 of its migrations applied since 7 Nov, none filed
+here. Its queries have used about 1,745 s of database time on the shared Micro CPU, the worst 53 s (§68). It
+has written into a `pb_` table once: on 7 Nov it filled `account_id` on 320 `pb_identity_candidates` rows
+(audited in `prospect_intake.candidate_attachment_audit`, reversible, none approved by a person). On 27 Nov 14
+of its queue's ~1,880 companies were book accounts and 9 were WLIQ clients, 4 of them delivering in Orbit.
+
+**1 · The boundary.**
+1. `pb_` objects belong to the Prospect Book; `prospect_intake` and `agency_research` belong to the other
+   system. Neither writes the other's tables. Reading across is allowed.
+2. A company crosses from a cold list into the book only through a person: a Pipedrive Client Journey card
+   (the certified roster, PRO-6) or a seed admission (`scripts/seed.ts --only-orgs`). Never by a script
+   inserting into `pb_accounts`, `pb_facts`, `pb_signals`, `pb_fact_candidates` or `pb_identity_candidates`.
+3. Before contacting anyone, an outreach pipeline checks `pb_outreach_guard` (below). Every match is not cold.
+4. The book does not grade from cold-list data. A screening tag is not evidence (rule 5), and a cold-list row
+   has no Client Journey card, so it cannot pass for an SQL (point 3 below).
+5. Heavy scans share the Micro CPU with the public board: run them outside 05:00–07:00 UTC, set-based.
+
+This is a rule, not a lock: both systems log in as the database administrator, which no row policy binds.
+The 7 Nov edit shows the rule is needed. A separate login for the other system (read-only on `pb_`) is the
+only technical fence and is the owner's open decision.
+
+**2 · The outreach guard** (migration `20261127200000_prospect_book_outreach_guard.sql`). A materialised view,
+`pb_outreach_guard`: every company the book or Orbit knows, one row each, with `guard_status`, a plain
+`guard_reason`, `domain`, `norm_name` (`pb_norm_company(name)`), the live `sales_stage`, and when its sources
+were read. Status, the first that holds; counts measured 27 Nov:
+
+| guard_status | Meaning | Book | Orbit only |
+|---|---|---:|---:|
+| `do_not_contact` | owner removal with disposition do_not_contact (§50) | 1 | 0 |
+| `client_active` | Orbit active projects, or Client Journey card Active Client | 270 | 35 |
+| `client_former` | Inactive / Past / Lost Client card, or in Orbit with no active project | 203 | 142 |
+| `friends` | Friends of WLIQ | 22 | 0 |
+| `unqualified_dnc` | Client Journey card Unqualified/DNC, or the parked book | 189 | 0 |
+| `removed` | any other owner removal | 0 | 0 |
+| `sales_pipeline` | Client Journey card at New, Schedule Sales Call, Sales Call Done, Quoting or Quote Lost | 375 | 0 |
+| `in_book_no_stage` | on the book with no Client Journey card | 37 | 0 |
+
+Match on `domain` first, else `norm_name`; a name-only match on one common word is weak and needs a person.
+Materialised because the Orbit match beneath it (`pb_orbit_overlap`) takes about 5 s on this CPU, and a
+pipeline checking lead by lead must not pay that per lead. Refreshed at 05:14 UTC (cron `pb-roster-guard`),
+after the roster crawl; a removal made today shows tomorrow unless refreshed by hand
+(`refresh materialized view concurrently public.pb_outreach_guard`). The Orbit side is the 16 Sep snapshot
+(`orbit_snapshot_at`). No API role may read it. It writes nothing and admits nothing.
+
+**3 · The roster is certified only from the Client Journey.** `ingest/pipedrive_webhook.ts` created every new
+Pipedrive organisation as a *certified* prospect, with no stage check, so anything added to Pipedrive (a
+person, an import, another system) entered looking like an SQL: 16 such accounts arrived 21–27 Nov, none with a
+Client Journey card. From §70 a new organisation enters **uncertified**, and the engine's existing flag
+"Roster source uncertified" marks it. `pb_certify_from_roster_cards()` certifies a pipedrive-sourced account
+the morning its organisation has a card in `pb_roster_cards` (run by `pb-roster-guard` at 05:14). It only ever
+certifies. An attach to an existing account is unchanged. Existing rows are not touched.
+
+**5 · The sales stage on the board.** `pb_board()` returns `sales_stage` and `sales_stage_class`, read from the
+row's LIVE Client Journey card in `pb_roster_cards`, never from the `pipedrive_cj_stage` fact, which the seed
+wrote on 10 Sep and nothing has updated. The page draws it as a chip under the company: a sales stage in
+green, Unqualified/DNC in red, a client stage in blue, and "no sales stage" when there is no card. Display
+only: the chase order, the tier and the cell do not read it. Folded into §69's draft migration
+(`20261120020000_prospect_book_board_cells_restored.sql`), because both redefine `pb_board()`. Board rows by
+live stage, 27 Nov: Schedule Sales Call 216, Unqualified/DNC 212, Sales Call Done 148, Lost Client 61, Quote
+Lost 55, Active Client 36, no card 31, Quoting 25, Friends 24, New 20, Past Client 14, Inactive Client 9.
+
+**Open.**
+- **61 accounts are marked Unqualified/DNC on the Client Journey but graded as live prospects**, because the
+  `prospect` / `parked` book was set at the 10 Sep seed and nothing moves it. Whether the book should follow
+  the live card is the owner's decision; until then the chip shows it.
+- A separate database login for the other system (point 4 of the proposal).
+- The other system's migrations have no file here, so `scripts/reconcile.ts` cannot see them.
+- The 7 Nov edit of 320 identity candidates: keep or reverse, the owner's call.
