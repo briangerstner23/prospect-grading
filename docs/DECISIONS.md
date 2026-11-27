@@ -4838,7 +4838,7 @@ read for anon; it returns nothing anon could not already read.
 execute on the live `pb_reconcile_state()` at all once nothing calls it, since a 0.2–5 s call anyone can
 repeat is load on a shared CPU.
 
-## §69 — The board carries its chase cells again (20 Nov 2026; DRAFT, not yet applied)
+## §69 — The board carries its chase cells again (20 Nov 2026; applied 27 Nov 2026)
 
 No owner ruling; a repair that restores what §52 ruled. Since 18 Sep the public board has grouped every
 row under "No cell (rubric before 0.1.7)", and the dossier's cell chip and play line have been blank.
@@ -4851,8 +4851,8 @@ none. `pb_prospect_board` still computes every cell column, so nothing upstream 
 because the page test pins the page, the privacy test pins what the function may NOT return, and nothing
 pinned what it MUST return.
 
-**Fix (drafted as `20261120020000_prospect_book_board_cells_restored.sql`, re-filed under its applied
-version when applied).** Drop and re-create `pb_board()` with the removals body unchanged plus the ten
+**Fix (applied 27 Nov 2026 as `20261127151657_prospect_book_board_cells_restored.sql`, drafted as
+`20261120020000`; byte-identical to its statement, md5 `433b196f…`).** Drop and re-create `pb_board()` with the removals body unchanged plus the ten
 columns from the view (and, since §70, the live sales stage); restate the grants (`anon`, `authenticated`,
 `service_role`) and the comment.
 Section 0 refuses to run if the live body moved since it was read. Nothing in the database depends on the
@@ -4897,7 +4897,8 @@ This is a rule, not a lock: both systems log in as the database administrator, w
 The 7 Nov edit shows the rule is needed. A separate login for the other system (read-only on `pb_`) is the
 only technical fence and is the owner's open decision.
 
-**2 · The outreach guard** (migration `20261127200000_prospect_book_outreach_guard.sql`). A materialised view,
+**2 · The outreach guard** (migration `20261127151825_prospect_book_outreach_guard.sql`, applied 27 Nov 2026,
+byte-identical to its statement, md5 `86a5c71f…`). A materialised view,
 `pb_outreach_guard`: every company the book or Orbit knows, one row each, with `guard_status`, a plain
 `guard_reason`, `domain`, `norm_name` (`pb_norm_company(name)`), the live `sales_stage`, and when its sources
 were read. Status, the first that holds; counts measured 27 Nov:
@@ -4932,8 +4933,10 @@ certifies. An attach to an existing account is unchanged. Existing rows are not 
 row's LIVE Client Journey card in `pb_roster_cards`, never from the `pipedrive_cj_stage` fact, which the seed
 wrote on 10 Sep and nothing has updated. The page draws it as a chip under the company: a sales stage in
 green, Unqualified/DNC in red, a client stage in blue, and "no sales stage" when there is no card. Display
-only: the chase order, the tier and the cell do not read it. Folded into §69's draft migration
-(`20261120020000_prospect_book_board_cells_restored.sql`), because both redefine `pb_board()`. Board rows by
+only: the chase order, the tier and the cell do not read it. Folded into §69's migration
+(`20261127151657_prospect_book_board_cells_restored.sql`, applied 27 Nov), because both redefine `pb_board()`.
+Verified after applying: 851 board rows, every one with a real chase cell (the "No cell" fallback is gone),
+820 with a sales stage and 31 without; `pb_board()` 1.06 s, grants unchanged. Board rows by
 live stage, 27 Nov: Schedule Sales Call 216, Unqualified/DNC 212, Sales Call Done 148, Lost Client 61, Quote
 Lost 55, Active Client 36, no card 31, Quoting 25, Friends 24, New 20, Past Client 14, Inactive Client 9.
 

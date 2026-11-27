@@ -225,12 +225,13 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             reads by account (pb_current_reads driven by pb_accounts, one probe per account; 3.1 s → 6 ms)
             · 20261117012758 reads as_of index (pb_engagement's stage label by index-only probe; pb_board()
             6.65 s → 1.05 s). All applied, each byte-identical to its statement (md5). DECISIONS §67.
-            THREE DRAFTS, not yet applied (each re-filed under its applied version when applied, RUNBOOK
-            §28.6): 20261117200000 reconcile snapshot (cron pb-reconcile-snapshot + pb_reconcile_latest();
-            §68) · 20261120020000 board cells restored, and the live Pipedrive sales stage per row
-            (pb_board() gains its ten cell columns back plus sales_stage / sales_stage_class from
-            pb_roster_cards; §69, §70) · 20261127200000 outreach guard (materialised view
-            pb_outreach_guard + pb_certify_from_roster_cards() + cron pb-roster-guard 05:14; §70).
+            27 Nov, APPLIED, each byte-identical to its statement (md5): 20261127151657 board cells
+            restored, and the live Pipedrive sales stage per row (pb_board() regains its ten cell columns
+            plus sales_stage / sales_stage_class from pb_roster_cards; §69, §70; drafted as 20261120020000)
+            · 20261127151825 outreach guard (materialised view pb_outreach_guard +
+            pb_certify_from_roster_cards() + cron pb-roster-guard 05:14; §70). ONE DRAFT, not yet applied
+            (re-filed under its applied version when applied, RUNBOOK §28.6): 20261117200000 reconcile
+            snapshot (cron pb-reconcile-snapshot + pb_reconcile_latest(); §68).
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/ · pb-notes/extractor.ts (the ONE model call both pb-notes
             paths make: the request, the API refusal, the JSON salvage) · pb-notes/meetings.ts (the
@@ -485,8 +486,8 @@ no file here and `scripts/reconcile.ts` does not see them.
   windows and a name heard in part is asked about, §66; `verify_jwt: false`, read back), before it
   **pb-notes v18** (12 Nov, `b4b33fd`, the merge of PR #11: the sales-meeting route, §65), before it
   **pb-notes v17** (10 Oct, `34bd48f`, the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
-  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v3** (10 Oct, pinned to the §64 merge commit: the create race is a note,
-  not an error), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
+  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v4** (27 Nov, pinned to `4294bb8`: a new Pipedrive organisation enters
+  uncertified until its org has a Client Journey card, §70; v3 was the §64 merge commit), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
   **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in
   the deploy response; v1 `5378733` and v2 `9c253b5` were superseded by lexicon corrections —
   DECISIONS §54a, §54b). Read this line from `list_edge_functions`, never from here: on 18 Sep it
@@ -533,7 +534,7 @@ no file here and `scripts/reconcile.ts` does not see them.
   concurrency:6}` to pb-notes — and only when SQL finds work (a Fathom delivery past the
   `sales_meeting` cursor, a `waiting` meeting, or a `reading` one whose 150 s lease lapsed), so an
   idle tick makes no HTTP call and no model call (DECISIONS §65).
-  The eleventh, **`pb-roster-guard` 05:14, is PENDING its migration** (20261127200000): it certifies
+  The eleventh, `pb-roster-guard` 05:14 (migration 20261127151825, applied 27 Nov): it certifies
   pipedrive-sourced accounts whose organisation now has a Client Journey card and refreshes
   `pb_outreach_guard` (DECISIONS §70). The twelfth, `pb-reconcile-snapshot` (minutes 7/27/47), is
   pending too (20261117200000, §68).
