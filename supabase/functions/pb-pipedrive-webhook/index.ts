@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
         } else if (error) errors.push(`pb_accounts create: ${error.message}`);
         else {
           counts.accounts = 1;
-          notes.push(`account created from pipedrive_org_id ${acct.pipedrive_org_id} (roster_source pipedrive)`);
+          notes.push(`account created from pipedrive_org_id ${acct.pipedrive_org_id} (roster_source pipedrive, uncertified until a Client Journey card is seen — DECISIONS §70)`);
         }
       } else {
         notes.push(`organization ${acct.pipedrive_org_id} resembles an existing account; left for review (candidates written)`);

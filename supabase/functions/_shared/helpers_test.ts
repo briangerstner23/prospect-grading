@@ -583,6 +583,7 @@ const CALL: CallRow = {
   eq("accountAttachPatch: existing name/domain kept", accountAttachPatch(acct, { id: ACCOUNT.id, name: "Harbor & Pine Creative", domain: "hp.example" }), { pipedrive_org_id: 900, roster_source: "pipedrive", roster_certified: true });
   eq("accountAttachPatch: no existing row → minimal patch", accountAttachPatch(acct, null), { pipedrive_org_id: 900, roster_source: "pipedrive", roster_certified: true });
   eq("accountCreateRow", accountCreateRow({ ...acct, mode: "create", id: null }), { key: "harbor pine creative", name: "Harbor & Pine Creative LLC", domain: "harborpine.example", pipedrive_org_id: 900, roster_source: "pipedrive", roster_certified: true, book: "prospect" });
+  eq("accountCreateRow carries an uncertified create through (DECISIONS §70)", accountCreateRow({ ...acct, mode: "create", id: null, roster_certified: false }).roster_certified, false);
 }
 
 {

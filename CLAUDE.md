@@ -225,6 +225,13 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             reads by account (pb_current_reads driven by pb_accounts, one probe per account; 3.1 s → 6 ms)
             · 20261117012758 reads as_of index (pb_engagement's stage label by index-only probe; pb_board()
             6.65 s → 1.05 s). All applied, each byte-identical to its statement (md5). DECISIONS §67.
+            27 Nov, APPLIED, each byte-identical to its statement (md5): 20261127151657 board cells
+            restored, and the live Pipedrive sales stage per row (pb_board() regains its ten cell columns
+            plus sales_stage / sales_stage_class from pb_roster_cards; §69, §70; drafted as 20261120020000)
+            · 20261127151825 outreach guard (materialised view pb_outreach_guard +
+            pb_certify_from_roster_cards() + cron pb-roster-guard 05:14; §70). ONE DRAFT, not yet applied
+            (re-filed under its applied version when applied, RUNBOOK §28.6): 20261117200000 reconcile
+            snapshot (cron pb-reconcile-snapshot + pb_reconcile_latest(); §68).
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/ · pb-notes/extractor.ts (the ONE model call both pb-notes
             paths make: the request, the API refusal, the JSON salvage) · pb-notes/meetings.ts (the
@@ -249,7 +256,9 @@ web/        board.html — THE WORKING SURFACE (DECISIONS §37, §41, §43): the
             deliberately unlike it — no expiry, two dispositions, and an "Off the board" list that is
             the only route back (§59). Adding a section, or dropping one, means updating
             web/CONTRACT.json (which owns the section names, §46) and scripts/board_page_test.ts,
-            which pins the board's BEHAVIOUR — 128 checks in total.
+            which pins the board's BEHAVIOUR — 136 checks in total. Each row carries a chip with its
+            LIVE Pipedrive sales stage under the company (§70): display only, drawn only when pb_board()
+            returns the column.
             index.html — the signed-in back office: sign-in, candidate review, merges, register.
             The fact queue now carries the AUTOMATIC half above the manual one (DECISIONS §53):
             which lane each waiting claim is in, which lanes are switched on, a dry run before every
@@ -318,6 +327,27 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   reaches the database (`pb_facts.key` = a `ProspectFeatures` key).
 - Tests are plain scripts that exit non-zero on failure. No test framework.
 - Tables, views, functions and vault secrets are prefixed `pb_` / `PB_`.
+
+## Another system shares this database (DECISIONS §70)
+
+An OpenAI GPT-built pipeline screens a cold New York list in schema `prospect_intake` (and in Notion):
+a 71,685-row LinkedIn filter index, a 2,197-person review queue, "manhattan" qualification views. It is
+cold outreach to people who may never have heard of WLIQ. The book is the opposite: the Pipedrive roster,
+mostly sales-qualified leads on the Client Journey, and those come first. Owner ruling, 27 Nov 2026:
+1. `pb_` belongs to the book; `prospect_intake` and `agency_research` to the other system. **Neither writes
+   the other's tables.** Reading across is fine. It broke this once (7 Nov: 320 `pb_identity_candidates`
+   rows given an account; audited, reversible, none approved) — never extend that, never build on it.
+2. A cold-list company enters the book only through a person: a Pipedrive Client Journey card or a seed
+   admission. Never by a script inserting into `pb_accounts`, `pb_facts`, `pb_signals` or the candidate queues.
+3. Outreach pipelines check **`pb_outreach_guard`** first (domain, else `pb_norm_company(name)`); every match
+   is not cold. Never grant it to anon or authenticated: it names companies.
+4. **A new Pipedrive organisation enters UNCERTIFIED** (`ingest/pipedrive_webhook.ts`, create mode) and is
+   certified only when its org has a Client Journey card (`pb_certify_from_roster_cards()`, nightly). Never
+   go back to certifying on create: anything added to Pipedrive would pass for an SQL.
+5. The sales stage the board shows comes from the LIVE card (`pb_roster_cards`), never from the
+   `pipedrive_cj_stage` fact, which the seed wrote on 10 Sep and nothing updates.
+Both systems log in as the database administrator, so this is a rule, not a lock. Their migrations have
+no file here and `scripts/reconcile.ts` does not see them.
 
 ## The rules
 
@@ -456,8 +486,8 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   windows and a name heard in part is asked about, §66; `verify_jwt: false`, read back), before it
   **pb-notes v18** (12 Nov, `b4b33fd`, the merge of PR #11: the sales-meeting route, §65), before it
   **pb-notes v17** (10 Oct, `34bd48f`, the §64 merge commit: the 40-character Pipedrive floor; v16 was `af8438c`, 23 Sep: halt on an API refusal, (time, id) cursor watermarks, per-channel cap — TB-41; v14 was `53596a3`), also a pinned-commit
-  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v3** (10 Oct, pinned to the §64 merge commit: the create race is a note,
-  not an error), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
+  entrypoint — the `website` channel §50, and the candidate's own observation/judgement verdict §51), **pb-pipedrive-webhook v4** (27 Nov, pinned to `4294bb8`: a new Pipedrive organisation enters
+  uncertified until its org has a Client Journey card, §70; v3 was the §64 merge commit), **pb-sync v2**, **pb-fathom-webhook v2** (those two from 14 Sep bundles, `561f289`/`53fb656`), and
   **pb-verify v3** (commit `81dc617`, pinned-commit entrypoint, `verify_jwt: false` confirmed in
   the deploy response; v1 `5378733` and v2 `9c253b5` were superseded by lexicon corrections —
   DECISIONS §54a, §54b). Read this line from `list_edge_functions`, never from here: on 18 Sep it
@@ -504,6 +534,10 @@ scripts/    seed.ts (the seed composer → SQL files; --only-orgs makes it an ad
   concurrency:6}` to pb-notes — and only when SQL finds work (a Fathom delivery past the
   `sales_meeting` cursor, a `waiting` meeting, or a `reading` one whose 150 s lease lapsed), so an
   idle tick makes no HTTP call and no model call (DECISIONS §65).
+  The eleventh, `pb-roster-guard` 05:14 (migration 20261127151825, applied 27 Nov): it certifies
+  pipedrive-sourced accounts whose organisation now has a Client Journey card and refreshes
+  `pb_outreach_guard` (DECISIONS §70). The twelfth, `pb-reconcile-snapshot` (minutes 7/27/47), is
+  pending too (20261117200000, §68).
 - **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
   prospect-stage card with no account (`missing`), an account whose card has moved to a partner
   stage or Friends of WLIQ (`departed`) — and writes nothing else. It may not: PRO-18's

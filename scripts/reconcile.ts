@@ -5,7 +5,8 @@
  * code. It cannot see the database. On 17 Sep 2026 that blind spot cost four findings at once: the
  * active rubric had no file, 33 applied migrations had no file, Fathom had never delivered, and
  * rule 9 had drifted for two days — with every repo-side check green. This script is the other
- * half: it fetches `pb_reconcile_state()` (aggregates only, callable by anon) and compares.
+ * half: it fetches the newest `pb_reconcile_state()` snapshot (aggregates only; read through
+ * `pb_reconcile_latest()`, callable by anon — DECISIONS §68) and compares.
  *
  * Checks, each a FAIL unless the ledger's policy says warn:
  *   1. The active rubric in the database is the version the ledger pins, its spec produces the
@@ -43,9 +44,17 @@
  *      week but none read, or an open card older than three days — proposals never expire on a
  *      timer, so the reconcile is what notices. A meetings_work without `latest_run` warns that
  *      the halt check could not run; a null one is a reader that has not run yet.
+ *   8. The state is fresh (always a FAIL; DECISIONS §68). pg_cron takes the reconcile inside the
+ *      database every twenty minutes, because the live call kept missing anon's 3 s timeout on the
+ *      project's shared CPU. A snapshot older than three hours means the job stopped, and an old
+ *      green snapshot would hide every check above, so it fails. A state with no `snapshot` block
+ *      came from the live function (the fallback below, or an offline file) and is fresh by
+ *      definition.
  *
  * Runs from CI with no secrets: the URL and publishable key are the page's own
- * (web/index.html), and the rpc returns nothing that is not already readable. `--state <file>`
+ * (web/index.html), and the rpc returns nothing that is not already readable. It reads
+ * pb_reconcile_latest(); only when that answers 404 (a database before migration 20261117…) or null
+ * (no snapshot yet) does it fall back to calling pb_reconcile_state() live. `--state <file>`
  * evaluates a saved state offline (that is what reconcile_test.ts uses); `--dump` prints the
  * fetched state. Exit 1 on any failure. NOT a ruling: it says whether the record matches the
  * running system, never what the system should be.
@@ -84,6 +93,9 @@ export interface State {
   meeting_privacy?: MeetingPrivacy;
   /** Added with meeting_privacy. Counts and one age, never a title or a quote. */
   meetings_work?: MeetingsWork;
+  /** Added by pb_reconcile_latest() (DECISIONS §68): when the database took this state. Absent from
+   *  a live pb_reconcile_state() call and from an offline file. */
+  snapshot?: { id: number; taken_at: string; took_ms: number; age_seconds: number };
 }
 export interface MeetingPrivacy { checked: number; leaks: number }
 export interface MeetingsWork {
@@ -122,6 +134,8 @@ const SOURCE_TS_FIELD: Record<string, string> = {
 export const NOTES_IDLE_WARN_DAYS = 3;
 /** Check 7: warn when the oldest open meeting card has waited longer than this (DECISIONS §65). */
 export const MEETING_CARD_WARN_DAYS = 3;
+/** Check 8: fail a snapshot older than this. The job runs every 20 minutes (DECISIONS §68). */
+export const SNAPSHOT_MAX_AGE_HOURS = 3;
 
 export function evaluate(
   state: State,
@@ -134,6 +148,20 @@ export function evaluate(
   const warnings: string[] = [];
   const summary: string[] = [];
   const pin = ledger.active_rubric;
+
+  // 8 · the state is fresh — first, because every check below trusts it
+  if (state.snapshot) {
+    const ageH = (asOf.getTime() - Date.parse(state.snapshot.taken_at)) / 3_600_000;
+    if (!Number.isFinite(ageH)) {
+      failures.push(`snapshot: taken_at ${JSON.stringify(state.snapshot.taken_at)} is not a time`);
+    } else if (ageH > SNAPSHOT_MAX_AGE_HOURS) {
+      failures.push(`snapshot: the newest reconcile snapshot is ${ageH.toFixed(1)} h old (limit ${SNAPSHOT_MAX_AGE_HOURS} h) — is pg_cron job pb-reconcile-snapshot running? Every check below describes the system as it was then (DECISIONS §68)`);
+    } else {
+      summary.push(`snapshot ${state.snapshot.id}: ${Math.max(0, ageH * 60).toFixed(0)} min old, took ${state.snapshot.took_ms} ms in the database`);
+    }
+  } else {
+    summary.push("state read live from pb_reconcile_state(), not a snapshot");
+  }
 
   // 1 · the active rubric, four ways
   if (!state.active_rubric) {
@@ -319,11 +347,23 @@ function pageCredentials(): { url: string; key: string } {
 
 async function fetchState(): Promise<State> {
   const { url, key } = pageCredentials();
-  const res = await fetch(`${url}/rest/v1/rpc/pb_reconcile_state`, {
+  const rpc = (fn: string) => fetch(`${url}/rest/v1/rpc/${fn}`, {
     method: "POST",
     headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: "{}",
   });
+  // The snapshot first (DECISIONS §68): one row, read in milliseconds whatever the CPU is doing.
+  const latest = await rpc("pb_reconcile_latest");
+  if (latest.ok) {
+    const s = (await latest.json()) as State | null;
+    if (s) return s;
+    console.log("reconcile: pb_reconcile_latest() has no snapshot yet — reading pb_reconcile_state() live");
+  } else if (latest.status === 404) {
+    console.log("reconcile: pb_reconcile_latest() is not in this database — reading pb_reconcile_state() live");
+  } else {
+    throw new Error(`pb_reconcile_latest: HTTP ${latest.status} ${await latest.text()}`);
+  }
+  const res = await rpc("pb_reconcile_state");
   if (!res.ok) throw new Error(`pb_reconcile_state: HTTP ${res.status} ${await res.text()}`);
   return (await res.json()) as State;
 }

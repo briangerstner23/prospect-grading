@@ -336,6 +336,25 @@ check("it does not claim the nightly run applies it — a removal is immediate",
 check("a refusal is attributed to the database, not the page",
   (page.match(/the database decides this, not the page/g) ?? []).length >= 2);
 
+/* §70 · the live Pipedrive sales stage on each row — display only, and safe on either pb_board() */
+check("each row draws the sales-stage chip under the company", /stageChip\(r\) \+\s*"<\/td>"/.test(page));
+{
+  const grab = (re: RegExp): string => (re.exec(page) ?? [""])[0];
+  const src = grab(/function esc\(s\) \{[\s\S]*?\n  \}/) + "\n" + grab(/var SQL_STAGES = [^\n]*\n/) +
+    grab(/function stageChip\(r\) \{[\s\S]*?\n  \}/);
+  check("the chip and its helpers can be lifted out of the page", src.includes("function stageChip") && src.includes("SQL_STAGES") && src.includes("function esc"));
+  // deno-lint-ignore no-explicit-any
+  const chip = new Function(src + "\nreturn stageChip;")() as (r: any) => string;
+  check("no sales_stage key (pb_board() before the migration) draws nothing", chip({ name: "x" }) === "");
+  check("a row on the Client Journey reads as a sales-qualified lead",
+    /class="stage s-sql"/.test(chip({ sales_stage: "Sales Call Done", sales_stage_class: "prospect" })) && /Sales Call Done/.test(chip({ sales_stage: "Sales Call Done", sales_stage_class: "prospect" })));
+  check("Unqualified/DNC is marked apart from the sales stages, though its class is 'prospect'",
+    /class="stage s-dnc"/.test(chip({ sales_stage: "Unqualified/DNC", sales_stage_class: "prospect" })));
+  check("a client stage reads as a client", /class="stage s-client"/.test(chip({ sales_stage: "Active Client", sales_stage_class: "partner" })));
+  check("no Client Journey card says so in words", />no sales stage</.test(chip({ sales_stage: null, sales_stage_class: null })));
+  check("the stage text is escaped", !/<b>/.test(chip({ sales_stage: "<b>x</b>", sales_stage_class: null })));
+}
+
 console.log(`board_page: ${passed} checks, ${failures.length} failed`);
 for (const f of failures) console.log(`    FAIL  ${f}`);
 process.exit(failures.length ? 1 : 0);
