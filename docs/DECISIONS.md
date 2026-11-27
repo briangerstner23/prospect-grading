@@ -4807,7 +4807,13 @@ without the lift line. `pb_board()` at about 1 s still touches ~150,000 buffers 
 `pb_chase_board`), so it has a 3x margin, not a large one. Both are tracked; the next step is the same
 method — `explain (analyze, buffers)`, find the sort or scan that grows with the book, index or rewrite it.
 
-## §68 — The reconcile reads a snapshot the database took, not a live call (17 Nov 2026; DRAFT, not yet applied)
+## §68 — The reconcile reads a snapshot the database took, not a live call (17 Nov 2026; applied 27 Nov 2026)
+
+**Applied 27 Nov 2026 as `20261127153139_prospect_book_reconcile_snapshot.sql`** (owner go-ahead the same day;
+drafted as `20261117200000`), byte-identical to its statement (md5 `34620d72…`). Verified: the first snapshot took
+2,417 ms inside the database, where no timeout applies; `pb_reconcile_latest()` answers in 2.5 ms; anon can call
+it but can neither read `pb_reconcile_snapshots` nor run `pb_reconcile_snapshot()`; cron `pb-reconcile-snapshot`
+at minutes 7, 27 and 47. `scripts/reconcile.ts` on `main` already reads the snapshot (merged with #14).
 
 No owner ruling; an operational repair. The 6-hourly reconcile still failed after §67: every scheduled run
 from 14 Nov, including 17 Nov 07:51 UTC on the merge commit, answered 500 from `pb_reconcile_state()` on

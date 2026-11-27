@@ -229,9 +229,9 @@ supabase/   migrations/ — in order: 20260909120000 schema + RLS · 120100 cron
             restored, and the live Pipedrive sales stage per row (pb_board() regains its ten cell columns
             plus sales_stage / sales_stage_class from pb_roster_cards; §69, §70; drafted as 20261120020000)
             · 20261127151825 outreach guard (materialised view pb_outreach_guard +
-            pb_certify_from_roster_cards() + cron pb-roster-guard 05:14; §70). ONE DRAFT, not yet applied
-            (re-filed under its applied version when applied, RUNBOOK §28.6): 20261117200000 reconcile
-            snapshot (cron pb-reconcile-snapshot + pb_reconcile_latest(); §68).
+            pb_certify_from_roster_cards() + cron pb-roster-guard 05:14; §70) · 20261127153139 reconcile
+            snapshot (cron pb-reconcile-snapshot + pb_reconcile_snapshots + pb_reconcile_latest(); §68;
+            drafted as 20261117200000).
             functions/pb-sync, pb-score, pb-notes, pb-verify, pb-fathom-webhook,
             pb-pipedrive-webhook, _shared/ · pb-notes/extractor.ts (the ONE model call both pb-notes
             paths make: the request, the API refusal, the JSON salvage) · pb-notes/meetings.ts (the
@@ -536,8 +536,9 @@ no file here and `scripts/reconcile.ts` does not see them.
   idle tick makes no HTTP call and no model call (DECISIONS §65).
   The eleventh, `pb-roster-guard` 05:14 (migration 20261127151825, applied 27 Nov): it certifies
   pipedrive-sourced accounts whose organisation now has a Client Journey card and refreshes
-  `pb_outreach_guard` (DECISIONS §70). The twelfth, `pb-reconcile-snapshot` (minutes 7/27/47), is
-  pending too (20261117200000, §68).
+  `pb_outreach_guard` (DECISIONS §70). The twelfth, `pb-reconcile-snapshot` (minutes 7/27/47; migration
+  20261127153139, applied 27 Nov), stores `pb_reconcile_state()` for CI to read through
+  `pb_reconcile_latest()` (§68).
 - **The roster is re-read, never re-written.** `pb_roster_drift` reports both directions — a
   prospect-stage card with no account (`missing`), an account whose card has moved to a partner
   stage or Friends of WLIQ (`departed`) — and writes nothing else. It may not: PRO-18's
@@ -553,8 +554,9 @@ no file here and `scripts/reconcile.ts` does not see them.
   spec_sha256, activated_at, created_at — not `activated_by`, not `preview_diff`); `select` on
   SEVEN COLUMNS of `pb_runs` (id, kind, source, status, started_at, finished_at, counts — not
   `errors`, `triggered_by`, `credits_spent`), rows `source = 'pb-score' and status = 'success'`
-  only; and `execute` on the five SECURITY DEFINER reads `pb_board()`, `pb_dossier(uuid)`,
-  `pb_lift()`, `pb_dashboard()`, `pb_reconcile_state()`. Nothing else. A page that needs more
+  only; and `execute` on the six SECURITY DEFINER reads `pb_board()`, `pb_dossier(uuid)`,
+  `pb_lift()`, `pb_dashboard()`, `pb_reconcile_state()` and, since 27 Nov, `pb_reconcile_latest()`
+  (the newest reconcile snapshot, DECISIONS §68). Nothing else. A page that needs more
   goes through a definer function that returns its own columns, never a new anon grant.
   Writes are unchanged — by lane via `pb_members.role` (owner / rater / viewer), signed in.
   Never grant `anon` an insert, update or delete; never open a table to `anon` without asking.
